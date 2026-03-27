@@ -1,0 +1,12 @@
+{
+  "name": "darkwind-webclient",
+  "version": "1.0.0",
+  "description": "WebSocket MUD client for play.darkwind.ai",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
