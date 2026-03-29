@@ -393,9 +393,14 @@ export const panelRenderers = {
       const entry = document.createElement('div');
       entry.className = 'chat-entry';
       const ch = channelColor(msg.channel || '');
+      const talker = msg.talker ? msg.talker.charAt(0).toUpperCase() + msg.talker.slice(1) : '';
+      // Strip "[Channel] Talker: " prefix from text if present
+      let text = msg.text || '';
+      const prefixPattern = new RegExp('^\\[\\S+\\]\\s+\\S+:\\s*');
+      text = text.replace(prefixPattern, '');
       entry.innerHTML = '<span class="chat-channel" style="color:' + ch + '">[' + escHtml(msg.channel) + ']</span> '
-        + '<span class="chat-talker">' + escHtml(msg.talker) + ':</span> '
-        + escHtml(msg.text);
+        + '<span class="chat-talker">' + escHtml(talker) + ':</span> '
+        + escHtml(text);
       log.appendChild(entry);
     }
 
