@@ -129,11 +129,17 @@ document.addEventListener('click', function() {
 });
 
 // ── Init ────────────────────────────────────────────────────────────
-// Allow URL params to preset connection: ?host=example.com&port=4242&wss=1
-const urlParams = new URLSearchParams(window.location.search);
-dom.host.value = urlParams.get('host') || '';
-dom.port.value = urlParams.get('port') || '4242';
-dom.wssToggle.checked = urlParams.has('wss') ? urlParams.get('wss') !== '0' : true;
+// Load server config, then apply URL param overrides
+fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
+  const urlParams = new URLSearchParams(window.location.search);
+  dom.host.value = urlParams.get('host') || config.host || '';
+  dom.port.value = urlParams.get('port') || config.port || '4242';
+  dom.wssToggle.checked = urlParams.has('wss') ? urlParams.get('wss') !== '0'
+    : config.wss !== undefined ? config.wss : true;
+  if (config.gameName) {
+    updateBranding(config.gameName);
+  }
+});
 loadHistory();
 panelManager.init();
 windowManager.init();
