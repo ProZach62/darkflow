@@ -136,8 +136,13 @@ fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
   dom.port.value = urlParams.get('port') || config.port || '4242';
   dom.wssToggle.checked = urlParams.has('wss') ? urlParams.get('wss') !== '0'
     : config.wss !== undefined ? config.wss : true;
+  dom.autoReconnect.checked = true;
   if (config.gameName) {
     updateBranding(config.gameName);
+  }
+  // Auto-connect if a host is configured
+  if (dom.host.value) {
+    connect();
   }
 });
 loadHistory();
