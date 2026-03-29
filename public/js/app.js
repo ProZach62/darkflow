@@ -53,9 +53,22 @@ gmcp.on('*', function(packageName, data) {
 });
 
 // ── Game Uptime (from GMCP Game package) ────────────────────────────
+function formatUptime(totalSeconds) {
+  let s = Math.floor(totalSeconds);
+  const d = Math.floor(s / 86400); s %= 86400;
+  const h = Math.floor(s / 3600); s %= 3600;
+  const m = Math.floor(s / 60); s %= 60;
+  const parts = [];
+  if (d > 0) parts.push(d + 'd');
+  if (h > 0) parts.push(h + 'h');
+  if (m > 0) parts.push(m + 'm');
+  if (parts.length === 0) parts.push(s + 's');
+  return parts.join(' ');
+}
+
 gmcp.on('Game', function(data) {
-  if (data && data.game_uptime) {
-    dom.statusUptime.textContent = 'Uptime: ' + data.game_uptime;
+  if (data && data.game_uptime !== undefined) {
+    dom.statusUptime.textContent = 'Uptime: ' + formatUptime(data.game_uptime);
   }
 });
 
