@@ -164,20 +164,161 @@ export const panelRenderers = {
       bodyEl.innerHTML = '<div class="placeholder">Empty</div>';
       return;
     }
-    const badgeMap = {
-      'w': '<span class="inv-badge inv-badge-w">wld</span>',
-      'W': '<span class="inv-badge inv-badge-W">wrn</span>',
-      'l': '<span class="inv-badge inv-badge-l">lit</span>',
-      'c': '<span class="inv-badge inv-badge-c">cnt</span>',
-      'm': '<span class="inv-badge inv-badge-m">npc</span>',
+
+    // Preserve active tab
+    const activeTab = bodyEl.querySelector('.inv-tab.active');
+    const currentTab = activeTab ? activeTab.dataset.tab : 'all';
+
+    // Parse slot from item name parenthetical
+    const slotPattern = /\(([^)]+)\)\s*$/;
+    const slotMap = {
+      'worn on head': 'Head', 'worn around the neck': 'Neck',
+      'worn over the shoulders': 'Shoulders', 'worn on body': 'Body',
+      'worn on body and legs': 'Body+Legs', 'worn as a full suit of armour': 'FullSuit',
+      'worn on hands': 'Hands', 'worn on legs': 'Legs', 'worn on feet': 'Feet',
+      'worn on finger': 'Finger', 'used as shield': 'Shield',
+      'main weapon': 'Main Weapon', 'secondary weapon': 'Off-hand',
+      'used as light': 'Light',
     };
-    let html = '<div class="inv-list">';
+
+    function cleanName(name) {
+      let n = name.replace(/^\*/, '').replace(slotPattern, '').trim();
+      return n.charAt(0).toUpperCase() + n.slice(1);
+    }
+
+    function getSlot(name) {
+      const m = name.match(slotPattern);
+      return m ? (slotMap[m[1]] || null) : null;
+    }
+
+    // Categorize items
+    const wielded = [], worn = [], containers = [], carried = [];
+    const slots = {};
+
     for (const item of data) {
-      const badge = badgeMap[item.attrib] || '';
-      html += '<div class="inv-item">' + badge + '<span>' + escHtml(item.name) + '</span></div>';
+      const clean = cleanName(item.name);
+      const slot = getSlot(item.name);
+      const entry = { id: item.id, name: clean, attrib: item.attrib, slot: slot, raw: item.name };
+
+      if (item.attrib === 'l') { wielded.push(entry); if (slot) slots[slot] = entry; }
+      else if (item.attrib === 'w') { worn.push(entry); if (slot) slots[slot] = entry; }
+      else if (item.attrib === 'c') containers.push(entry);
+      else carried.push(entry);
+
+      // Handle multi-slot items
+      if (slot === 'Body+Legs') { slots['Body'] = entry; slots['Legs'] = entry; }
+      if (slot === 'FullSuit') { ['Body','Legs','Head','Hands','Feet'].forEach(s => slots[s] = entry); }
+    }
+
+    wielded.sort((a, b) => a.name.localeCompare(b.name));
+    worn.sort((a, b) => a.name.localeCompare(b.name));
+    containers.sort((a, b) => a.name.localeCompare(b.name));
+    carried.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Build tabs
+    let html = '<div class="inv-tabs">';
+    const tabs = [['all','All'],['worn','Worn'],['wielded','Wielded'],['carried','Carried']];
+    for (const [id, label] of tabs) {
+      html += '<button class="inv-tab' + (currentTab === id ? ' active' : '') + '" data-tab="' + id + '">' + label + '</button>';
     }
     html += '</div>';
+
+    // All tab
+    html += '<div class="inv-tab-content' + (currentTab === 'all' ? ' active' : '') + '" data-tab="all"><div class="inv-list">';
+    if (wielded.length) {
+      html += '<div class="inv-group-header">WIELDED</div>';
+      for (const e of wielded) html += '<div class="inv-item">' + escHtml(e.name) + '</div>';
+    }
+    if (worn.length) {
+      html += '<div class="inv-group-header">WORN</div>';
+      for (const e of worn) html += '<div class="inv-item">' + escHtml(e.name) + '</div>';
+    }
+    if (containers.length) {
+      html += '<div class="inv-group-header">CONTAINERS</div>';
+      for (const e of containers) html += '<div class="inv-item">' + escHtml(e.name) + '</div>';
+    }
+    if (carried.length) {
+      html += '<div class="inv-group-header">CARRIED</div>';
+      for (const e of carried) html += '<div class="inv-item">' + escHtml(e.name) + '</div>';
+    }
+    html += '</div></div>';
+
+    // Worn tab - paper doll
+    html += '<div class="inv-tab-content' + (currentTab === 'worn' ? ' active' : '') + '" data-tab="worn">';
+    html += '<div class="inv-paperdoll">';
+    const dollSlots = [
+      ['Head',null,'Head'],
+      ['Neck',null,'Neck'],
+      ['Shoulders',null,'Shoulders'],
+      ['Body',null,'Body'],
+      ['Hands','Shield','Hands / Shield'],
+      ['Legs',null,'Legs'],
+      ['Feet',null,'Feet'],
+      ['Finger',null,'Finger'],
+    ];
+    for (const [left, right] of dollSlots) {
+      if (right) {
+        // Two-column row
+        html += '<div class="inv-doll-row inv-doll-row-split">';
+        html += renderSlot(left, slots[left]);
+        html += renderSlot(right, slots[right]);
+        html += '</div>';
+      } else {
+        html += '<div class="inv-doll-row">';
+        html += renderSlot(left, slots[left]);
+        html += '</div>';
+      }
+    }
+    html += '</div></div>';
+
+    // Wielded tab
+    html += '<div class="inv-tab-content' + (currentTab === 'wielded' ? ' active' : '') + '" data-tab="wielded">';
+    html += '<div class="inv-wield-list">';
+    const wieldSlots = ['Main Weapon', 'Off-hand', 'Shield', 'Light'];
+    for (const ws of wieldSlots) {
+      const item = slots[ws];
+      html += '<div class="inv-wield-slot">';
+      html += '<span class="inv-wield-label">' + ws + '</span>';
+      html += '<span class="' + (item ? 'inv-wield-item' : 'inv-wield-empty') + '">' + (item ? escHtml(item.name) : 'empty') + '</span>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+
+    // Carried tab
+    html += '<div class="inv-tab-content' + (currentTab === 'carried' ? ' active' : '') + '" data-tab="carried"><div class="inv-list">';
+    if (containers.length) {
+      html += '<div class="inv-group-header">CONTAINERS</div>';
+      for (const e of containers) html += '<div class="inv-item">' + escHtml(e.name) + '</div>';
+    }
+    const carriedAll = carried;
+    if (carriedAll.length) {
+      if (containers.length) html += '<div class="inv-group-header">ITEMS</div>';
+      for (const e of carriedAll) html += '<div class="inv-item">' + escHtml(e.name) + '</div>';
+    }
+    if (!containers.length && !carriedAll.length) {
+      html += '<div class="placeholder">Nothing carried</div>';
+    }
+    html += '</div></div>';
+
     bodyEl.innerHTML = html;
+
+    // Tab click handlers
+    bodyEl.querySelectorAll('.inv-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        bodyEl.querySelectorAll('.inv-tab').forEach(t => t.classList.remove('active'));
+        bodyEl.querySelectorAll('.inv-tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        const content = bodyEl.querySelector('.inv-tab-content[data-tab="' + tab.dataset.tab + '"]');
+        if (content) content.classList.add('active');
+      });
+    });
+
+    function renderSlot(label, item) {
+      if (item) {
+        return '<div class="inv-doll-slot inv-doll-filled"><div class="inv-doll-slot-label">' + label + '</div><div class="inv-doll-slot-item">' + escHtml(item.name) + '</div></div>';
+      }
+      return '<div class="inv-doll-slot inv-doll-empty"><div class="inv-doll-slot-label">' + label + '</div><div class="inv-doll-slot-item">empty</div></div>';
+    }
   },
 
   enemy(bodyEl, data) {

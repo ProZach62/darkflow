@@ -257,26 +257,149 @@
 .room-players span { color: #c9d1d9; }
 
 /* ── Inventory panel ────────────────────────────────────────────────── */
-.inv-list { max-height: 250px; overflow-y: auto; }
-.inv-item {
+
+/* Tabs */
+.inv-tabs {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 0;
-  font-size: 11px;
+  gap: 2px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #21262d;
+  padding-bottom: 4px;
 }
-.inv-badge {
-  display: inline-block;
-  padding: 0 4px;
+.inv-tab {
+  background: none;
+  border: none;
+  color: #484f58;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px 3px 0 0;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.inv-tab:hover { color: #8b949e; }
+.inv-tab.active { color: #58a6ff; border-bottom: 2px solid #58a6ff; }
+
+/* Tab content */
+.inv-tab-content { display: none; }
+.inv-tab-content.active { display: block; }
+
+/* Item list (All + Carried tabs) */
+.inv-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.inv-list::-webkit-scrollbar { width: 6px; }
+.inv-list::-webkit-scrollbar-track { background: #0d1117; }
+.inv-list::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+.inv-group-header {
+  font-size: 10px;
+  font-weight: 700;
+  color: #484f58;
+  letter-spacing: 1px;
+  padding: 6px 0 2px;
+  text-transform: uppercase;
+}
+.inv-group-header:first-child { padding-top: 0; }
+
+.inv-item {
+  font-size: 11px;
+  color: #c9d1d9;
+  padding: 2px 4px;
   border-radius: 3px;
+  cursor: default;
+}
+.inv-item:hover { background: #21262d; }
+
+/* Paper-doll (Worn tab) */
+.inv-paperdoll {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 0;
+}
+.inv-doll-row {
+  display: flex;
+  justify-content: center;
+}
+.inv-doll-row-split {
+  gap: 3px;
+}
+.inv-doll-row-split .inv-doll-slot {
+  flex: 1;
+}
+.inv-doll-slot {
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 3px 6px;
+  min-width: 0;
+  max-width: 200px;
+  width: 100%;
+  text-align: center;
+  overflow: hidden;
+}
+.inv-doll-filled {
+  background: #21262d;
+  border-color: #30363d;
+}
+.inv-doll-empty {
+  background: transparent;
+  border-color: #21262d;
+}
+.inv-doll-slot-label {
   font-size: 9px;
   font-weight: 700;
+  color: #484f58;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
-.inv-badge-w { background: #f8514933; color: #f85149; }
-.inv-badge-W { background: #58a6ff33; color: #58a6ff; }
-.inv-badge-l { background: #f8514933; color: #ffa198; }
-.inv-badge-c { background: #d2992233; color: #d29922; }
-.inv-badge-m { background: #bc8cff33; color: #bc8cff; }
+.inv-doll-filled .inv-doll-slot-label { color: #8b949e; }
+.inv-doll-slot-item {
+  font-size: 11px;
+  color: #c9d1d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inv-doll-empty .inv-doll-slot-item {
+  color: #484f58;
+  font-style: italic;
+  font-size: 10px;
+}
+
+/* Wielded tab */
+.inv-wield-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.inv-wield-slot {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 4px 8px;
+  background: #21262d;
+}
+.inv-wield-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.inv-wield-item {
+  font-size: 12px;
+  color: #c9d1d9;
+}
+.inv-wield-empty {
+  font-size: 11px;
+  color: #484f58;
+  font-style: italic;
+}
 
 /* ── Enemy panel ────────────────────────────────────────────────────── */
 .enemy-name { font-weight: 600; margin-bottom: 4px; }
