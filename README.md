@@ -27,14 +27,18 @@ Browser  ──HTTP──>       This app (port 3000, serves the client page)
 
 ## Quick Start
 
+Requires [Node.js](https://nodejs.org/) 18+.
+
 ### Local Development
 
 ```bash
+git clone https://github.com/jasona/play.darkwind.ai.git
+cd play.darkwind.ai
 npm install
 npm start
 ```
 
-Open `http://localhost:3000` in your browser. Enter the MUD host and port (default: current hostname, port 4242) and click **Connect**.
+Open `http://localhost:3000` in your browser. Enter the MUD host and port (defaults to `darkwind.ai:4242` over WSS) and click **Connect**.
 
 ### Docker
 
@@ -80,14 +84,16 @@ docker run -p 3000:3000 darkwind-webclient
 │       └── panel-renderers.js # 9 panel render functions
 ├── Dockerfile             # node:22-alpine production image
 ├── package.json           # Express as the only dependency
+├── BLUEPRINT-webclient.md # Design specification
+├── CLAUDE.md              # Claude Code project guidance
 └── docs/
-    └── PLAN-webclient.md
+    └── PLAN-webclient.md  # Implementation planning notes
 ```
 
 ## Architecture Notes
 
 - The webclient uses **native ES modules** with no build step, no frontend framework, and no client-side dependencies.
-- The Express server exists solely to serve the static file. It has no API routes and does not handle WebSocket connections.
+- The Express server exists solely to serve the static files. It has no API routes and does not handle WebSocket connections.
 - The ANSI parser is a **persistent state machine** that tracks bold, underline, inverse, foreground, and background state across messages. This handles ANSI escape sequences that may be split across multiple WebSocket frames.
 - Output display uses a **requestAnimationFrame batching** strategy: incoming messages are queued and flushed to the DOM in a single operation per frame, preventing layout thrashing during rapid output (e.g., combat spam).
 
