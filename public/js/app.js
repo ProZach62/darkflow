@@ -62,7 +62,7 @@ function formatUptime(totalSeconds) {
   if (d > 0) parts.push(d + 'd');
   if (h > 0) parts.push(h + 'h');
   if (m > 0) parts.push(m + 'm');
-  if (parts.length === 0) parts.push(s + 's');
+  parts.push(s + 's');
   return parts.join(' ');
 }
 
