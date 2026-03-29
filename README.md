@@ -19,10 +19,11 @@ Browser  ──HTTP──>       This app (port 3000, serves the client page)
 - **Scroll-lock** -- Auto-scrolls to new output unless you've scrolled up to read history
 - **Auto-reconnect** -- Optional exponential backoff reconnection (1s to 30s)
 - **Performance** -- Batches DOM updates via `requestAnimationFrame` with `DocumentFragment`; prunes output at 5000 lines
-- **Binary frame support** -- Displays binary WebSocket frames as hex dumps
+- **GMCP over WebSocket** -- Negotiates GMCP (Generic MUD Communication Protocol) via binary WebSocket frames; dockable GUI panels for vitals, stats, room info, inventory, combat, group, and chat
+- **Dockable panel system** -- Panels dock to left/right sidebars or float freely; drag-and-drop reordering; state persisted in localStorage
 - **Keyboard shortcuts** -- Enter (send), Up/Down (history), Ctrl+L (clear), Escape (clear input), Page Up/Down (scroll)
 - **Dark terminal theme** -- Monospace font, dark background, responsive down to 320px
-- **Zero dependencies on the client** -- Single self-contained HTML file with embedded CSS and JavaScript
+- **Zero dependencies on the client** -- Native ES modules, no build tools, no frameworks
 
 ## Quick Start
 
@@ -59,18 +60,33 @@ docker run -p 3000:3000 darkwind-webclient
 
 ```
 .
-├── server.js           # Express server (serves static files from public/)
+├── server.js              # Express server (serves static files from public/)
 ├── public/
-│   └── index.html      # Self-contained webclient (all CSS + JS embedded)
-├── Dockerfile          # node:22-alpine production image
-├── package.json        # Express as the only dependency
+│   ├── index.html         # HTML shell (~50 lines)
+│   ├── css/
+│   │   ├── main.css       # Core layout, toolbar, ANSI color classes
+│   │   └── panels.css     # Dock columns, panel widgets, panel-specific styles
+│   └── js/
+│       ├── app.js         # Entry point, event wiring, init
+│       ├── constants.js   # Color tables, limits, keys
+│       ├── state.js       # Shared mutable state (ws, DOM refs)
+│       ├── gmcp.js        # GMCP event bus, handshake
+│       ├── ansi.js        # ANSI parser state machine
+│       ├── output.js      # Terminal output with RAF batching
+│       ├── connection.js  # WebSocket connect/disconnect/reconnect
+│       ├── input.js       # Command input, history, keyboard shortcuts
+│       ├── panel-defs.js  # Panel definitions
+│       ├── panel-manager.js   # Panel lifecycle, drag/drop, GMCP handlers
+│       └── panel-renderers.js # 9 panel render functions
+├── Dockerfile             # node:22-alpine production image
+├── package.json           # Express as the only dependency
 └── docs/
     └── PLAN-webclient.md
 ```
 
 ## Architecture Notes
 
-- The webclient is a **single HTML file** with no build step, no frontend framework, and no client-side dependencies. All CSS and JavaScript are embedded inline.
+- The webclient uses **native ES modules** with no build step, no frontend framework, and no client-side dependencies.
 - The Express server exists solely to serve the static file. It has no API routes and does not handle WebSocket connections.
 - The ANSI parser is a **persistent state machine** that tracks bold, underline, inverse, foreground, and background state across messages. This is necessary because the MUD server may split ANSI escape sequences across multiple WebSocket frames.
 - Output display uses a **requestAnimationFrame batching** strategy: incoming messages are queued and flushed to the DOM in a single operation per frame, preventing layout thrashing during rapid output (e.g., combat spam).
@@ -81,4 +97,4 @@ Chrome 90+, Firefox 90+, Safari 15+, Edge 90+ -- all with native WebSocket API s
 
 ## License
 
-Private.
+[Unlicense](https://unlicense.org/) -- public domain.
