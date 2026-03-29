@@ -1,13 +1,15 @@
 export const PANEL_DEFS = {
-  vitals:    { title: 'Vitals',    defaultDock: 'left',  defaultOrder: 0 },
-  stats:     { title: 'Stats',     defaultDock: 'left',  defaultOrder: 1 },
-  status:    { title: 'Status',    defaultDock: 'left',  defaultOrder: 2 },
-  worth:     { title: 'Worth',     defaultDock: 'left',  defaultOrder: 3 },
+  status:    { title: 'Status',    defaultDock: 'left',  defaultOrder: 0 },
+  vitals:    { title: 'Vitals',    defaultDock: 'left',  defaultOrder: 1 },
+  worth:     { title: 'Worth',     defaultDock: 'left',  defaultOrder: 2 },
+  stats:     { title: 'Stats',     defaultDock: 'left',  defaultOrder: 3 },
   room:      { title: 'Room',      defaultDock: 'right', defaultOrder: 0 },
-  inventory: { title: 'Inventory', defaultDock: 'right', defaultOrder: 1 },
-  enemy:     { title: 'Enemy',     defaultDock: 'right', defaultOrder: 2 },
-  group:     { title: 'Group',     defaultDock: 'right', defaultOrder: 3 },
-  chat:      { title: 'Chat',      defaultDock: 'right', defaultOrder: 4 },
+  group:     { title: 'Group',     defaultDock: 'right', defaultOrder: 1 },
+  inventory: { title: 'Inventory', defaultDock: 'right', defaultOrder: 2 },
+  enemy:     { title: 'Enemy',     defaultDock: 'float', defaultOrder: 0,
+               defaultFloatX: -490, defaultFloatY: 50, defaultFloatW: 480, defaultFloatH: 225 },
+  chat:      { title: 'Chat',      defaultDock: 'float', defaultOrder: 0,
+               defaultFloatX: -760, defaultFloatY: -380, defaultFloatW: 750, defaultFloatH: 370 },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';

@@ -44,15 +44,22 @@ export const panelManager = {
     const panels = {};
     for (const [id, def] of Object.entries(PANEL_DEFS)) {
       const s = (saved && saved.panels && saved.panels[id]) || {};
+      const defW = def.defaultFloatW || 280;
+      const defH = def.defaultFloatH || 200;
+      let defX = def.defaultFloatX || 100;
+      let defY = def.defaultFloatY || 100;
+      // Negative values mean offset from right/bottom edge
+      if (defX < 0) defX = window.innerWidth + defX;
+      if (defY < 0) defY = window.innerHeight + defY;
       panels[id] = {
         dock: s.dock || def.defaultDock,
         order: s.order !== undefined ? s.order : def.defaultOrder,
         collapsed: !!s.collapsed,
         visible: s.visible !== undefined ? s.visible : true,
-        floatX: s.floatX || 100,
-        floatY: s.floatY || 100,
-        floatW: s.floatW || 280,
-        floatH: s.floatH || 200,
+        floatX: s.floatX !== undefined ? s.floatX : defX,
+        floatY: s.floatY !== undefined ? s.floatY : defY,
+        floatW: s.floatW || defW,
+        floatH: s.floatH || defH,
       };
     }
     this.state.panels = panels;
