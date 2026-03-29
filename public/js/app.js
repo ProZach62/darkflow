@@ -34,8 +34,7 @@ setInterval(function() {
 
 // ── GMCP Debug Panel ────────────────────────────────────────────────
 dom.gmcpToggle.addEventListener('click', function() {
-  const visible = dom.gmcpPanel.style.display !== 'none';
-  dom.gmcpPanel.style.display = visible ? 'none' : 'block';
+  const visible = dom.gmcpPanel.classList.toggle('open');
   dom.gmcpToggle.style.color = visible ? '#58a6ff' : '#8b949e';
 });
 
@@ -48,7 +47,7 @@ gmcp.on('*', function(packageName, data) {
   while (dom.gmcpPanel.childNodes.length > 200) {
     dom.gmcpPanel.removeChild(dom.gmcpPanel.firstChild);
   }
-  if (dom.gmcpPanel.style.display !== 'none') {
+  if (dom.gmcpPanel.classList.contains('open')) {
     dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
   }
 });
