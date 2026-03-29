@@ -28,6 +28,7 @@ export const panelManager = {
 
     this.attachDragHandlers();
     this.registerGmcpHandlers();
+    this._attachResizeHandler();
   },
 
   loadState() {
@@ -60,6 +61,10 @@ export const panelManager = {
         floatY: s.floatY !== undefined ? s.floatY : defY,
         floatW: s.floatW || defW,
         floatH: s.floatH || defH,
+        snapLeft: s.snapLeft !== undefined ? !!s.snapLeft : !!def.defaultSnapLeft,
+        snapTop: s.snapTop !== undefined ? !!s.snapTop : !!def.defaultSnapTop,
+        snapRight: s.snapRight !== undefined ? !!s.snapRight : !!def.defaultSnapRight,
+        snapBottom: s.snapBottom !== undefined ? !!s.snapBottom : !!def.defaultSnapBottom,
       };
     }
     this.state.panels = panels;
@@ -193,10 +198,7 @@ export const panelManager = {
   _makeFloat(el, st) {
     document.body.appendChild(el);
     el.classList.add('floating');
-    el.style.left = st.floatX + 'px';
-    el.style.top = st.floatY + 'px';
-    el.style.width = st.floatW + 'px';
-    el.style.height = st.floatH + 'px';
+    this._applyFloatPosition(el, st);
 
     const id = el.dataset.panelId;
     const ro = new ResizeObserver(() => {
@@ -208,6 +210,48 @@ export const panelManager = {
       }
     });
     ro.observe(el);
+  },
+
+  _applyFloatPosition(el, st) {
+    el.style.width = st.floatW + 'px';
+    el.style.height = st.floatH + 'px';
+
+    // Horizontal: compute offsets from edges
+    const distRight = window.innerWidth - st.floatX - st.floatW;
+    if (st.snapLeft) {
+      el.style.left = st.floatX + 'px';
+      el.style.right = 'auto';
+    } else if (st.snapRight) {
+      el.style.left = 'auto';
+      el.style.right = distRight + 'px';
+    } else {
+      el.style.left = st.floatX + 'px';
+      el.style.right = 'auto';
+    }
+
+    // Vertical: compute offsets from edges
+    const distBottom = window.innerHeight - st.floatY - st.floatH;
+    if (st.snapTop) {
+      el.style.top = st.floatY + 'px';
+      el.style.bottom = 'auto';
+    } else if (st.snapBottom) {
+      el.style.top = 'auto';
+      el.style.bottom = distBottom + 'px';
+    } else {
+      el.style.top = st.floatY + 'px';
+      el.style.bottom = 'auto';
+    }
+  },
+
+  _attachResizeHandler() {
+    window.addEventListener('resize', () => {
+      for (const [id, st] of Object.entries(this.state.panels)) {
+        if (st.dock !== 'float' || (!st.snapRight && !st.snapBottom)) continue;
+        const p = this.panels[id];
+        if (!p || !p.el) continue;
+        this._applyFloatPosition(p.el, st);
+      }
+    });
   },
 
   dockPanel(id, side, order) {
@@ -247,6 +291,21 @@ export const panelManager = {
     st.dock = 'float';
     st.floatX = x;
     st.floatY = y;
+
+    // Detect edge snapping (within 30px of viewport edges)
+    const SNAP = 30;
+    const w = st.floatW || p.el.offsetWidth || 280;
+    const h = st.floatH || p.el.offsetHeight || 200;
+    st.snapLeft = x < SNAP;
+    st.snapTop = y < SNAP;
+    st.snapRight = (x + w) > (window.innerWidth - SNAP);
+    st.snapBottom = (y + h) > (window.innerHeight - SNAP);
+    // Snap position to edge when within threshold
+    if (st.snapLeft) st.floatX = 0;
+    if (st.snapTop) st.floatY = 0;
+    if (st.snapRight) st.floatX = window.innerWidth - w;
+    if (st.snapBottom) st.floatY = window.innerHeight - h;
+
     this._makeFloat(p.el, st);
 
     const fb = p.el.querySelector('.panel-float');

@@ -7,9 +7,11 @@ export const PANEL_DEFS = {
   group:     { title: 'Group',     defaultDock: 'right', defaultOrder: 1 },
   inventory: { title: 'Inventory', defaultDock: 'right', defaultOrder: 2 },
   enemy:     { title: 'Enemy',     defaultDock: 'float', defaultOrder: 0,
-               defaultFloatX: -490, defaultFloatY: 50, defaultFloatW: 480, defaultFloatH: 225 },
+               defaultFloatX: -490, defaultFloatY: 50, defaultFloatW: 480, defaultFloatH: 225,
+               defaultSnapRight: true, defaultSnapTop: true },
   chat:      { title: 'Chat',      defaultDock: 'float', defaultOrder: 0,
-               defaultFloatX: -760, defaultFloatY: -380, defaultFloatW: 750, defaultFloatH: 370 },
+               defaultFloatX: -760, defaultFloatY: -380, defaultFloatW: 750, defaultFloatH: 370,
+               defaultSnapRight: true, defaultSnapBottom: true },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';
