@@ -48,7 +48,8 @@ export const gmcp = {
       'Room 1',
       'Comm 1',
       'Group 1',
-      'Game 1'
+      'Game 1',
+      'Darkwind.Window 1'
     ]);
     this.enabled = true;
   },

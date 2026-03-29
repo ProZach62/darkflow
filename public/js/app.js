@@ -4,6 +4,7 @@ import { initOutput } from './output.js';
 import { panelManager } from './panel-manager.js';
 import { connect, disconnect } from './connection.js';
 import { loadHistory, saveHistory, saveHistoryNow, initInput } from './input.js';
+import { windowManager } from './window-manager.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -115,6 +116,7 @@ dom.host.value = 'darkwind.ai';
 dom.wssToggle.checked = true;
 loadHistory();
 panelManager.init();
+windowManager.init();
 initInput();
 dom.commandInput.focus();
 

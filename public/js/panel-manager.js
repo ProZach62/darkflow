@@ -281,6 +281,71 @@ export const panelManager = {
     this.saveState();
   },
 
+  // ── Dynamic panels (server-driven, not persisted) ─────────────────
+  createDynamicPanel(id, title, dock, order, onClose) {
+    if (this.panels[id]) return this.panels[id].bodyEl;
+
+    const el = document.createElement('div');
+    el.className = 'gmcp-panel-widget';
+    el.dataset.panelId = id;
+
+    const header = document.createElement('div');
+    header.className = 'panel-header';
+    header.dataset.panelId = id;
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'panel-title';
+    titleSpan.textContent = title;
+
+    const controls = document.createElement('span');
+    controls.className = 'panel-controls';
+
+    const collapseBtn = document.createElement('button');
+    collapseBtn.className = 'panel-btn panel-collapse';
+    collapseBtn.innerHTML = '&#x25B2;';
+    let collapsed = false;
+    collapseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      collapsed = !collapsed;
+      body.classList.toggle('collapsed', collapsed);
+      collapseBtn.innerHTML = collapsed ? '&#x25BC;' : '&#x25B2;';
+    });
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'panel-btn panel-close';
+    closeBtn.innerHTML = '&#x2715;';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (onClose) onClose();
+      else this.removeDynamicPanel(id);
+    });
+
+    controls.appendChild(collapseBtn);
+    controls.appendChild(closeBtn);
+    header.appendChild(titleSpan);
+    header.appendChild(controls);
+
+    const body = document.createElement('div');
+    body.className = 'panel-body';
+
+    el.appendChild(header);
+    el.appendChild(body);
+
+    this._insertIntoDock(id, el, dock, order);
+    this.panels[id] = { el, headerEl: header, bodyEl: body, dynamic: true };
+    this.state.panels[id] = { dock, order, collapsed: false, visible: true };
+
+    return body;
+  },
+
+  removeDynamicPanel(id) {
+    const p = this.panels[id];
+    if (!p) return;
+    p.el.remove();
+    delete this.panels[id];
+    delete this.state.panels[id];
+  },
+
   resetData() {
     this.gmcpData = {};
     for (const [id, p] of Object.entries(this.panels)) {

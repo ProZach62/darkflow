@@ -1,0 +1,191 @@
+/* ── Modal overlay ───────────────────────────────────────────────── */
+.dw-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dw-modal {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  min-width: 280px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.dw-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #30363d;
+  background: #0d1117;
+  border-radius: 8px 8px 0 0;
+}
+
+.dw-modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.dw-modal-close {
+  background: none;
+  border: none;
+  color: #484f58;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  line-height: 1;
+}
+.dw-modal-close:hover { color: #c9d1d9; }
+
+.dw-modal-body {
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* ── Layout containers ──────────────────────────────────────────── */
+.dw-layout-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dw-layout-horizontal {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+}
+
+.dw-layout-grid {
+  display: grid;
+  gap: 8px;
+}
+
+/* ── Display elements ───────────────────────────────────────────── */
+.dw-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.dw-paragraph {
+  margin: 0;
+  font-size: 12px;
+  color: #8b949e;
+  line-height: 1.5;
+}
+
+.dw-text {
+  font-size: 12px;
+  color: #c9d1d9;
+}
+
+.dw-divider {
+  border: none;
+  border-top: 1px solid #21262d;
+  margin: 4px 0;
+}
+
+.dw-progress {
+  position: relative;
+  height: 14px;
+  background: #21262d;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dw-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #3fb950;
+  transition: width 0.3s ease;
+}
+
+.dw-progress-label {
+  position: absolute;
+  top: 0;
+  left: 6px;
+  font-size: 10px;
+  line-height: 14px;
+  color: #c9d1d9;
+}
+
+/* ── Form fields ────────────────────────────────────────────────── */
+.dw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dw-label {
+  font-size: 11px;
+  color: #8b949e;
+  font-weight: 600;
+}
+
+.dw-input, .dw-select {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.dw-input:focus, .dw-select:focus {
+  border-color: #58a6ff;
+}
+
+.dw-checkbox-field {
+  flex-direction: row;
+  align-items: center;
+}
+
+.dw-checkbox-label {
+  font-size: 12px;
+  color: #c9d1d9;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.dw-button {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  padding: 5px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.dw-button:hover { background: #30363d; }
+
+.dw-button-primary {
+  background: #238636;
+  border-color: #2ea043;
+  color: #fff;
+}
+.dw-button-primary:hover { background: #2ea043; }
+
+.dw-button-secondary {
+  background: #21262d;
+  border-color: #30363d;
+}

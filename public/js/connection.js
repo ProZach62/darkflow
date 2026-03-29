@@ -2,6 +2,7 @@ import { state, dom } from './state.js';
 import { gmcp, gmcpTextDecoder } from './gmcp.js';
 import { appendOutput, appendSystemMessage } from './output.js';
 import { panelManager } from './panel-manager.js';
+import { windowManager } from './window-manager.js';
 import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
 
 export function setConnectionState(connState) {
@@ -99,6 +100,7 @@ export function connect() {
     state.connectTime = null;
     gmcp.reset();
     panelManager.resetData();
+    windowManager.resetAll();
     setConnectionState('disconnected');
 
     let msg;
