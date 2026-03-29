@@ -526,14 +526,7 @@ export const panelManager = {
 
     gmcp.on('Char.Items.List', (data) => {
       if (data && data.location === 'inv') {
-        let items = data.items;
-        if (Array.isArray(items)) {
-          this.gmcpData.inventory = items;
-        } else if (items && typeof items === 'object') {
-          this.gmcpData.inventory = Object.values(items);
-        } else {
-          this.gmcpData.inventory = [];
-        }
+        this.gmcpData.inventory = Array.isArray(data.items) ? data.items : [];
         this._renderPanel('inventory');
       }
     });
