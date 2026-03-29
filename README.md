@@ -1,13 +1,13 @@
 # Darkwind MUD Web Client
 
-A browser-based WebSocket client for connecting to the [Darkwind](https://darkwind.ai) MUD game server, powered by [LDMud](http://www.ldmud.eu/) with native WebSocket support (RFC 6455).
+A browser-based WebSocket client for connecting to MUD game servers. Works with any server that accepts WebSocket connections and communicates via text frames (with optional GMCP over binary frames).
 
 ## How It Works
 
-The LDMud driver auto-detects WebSocket connections on the same port used for telnet -- no separate WebSocket port is needed. The browser's native `WebSocket` API connects directly to the MUD server. This web app simply serves the static HTML client; it does **not** proxy WebSocket traffic.
+The browser's native `WebSocket` API connects directly to the MUD server. This web app simply serves the static HTML client; it does **not** proxy WebSocket traffic.
 
 ```
-Browser  ──WebSocket──>  LDMud (port 4242)
+Browser  ──WebSocket──>  MUD server (e.g. port 4242)
 Browser  ──HTTP──>       This app (port 3000, serves the client page)
 ```
 
@@ -88,7 +88,7 @@ docker run -p 3000:3000 darkwind-webclient
 
 - The webclient uses **native ES modules** with no build step, no frontend framework, and no client-side dependencies.
 - The Express server exists solely to serve the static file. It has no API routes and does not handle WebSocket connections.
-- The ANSI parser is a **persistent state machine** that tracks bold, underline, inverse, foreground, and background state across messages. This is necessary because the MUD server may split ANSI escape sequences across multiple WebSocket frames.
+- The ANSI parser is a **persistent state machine** that tracks bold, underline, inverse, foreground, and background state across messages. This handles ANSI escape sequences that may be split across multiple WebSocket frames.
 - Output display uses a **requestAnimationFrame batching** strategy: incoming messages are queued and flushed to the DOM in a single operation per frame, preventing layout thrashing during rapid output (e.g., combat spam).
 
 ## Browser Support
