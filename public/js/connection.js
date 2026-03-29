@@ -109,6 +109,7 @@ export function connect() {
 
     appendSystemMessage(msg);
     dom.statusUrl.textContent = 'Not connected';
+    dom.statusUptime.textContent = '';
     dom.statusDuration.textContent = '';
 
     if (!state.userDisconnected && dom.autoReconnect.checked) {

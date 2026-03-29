@@ -52,6 +52,13 @@ gmcp.on('*', function(packageName, data) {
   }
 });
 
+// ── Game Uptime (from GMCP Game package) ────────────────────────────
+gmcp.on('Game', function(data) {
+  if (data && data.game_uptime) {
+    dom.statusUptime.textContent = 'Uptime: ' + data.game_uptime;
+  }
+});
+
 // ── Connect Button ──────────────────────────────────────────────────
 dom.connectBtn.addEventListener('click', function() {
   if (state.ws || dom.connectBtn.classList.contains('disconnect')) {

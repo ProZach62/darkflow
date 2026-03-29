@@ -21,6 +21,7 @@ export const dom = {
   statusUrl: null,
   statusDuration: null,
   statusBytes: null,
+  statusUptime: null,
   gmcpPanel: null,
   gmcpToggle: null,
 };
@@ -38,6 +39,7 @@ export function initDom() {
   dom.statusUrl = document.getElementById('status-url');
   dom.statusDuration = document.getElementById('status-duration');
   dom.statusBytes = document.getElementById('status-bytes');
+  dom.statusUptime = document.getElementById('status-uptime');
   dom.gmcpPanel = document.getElementById('gmcp-panel');
   dom.gmcpToggle = document.getElementById('gmcp-toggle');
 }

@@ -47,7 +47,8 @@ export const gmcp = {
       'Char.Items 1',
       'Room 1',
       'Comm 1',
-      'Group 1'
+      'Group 1',
+      'Game 1'
     ]);
     this.enabled = true;
   },
