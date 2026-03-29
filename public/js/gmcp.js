@@ -1,6 +1,6 @@
 import { state } from './state.js';
 
-const GMCP_CLIENT_NAME = 'Darkwind Web';
+const GMCP_CLIENT_NAME = 'WebMUD Client';
 const GMCP_CLIENT_VERSION = '1.0';
 const gmcpTextEncoder = new TextEncoder();
 export const gmcpTextDecoder = new TextDecoder('utf-8');

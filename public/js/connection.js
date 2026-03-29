@@ -112,6 +112,9 @@ export function connect() {
     panelManager.resetData();
     windowManager.resetAll();
     setConnectionState('disconnected');
+    // Reset branding to generic
+    dom.toolbarBrand.textContent = 'MUD Client';
+    document.title = 'MUD Client';
 
     let msg;
     if (event.code === 1000) msg = 'Disconnected';

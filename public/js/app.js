@@ -71,7 +71,15 @@ gmcp.on('Game', function(data) {
   if (data && data.game_uptime !== undefined) {
     dom.statusUptime.textContent = 'Uptime: ' + formatUptime(data.game_uptime);
   }
+  if (data && data.game_name) {
+    updateBranding(data.game_name);
+  }
 });
+
+function updateBranding(name) {
+  dom.toolbarBrand.textContent = name;
+  document.title = name;
+}
 
 // ── Connect Button ──────────────────────────────────────────────────
 dom.connectBtn.addEventListener('click', function() {
@@ -121,8 +129,11 @@ document.addEventListener('click', function() {
 });
 
 // ── Init ────────────────────────────────────────────────────────────
-dom.host.value = 'darkwind.ai';
-dom.wssToggle.checked = true;
+// Allow URL params to preset connection: ?host=example.com&port=4242&wss=1
+const urlParams = new URLSearchParams(window.location.search);
+dom.host.value = urlParams.get('host') || '';
+dom.port.value = urlParams.get('port') || '4242';
+dom.wssToggle.checked = urlParams.has('wss') ? urlParams.get('wss') !== '0' : true;
 loadHistory();
 panelManager.init();
 windowManager.init();

@@ -26,6 +26,7 @@ export const dom = {
   sendBtn: null,
   statusConnection: null,
   statusUptime: null,
+  toolbarBrand: null,
   gmcpPanel: null,
   gmcpToggle: null,
 };
@@ -48,6 +49,7 @@ export function initDom() {
   dom.sendBtn = document.getElementById('send-btn');
   dom.statusConnection = document.getElementById('status-connection');
   dom.statusUptime = document.getElementById('status-uptime');
+  dom.toolbarBrand = document.getElementById('toolbar-brand');
   dom.gmcpPanel = document.getElementById('gmcp-panel');
   dom.gmcpToggle = document.getElementById('gmcp-toggle');
 }
