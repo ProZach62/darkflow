@@ -11,20 +11,37 @@
 <body>
 
 <div id="toolbar">
-  <input type="text" id="host" placeholder="Host">
-  <span style="color:#484f58">:</span>
-  <input type="number" id="port" value="4242" min="1" max="65535">
-  <label><input type="checkbox" id="wss-toggle"> WSS</label>
-  <button id="connect-btn">Connect</button>
-  <label><input type="checkbox" id="auto-reconnect"> Auto-reconnect</label>
-  <span id="connection-state" class="state-disconnected">Disconnected</span>
-  <button id="left-dock-toggle" class="dock-toggle-btn active" style="margin-left:auto" title="Toggle left sidebar">&#x25E7;</button>
-  <button id="right-dock-toggle" class="dock-toggle-btn active" title="Toggle right sidebar">&#x25E8;</button>
-  <span class="panels-menu-wrap">
-    <button id="panels-menu-btn" class="dock-toggle-btn" title="Panels">Panels &#x25BE;</button>
-    <div id="panels-menu" class="panels-menu"></div>
-  </span>
-  <button id="gmcp-toggle" style="background:#21262d;border-color:#30363d;color:#8b949e;font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer">GMCP</button>
+  <div class="toolbar-left">
+    <span class="toolbar-brand">Darkwind</span>
+    <span id="toolbar-connect-fields">
+      <input type="text" id="host" placeholder="Host">
+      <span style="color:#484f58">:</span>
+      <input type="number" id="port" value="4242" min="1" max="65535">
+      <label class="toolbar-label"><input type="checkbox" id="wss-toggle"> WSS</label>
+      <button id="connect-btn">Connect</button>
+    </span>
+    <span id="toolbar-status" class="toolbar-status" style="display:none">
+      <span id="connection-dot" class="conn-dot dot-disconnected"></span>
+      <span id="connection-state">Disconnected</span>
+    </span>
+  </div>
+  <div class="toolbar-right">
+    <button id="left-dock-toggle" class="toolbar-icon-btn active" title="Left sidebar">&#x25E7;</button>
+    <button id="right-dock-toggle" class="toolbar-icon-btn active" title="Right sidebar">&#x25E8;</button>
+    <span class="panels-menu-wrap">
+      <button id="panels-menu-btn" class="toolbar-icon-btn" title="Panels">&#x2630;</button>
+      <div id="panels-menu" class="panels-menu"></div>
+    </span>
+    <button id="gmcp-toggle" class="toolbar-icon-btn" title="GMCP Debug">&#x2756;</button>
+    <span class="gear-menu-wrap">
+      <button id="gear-btn" class="toolbar-icon-btn" title="Settings">&#x2699;</button>
+      <div id="gear-menu" class="gear-menu">
+        <div id="gear-conn-info" class="gear-conn-info" style="display:none"></div>
+        <label class="gear-label"><input type="checkbox" id="auto-reconnect"> Auto-reconnect</label>
+        <button id="gear-disconnect-btn" class="gear-disconnect" style="display:none">Disconnect</button>
+      </div>
+    </span>
+  </div>
 </div>
 
 <div id="main-content">

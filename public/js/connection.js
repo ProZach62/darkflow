@@ -7,22 +7,32 @@ import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
 
 export function setConnectionState(connState) {
   dom.connectionState.textContent = connState.charAt(0).toUpperCase() + connState.slice(1);
-  dom.connectionState.className = 'state-' + connState;
+  dom.connectionDot.className = 'conn-dot dot-' + connState;
 
   if (connState === 'connecting') {
     dom.connectBtn.textContent = 'Connecting...';
     dom.connectBtn.disabled = true;
-    dom.connectBtn.classList.remove('disconnect');
+    dom.connectFields.style.display = 'flex';
+    dom.toolbarStatus.style.display = 'none';
+    dom.gearDisconnectBtn.style.display = 'none';
   } else if (connState === 'connected') {
-    dom.connectBtn.textContent = 'Disconnect';
-    dom.connectBtn.disabled = false;
-    dom.connectBtn.classList.add('disconnect');
+    dom.connectFields.style.display = 'none';
+    dom.toolbarStatus.style.display = 'flex';
     dom.commandInput.disabled = false;
     dom.sendBtn.disabled = false;
+    dom.gearDisconnectBtn.style.display = '';
+    // Show connection info in gear menu
+    const proto = dom.wssToggle.checked ? 'wss' : 'ws';
+    dom.gearConnInfo.textContent = proto + '://' + (dom.host.value || 'localhost') + ':' + (dom.port.value || '4242');
+    dom.gearConnInfo.style.display = '';
   } else {
+    // Disconnected
     dom.connectBtn.textContent = 'Connect';
     dom.connectBtn.disabled = false;
-    dom.connectBtn.classList.remove('disconnect');
+    dom.connectFields.style.display = 'flex';
+    dom.toolbarStatus.style.display = 'none';
+    dom.gearDisconnectBtn.style.display = 'none';
+    dom.gearConnInfo.style.display = 'none';
     dom.commandInput.disabled = false;
     dom.sendBtn.disabled = false;
   }

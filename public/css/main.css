@@ -19,62 +19,168 @@ body {
 #toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 10px;
   border-bottom: 1px solid #30363d;
   background: #161b22;
-  flex-wrap: wrap;
 }
 
-#toolbar input[type="text"],
-#toolbar input[type="number"] {
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.toolbar-brand {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1d9;
+  margin-right: 4px;
+}
+
+/* Connection fields (shown when disconnected) */
+#toolbar-connect-fields {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#toolbar-connect-fields input[type="text"],
+#toolbar-connect-fields input[type="number"] {
   background: #0d1117;
   border: 1px solid #30363d;
   color: #c9d1d9;
-  padding: 4px 8px;
+  padding: 3px 6px;
   border-radius: 4px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12px;
 }
 
-#toolbar input#host { width: 160px; }
-#toolbar input#port { width: 70px; }
+#toolbar-connect-fields input#host { width: 130px; }
+#toolbar-connect-fields input#port { width: 55px; }
 
-#toolbar label {
-  font-size: 12px;
+.toolbar-label {
+  font-size: 11px;
   color: #8b949e;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   cursor: pointer;
 }
 
-#toolbar button {
+#connect-btn {
   background: #238636;
   color: #fff;
   border: 1px solid #2ea043;
-  padding: 4px 14px;
+  padding: 3px 12px;
   border-radius: 4px;
   cursor: pointer;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12px;
 }
+#connect-btn:hover { background: #2ea043; }
+#connect-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-#toolbar button:hover { background: #2ea043; }
-#toolbar button.disconnect { background: #da3633; border-color: #f85149; }
-#toolbar button.disconnect:hover { background: #f85149; }
-#toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Connection status (shown when connected) */
+.toolbar-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 
 #connection-state {
   font-size: 12px;
-  font-weight: bold;
-  padding: 2px 8px;
-  border-radius: 10px;
+  font-weight: 600;
+  color: #8b949e;
 }
 
-.state-disconnected { color: #f85149; }
-.state-connecting { color: #d29922; }
-.state-connected { color: #3fb950; }
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-connected { background: #3fb950; box-shadow: 0 0 4px #3fb95088; }
+.dot-disconnected { background: #f85149; }
+.dot-connecting { background: #d29922; animation: dot-pulse 1s infinite; }
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Toolbar icon buttons */
+.toolbar-icon-btn {
+  background: #21262d;
+  border: 1px solid transparent;
+  color: #8b949e;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.toolbar-icon-btn:hover { color: #c9d1d9; border-color: #30363d; }
+.toolbar-icon-btn.active { color: #58a6ff; }
+
+/* Gear dropdown */
+.gear-menu-wrap { position: relative; }
+.gear-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 2000;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  margin-top: 4px;
+}
+.gear-menu.open { display: flex; flex-direction: column; gap: 8px; }
+
+.gear-conn-info {
+  font-size: 11px;
+  color: #8b949e;
+  padding: 4px 0;
+  border-bottom: 1px solid #21262d;
+}
+
+.gear-label {
+  font-size: 11px;
+  color: #c9d1d9;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.gear-disconnect {
+  background: #da3633;
+  color: #fff;
+  border: 1px solid #f85149;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  width: 100%;
+}
+.gear-disconnect:hover { background: #f85149; }
 
 #output {
   flex: 1 1 0;

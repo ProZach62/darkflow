@@ -75,11 +75,18 @@ gmcp.on('Game', function(data) {
 
 // ── Connect Button ──────────────────────────────────────────────────
 dom.connectBtn.addEventListener('click', function() {
-  if (state.ws || dom.connectBtn.classList.contains('disconnect')) {
-    disconnect();
-  } else {
-    connect();
-  }
+  connect();
+});
+
+// ── Gear Menu ───────────────────────────────────────────────────────
+document.getElementById('gear-btn').addEventListener('click', function(e) {
+  e.stopPropagation();
+  dom.gearMenu.classList.toggle('open');
+});
+
+dom.gearDisconnectBtn.addEventListener('click', function() {
+  disconnect();
+  dom.gearMenu.classList.remove('open');
 });
 
 // ── Sidebar Toggles ─────────────────────────────────────────────────
@@ -107,8 +114,10 @@ document.getElementById('panels-menu-btn').addEventListener('click', function(e)
   document.getElementById('panels-menu').classList.toggle('open');
 });
 
+// Close dropdowns on outside click
 document.addEventListener('click', function() {
   document.getElementById('panels-menu').classList.remove('open');
+  dom.gearMenu.classList.remove('open');
 });
 
 // ── Init ────────────────────────────────────────────────────────────
