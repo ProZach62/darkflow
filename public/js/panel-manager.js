@@ -218,6 +218,14 @@ export const panelManager = {
     st.order = order;
     this._insertIntoDock(id, p.el, side, order);
 
+    // Renumber all panels in this dock to match actual DOM order
+    const dock = document.getElementById(side + '-dock');
+    const children = Array.from(dock.querySelectorAll('.gmcp-panel-widget'));
+    children.forEach((child, i) => {
+      const cid = child.dataset.panelId;
+      if (this.state.panels[cid]) this.state.panels[cid].order = i;
+    });
+
     const fb = p.el.querySelector('.panel-float');
     if (fb) { fb.title = 'Float'; fb.innerHTML = '&#x25A1;'; }
 
