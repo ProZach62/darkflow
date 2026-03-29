@@ -1,0 +1,319 @@
+/* ── Layout: main content with dock columns ─────────────────────────── */
+#main-content {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+#center-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.dock-column {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #161b22;
+  transition: width 0.15s ease;
+}
+.dock-column::-webkit-scrollbar { width: 6px; }
+.dock-column::-webkit-scrollbar-track { background: #161b22; }
+.dock-column::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+#left-dock { border-right: 1px solid #30363d; }
+#right-dock { border-left: 1px solid #30363d; }
+
+.dock-column.collapsed { width: 0; overflow: hidden; border: none; padding: 0; }
+
+/* ── Dock toggle buttons ────────────────────────────────────────────── */
+.dock-toggle-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+}
+.dock-toggle-btn:hover { color: #c9d1d9; }
+.dock-toggle-btn.active { color: #58a6ff; }
+
+/* ── Panels menu dropdown ───────────────────────────────────────────── */
+.panels-menu-wrap { position: relative; }
+.panels-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 2000;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 6px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.panels-menu.open { display: block; }
+.panels-menu label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #c9d1d9;
+  cursor: pointer;
+}
+.panels-menu label:hover { background: #21262d; }
+
+/* ── Panel widgets ──────────────────────────────────────────────────── */
+.gmcp-panel-widget {
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  margin: 4px;
+  background: #0d1117;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  cursor: grab;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8b949e;
+}
+.panel-header:active { cursor: grabbing; }
+
+.panel-title { flex: 1; }
+
+.panel-controls {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.panel-btn {
+  background: none;
+  border: none;
+  color: #484f58;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 3px;
+  line-height: 1;
+}
+.panel-btn:hover { color: #c9d1d9; }
+
+.panel-body {
+  padding: 6px 8px;
+  font-size: 12px;
+  overflow-y: auto;
+  color: #c9d1d9;
+}
+.panel-body.collapsed { display: none; }
+.panel-body .placeholder { color: #484f58; font-style: italic; }
+
+/* ── Floating panels ────────────────────────────────────────────────── */
+.gmcp-panel-widget.floating {
+  position: fixed;
+  z-index: 1000;
+  resize: both;
+  overflow: auto;
+  min-width: 200px;
+  min-height: 80px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+/* ── Drag and drop ──────────────────────────────────────────────────── */
+.dock-drop-indicator {
+  height: 2px;
+  background: #58a6ff;
+  margin: 0 4px;
+  border-radius: 1px;
+  flex-shrink: 0;
+  display: none;
+}
+.dock-column.drag-over { box-shadow: inset 0 0 12px rgba(88,166,255,0.15); }
+.drag-ghost {
+  position: fixed;
+  z-index: 3000;
+  opacity: 0.7;
+  pointer-events: none;
+  width: 250px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* ── Vitals bars ────────────────────────────────────────────────────── */
+.vitals-row { margin-bottom: 4px; }
+.vitals-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 1px;
+  color: #8b949e;
+}
+.vitals-bar {
+  height: 14px;
+  background: #21262d;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.vitals-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+/* ── Stats table ────────────────────────────────────────────────────── */
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.stats-table td {
+  padding: 1px 4px;
+}
+.stats-table td:first-child {
+  color: #8b949e;
+  font-weight: 600;
+  width: 40px;
+}
+.stat-up { color: #3fb950; }
+.stat-down { color: #f85149; }
+
+/* ── Status panel ───────────────────────────────────────────────────── */
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+  font-size: 11px;
+}
+.status-row .status-key { color: #8b949e; }
+.status-badges { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.status-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.badge-dead { background: #f8514933; color: #f85149; }
+.badge-drunk { background: #d2992233; color: #d29922; }
+.badge-hungry { background: #d2992233; color: #e3b341; }
+.badge-invis { background: #58a6ff33; color: #58a6ff; }
+.badge-sitting { background: #484f5833; color: #8b949e; }
+.badge-viking { background: #bc8cff33; color: #bc8cff; }
+
+/* ── Exit compass ───────────────────────────────────────────────────── */
+.room-name { font-weight: 600; color: #c9d1d9; margin-bottom: 2px; }
+.room-area { font-size: 11px; color: #8b949e; margin-bottom: 6px; }
+.room-env { font-size: 10px; color: #6e7681; margin-bottom: 6px; }
+.exit-compass {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  max-width: 150px;
+  margin: 0 auto 6px;
+}
+.exit-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 3px 0;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  text-align: center;
+}
+.exit-btn:hover { background: #30363d; border-color: #58a6ff; }
+.exit-btn.inactive { visibility: hidden; }
+.exit-ud {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  max-width: 150px;
+  margin: 0 auto 6px;
+}
+.exit-ud .exit-btn { width: 48%; }
+.room-players { font-size: 11px; color: #8b949e; border-top: 1px solid #21262d; padding-top: 4px; }
+.room-players span { color: #c9d1d9; }
+
+/* ── Inventory panel ────────────────────────────────────────────────── */
+.inv-list { max-height: 250px; overflow-y: auto; }
+.inv-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 0;
+  font-size: 11px;
+}
+.inv-badge {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.inv-badge-w { background: #f8514933; color: #f85149; }
+.inv-badge-W { background: #58a6ff33; color: #58a6ff; }
+.inv-badge-l { background: #f8514933; color: #ffa198; }
+.inv-badge-c { background: #d2992233; color: #d29922; }
+.inv-badge-m { background: #bc8cff33; color: #bc8cff; }
+
+/* ── Enemy panel ────────────────────────────────────────────────────── */
+.enemy-name { font-weight: 600; margin-bottom: 4px; }
+.panel-inactive { opacity: 0.4; }
+
+/* ── Group panel ────────────────────────────────────────────────────── */
+.group-header { font-size: 11px; color: #8b949e; margin-bottom: 4px; }
+.group-member {
+  padding: 3px 0;
+  border-bottom: 1px solid #21262d;
+  font-size: 11px;
+}
+.group-member:last-child { border-bottom: none; }
+.group-member-name { font-weight: 600; }
+.group-member-away { opacity: 0.4; }
+.group-mini-bar {
+  height: 6px;
+  background: #21262d;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.group-mini-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+}
+
+/* ── Chat panel ─────────────────────────────────────────────────────── */
+.chat-log { max-height: 250px; overflow-y: auto; }
+.chat-entry { font-size: 11px; padding: 1px 0; word-wrap: break-word; }
+.chat-channel { font-weight: 600; }
+.chat-talker { color: #8b949e; }
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .dock-column { width: 200px; }
+}
+@media (max-width: 700px) {
+  .dock-column { width: 0; overflow: hidden; border: none; }
+}
