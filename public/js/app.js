@@ -3,7 +3,7 @@ import { gmcp } from './gmcp.js';
 import { initOutput } from './output.js';
 import { panelManager } from './panel-manager.js';
 import { connect, disconnect } from './connection.js';
-import { loadHistory, saveHistory, initInput } from './input.js';
+import { loadHistory, saveHistory, saveHistoryNow, initInput } from './input.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -99,6 +99,6 @@ initInput();
 dom.commandInput.focus();
 
 window.addEventListener('beforeunload', function() {
-  saveHistory();
+  saveHistoryNow();
   if (state.ws) state.ws.close(1000, 'Page unload');
 });

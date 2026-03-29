@@ -5,6 +5,7 @@ import { MAX_HISTORY, SESSION_KEY } from './constants.js';
 let commandHistory = [];
 let historyIndex = 0;
 let currentInput = '';
+let _saveTimer = null;
 
 export function loadHistory() {
   try {
@@ -15,6 +16,17 @@ export function loadHistory() {
 }
 
 export function saveHistory() {
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(commandHistory));
+    } catch(e) { /* ignore */ }
+  }, 500);
+}
+
+export function saveHistoryNow() {
+  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(commandHistory));
   } catch(e) { /* ignore */ }
@@ -30,7 +42,7 @@ export function sendCommand() {
   if (text) {
     commandHistory.push(text);
     if (commandHistory.length > MAX_HISTORY) {
-      commandHistory.splice(0, commandHistory.length - MAX_HISTORY);
+      commandHistory = commandHistory.slice(-MAX_HISTORY);
     }
     saveHistory();
   }
