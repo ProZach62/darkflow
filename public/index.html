@@ -170,7 +170,7 @@ body {
 .ansi-fg-bright-white   { color: #f0f6fc; }
 
 /* ANSI background colors */
-.ansi-bg-black   { background-color: #484f58; }
+.ansi-bg-black   { background-color: #0d1117; }
 .ansi-bg-red     { background-color: #ff7b72; }
 .ansi-bg-green   { background-color: #3fb950; }
 .ansi-bg-yellow  { background-color: #d29922; }
@@ -209,9 +209,11 @@ body {
   <button id="connect-btn">Connect</button>
   <label><input type="checkbox" id="auto-reconnect"> Auto-reconnect</label>
   <span id="connection-state" class="state-disconnected">Disconnected</span>
+  <button id="gmcp-toggle" style="margin-left:auto;background:#21262d;border-color:#30363d;color:#8b949e;font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer">GMCP</button>
 </div>
 
 <div id="output"></div>
+<div id="gmcp-panel" style="display:none;max-height:200px;overflow-y:auto;padding:4px 12px;border-top:1px solid #30363d;background:#0d1117;font-family:'JetBrains Mono',monospace;font-size:11px;color:#6e7681"></div>
 
 <div id="input-bar">
   <input type="text" id="command-input" placeholder="Enter command..." autocomplete="off" spellcheck="false">
@@ -247,7 +249,7 @@ body {
   const COLOR_256 = (function() {
     const table = [];
     // 0-7: standard
-    const std = ['#484f58','#ff7b72','#3fb950','#d29922','#58a6ff','#bc8cff','#39d2e0','#c9d1d9'];
+    const std = ['#0d1117','#ff7b72','#3fb950','#d29922','#58a6ff','#bc8cff','#39d2e0','#c9d1d9'];
     // 8-15: bright
     const bright = ['#6e7681','#ffa198','#56d364','#e3b341','#79c0ff','#d2a8ff','#56d4dd','#f0f6fc'];
     for (let i = 0; i < 8; i++) table.push(std[i]);
@@ -265,6 +267,64 @@ body {
     }
     return table;
   })();
+
+  // ── GMCP Module ────────────────────────────────────────────────────────
+  const GMCP_CLIENT_NAME = 'Darkwind Web';
+  const GMCP_CLIENT_VERSION = '1.0';
+  const gmcpTextEncoder = new TextEncoder();
+  const gmcpTextDecoder = new TextDecoder('utf-8');
+
+  const gmcp = {
+    enabled: false,
+    handlers: {},
+
+    on(packageName, callback) {
+      if (!this.handlers[packageName]) this.handlers[packageName] = [];
+      this.handlers[packageName].push(callback);
+    },
+
+    off(packageName, callback) {
+      if (!this.handlers[packageName]) return;
+      this.handlers[packageName] = this.handlers[packageName].filter(cb => cb !== callback);
+    },
+
+    dispatch(packageName, data) {
+      if (this.handlers['*']) {
+        this.handlers['*'].forEach(cb => cb(packageName, data));
+      }
+      if (this.handlers[packageName]) {
+        this.handlers[packageName].forEach(cb => cb(data, packageName));
+      }
+    },
+
+    send(packageName, data) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const payload = data !== undefined
+        ? packageName + ' ' + JSON.stringify(data)
+        : packageName;
+      ws.send(gmcpTextEncoder.encode(payload));
+    },
+
+    sendHandshake() {
+      this.send('Core.Hello', {
+        client: GMCP_CLIENT_NAME,
+        version: GMCP_CLIENT_VERSION
+      });
+      this.send('Core.Supports.Set', [
+        'Char 1',
+        'Char.Vitals 1',
+        'Char.Items 1',
+        'Room 1',
+        'Comm 1',
+        'Group 1'
+      ]);
+      this.enabled = true;
+    },
+
+    reset() {
+      this.enabled = false;
+    }
+  };
 
   // ── DOM refs ───────────────────────────────────────────────────────────
   const hostInput = document.getElementById('host');
@@ -608,6 +668,7 @@ body {
       appendSystemMessage('Connected to ' + url);
       statusUrl.textContent = url;
       commandInput.focus();
+      gmcp.sendHandshake();
     };
 
     ws.onmessage = function(event) {
@@ -615,11 +676,24 @@ body {
         bytesReceived += event.data.length;
         appendOutput(event.data);
       } else {
-        // Binary frame (ArrayBuffer)
+        // Binary frame (ArrayBuffer) -> GMCP message
         const arr = new Uint8Array(event.data);
         bytesReceived += arr.length;
-        const hex = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join(' ');
-        appendSystemMessage('[Binary: ' + hex + ']');
+        const text = gmcpTextDecoder.decode(arr);
+        const spaceIdx = text.indexOf(' ');
+        let packageName, data;
+        if (spaceIdx === -1) {
+          packageName = text;
+          data = undefined;
+        } else {
+          packageName = text.substring(0, spaceIdx);
+          try {
+            data = JSON.parse(text.substring(spaceIdx + 1));
+          } catch (e) {
+            data = text.substring(spaceIdx + 1);
+          }
+        }
+        gmcp.dispatch(packageName, data);
       }
     };
 
@@ -630,6 +704,7 @@ body {
     ws.onclose = function(event) {
       ws = null;
       connectTime = null;
+      gmcp.reset();
       setConnectionState('disconnected');
 
       let msg;
@@ -786,6 +861,30 @@ body {
     }
     statusBytes.textContent = 'Sent: ' + formatBytes(bytesSent) + ' / Recv: ' + formatBytes(bytesReceived);
   }, 1000);
+
+  // ── GMCP Debug Panel ───────────────────────────────────────────────────
+  const gmcpPanel = document.getElementById('gmcp-panel');
+  const gmcpToggle = document.getElementById('gmcp-toggle');
+
+  gmcpToggle.addEventListener('click', function() {
+    const visible = gmcpPanel.style.display !== 'none';
+    gmcpPanel.style.display = visible ? 'none' : 'block';
+    gmcpToggle.style.color = visible ? '#58a6ff' : '#8b949e';
+  });
+
+  gmcp.on('*', function(packageName, data) {
+    console.log('[GMCP]', packageName, data);
+    const entry = document.createElement('div');
+    entry.textContent = '[' + new Date().toLocaleTimeString() + '] '
+      + packageName + ' ' + JSON.stringify(data);
+    gmcpPanel.appendChild(entry);
+    while (gmcpPanel.childNodes.length > 200) {
+      gmcpPanel.removeChild(gmcpPanel.firstChild);
+    }
+    if (gmcpPanel.style.display !== 'none') {
+      gmcpPanel.scrollTop = gmcpPanel.scrollHeight;
+    }
+  });
 
   // ── Init ───────────────────────────────────────────────────────────────
   hostInput.value = 'darkwind.ai';
