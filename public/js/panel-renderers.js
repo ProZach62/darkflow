@@ -394,10 +394,15 @@ export const panelRenderers = {
       entry.className = 'chat-entry';
       const ch = channelColor(msg.channel || '');
       const talker = msg.talker ? msg.talker.charAt(0).toUpperCase() + msg.talker.slice(1) : '';
-      // Strip "[Channel] Talker: " prefix from text if present
+      // Strip redundant prefix from text — the panel already shows channel and talker
       let text = msg.text || '';
-      const prefixPattern = new RegExp('^\\[\\S+\\]\\s+\\S+:\\s*');
-      text = text.replace(prefixPattern, '');
+      // Patterns: "[Channel] Name: text", "[Channel] (Role) Name: text", "Name shouts: text"
+      const talkerEsc = (msg.talker || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (talkerEsc) {
+        // Strip everything up to and including "TalkerName: " or "TalkerName shouts: "
+        const re = new RegExp('^(\\[\\S+\\]\\s+)?(\\(\\w+\\)\\s+)?' + talkerEsc + '(\\s+\\w+)?:\\s*', 'i');
+        text = text.replace(re, '');
+      }
       entry.innerHTML = '<span class="chat-channel" style="color:' + ch + '">[' + escHtml(msg.channel) + ']</span> '
         + '<span class="chat-talker">' + escHtml(talker) + ':</span> '
         + escHtml(text);
