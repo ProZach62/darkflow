@@ -116,6 +116,7 @@ function renderDisplay(schema) {
 function renderInput(schema, buttonHandler) {
   switch (schema.type) {
     case 'text': return renderTextInput(schema);
+    case 'password': return renderPasswordInput(schema);
     case 'number': return renderNumberInput(schema);
     case 'select': return renderSelectInput(schema);
     case 'checkbox': return renderCheckboxInput(schema);
@@ -146,6 +147,16 @@ function wrapField(label, input, schema) {
 function renderTextInput(schema) {
   const input = document.createElement('input');
   input.type = 'text';
+  input.className = 'dw-input';
+  if (schema.value !== undefined) input.value = String(schema.value);
+  if (schema.placeholder) input.placeholder = schema.placeholder;
+  if (schema.id) input.setAttribute('data-dw-input', schema.id);
+  return wrapField(schema.label, input, schema);
+}
+
+function renderPasswordInput(schema) {
+  const input = document.createElement('input');
+  input.type = 'password';
   input.className = 'dw-input';
   if (schema.value !== undefined) input.value = String(schema.value);
   if (schema.placeholder) input.placeholder = schema.placeholder;
