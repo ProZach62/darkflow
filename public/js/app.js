@@ -27,9 +27,9 @@ function formatBytes(n) {
 
 setInterval(function() {
   if (state.connectTime) {
-    dom.statusDuration.textContent = formatDuration(Date.now() - state.connectTime);
+    dom.statusConnection.textContent = 'Connected: ' + formatDuration(Date.now() - state.connectTime);
+    dom.statusConnection.title = 'Sent: ' + formatBytes(state.bytesSent) + ' / Recv: ' + formatBytes(state.bytesReceived);
   }
-  dom.statusBytes.textContent = 'Sent: ' + formatBytes(state.bytesSent) + ' / Recv: ' + formatBytes(state.bytesReceived);
 }, 1000);
 
 // ── GMCP Debug Panel ────────────────────────────────────────────────

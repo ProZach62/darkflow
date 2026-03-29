@@ -18,9 +18,7 @@ export const dom = {
   output: null,
   commandInput: null,
   sendBtn: null,
-  statusUrl: null,
-  statusDuration: null,
-  statusBytes: null,
+  statusConnection: null,
   statusUptime: null,
   gmcpPanel: null,
   gmcpToggle: null,
@@ -36,9 +34,7 @@ export function initDom() {
   dom.output = document.getElementById('output');
   dom.commandInput = document.getElementById('command-input');
   dom.sendBtn = document.getElementById('send-btn');
-  dom.statusUrl = document.getElementById('status-url');
-  dom.statusDuration = document.getElementById('status-duration');
-  dom.statusBytes = document.getElementById('status-bytes');
+  dom.statusConnection = document.getElementById('status-connection');
   dom.statusUptime = document.getElementById('status-uptime');
   dom.gmcpPanel = document.getElementById('gmcp-panel');
   dom.gmcpToggle = document.getElementById('gmcp-toggle');

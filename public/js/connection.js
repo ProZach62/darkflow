@@ -59,7 +59,7 @@ export function connect() {
     state.bytesReceived = 0;
     state.reconnectAttempts = 0;
     appendSystemMessage('Connected to ' + url);
-    dom.statusUrl.textContent = url;
+    dom.statusConnection.textContent = 'Connected: 0s';
     dom.commandInput.focus();
     gmcp.sendHandshake();
     panelManager.resetData();
@@ -108,9 +108,9 @@ export function connect() {
     else msg = 'Closed (code ' + event.code + (event.reason ? ': ' + event.reason : '') + ')';
 
     appendSystemMessage(msg);
-    dom.statusUrl.textContent = 'Not connected';
+    dom.statusConnection.textContent = 'Not connected';
+    dom.statusConnection.title = '';
     dom.statusUptime.textContent = '';
-    dom.statusDuration.textContent = '';
 
     if (!state.userDisconnected && dom.autoReconnect.checked) {
       scheduleReconnect();
