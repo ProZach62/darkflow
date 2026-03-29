@@ -87,5 +87,13 @@ export function initInput() {
       e.preventDefault();
       dom.output.scrollBy(0, dom.output.clientHeight * 0.8);
     }
+
+    // Auto-focus: redirect printable keys to command input
+    if (document.activeElement === dom.commandInput) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key.length === 1) {
+      dom.commandInput.focus();
+    }
   });
 }
