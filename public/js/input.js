@@ -72,6 +72,12 @@ export function initInput() {
 
   dom.sendBtn.addEventListener('click', sendCommand);
 
+  dom.output.addEventListener('click', function() {
+    if (!window.getSelection().toString()) {
+      dom.commandInput.focus();
+    }
+  });
+
   // Global keyboard shortcuts
   document.addEventListener('keydown', function(e) {
     if (e.ctrlKey && e.key === 'l') {
