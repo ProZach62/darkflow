@@ -79,10 +79,21 @@ export const windowManager = {
       });
     }
 
-    // Close on Escape
+    // Close on Escape, submit on Enter
     const escHandler = (e) => {
       if (e.key === 'Escape' && data.closable !== false) {
         this._userClose(data.id);
+      }
+      if (e.key === 'Enter') {
+        const active = document.activeElement;
+        // Don't submit if typing in a textarea or explicitly focused on a non-submit button
+        if (active && active.tagName === 'TEXTAREA') return;
+        if (active && active.tagName === 'BUTTON' && !active.classList.contains('dw-button-primary')) return;
+        const submitBtn = body.querySelector('.dw-button-primary');
+        if (submitBtn) {
+          e.preventDefault();
+          submitBtn.click();
+        }
       }
     };
     document.addEventListener('keydown', escHandler);
