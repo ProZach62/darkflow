@@ -305,6 +305,28 @@ body {
 .ansi-bold { font-weight: bold; }
 .ansi-underline { text-decoration: underline; }
 
+#status-versions { margin-left: auto; }
+
+#update-banner {
+  display: none;
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 9999;
+  padding: 8px 14px;
+  background: #1c3a5e;
+  border: 1px solid #388bfd;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+#update-banner a {
+  color: #58a6ff;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+
 @media (max-width: 600px) {
   #toolbar { gap: 6px; padding: 6px 8px; }
   #toolbar input#host { width: 100px; }

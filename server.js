@@ -29,6 +29,18 @@ app.get('/config.json', (req, res) => {
   });
 });
 
+// Client version endpoint (no caching so stale tabs always get current version)
+app.get('/api/version', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const versionFile = path.join(__dirname, 'public', 'version.json');
+  try {
+    const data = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
+    res.json(data);
+  } catch(e) {
+    res.json({ version: 'unknown' });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, () => {

@@ -26,6 +26,9 @@ export const dom = {
   sendBtn: null,
   statusConnection: null,
   statusUptime: null,
+  statusVersions: null,
+  updateBanner: null,
+  updateRefresh: null,
   toolbarBrand: null,
   gmcpPanel: null,
   gmcpToggle: null,
@@ -49,6 +52,9 @@ export function initDom() {
   dom.sendBtn = document.getElementById('send-btn');
   dom.statusConnection = document.getElementById('status-connection');
   dom.statusUptime = document.getElementById('status-uptime');
+  dom.statusVersions = document.getElementById('status-versions');
+  dom.updateBanner = document.getElementById('update-banner');
+  dom.updateRefresh = document.getElementById('update-refresh');
   dom.toolbarBrand = document.getElementById('toolbar-brand');
   dom.gmcpPanel = document.getElementById('gmcp-panel');
   dom.gmcpToggle = document.getElementById('gmcp-toggle');

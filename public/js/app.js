@@ -67,12 +67,26 @@ function formatUptime(totalSeconds) {
   return parts.join(' ');
 }
 
+let clientVersion = null;
+let serverVersion = null;
+
+function updateVersionDisplay() {
+  const parts = [];
+  if (clientVersion) parts.push('Client v' + clientVersion);
+  if (serverVersion) parts.push('Server v' + serverVersion);
+  dom.statusVersions.textContent = parts.join(' | ');
+}
+
 gmcp.on('Game', function(data) {
   if (data && data.game_uptime !== undefined) {
     dom.statusUptime.textContent = 'Uptime: ' + formatUptime(data.game_uptime);
   }
   if (data && data.game_name) {
     updateBranding(data.game_name);
+  }
+  if (data && data.game_version) {
+    serverVersion = data.game_version;
+    updateVersionDisplay();
   }
 });
 
@@ -154,4 +168,34 @@ dom.commandInput.focus();
 window.addEventListener('beforeunload', function() {
   saveHistoryNow();
   if (state.ws) state.ws.close(1000, 'Page unload');
+});
+
+// ── Client Version & Update Detection ──────────────────────────────
+function fetchClientVersion() {
+  return fetch('/api/version', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => data.version || null)
+    .catch(() => null);
+}
+
+fetchClientVersion().then(v => {
+  clientVersion = v;
+  updateVersionDisplay();
+});
+
+// Poll for updates every 5 minutes; only when tab is visible
+const VERSION_POLL_MS = 5 * 60 * 1000;
+setInterval(function() {
+  if (document.visibilityState !== 'visible') return;
+  if (!clientVersion) return;
+  fetchClientVersion().then(v => {
+    if (v && v !== clientVersion) {
+      dom.updateBanner.style.display = 'block';
+    }
+  });
+}, VERSION_POLL_MS);
+
+dom.updateRefresh.addEventListener('click', function(e) {
+  e.preventDefault();
+  location.reload();
 });
