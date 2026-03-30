@@ -38,39 +38,82 @@ export const windowManager = {
   },
 
   _openModal(data, content) {
+    const isLogin = data.id === 'login';
+
     const overlay = document.createElement('div');
     overlay.className = 'dw-modal-overlay';
+    if (isLogin) overlay.classList.add('dw-login-overlay');
     overlay.setAttribute('data-dw-window', data.id);
 
     const modal = document.createElement('div');
-    modal.className = 'dw-modal';
-    if (data.width) modal.style.width = data.width + (typeof data.width === 'number' ? 'px' : '');
-    if (data.height) modal.style.height = data.height + (typeof data.height === 'number' ? 'px' : '');
-
-    // Title bar
-    const titleBar = document.createElement('div');
-    titleBar.className = 'dw-modal-header';
-    const titleText = document.createElement('span');
-    titleText.className = 'dw-modal-title';
-    titleText.textContent = data.title || '';
-    titleBar.appendChild(titleText);
-
-    if (data.closable !== false) {
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'dw-modal-close';
-      closeBtn.innerHTML = '&#x2715;';
-      closeBtn.addEventListener('click', () => this._userClose(data.id));
-      titleBar.appendChild(closeBtn);
+    modal.className = isLogin ? 'dw-modal dw-login-modal' : 'dw-modal';
+    if (!isLogin) {
+      if (data.width) modal.style.width = data.width + (typeof data.width === 'number' ? 'px' : '');
+      if (data.height) modal.style.height = data.height + (typeof data.height === 'number' ? 'px' : '');
     }
 
-    // Body
-    const body = document.createElement('div');
-    body.className = 'dw-modal-body';
-    body.appendChild(content);
+    if (isLogin) {
+      // Game-launcher two-panel layout: art left, form right
+      const artPanel = document.createElement('div');
+      artPanel.className = 'dw-login-art';
+      const img = document.createElement('img');
+      img.src = 'assets/login-background.jpg';
+      img.alt = '';
+      img.draggable = false;
+      artPanel.appendChild(img);
 
-    modal.appendChild(titleBar);
-    modal.appendChild(body);
-    overlay.appendChild(modal);
+      const formPanel = document.createElement('div');
+      formPanel.className = 'dw-login-form';
+
+      const brand = document.createElement('div');
+      brand.className = 'dw-login-brand';
+      brand.textContent = 'Darkwind';
+
+      const tagline = document.createElement('div');
+      tagline.className = 'dw-login-tagline';
+      tagline.textContent = 'Enter the Realm';
+
+      const body = document.createElement('div');
+      body.className = 'dw-modal-body dw-login-body';
+      body.appendChild(content);
+
+      formPanel.appendChild(brand);
+      formPanel.appendChild(tagline);
+      formPanel.appendChild(body);
+
+      modal.appendChild(artPanel);
+      modal.appendChild(formPanel);
+      overlay.appendChild(modal);
+    } else {
+      // Standard modal layout
+      const titleBar = document.createElement('div');
+      titleBar.className = 'dw-modal-header';
+      const titleText = document.createElement('span');
+      titleText.className = 'dw-modal-title';
+      titleText.textContent = data.title || '';
+      titleBar.appendChild(titleText);
+
+      if (data.closable !== false) {
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'dw-modal-close';
+        closeBtn.innerHTML = '&#x2715;';
+        closeBtn.addEventListener('click', () => this._userClose(data.id));
+        titleBar.appendChild(closeBtn);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'dw-modal-body';
+      body.appendChild(content);
+
+      modal.appendChild(titleBar);
+      modal.appendChild(body);
+      overlay.appendChild(modal);
+    }
+
+    // Resolve the body container for form data collection
+    const bodyContainer = isLogin
+      ? modal.querySelector('.dw-login-body')
+      : modal.querySelector('.dw-modal-body');
 
     // Close on backdrop click
     if (data.closable !== false) {
@@ -89,7 +132,7 @@ export const windowManager = {
         // Don't submit if typing in a textarea or explicitly focused on a non-submit button
         if (active && active.tagName === 'TEXTAREA') return;
         if (active && active.tagName === 'BUTTON' && !active.classList.contains('dw-button-primary')) return;
-        const submitBtn = body.querySelector('.dw-button-primary');
+        const submitBtn = modal.querySelector('.dw-button-primary');
         if (submitBtn) {
           e.preventDefault();
           submitBtn.click();
@@ -100,11 +143,17 @@ export const windowManager = {
 
     document.body.appendChild(overlay);
 
+    // Auto-focus first input for login modal
+    if (isLogin) {
+      const firstInput = modal.querySelector('.dw-input');
+      if (firstInput) firstInput.focus();
+    }
+
     this.windows[data.id] = {
       id: data.id,
       type: 'modal',
       el: overlay,
-      containerEl: body,
+      containerEl: bodyContainer,
       escHandler,
     };
   },

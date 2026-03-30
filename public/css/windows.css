@@ -189,3 +189,119 @@
   background: #21262d;
   border-color: #30363d;
 }
+
+/* ── Login modal (game-launcher style) ─────────────────────────── */
+.dw-login-overlay {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.dw-login-modal {
+  flex-direction: row;
+  width: 680px;
+  max-width: 95vw;
+  height: 480px;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.dw-login-art {
+  width: 260px;
+  min-width: 260px;
+  overflow: hidden;
+  position: relative;
+  border-radius: 8px 0 0 8px;
+}
+
+.dw-login-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  display: block;
+}
+
+.dw-login-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 28px 24px;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.dw-login-brand {
+  font-size: 28px;
+  font-weight: 700;
+  color: #c9d1d9;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.dw-login-tagline {
+  font-size: 13px;
+  color: #58a6ff;
+  text-align: center;
+  margin-bottom: 24px;
+  letter-spacing: 0.5px;
+}
+
+.dw-login-body {
+  padding: 0;
+}
+
+/* Hide the server-sent heading/error in login since we have our own brand header */
+.dw-login-body .dw-heading {
+  display: none;
+}
+
+/* Style the login error message */
+.dw-login-body .dw-paragraph[data-dw-id="error"]:empty {
+  display: none;
+}
+
+/* Larger inputs for login */
+.dw-login-body .dw-input {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+/* Larger login buttons */
+.dw-login-body .dw-button {
+  padding: 8px 20px;
+  font-size: 13px;
+}
+
+.dw-login-body .dw-button-primary {
+  background: #238636;
+  border-color: #2ea043;
+  box-shadow: 0 0 12px rgba(35, 134, 54, 0.3);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.dw-login-body .dw-button-primary:hover {
+  background: #2ea043;
+  box-shadow: 0 0 18px rgba(46, 160, 67, 0.4);
+}
+
+/* ── Login modal responsive ─────────────────────────────────────── */
+@media (max-width: 600px) {
+  .dw-login-modal {
+    flex-direction: column;
+    width: 95vw;
+    height: auto;
+    max-height: 90vh;
+  }
+
+  .dw-login-art {
+    width: 100%;
+    min-width: unset;
+    height: 160px;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .dw-login-form {
+    padding: 20px 20px 16px;
+  }
+}
