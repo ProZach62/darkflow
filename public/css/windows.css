@@ -190,6 +190,46 @@
   border-color: #30363d;
 }
 
+/* ── Image display ─────────────────────────────────────────────── */
+.dw-image {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0d1117;
+  min-height: 80px;
+}
+
+.dw-image img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.dw-image.dw-image-loaded img {
+  opacity: 1;
+}
+
+.dw-image-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #8b949e;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.dw-image.dw-image-loaded .dw-image-loading {
+  display: none;
+}
+
+.dw-image.dw-image-error img {
+  display: none;
+}
+
 /* ── Login modal (game-launcher style) ─────────────────────────── */
 .dw-login-overlay {
   background: rgba(0, 0, 0, 0.8);

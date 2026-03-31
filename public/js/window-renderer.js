@@ -104,6 +104,33 @@ function renderDisplay(schema) {
       }
       return el;
     }
+    case 'image': {
+      const el = document.createElement('div');
+      el.className = 'dw-image';
+      setAttr(el, schema);
+      if (schema.src) {
+        const img = document.createElement('img');
+        img.src = schema.src;
+        img.alt = schema.alt || '';
+        img.draggable = false;
+        img.addEventListener('load', () => el.classList.add('dw-image-loaded'));
+        img.addEventListener('error', () => {
+          el.classList.add('dw-image-error');
+          const err = document.createElement('div');
+          err.className = 'dw-image-loading';
+          err.textContent = 'Image unavailable';
+          el.appendChild(err);
+        });
+        el.appendChild(img);
+      }
+      if (schema.loading) {
+        const spinner = document.createElement('div');
+        spinner.className = 'dw-image-loading';
+        spinner.textContent = schema.loadingText || 'Generating image...';
+        el.appendChild(spinner);
+      }
+      return el;
+    }
     default: {
       const el = document.createElement('span');
       el.textContent = '[' + schema.type + ']';
@@ -277,6 +304,22 @@ export function updateElements(container, updates) {
     if (upd.label !== undefined) {
       const lbl = el.querySelector('.dw-progress-label');
       if (lbl) lbl.textContent = upd.label;
+    }
+
+    // Image updates
+    if (upd.src !== undefined && el.classList.contains('dw-image')) {
+      let img = el.querySelector('img');
+      if (!img) {
+        img = document.createElement('img');
+        img.draggable = false;
+        img.addEventListener('load', () => el.classList.add('dw-image-loaded'));
+        img.addEventListener('error', () => el.classList.add('dw-image-error'));
+        el.appendChild(img);
+      }
+      img.src = upd.src;
+      if (upd.alt) img.alt = upd.alt;
+      const spinner = el.querySelector('.dw-image-loading');
+      if (spinner) spinner.remove();
     }
 
     // Input value updates
