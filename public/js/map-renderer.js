@@ -94,8 +94,6 @@ export function renderMap(bodyEl) {
   const charW = cachedCharW || 8.4;
   const charH = cachedCharH || 16.1;
 
-  console.log('[MAP]', { bodyWidth, bodyHeight, charW, charH, totalCols: Math.floor(bodyWidth/charW), totalRows: Math.floor(bodyHeight/charH) });
-
   // How many characters fit in the panel — 1 char per room, no connector cells
   const totalCols = Math.max(5, Math.floor(bodyWidth / charW));
   const totalRows = Math.max(5, Math.floor(bodyHeight / charH) - 1); // -1 for z-level line

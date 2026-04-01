@@ -1,3 +1,5 @@
+import { gmcp } from './gmcp.js';
+
 const STORAGE_KEY = 'darkwind-map-data';
 
 const DIR_OFFSETS = {
@@ -59,9 +61,10 @@ export function processRoomInfo(data) {
   const roomChanged = roomId !== currentRoomId;
   const isNew = !rooms.has(roomId);
 
-  // Capture debug state BEFORE processing
+  // Capture state BEFORE processing
   // Note: at this point currentRoomId = the room we just LEFT (not yet updated)
   const fromRoomId = currentRoomId;
+  const pendingDirectionUsed = pendingDirection;
   const entry = {
     ts: new Date().toISOString(),
     roomId: roomId.slice(0, 8),
@@ -159,6 +162,18 @@ export function processRoomInfo(data) {
   debugLog.push(entry);
   if (debugLog.length > 500) debugLog.shift();
 
+  // Send traversal data to server for collaborative mapping
+  if (roomChanged && fromRoomId && pendingDirectionUsed) {
+    gmcp.send('Darkwind.MapData.RoomUpdate', {
+      id: roomId,
+      from_id: fromRoomId,
+      direction: pendingDirectionUsed,
+      name: room.name,
+      area: room.area,
+      environment: room.environment,
+    });
+  }
+
   if (roomChanged) {
     previousRoomId = currentRoomId;
     currentRoomId = roomId;
@@ -213,6 +228,60 @@ export function load() {
     rooms.clear();
     coordIndex.clear();
   }
+}
+
+// Receive server-resolved area data (Darkwind.MapData.Area)
+// Server coords take priority over client-inferred coords
+export function mergeServerAreaData(data) {
+  if (!data || !data.area || !Array.isArray(data.rooms)) return;
+
+  let merged = 0;
+  for (const serverRoom of data.rooms) {
+    if (!serverRoom.id) continue;
+
+    let room = rooms.get(serverRoom.id);
+    if (!room) {
+      room = {
+        id: serverRoom.id,
+        name: serverRoom.name || '',
+        area: data.area,
+        environment: serverRoom.env || '',
+        exits: {},
+        x: null, y: null, z: null,
+      };
+      rooms.set(serverRoom.id, room);
+    }
+
+    // Server name/env updates
+    if (serverRoom.name) room.name = serverRoom.name;
+    if (serverRoom.env) room.environment = serverRoom.env;
+
+    // Server exits
+    if (serverRoom.exits && typeof serverRoom.exits === 'object') {
+      room.exits = {};
+      for (const [dir, destId] of Object.entries(serverRoom.exits)) {
+        room.exits[dir] = destId;
+      }
+    }
+
+    // Server coordinates take priority — remove old coord index entry first
+    if (room.x !== null) {
+      const oldKey = room.area + ':' + room.x + ',' + room.y + ',' + room.z;
+      if (coordIndex.get(oldKey) === room.id) coordIndex.delete(oldKey);
+    }
+
+    if (serverRoom.x !== undefined && serverRoom.y !== undefined && serverRoom.z !== undefined) {
+      room.x = serverRoom.x;
+      room.y = serverRoom.y;
+      room.z = serverRoom.z;
+      const newKey = data.area + ':' + room.x + ',' + room.y + ',' + room.z;
+      coordIndex.set(newKey, room.id);
+      merged++;
+    }
+  }
+
+  if (merged > 0) save();
+  return merged;
 }
 
 export function clearMapData() {

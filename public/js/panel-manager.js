@@ -1,7 +1,7 @@
 import { gmcp } from './gmcp.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { panelRenderers } from './panel-renderers.js';
-import { processRoomInfo, load as loadMapData } from './map-data.js';
+import { processRoomInfo, mergeServerAreaData, load as loadMapData } from './map-data.js';
 
 export const panelManager = {
   state: { docks: { left: false, right: false }, panels: {} },
@@ -637,6 +637,11 @@ export const panelManager = {
       this._renderPanel('room');
       processRoomInfo(data);
       this._renderPanel('map');
+    });
+
+    gmcp.on('Darkwind.MapData.Area', (data) => {
+      const merged = mergeServerAreaData(data);
+      if (merged) this._renderPanel('map');
     });
 
     gmcp.on('Room.Players', (data) => {
