@@ -1,0 +1,197 @@
+/* ide.css - In-browser code editor styles */
+
+.ide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  background: #0d1117;
+}
+
+.ide-modal {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Header */
+.ide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  flex-shrink: 0;
+}
+
+.ide-filepath {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #c9d1d9;
+}
+
+.ide-readonly-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #d29922;
+  border: 1px solid #d29922;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.ide-modified-dot {
+  color: #58a6ff;
+}
+
+.ide-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ide-btn {
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ide-btn-save {
+  background: #238636;
+  color: #fff;
+  border-color: #2ea043;
+}
+.ide-btn-save:hover {
+  background: #2ea043;
+}
+.ide-btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ide-btn-close {
+  background: #21262d;
+  color: #c9d1d9;
+}
+.ide-btn-close:hover {
+  background: #30363d;
+}
+
+/* Editor container */
+.ide-editor-container {
+  flex: 1;
+  overflow: hidden;
+}
+
+.ide-editor-container .cm-editor {
+  height: 100%;
+}
+
+.ide-editor-container .cm-scroller {
+  font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Error panel */
+.ide-error-panel {
+  max-height: 180px;
+  overflow-y: auto;
+  background: #161b22;
+  border-top: 2px solid #f85149;
+  flex-shrink: 0;
+}
+
+.ide-error-title {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f85149;
+  background: #1c1118;
+  border-bottom: 1px solid #30363d;
+}
+
+.ide-error-list {
+  padding: 0;
+}
+
+.ide-error-item {
+  display: flex;
+  gap: 12px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #c9d1d9;
+  cursor: pointer;
+  border-bottom: 1px solid #21262d;
+}
+.ide-error-item:hover {
+  background: #1c2128;
+}
+
+.ide-error-location {
+  color: #f85149;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 70px;
+}
+
+.ide-error-message {
+  color: #c9d1d9;
+}
+
+/* Status bar */
+.ide-status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 12px;
+  font-size: 11px;
+  color: #8b949e;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+  flex-shrink: 0;
+}
+
+.ide-status-text {
+  color: #8b949e;
+}
+
+.ide-status-pos {
+  color: #8b949e;
+}
+
+/* Loading spinner */
+.ide-loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 3200;
+  gap: 16px;
+}
+
+.ide-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: ide-spin 0.8s linear infinite;
+}
+
+.ide-loading-text {
+  color: #8b949e;
+  font-size: 14px;
+}
+
+@keyframes ide-spin {
+  to { transform: rotate(360deg); }
+}

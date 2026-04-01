@@ -5,6 +5,7 @@ import { panelManager } from './panel-manager.js';
 import { connect, disconnect } from './connection.js';
 import { loadHistory, saveHistory, saveHistoryNow, initInput } from './input.js';
 import { windowManager } from './window-manager.js';
+import { ideManager } from './ide-manager.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -162,6 +163,7 @@ fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
 loadHistory();
 panelManager.init();
 windowManager.init();
+ideManager.init();
 initInput();
 dom.commandInput.focus();
 
