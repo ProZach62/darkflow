@@ -143,17 +143,36 @@ export function processRoomInfo(data) {
     entry.result = 'already-has-coords ' + room.x + ',' + room.y + ',' + room.z;
   }
 
-  // First room in an area with no position — seed at origin
-  if (room.x === null) {
-    const areaRooms = getRoomsByArea(room.area);
-    if (areaRooms.length === 0) {
-      const coordKey = room.area + ':0,0,0';
-      if (!coordIndex.has(coordKey)) {
-        room.x = 0;
-        room.y = 0;
-        room.z = 0;
-        coordIndex.set(coordKey, roomId);
-        entry.result = 'seeded-origin';
+  // Seed origin: when we have a direction and a fromRoom, but nothing in
+  // the area is positioned yet, seed the fromRoom at origin and then
+  // position this room relative to it.
+  if (room.x === null && roomChanged && pendingDirectionUsed && fromRoomId) {
+    const fromRoom = rooms.get(fromRoomId);
+    if (fromRoom && fromRoom.x === null) {
+      const areaRooms = getRoomsByArea(room.area);
+      if (areaRooms.length === 0) {
+        const coordKey = fromRoom.area + ':0,0,0';
+        if (!coordIndex.has(coordKey)) {
+          fromRoom.x = 0;
+          fromRoom.y = 0;
+          fromRoom.z = 0;
+          coordIndex.set(coordKey, fromRoomId);
+          // Now position this room relative to the newly seeded fromRoom
+          const offset = DIR_OFFSETS[pendingDirectionUsed];
+          if (offset) {
+            const nx = offset.dx;
+            const ny = offset.dy;
+            const nz = offset.dz;
+            const destKey = room.area + ':' + nx + ',' + ny + ',' + nz;
+            if (!coordIndex.has(destKey)) {
+              room.x = nx;
+              room.y = ny;
+              room.z = nz;
+              coordIndex.set(destKey, roomId);
+              entry.result = 'seeded-origin+assigned ' + nx + ',' + ny + ',' + nz;
+            }
+          }
+        }
       }
     }
   }
