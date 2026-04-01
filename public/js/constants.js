@@ -15,8 +15,8 @@ export const DEFAULT_BG = '#0d1117';
 // 256-color lookup table
 export const COLOR_256 = (() => {
   const table = [];
-  const std = ['#0d1117','#ff7b72','#3fb950','#d29922','#58a6ff','#bc8cff','#39d2e0','#c9d1d9'];
-  const bright = ['#6e7681','#ffa198','#56d364','#e3b341','#79c0ff','#d2a8ff','#56d4dd','#f0f6fc'];
+  const std = ['#000000','#cd0000','#00cd00','#cdcd00','#0000ee','#cd00cd','#00cdcd','#e5e5e5'];
+  const bright = ['#7f7f7f','#ff0000','#00ff00','#ffff00','#5c5cff','#ff00ff','#00ffff','#ffffff'];
   for (let i = 0; i < 8; i++) table.push(std[i]);
   for (let i = 0; i < 8; i++) table.push(bright[i]);
   const levels = [0, 95, 135, 175, 215, 255];
