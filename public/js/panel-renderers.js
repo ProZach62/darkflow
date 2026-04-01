@@ -1,5 +1,7 @@
 import { state } from './state.js';
 import { appendEcho } from './output.js';
+import { renderMap } from './map-renderer.js';
+import { trackCommand } from './map-data.js';
 
 export function escHtml(str) {
   if (!str) return '';
@@ -152,6 +154,7 @@ export const panelRenderers = {
       btn.addEventListener('click', () => {
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
           const dir = btn.dataset.dir;
+          trackCommand(dir);
           state.ws.send(dir);
           appendEcho(dir);
         }
@@ -412,5 +415,9 @@ export const panelRenderers = {
     while (log.childNodes.length > 200) log.removeChild(log.firstChild);
 
     if (wasAtBottom) log.scrollTop = log.scrollHeight;
+  },
+
+  map(bodyEl, _data) {
+    renderMap(bodyEl);
   },
 };

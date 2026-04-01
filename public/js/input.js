@@ -1,6 +1,7 @@
 import { state, dom } from './state.js';
 import { appendEcho, clearOutput } from './output.js';
 import { MAX_HISTORY, SESSION_KEY } from './constants.js';
+import { trackCommand } from './map-data.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -36,6 +37,7 @@ export function sendCommand() {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
 
   const text = dom.commandInput.value;
+  trackCommand(text);
   state.ws.send(text);
   state.bytesSent += text.length;
 

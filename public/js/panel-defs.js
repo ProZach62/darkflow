@@ -12,6 +12,9 @@ export const PANEL_DEFS = {
   chat:      { title: 'Chat',      defaultDock: 'float', defaultOrder: 0,
                defaultFloatX: -760, defaultFloatY: -380, defaultFloatW: 750, defaultFloatH: 370,
                defaultSnapRight: true, defaultSnapBottom: true },
+  map:       { title: 'Map',       defaultDock: 'float', defaultOrder: 0,
+               defaultFloatX: -500, defaultFloatY: 50, defaultFloatW: 400, defaultFloatH: 350,
+               defaultSnapRight: true, defaultSnapTop: true },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';

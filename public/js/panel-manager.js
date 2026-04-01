@@ -1,6 +1,7 @@
 import { gmcp } from './gmcp.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { panelRenderers } from './panel-renderers.js';
+import { processRoomInfo, load as loadMapData } from './map-data.js';
 
 export const panelManager = {
   state: { docks: { left: false, right: false }, panels: {} },
@@ -26,6 +27,7 @@ export const panelManager = {
     document.getElementById('left-dock-toggle').classList.toggle('active', !this.state.docks.left);
     document.getElementById('right-dock-toggle').classList.toggle('active', !this.state.docks.right);
 
+    loadMapData();
     this.attachDragHandlers();
     this.registerGmcpHandlers();
     this._attachResizeHandler();
@@ -633,6 +635,8 @@ export const panelManager = {
       if (!this.gmcpData.room) this.gmcpData.room = {};
       Object.assign(this.gmcpData.room, data);
       this._renderPanel('room');
+      processRoomInfo(data);
+      this._renderPanel('map');
     });
 
     gmcp.on('Room.Players', (data) => {
