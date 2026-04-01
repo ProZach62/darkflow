@@ -234,7 +234,13 @@ export const panelManager = {
     const bottom = (statusBar ? statusBar.offsetHeight : 0)
       + (inputBar ? inputBar.offsetHeight : 0);
     const leftEdge = leftDock ? leftDock.getBoundingClientRect().right : 0;
-    const rightEdge = rightDock ? rightDock.getBoundingClientRect().left : window.innerWidth;
+    let rightEdge = rightDock ? rightDock.getBoundingClientRect().left : window.innerWidth;
+    // Account for the output scrollbar so panels don't overlap it
+    const output = document.getElementById('output');
+    if (output && output.scrollHeight > output.clientHeight) {
+      const scrollbarW = output.offsetWidth - output.clientWidth;
+      if (scrollbarW > 0) rightEdge -= scrollbarW;
+    }
     return {
       left: leftEdge,
       top: top,
