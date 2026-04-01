@@ -7,13 +7,12 @@ export const PANEL_DEFS = {
   group:     { title: 'Group',     defaultDock: 'right', defaultOrder: 1 },
   inventory: { title: 'Inventory', defaultDock: 'right', defaultOrder: 2 },
   enemy:     { title: 'Enemy',     defaultDock: 'float', defaultOrder: 0,
-               defaultFloatX: -490, defaultFloatY: 50, defaultFloatW: 480, defaultFloatH: 225,
-               defaultSnapRight: true, defaultSnapTop: true },
+               defaultFloatW: 480, defaultFloatH: 225 },
   chat:      { title: 'Chat',      defaultDock: 'float', defaultOrder: 0,
-               defaultFloatX: -760, defaultFloatY: -380, defaultFloatW: 750, defaultFloatH: 370,
+               defaultFloatW: 750, defaultFloatH: 370,
                defaultSnapRight: true, defaultSnapBottom: true },
   map:       { title: 'Map',       defaultDock: 'float', defaultOrder: 0,
-               defaultFloatX: -500, defaultFloatY: 50, defaultFloatW: 400, defaultFloatH: 350,
+               defaultFloatW: 400, defaultFloatH: 350,
                defaultSnapRight: true, defaultSnapTop: true },
 };
 

@@ -49,11 +49,21 @@ export const panelManager = {
       const s = (saved && saved.panels && saved.panels[id]) || {};
       const defW = def.defaultFloatW || 280;
       const defH = def.defaultFloatH || 200;
-      let defX = def.defaultFloatX || 100;
-      let defY = def.defaultFloatY || 100;
-      // Negative values mean offset from right/bottom edge
-      if (defX < 0) defX = window.innerWidth + defX;
-      if (defY < 0) defY = window.innerHeight + defY;
+      let defX, defY;
+      if (def.defaultFloatX !== undefined) {
+        defX = def.defaultFloatX;
+        if (defX < 0) defX = window.innerWidth + defX;
+      } else {
+        // Center horizontally
+        defX = Math.round((window.innerWidth - defW) / 2);
+      }
+      if (def.defaultFloatY !== undefined) {
+        defY = def.defaultFloatY;
+        if (defY < 0) defY = window.innerHeight + defY;
+      } else {
+        // Center vertically
+        defY = Math.round((window.innerHeight - defH) / 2);
+      }
       panels[id] = {
         dock: s.dock || def.defaultDock,
         order: s.order !== undefined ? s.order : def.defaultOrder,
@@ -214,45 +224,68 @@ export const panelManager = {
     ro.observe(el);
   },
 
+  _getSnapBounds() {
+    const toolbar = document.getElementById('toolbar');
+    const statusBar = document.getElementById('status-bar');
+    const inputBar = document.getElementById('input-bar');
+    const leftDock = document.getElementById('left-dock');
+    const rightDock = document.getElementById('right-dock');
+    const top = toolbar ? toolbar.offsetHeight : 0;
+    const bottom = (statusBar ? statusBar.offsetHeight : 0)
+      + (inputBar ? inputBar.offsetHeight : 0);
+    const leftEdge = leftDock ? leftDock.getBoundingClientRect().right : 0;
+    const rightEdge = rightDock ? rightDock.getBoundingClientRect().left : window.innerWidth;
+    return {
+      left: leftEdge,
+      top: top,
+      right: rightEdge,
+      bottom: window.innerHeight - bottom,
+    };
+  },
+
   _applyFloatPosition(el, st) {
     el.style.width = st.floatW + 'px';
     el.style.height = st.floatH + 'px';
+    const bounds = this._getSnapBounds();
 
-    // Horizontal: compute offsets from edges
-    const distRight = window.innerWidth - st.floatX - st.floatW;
-    if (st.snapLeft) {
-      el.style.left = st.floatX + 'px';
-      el.style.right = 'auto';
-    } else if (st.snapRight) {
+    // Horizontal
+    if (st.snapRight) {
       el.style.left = 'auto';
-      el.style.right = distRight + 'px';
+      el.style.right = (window.innerWidth - bounds.right) + 'px';
+    } else if (st.snapLeft) {
+      el.style.left = bounds.left + 'px';
+      el.style.right = 'auto';
     } else {
       el.style.left = st.floatX + 'px';
       el.style.right = 'auto';
     }
 
-    // Vertical: compute offsets from edges
-    const distBottom = window.innerHeight - st.floatY - st.floatH;
-    if (st.snapTop) {
-      el.style.top = st.floatY + 'px';
-      el.style.bottom = 'auto';
-    } else if (st.snapBottom) {
+    // Vertical
+    if (st.snapBottom) {
       el.style.top = 'auto';
-      el.style.bottom = distBottom + 'px';
+      el.style.bottom = (window.innerHeight - bounds.bottom) + 'px';
+    } else if (st.snapTop) {
+      el.style.top = bounds.top + 'px';
+      el.style.bottom = 'auto';
     } else {
       el.style.top = st.floatY + 'px';
       el.style.bottom = 'auto';
     }
   },
 
+  repositionSnappedPanels() {
+    for (const [id, st] of Object.entries(this.state.panels)) {
+      if (st.dock !== 'float') continue;
+      if (!st.snapRight && !st.snapBottom && !st.snapLeft && !st.snapTop) continue;
+      const p = this.panels[id];
+      if (!p || !p.el) continue;
+      this._applyFloatPosition(p.el, st);
+    }
+  },
+
   _attachResizeHandler() {
     window.addEventListener('resize', () => {
-      for (const [id, st] of Object.entries(this.state.panels)) {
-        if (st.dock !== 'float' || (!st.snapRight && !st.snapBottom)) continue;
-        const p = this.panels[id];
-        if (!p || !p.el) continue;
-        this._applyFloatPosition(p.el, st);
-      }
+      this.repositionSnappedPanels();
     });
   },
 
@@ -294,19 +327,20 @@ export const panelManager = {
     st.floatX = x;
     st.floatY = y;
 
-    // Detect edge snapping (within 30px of viewport edges)
     const SNAP = 30;
     const w = st.floatW || p.el.offsetWidth || 280;
     const h = st.floatH || p.el.offsetHeight || 200;
-    st.snapLeft = x < SNAP;
-    st.snapTop = y < SNAP;
-    st.snapRight = (x + w) > (window.innerWidth - SNAP);
-    st.snapBottom = (y + h) > (window.innerHeight - SNAP);
-    // Snap position to edge when within threshold
-    if (st.snapLeft) st.floatX = 0;
-    if (st.snapTop) st.floatY = 0;
-    if (st.snapRight) st.floatX = window.innerWidth - w;
-    if (st.snapBottom) st.floatY = window.innerHeight - h;
+    const bounds = this._getSnapBounds();
+
+    st.snapLeft = x < (bounds.left + SNAP);
+    st.snapTop = y < (bounds.top + SNAP);
+    st.snapRight = (x + w) > (bounds.right - SNAP);
+    st.snapBottom = (y + h) > (bounds.bottom - SNAP);
+
+    if (st.snapLeft) st.floatX = bounds.left;
+    if (st.snapTop) st.floatY = bounds.top;
+    if (st.snapRight) st.floatX = bounds.right - w;
+    if (st.snapBottom) st.floatY = bounds.bottom - h;
 
     this._makeFloat(p.el, st);
 
@@ -430,6 +464,15 @@ export const panelManager = {
 
   // ── Drag & Drop ───────────────────────────────────────────────────
   attachDragHandlers() {
+    // Create snap edge indicators
+    const snapEdges = {};
+    ['left', 'top', 'right', 'bottom'].forEach(side => {
+      const el = document.createElement('div');
+      el.className = 'snap-edge snap-edge-' + side;
+      document.body.appendChild(el);
+      snapEdges[side] = el;
+    });
+
     const drag = {
       active: false,
       panelId: null,
@@ -437,6 +480,7 @@ export const panelManager = {
       startX: 0, startY: 0,
       offsetX: 0, offsetY: 0,
       indicator: null,
+      snapEdges: snapEdges,
     };
 
     drag.indicator = document.createElement('div');
@@ -486,8 +530,30 @@ export const panelManager = {
         el.style.opacity = '0.3';
       }
 
-      drag.ghostEl.style.left = (e.clientX - drag.offsetX) + 'px';
-      drag.ghostEl.style.top = (e.clientY - drag.offsetY) + 'px';
+      let gx = e.clientX - drag.offsetX;
+      let gy = e.clientY - drag.offsetY;
+      const gw = drag.ghostEl.offsetWidth;
+      const gh = drag.ghostEl.offsetHeight;
+      const SNAP = 30;
+      const bounds = this._getSnapBounds();
+
+      // Detect snap edges and show indicators
+      const snL = gx < (bounds.left + SNAP);
+      const snT = gy < (bounds.top + SNAP);
+      const snR = (gx + gw) > (bounds.right - SNAP);
+      const snB = (gy + gh) > (bounds.bottom - SNAP);
+
+      // Snap ghost position to edge
+      if (snL) gx = bounds.left;
+      if (snT) gy = bounds.top;
+      if (snR) gx = bounds.right - gw;
+      if (snB) gy = bounds.bottom - gh;
+
+      drag.ghostEl.style.left = gx + 'px';
+      drag.ghostEl.style.top = gy + 'px';
+
+      // Show/hide snap edge indicators
+      this._showSnapEdges(snL, snT, snR, snB, bounds, drag);
 
       this._updateDropZone(e.clientX, e.clientY, drag);
     });
@@ -509,6 +575,7 @@ export const panelManager = {
       el.style.opacity = '';
 
       drag.indicator.style.display = 'none';
+      this._showSnapEdges(false, false, false, false, null, drag);
 
       document.getElementById('left-dock').classList.remove('drag-over');
       document.getElementById('right-dock').classList.remove('drag-over');
@@ -564,6 +631,36 @@ export const panelManager = {
         drag.indicator.style.position = 'fixed';
       }
     }
+  },
+
+  _showSnapEdges(left, top, right, bottom, bounds, drag) {
+    const edges = drag.snapEdges;
+    if (!bounds) {
+      edges.left.style.display = 'none';
+      edges.top.style.display = 'none';
+      edges.right.style.display = 'none';
+      edges.bottom.style.display = 'none';
+      return;
+    }
+    edges.left.style.display = left ? 'block' : 'none';
+    edges.left.style.left = bounds.left + 'px';
+    edges.left.style.top = bounds.top + 'px';
+    edges.left.style.height = (bounds.bottom - bounds.top) + 'px';
+
+    edges.top.style.display = top ? 'block' : 'none';
+    edges.top.style.left = bounds.left + 'px';
+    edges.top.style.top = bounds.top + 'px';
+    edges.top.style.width = (bounds.right - bounds.left) + 'px';
+
+    edges.right.style.display = right ? 'block' : 'none';
+    edges.right.style.left = (bounds.right - 2) + 'px';
+    edges.right.style.top = bounds.top + 'px';
+    edges.right.style.height = (bounds.bottom - bounds.top) + 'px';
+
+    edges.bottom.style.display = bottom ? 'block' : 'none';
+    edges.bottom.style.left = bounds.left + 'px';
+    edges.bottom.style.top = (bounds.bottom - 2) + 'px';
+    edges.bottom.style.width = (bounds.right - bounds.left) + 'px';
   },
 
   _getDropTarget(x, y, panelId) {

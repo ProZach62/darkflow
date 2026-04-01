@@ -120,6 +120,7 @@ document.getElementById('left-dock-toggle').addEventListener('click', function()
   this.classList.toggle('active', !collapsed);
   panelManager.state.docks.left = collapsed;
   panelManager.saveState();
+  setTimeout(() => panelManager.repositionSnappedPanels(), 310);
 });
 
 document.getElementById('right-dock-toggle').addEventListener('click', function() {
@@ -129,6 +130,7 @@ document.getElementById('right-dock-toggle').addEventListener('click', function(
   this.classList.toggle('active', !collapsed);
   panelManager.state.docks.right = collapsed;
   panelManager.saveState();
+  setTimeout(() => panelManager.repositionSnappedPanels(), 310);
 });
 
 // ── Panels Menu ─────────────────────────────────────────────────────

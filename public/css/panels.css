@@ -160,6 +160,21 @@
   overflow: hidden;
 }
 
+.snap-edge {
+  position: fixed;
+  z-index: 2999;
+  display: none;
+  pointer-events: none;
+  background: #58a6ff;
+  opacity: 0.6;
+}
+.snap-edge-left, .snap-edge-right {
+  width: 2px;
+}
+.snap-edge-top, .snap-edge-bottom {
+  height: 2px;
+}
+
 /* ── Vitals bars ────────────────────────────────────────────────────── */
 .vitals-row { margin-bottom: 4px; }
 .vitals-label {
