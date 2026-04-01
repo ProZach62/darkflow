@@ -193,6 +193,7 @@ body {
   user-select: text;
   -webkit-user-select: text;
   line-height: 1.4;
+  background: #000000;
 }
 
 #gmcp-panel {
@@ -211,7 +212,7 @@ body {
 #gmcp-panel.open { display: block; }
 
 #output::-webkit-scrollbar { width: 8px; }
-#output::-webkit-scrollbar-track { background: #0d1117; }
+#output::-webkit-scrollbar-track { background: #000000; }
 #output::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
 #output::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
