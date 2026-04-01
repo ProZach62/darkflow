@@ -482,11 +482,13 @@
 
 .map-tile-player {
   position: relative;
+  box-shadow: 0 0 4px 1px #fff;
 }
 .map-tile-player::after {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: 1;
   background: url('/assets/tiles/player.png') center/cover no-repeat;
 }
 
