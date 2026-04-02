@@ -418,7 +418,35 @@
 
 /* ── Enemy panel ────────────────────────────────────────────────────── */
 .enemy-name { font-weight: 600; margin-bottom: 4px; }
+.enemy-hp-string { font-size: 11px; color: #8b949e; margin-bottom: 4px; }
 .panel-inactive { opacity: 0.4; }
+.enemy-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.enemy-image {
+  flex: 0 0 64px;
+  width: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0d1117;
+}
+.enemy-image img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  display: block;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.enemy-image.enemy-image-loaded img { opacity: 1; }
+.enemy-image.enemy-image-error img { display: none; }
+.enemy-info {
+  flex: 1;
+  min-width: 0;
+}
 
 /* ── Group panel ────────────────────────────────────────────────────── */
 .group-header { font-size: 11px; color: #8b949e; margin-bottom: 4px; }

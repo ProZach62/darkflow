@@ -40,6 +40,21 @@ dom.gmcpToggle.addEventListener('click', function() {
   dom.gmcpToggle.style.color = visible ? '#58a6ff' : '#8b949e';
 });
 
+const gmcpCopyBtn = document.createElement('button');
+gmcpCopyBtn.textContent = 'Copy All';
+gmcpCopyBtn.className = 'gmcp-copy-btn';
+gmcpCopyBtn.addEventListener('click', function() {
+  const lines = [];
+  dom.gmcpPanel.querySelectorAll('div').forEach(function(el) {
+    lines.push(el.textContent);
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(function() {
+    gmcpCopyBtn.textContent = 'Copied!';
+    setTimeout(function() { gmcpCopyBtn.textContent = 'Copy All'; }, 1500);
+  });
+});
+dom.gmcpPanel.appendChild(gmcpCopyBtn);
+
 gmcp.on('*', function(packageName, data) {
   console.log('[GMCP]', packageName, data);
   const entry = document.createElement('div');

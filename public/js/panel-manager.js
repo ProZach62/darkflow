@@ -68,7 +68,7 @@ export const panelManager = {
         dock: s.dock || def.defaultDock,
         order: s.order !== undefined ? s.order : def.defaultOrder,
         collapsed: !!s.collapsed,
-        visible: s.visible !== undefined ? s.visible : true,
+        visible: s.visible !== undefined ? s.visible : (def.defaultVisible !== undefined ? def.defaultVisible : true),
         floatX: s.floatX !== undefined ? s.floatX : defX,
         floatY: s.floatY !== undefined ? s.floatY : defY,
         floatW: s.floatW || defW,
@@ -795,6 +795,13 @@ export const panelManager = {
 
     gmcp.on('Char.Enemy', (data) => {
       this.gmcpData.enemy = data;
+      const inCombat = data && data.enemy_name && data.enemy_name !== 'None' && data.enemy_name !== '';
+      if (inCombat && !this.panels.enemy) {
+        this.openPanel('enemy');
+      }
+      if (this.panels.enemy) {
+        this.panels.enemy.el.style.display = inCombat ? '' : 'none';
+      }
       this._renderPanel('enemy');
     });
 

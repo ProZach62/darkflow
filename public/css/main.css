@@ -210,6 +210,20 @@ body {
   min-height: 60px;
 }
 #gmcp-panel.open { display: block; }
+.gmcp-copy-btn {
+  position: sticky;
+  top: 0;
+  float: right;
+  background: #21262d;
+  color: #8b949e;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  cursor: pointer;
+  z-index: 1;
+}
+.gmcp-copy-btn:hover { background: #30363d; color: #c9d1d9; }
 
 #output::-webkit-scrollbar { width: 8px; }
 #output::-webkit-scrollbar-track { background: #000000; }

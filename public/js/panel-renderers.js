@@ -327,25 +327,71 @@ export const panelRenderers = {
   enemy(bodyEl, data) {
     if (!data || !data.enemy_name || data.enemy_name === 'None' || data.enemy_name === '') {
       bodyEl.innerHTML = '<div class="panel-inactive placeholder">No target</div>';
+      bodyEl._enemyState = null;
       return;
     }
+
+    const prev = bodyEl._enemyState || {};
+    const sameEnemy = prev.name === data.enemy_name;
+    const sameImage = prev.image === (data.enemy_image || '');
+
+    // Fast path: same enemy + same image — just update bars in place
+    if (sameEnemy && sameImage) {
+      renderVitalBar(bodyEl, 'HP', data.enemy_curhp, data.enemy_maxhp || 100);
+      if (data.enemy_maxsp > 0) {
+        renderVitalBar(bodyEl, 'SP', data.enemy_cursp, data.enemy_maxsp);
+      }
+      const hpStr = bodyEl.querySelector('.enemy-hp-string');
+      if (hpStr && data.enemy_hp_string && data.enemy_hp_string !== 'None') {
+        hpStr.textContent = data.enemy_hp_string;
+      }
+      return;
+    }
+
+    // Full rebuild
     bodyEl.innerHTML = '';
+    bodyEl._enemyState = { name: data.enemy_name, image: data.enemy_image || '' };
+
+    const row = document.createElement('div');
+    row.className = 'enemy-row';
+
+    // Left: image
+    if (data.enemy_image) {
+      const imgWrap = document.createElement('div');
+      imgWrap.className = 'enemy-image';
+      const img = document.createElement('img');
+      img.src = data.enemy_image;
+      img.alt = data.enemy_name;
+      img.draggable = false;
+      img.addEventListener('load', () => imgWrap.classList.add('enemy-image-loaded'));
+      img.addEventListener('error', () => imgWrap.classList.add('enemy-image-error'));
+      imgWrap.appendChild(img);
+      row.appendChild(imgWrap);
+    }
+
+    // Right: name, hp string, vitals
+    const info = document.createElement('div');
+    info.className = 'enemy-info';
+
     const nameDiv = document.createElement('div');
     nameDiv.className = 'enemy-name';
     nameDiv.textContent = data.enemy_name;
-    bodyEl.appendChild(nameDiv);
+    info.appendChild(nameDiv);
 
     if (data.enemy_hp_string && data.enemy_hp_string !== 'None') {
       const hpStr = document.createElement('div');
-      hpStr.style.cssText = 'font-size:11px;color:#8b949e;margin-bottom:4px';
+      hpStr.className = 'enemy-hp-string';
       hpStr.textContent = data.enemy_hp_string;
-      bodyEl.appendChild(hpStr);
+      info.appendChild(hpStr);
     }
 
-    renderVitalBar(bodyEl, 'HP', data.enemy_curhp, data.enemy_maxhp || 100);
+    renderVitalBar(info, 'HP', data.enemy_curhp, data.enemy_maxhp || 100);
     if (data.enemy_maxsp > 0) {
-      renderVitalBar(bodyEl, 'SP', data.enemy_cursp, data.enemy_maxsp);
+      renderVitalBar(info, 'SP', data.enemy_cursp, data.enemy_maxsp);
     }
+
+    row.appendChild(info);
+    bodyEl.appendChild(row);
   },
 
   group(bodyEl, data) {
