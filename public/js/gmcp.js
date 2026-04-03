@@ -51,7 +51,8 @@ export const gmcp = {
       'Game 1',
       'Darkwind.Window 1',
       'Darkwind.IDE 1',
-      'Darkwind.MapData 1'
+      'Darkwind.MapData 1',
+      'Darkwind.Completion 1'
     ]);
     this.enabled = true;
   },
