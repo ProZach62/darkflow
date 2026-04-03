@@ -40,12 +40,20 @@ dom.gmcpToggle.addEventListener('click', function() {
   dom.gmcpToggle.style.color = visible ? '#58a6ff' : '#8b949e';
 });
 
-const gmcpCopyBtn = document.createElement('button');
-gmcpCopyBtn.textContent = 'Copy All';
-gmcpCopyBtn.className = 'gmcp-copy-btn';
+const gmcpToolbar = document.createElement('div');
+gmcpToolbar.className = 'gmcp-toolbar';
+
+function makeGmcpBtn(label, cls) {
+  const btn = document.createElement('button');
+  btn.textContent = label;
+  btn.className = 'gmcp-toolbar-btn' + (cls ? ' ' + cls : '');
+  return btn;
+}
+
+const gmcpCopyBtn = makeGmcpBtn('Copy All');
 gmcpCopyBtn.addEventListener('click', function() {
   const lines = [];
-  dom.gmcpPanel.querySelectorAll('div').forEach(function(el) {
+  dom.gmcpPanel.querySelectorAll('.gmcp-entry').forEach(function(el) {
     lines.push(el.textContent);
   });
   navigator.clipboard.writeText(lines.join('\n')).then(function() {
@@ -53,16 +61,55 @@ gmcpCopyBtn.addEventListener('click', function() {
     setTimeout(function() { gmcpCopyBtn.textContent = 'Copy All'; }, 1500);
   });
 });
-dom.gmcpPanel.appendChild(gmcpCopyBtn);
+
+const mapSummaryBtn = makeGmcpBtn('Map Summary');
+mapSummaryBtn.addEventListener('click', function() {
+  if (!window.mapDebug) return;
+  const summary = window.mapDebug.summary();
+  const entry = document.createElement('div');
+  entry.className = 'gmcp-entry';
+  entry.textContent = '[' + new Date().toLocaleTimeString() + '] mapDebug.summary ' + JSON.stringify(summary);
+  dom.gmcpPanel.appendChild(entry);
+  dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
+});
+
+const mapExportBtn = makeGmcpBtn('Map Export');
+mapExportBtn.addEventListener('click', function() {
+  if (!window.mapDebug) return;
+  const json = window.mapDebug.exportAll();
+  navigator.clipboard.writeText(json).then(function() {
+    mapExportBtn.textContent = 'Copied!';
+    setTimeout(function() { mapExportBtn.textContent = 'Map Export'; }, 1500);
+  });
+});
+
+const mapClearBtn = makeGmcpBtn('Clear Map', 'danger');
+mapClearBtn.addEventListener('click', function() {
+  if (!window.mapDebug) return;
+  if (!confirm('Clear all map data? This cannot be undone.')) return;
+  window.mapDebug.clearData();
+  const entry = document.createElement('div');
+  entry.className = 'gmcp-entry';
+  entry.textContent = '[' + new Date().toLocaleTimeString() + '] mapDebug.clearData -- Map data cleared';
+  dom.gmcpPanel.appendChild(entry);
+  dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
+});
+
+gmcpToolbar.appendChild(mapSummaryBtn);
+gmcpToolbar.appendChild(mapExportBtn);
+gmcpToolbar.appendChild(mapClearBtn);
+gmcpToolbar.appendChild(gmcpCopyBtn);
+dom.gmcpPanel.appendChild(gmcpToolbar);
 
 gmcp.on('*', function(packageName, data) {
   console.log('[GMCP]', packageName, data);
   const entry = document.createElement('div');
+  entry.className = 'gmcp-entry';
   entry.textContent = '[' + new Date().toLocaleTimeString() + '] '
     + packageName + ' ' + JSON.stringify(data);
   dom.gmcpPanel.appendChild(entry);
-  while (dom.gmcpPanel.childNodes.length > 200) {
-    dom.gmcpPanel.removeChild(dom.gmcpPanel.firstChild);
+  while (dom.gmcpPanel.querySelectorAll('.gmcp-entry').length > 200) {
+    dom.gmcpPanel.querySelector('.gmcp-entry').remove();
   }
   if (dom.gmcpPanel.classList.contains('open')) {
     dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;

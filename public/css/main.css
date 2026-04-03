@@ -134,6 +134,16 @@ body {
 }
 .toolbar-icon-btn:hover { color: #c9d1d9; border-color: #30363d; }
 .toolbar-icon-btn.active { color: #58a6ff; }
+.toolbar-icon-btn.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+
+.toolbar-separator {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: #30363d;
+  margin: 0 4px;
+  align-self: center;
+}
 
 /* Gear dropdown */
 .gear-menu-wrap { position: relative; }
@@ -210,10 +220,17 @@ body {
   min-height: 60px;
 }
 #gmcp-panel.open { display: block; }
-.gmcp-copy-btn {
+.gmcp-toolbar {
   position: sticky;
   top: 0;
-  float: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 2px 0;
+  background: #0d1117;
+  z-index: 1;
+}
+.gmcp-toolbar-btn {
   background: #21262d;
   color: #8b949e;
   border: 1px solid #30363d;
@@ -221,9 +238,11 @@ body {
   padding: 2px 8px;
   font-size: 10px;
   cursor: pointer;
-  z-index: 1;
+  white-space: nowrap;
 }
-.gmcp-copy-btn:hover { background: #30363d; color: #c9d1d9; }
+.gmcp-toolbar-btn:hover { background: #30363d; color: #c9d1d9; }
+.gmcp-toolbar-btn.danger { color: #f85149; }
+.gmcp-toolbar-btn.danger:hover { background: #da3633; color: #fff; }
 
 #output::-webkit-scrollbar { width: 8px; }
 #output::-webkit-scrollbar-track { background: #000000; }

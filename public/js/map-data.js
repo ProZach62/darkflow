@@ -33,6 +33,9 @@ let pendingDirection = null;
 // Coordinate occupancy per area: "area:x,y,z" → roomId
 let coordIndex = new Map();
 
+// Server area versions for incremental sync
+let areaVersions = new Map();
+
 // Debug transition log — captures every Room.Info event with context
 const debugLog = [];
 
@@ -218,10 +221,15 @@ function save() {
     for (const [id, room] of rooms) {
       data[id] = room;
     }
+    const versions = {};
+    for (const [area, ver] of areaVersions) {
+      versions[area] = ver;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       rooms: data,
       currentRoomId,
       previousRoomId,
+      areaVersions: versions,
     }));
   } catch (e) {
     // localStorage full or unavailable — silently ignore
@@ -242,6 +250,12 @@ export function load() {
     }
     if (data.currentRoomId) currentRoomId = data.currentRoomId;
     if (data.previousRoomId) previousRoomId = data.previousRoomId;
+    if (data.areaVersions) {
+      areaVersions.clear();
+      for (const [area, ver] of Object.entries(data.areaVersions)) {
+        areaVersions.set(area, ver);
+      }
+    }
   } catch (e) {
     // Corrupt data — start fresh
     rooms.clear();
@@ -303,9 +317,35 @@ export function mergeServerAreaData(data) {
   return merged;
 }
 
+// Receive incremental update (Darkwind.MapData.Update)
+// Merges rooms, stores version, and auto-requests next chunk if more available
+export function mergeServerUpdate(data) {
+  const merged = mergeServerAreaData(data);
+  if (data && data.area && data.version !== undefined) {
+    areaVersions.set(data.area, data.version);
+    save();
+
+    // If server indicates more chunks available, request the next one
+    if (data.more) {
+      gmcp.send('Darkwind.MapData.Sync', {
+        area: data.area,
+        version: data.version,
+      });
+    }
+  }
+  return merged;
+}
+
+// Request a full resync for an area (sends Darkwind.MapData.Sync with version 0)
+export function requestAreaSync(area) {
+  const ver = area ? (areaVersions.get(area) || 0) : 0;
+  gmcp.send('Darkwind.MapData.Sync', { area: area, version: ver });
+}
+
 export function clearMapData() {
   rooms.clear();
   coordIndex.clear();
+  areaVersions.clear();
   currentRoomId = null;
   previousRoomId = null;
   pendingDirection = null;
