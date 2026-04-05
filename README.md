@@ -94,6 +94,7 @@ docker run -p 3000:3000 darkwind-webclient
 │       ├── map-data.js        # Room graph model, coordinate tracking, server merge
 │       ├── map-renderer.js    # CSS Grid tile map renderer
 │       ├── window-manager.js  # Server-driven window rendering
+│       ├── completion.js      # Tab-completion GMCP handler and state
 │       ├── ide-manager.js     # IDE GMCP handler and lifecycle
 │       └── ide-editor.js      # Code editor UI component
 ├── docs/
@@ -101,7 +102,8 @@ docker run -p 3000:3000 darkwind-webclient
 │   ├── PLAN-webclient.md                # Implementation planning notes
 │   ├── gmcp-darkwind-window.md          # Darkwind.Window GMCP protocol spec
 │   ├── gmcp-darkwind-ide.md             # Darkwind.IDE GMCP protocol spec
-│   └── gmcp-darkwind-mapdata.md         # Darkwind.MapData GMCP protocol spec
+│   ├── gmcp-darkwind-mapdata.md         # Darkwind.MapData GMCP protocol spec
+│   └── gmcp-darkwind-completion.md      # Darkwind.Completion GMCP protocol spec
 ├── Dockerfile                 # node:22-alpine production image
 ├── package.json               # Express as the only dependency
 └── CLAUDE.md                  # Claude Code project guidance
@@ -109,13 +111,14 @@ docker run -p 3000:3000 darkwind-webclient
 
 ## GMCP Extensions
 
-The client supports three custom GMCP extensions specific to Darkwind MUD:
+The client supports four custom GMCP extensions specific to Darkwind MUD:
 
 | Extension | Version | Description | Documentation |
 |-----------|---------|-------------|---------------|
 | `Darkwind.Window` | 1 | Server-driven GUI windows (modals, panels, forms) | [docs/gmcp-darkwind-window.md](docs/gmcp-darkwind-window.md) |
 | `Darkwind.IDE` | 1 | In-browser code editor for builders | [docs/gmcp-darkwind-ide.md](docs/gmcp-darkwind-ide.md) |
 | `Darkwind.MapData` | 1 | Collaborative mapping system | [docs/gmcp-darkwind-mapdata.md](docs/gmcp-darkwind-mapdata.md) |
+| `Darkwind.Completion` | 1 | Server-authoritative command and argument tab completion | [docs/gmcp-darkwind-completion.md](docs/gmcp-darkwind-completion.md) |
 
 In addition to standard GMCP packages: `Char 1`, `Char.Vitals 1`, `Char.Items 1`, `Room 1`, `Comm 1`, `Group 1`, `Game 1`.
 
