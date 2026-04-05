@@ -2,6 +2,7 @@ import { state, dom } from './state.js';
 import { appendEcho, clearOutput } from './output.js';
 import { MAX_HISTORY, SESSION_KEY } from './constants.js';
 import { trackCommand } from './map-data.js';
+import { initCompletion, requestCompletion, resetCompletionState } from './completion.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -51,18 +52,25 @@ export function sendCommand() {
 
   appendEcho(text);
   dom.commandInput.value = '';
+  resetCompletionState();
   historyIndex = commandHistory.length;
   currentInput = '';
   dom.commandInput.focus();
 }
 
 export function initInput() {
+  initCompletion();
+
   dom.commandInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
       sendCommand();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      requestCompletion();
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      resetCompletionState();
       if (commandHistory.length === 0) return;
       if (historyIndex === commandHistory.length) {
         currentInput = dom.commandInput.value;
@@ -73,6 +81,7 @@ export function initInput() {
       }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
+      resetCompletionState();
       if (historyIndex < commandHistory.length) {
         historyIndex++;
         if (historyIndex === commandHistory.length) {
@@ -81,6 +90,8 @@ export function initInput() {
           dom.commandInput.value = commandHistory[historyIndex];
         }
       }
+    } else if (e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Alt' && e.key !== 'Meta') {
+      resetCompletionState();
     }
   });
 
@@ -98,6 +109,7 @@ export function initInput() {
       e.preventDefault();
       clearOutput();
     } else if (e.key === 'Escape') {
+      resetCompletionState();
       dom.commandInput.value = '';
       dom.commandInput.focus();
     } else if (e.key === 'PageUp') {
