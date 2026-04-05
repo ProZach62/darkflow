@@ -821,5 +821,44 @@ export const panelManager = {
       if (this.gmcpData.chat.length > 200) this.gmcpData.chat.shift();
       this._renderPanel('chat');
     });
+
+    gmcp.on('Darkwind.Quests.List', (data) => {
+      if (!this.gmcpData.quests) this.gmcpData.quests = {};
+      this.gmcpData.quests.list = data;
+      this._renderPanel('quests');
+    });
+
+    gmcp.on('Darkwind.Quests.Active', (data) => {
+      if (!this.gmcpData.quests) this.gmcpData.quests = {};
+      this.gmcpData.quests.active = data;
+      this._renderPanel('quests');
+    });
+
+    gmcp.on('Darkwind.Quests.Update', (data) => {
+      if (!this.gmcpData.quests) this.gmcpData.quests = {};
+      this.gmcpData.quests.lastUpdate = data;
+      // Update the active quest objective in-place if we have it
+      if (this.gmcpData.quests.active && Array.isArray(this.gmcpData.quests.active.objectives)) {
+        for (var i = 0; i < this.gmcpData.quests.active.objectives.length; i++) {
+          if (this.gmcpData.quests.active.objectives[i].name === data.objective) {
+            this.gmcpData.quests.active.objectives[i].current = data.current;
+            this.gmcpData.quests.active.objectives[i].required = data.required;
+            if (data.current >= data.required) {
+              this.gmcpData.quests.active.objectives[i].status = 'finished';
+            } else {
+              this.gmcpData.quests.active.objectives[i].status = 'started';
+            }
+            break;
+          }
+        }
+      }
+      this._renderPanel('quests');
+    });
+
+    gmcp.on('Darkwind.Quests.Complete', (data) => {
+      if (!this.gmcpData.quests) this.gmcpData.quests = {};
+      this.gmcpData.quests.lastComplete = data;
+      this._renderPanel('quests');
+    });
   }
 };

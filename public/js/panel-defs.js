@@ -15,6 +15,7 @@ export const PANEL_DEFS = {
   map:       { title: 'Map',       defaultDock: 'float', defaultOrder: 0,
                defaultFloatW: 400, defaultFloatH: 350,
                defaultSnapRight: true, defaultSnapTop: true },
+  quests:    { title: 'Quests',    defaultDock: 'right', defaultOrder: 3 },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';

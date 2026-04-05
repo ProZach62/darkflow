@@ -577,6 +577,28 @@
   color: #aaa;
 }
 
+/* ── Quest Panel ─────────────────────────────────────────────────────── */
+.quest-active { margin-bottom: 8px; }
+.quest-active-name { font-weight: 600; color: #e6edf3; margin-bottom: 2px; }
+.quest-active-desc { font-size: 12px; color: #8b949e; margin-bottom: 6px; }
+.quest-obj { margin-bottom: 4px; }
+.quest-obj-name { font-size: 12px; color: #c9d1d9; }
+.quest-obj-progress { display: flex; align-items: center; gap: 6px; }
+.quest-bar { flex: 1; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; }
+.quest-bar-sm { height: 4px; }
+.quest-bar-fill { height: 100%; background: #58a6ff; border-radius: 3px; transition: width 0.3s; }
+.quest-bar-done { background: #3fb950; }
+.quest-obj-count { font-size: 11px; color: #8b949e; min-width: 32px; text-align: right; }
+
+.quest-list { border-top: 1px solid #30363d; padding-top: 6px; }
+.quest-list-header { font-size: 11px; color: #484f58; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.quest-list-item { padding: 3px 0; }
+.quest-list-active .quest-list-name { color: #58a6ff; }
+.quest-list-done .quest-list-name { color: #3fb950; text-decoration: line-through; opacity: 0.7; }
+.quest-list-name { font-size: 12px; color: #c9d1d9; }
+.quest-list-info { display: flex; align-items: center; gap: 6px; }
+.quest-list-status { font-size: 11px; color: #8b949e; min-width: 60px; }
+
 /* ── Responsive ─────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .dock-column { width: 200px; }
