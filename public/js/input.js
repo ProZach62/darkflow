@@ -10,7 +10,7 @@ let historyIndex = 0;
 let currentInput = '';
 let _saveTimer = null;
 
-function sendCommandText(text) {
+export function sendCommandText(text) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
 
   trackCommand(text);
