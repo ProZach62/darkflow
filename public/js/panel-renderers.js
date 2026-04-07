@@ -1,7 +1,6 @@
 import { state } from './state.js';
-import { appendEcho } from './output.js';
 import { renderMap } from './map-renderer.js';
-import { trackCommand } from './map-data.js';
+import { sendCommandText } from './input.js';
 
 export function escHtml(str) {
   if (!str) return '';
@@ -152,12 +151,8 @@ export const panelRenderers = {
 
     bodyEl.querySelectorAll('.exit-btn[data-dir]').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-          const dir = btn.dataset.dir;
-          trackCommand(dir);
-          state.ws.send(dir);
-          appendEcho(dir);
-        }
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        sendCommandText(btn.dataset.dir);
       });
     });
   },

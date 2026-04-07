@@ -1,6 +1,10 @@
 import { gmcp } from './gmcp.js';
+import { appendSystemMessage } from './output.js';
 
 const STORAGE_KEY = 'darkwind-map-data';
+const MOVEMENT_INTENT_TTL_MS = 2500;
+const MAX_MOVEMENT_INTENTS = 25;
+const RESYNC_COOLDOWN_MS = 2000;
 
 const DIR_OFFSETS = {
   north:     { dx:  0, dy: -1, dz: 0 },
@@ -28,13 +32,15 @@ const DIR_ALIASES = {
 let rooms = new Map();
 let currentRoomId = null;
 let previousRoomId = null;
-let pendingDirection = null;
+let movementIntents = [];
+let nextMovementSeq = 1;
 
 // Coordinate occupancy per area: "area:x,y,z" → roomId
 let coordIndex = new Map();
 
 // Server area versions for incremental sync
 let areaVersions = new Map();
+let lastResyncByArea = new Map();
 
 // Debug transition log — captures every Room.Info event with context
 const debugLog = [];
@@ -51,14 +57,76 @@ export function getRoomsByArea(area) {
   return result;
 }
 
+function isSameCoords(room, x, y, z) {
+  return room && room.x === x && room.y === y && room.z === z;
+}
+
+function pruneMovementIntents(now) {
+  const cutoff = now - MOVEMENT_INTENT_TTL_MS;
+  movementIntents = movementIntents.filter((intent) => intent.ts >= cutoff);
+}
+
+function consumeMovementIntent() {
+  pruneMovementIntents(Date.now());
+  return movementIntents.shift() || null;
+}
+
+function queueMovementIntent(direction, command) {
+  const now = Date.now();
+  pruneMovementIntents(now);
+  movementIntents.push({
+    seq: nextMovementSeq++,
+    direction,
+    command,
+    ts: now,
+  });
+  if (movementIntents.length > MAX_MOVEMENT_INTENTS) {
+    movementIntents = movementIntents.slice(-MAX_MOVEMENT_INTENTS);
+  }
+}
+
+function updateRoomCoords(room, x, y, z, source) {
+  if (room.x !== null) {
+    const oldKey = room.area + ':' + room.x + ',' + room.y + ',' + room.z;
+    if (coordIndex.get(oldKey) === room.id) coordIndex.delete(oldKey);
+  }
+  room.x = x;
+  room.y = y;
+  room.z = z;
+  room.coordSource = source;
+  coordIndex.set(room.area + ':' + x + ',' + y + ',' + z, room.id);
+}
+
+function maybeNotifyCorrection(room, oldCoords, sourceLabel) {
+  if (!room || room.id !== currentRoomId || !oldCoords) return;
+  if (oldCoords.x === room.x && oldCoords.y === room.y && oldCoords.z === room.z) return;
+  appendSystemMessage(
+    'Map sync: corrected current room position from '
+    + oldCoords.x + ',' + oldCoords.y + ',' + oldCoords.z
+    + ' to ' + room.x + ',' + room.y + ',' + room.z
+    + ' (' + sourceLabel + ').'
+  );
+}
+
+function triggerAreaResync(area, reason) {
+  if (!area) return;
+  const now = Date.now();
+  const last = lastResyncByArea.get(area) || 0;
+  if ((now - last) < RESYNC_COOLDOWN_MS) return;
+  lastResyncByArea.set(area, now);
+  appendSystemMessage('Map sync: resyncing ' + area + ' (' + reason + ').');
+  requestAreaSync(area, true);
+}
+
 export function trackCommand(cmd) {
   const normalized = cmd.trim().toLowerCase().split(/\s+/)[0];
   const dir = DIR_ALIASES[normalized];
-  if (dir) pendingDirection = dir;
+  if (dir) queueMovementIntent(dir, cmd);
 }
 
 export function processRoomInfo(data) {
   if (!data || !data.num) return null;
+  pruneMovementIntents(Date.now());
 
   const roomId = data.num;
   const roomChanged = roomId !== currentRoomId;
@@ -67,7 +135,8 @@ export function processRoomInfo(data) {
   // Capture state BEFORE processing
   // Note: at this point currentRoomId = the room we just LEFT (not yet updated)
   const fromRoomId = currentRoomId;
-  const pendingDirectionUsed = pendingDirection;
+  const movementIntent = roomChanged ? consumeMovementIntent() : null;
+  const pendingDirectionUsed = movementIntent ? movementIntent.direction : null;
   const entry = {
     ts: new Date().toISOString(),
     roomId: roomId.slice(0, 8),
@@ -75,7 +144,8 @@ export function processRoomInfo(data) {
     area: data.area || '?',
     environment: data.environment || '',
     exits: data.exits && typeof data.exits === 'object' ? Object.keys(data.exits) : [],
-    pendingDir: pendingDirection,
+    pendingDir: pendingDirectionUsed,
+    movementSeq: movementIntent ? movementIntent.seq : null,
     fromRoomId: fromRoomId ? fromRoomId.slice(0, 8) : null,
     fromRoomName: fromRoomId && rooms.get(fromRoomId) ? rooms.get(fromRoomId).name : null,
     isNew,
@@ -93,6 +163,7 @@ export function processRoomInfo(data) {
       environment: data.environment || '',
       exits: {},
       x: null, y: null, z: null,
+      coordSource: null,
     };
     rooms.set(roomId, room);
   } else {
@@ -100,6 +171,7 @@ export function processRoomInfo(data) {
     room.name = data.name || room.name;
     room.area = data.area || room.area;
     room.environment = data.environment || room.environment;
+    if (!room.coordSource) room.coordSource = room.x !== null ? 'server' : null;
   }
 
   // Update exits (server sends "" when no exits, object when exits exist)
@@ -114,32 +186,30 @@ export function processRoomInfo(data) {
 
   // Assign coordinates if this room has none and we have movement context
   // fromRoomId = currentRoomId = the room we just LEFT (not yet updated)
-  if (room.x === null && roomChanged && pendingDirection && fromRoomId) {
+  if (room.x === null && roomChanged && pendingDirectionUsed && fromRoomId) {
     const fromRoom = rooms.get(fromRoomId);
-    const offset = DIR_OFFSETS[pendingDirection];
+    const offset = DIR_OFFSETS[pendingDirectionUsed];
     if (fromRoom && fromRoom.x !== null && offset) {
       const nx = fromRoom.x + offset.dx;
       const ny = fromRoom.y + offset.dy;
       const nz = fromRoom.z + offset.dz;
       const coordKey = room.area + ':' + nx + ',' + ny + ',' + nz;
       if (!coordIndex.has(coordKey)) {
-        room.x = nx;
-        room.y = ny;
-        room.z = nz;
-        coordIndex.set(coordKey, roomId);
+        updateRoomCoords(room, nx, ny, nz, 'inferred');
         entry.result = 'assigned ' + nx + ',' + ny + ',' + nz;
       } else {
         entry.result = 'CONFLICT at ' + nx + ',' + ny + ',' + nz + ' (occupied by ' + coordIndex.get(coordKey).slice(0, 8) + ')';
+        triggerAreaResync(room.area, 'coordinate conflict after ' + pendingDirectionUsed);
       }
     } else {
       entry.result = 'no-from-coords';
       if (!fromRoom) entry.result += ' (fromRoom missing)';
       else if (fromRoom.x === null) entry.result += ' (fromRoom unpositioned: ' + fromRoom.name + ')';
-      if (!offset) entry.result += ' (bad direction: ' + pendingDirection + ')';
+      if (!offset) entry.result += ' (bad direction: ' + pendingDirectionUsed + ')';
     }
   } else if (room.x === null) {
     if (!roomChanged) entry.result = 'same-room';
-    else if (!pendingDirection) entry.result = 'no-pending-dir';
+    else if (!pendingDirectionUsed) entry.result = 'no-pending-dir';
     else if (!fromRoomId) entry.result = 'no-from-room';
     else entry.result = 'already-positioned';
   } else {
@@ -156,10 +226,7 @@ export function processRoomInfo(data) {
       if (areaRooms.length === 0) {
         const coordKey = fromRoom.area + ':0,0,0';
         if (!coordIndex.has(coordKey)) {
-          fromRoom.x = 0;
-          fromRoom.y = 0;
-          fromRoom.z = 0;
-          coordIndex.set(coordKey, fromRoomId);
+          updateRoomCoords(fromRoom, 0, 0, 0, 'inferred');
           // Now position this room relative to the newly seeded fromRoom
           const offset = DIR_OFFSETS[pendingDirectionUsed];
           if (offset) {
@@ -168,10 +235,7 @@ export function processRoomInfo(data) {
             const nz = offset.dz;
             const destKey = room.area + ':' + nx + ',' + ny + ',' + nz;
             if (!coordIndex.has(destKey)) {
-              room.x = nx;
-              room.y = ny;
-              room.z = nz;
-              coordIndex.set(destKey, roomId);
+              updateRoomCoords(room, nx, ny, nz, 'inferred');
               entry.result = 'seeded-origin+assigned ' + nx + ',' + ny + ',' + nz;
             }
           }
@@ -186,10 +250,22 @@ export function processRoomInfo(data) {
 
   // Send traversal data to server for collaborative mapping
   if (roomChanged && fromRoomId && pendingDirectionUsed) {
+    const fromRoom = rooms.get(fromRoomId);
+    const offset = DIR_OFFSETS[pendingDirectionUsed];
+    if (
+      fromRoom && offset
+      && fromRoom.x !== null && room.x !== null
+      && room.coordSource === 'server'
+      && !isSameCoords(room, fromRoom.x + offset.dx, fromRoom.y + offset.dy, fromRoom.z + offset.dz)
+    ) {
+      triggerAreaResync(room.area, 'authoritative mismatch after ' + pendingDirectionUsed);
+    }
+
     gmcp.send('Darkwind.MapData.RoomUpdate', {
       id: roomId,
       from_id: fromRoomId,
       direction: pendingDirectionUsed,
+      move_seq: movementIntent ? movementIntent.seq : undefined,
       name: room.name,
       area: room.area,
       environment: room.environment,
@@ -199,8 +275,10 @@ export function processRoomInfo(data) {
   if (roomChanged) {
     previousRoomId = currentRoomId;
     currentRoomId = roomId;
+    if (!movementIntent && movementIntents.length > 0) {
+      triggerAreaResync(room.area, 'room changed without trusted movement intent');
+    }
   }
-  pendingDirection = null;
 
   save();
   return room;
@@ -244,6 +322,7 @@ export function load() {
     if (data.rooms) {
       rooms.clear();
       for (const [id, room] of Object.entries(data.rooms)) {
+        if (room.x !== null && !room.coordSource) room.coordSource = 'server';
         rooms.set(id, room);
       }
       rebuildCoordIndex();
@@ -269,6 +348,7 @@ export function mergeServerAreaData(data) {
   if (!data || !data.area || !Array.isArray(data.rooms)) return;
 
   let merged = 0;
+  let correctedCurrentRoom = false;
   for (const serverRoom of data.rooms) {
     if (!serverRoom.id) continue;
 
@@ -281,6 +361,7 @@ export function mergeServerAreaData(data) {
         environment: serverRoom.env || '',
         exits: {},
         x: null, y: null, z: null,
+        coordSource: null,
       };
       rooms.set(serverRoom.id, room);
     }
@@ -297,23 +378,24 @@ export function mergeServerAreaData(data) {
       }
     }
 
-    // Server coordinates take priority — remove old coord index entry first
-    if (room.x !== null) {
-      const oldKey = room.area + ':' + room.x + ',' + room.y + ',' + room.z;
-      if (coordIndex.get(oldKey) === room.id) coordIndex.delete(oldKey);
-    }
-
     if (serverRoom.x !== undefined && serverRoom.y !== undefined && serverRoom.z !== undefined) {
-      room.x = serverRoom.x;
-      room.y = serverRoom.y;
-      room.z = serverRoom.z;
-      const newKey = data.area + ':' + room.x + ',' + room.y + ',' + room.z;
-      coordIndex.set(newKey, room.id);
-      merged++;
+      const oldCoords = room.x !== null ? { x: room.x, y: room.y, z: room.z } : null;
+      const changed = !isSameCoords(room, serverRoom.x, serverRoom.y, serverRoom.z) || room.coordSource !== 'server';
+      updateRoomCoords(room, serverRoom.x, serverRoom.y, serverRoom.z, 'server');
+      if (changed) {
+        merged++;
+      }
+      if (room.id === currentRoomId && oldCoords && changed) {
+        correctedCurrentRoom = true;
+        maybeNotifyCorrection(room, oldCoords, 'server area data');
+      }
     }
   }
 
   if (merged > 0) save();
+  if (correctedCurrentRoom) {
+    movementIntents = [];
+  }
   return merged;
 }
 
@@ -336,9 +418,39 @@ export function mergeServerUpdate(data) {
   return merged;
 }
 
+export function applyRoomCorrection(data) {
+  if (!data || !data.id || data.x === undefined || data.y === undefined || data.z === undefined) return 0;
+
+  let room = rooms.get(data.id);
+  if (!room) {
+    room = {
+      id: data.id,
+      name: data.name || '',
+      area: data.area || '',
+      environment: data.environment || '',
+      exits: {},
+      x: null, y: null, z: null,
+      coordSource: null,
+    };
+    rooms.set(data.id, room);
+  } else if (data.area) {
+    room.area = data.area;
+  }
+
+  const oldCoords = room.x !== null ? { x: room.x, y: room.y, z: room.z } : null;
+  const changed = !isSameCoords(room, data.x, data.y, data.z) || room.coordSource !== 'server';
+  updateRoomCoords(room, data.x, data.y, data.z, 'server');
+  if (changed) {
+    maybeNotifyCorrection(room, oldCoords, 'server correction');
+    save();
+    return 1;
+  }
+  return 0;
+}
+
 // Request a full resync for an area (sends Darkwind.MapData.Sync with version 0)
-export function requestAreaSync(area) {
-  const ver = area ? (areaVersions.get(area) || 0) : 0;
+export function requestAreaSync(area, forceFull) {
+  const ver = forceFull ? 0 : area ? (areaVersions.get(area) || 0) : 0;
   gmcp.send('Darkwind.MapData.Sync', { area: area, version: ver });
 }
 
@@ -348,7 +460,8 @@ export function clearMapData() {
   areaVersions.clear();
   currentRoomId = null;
   previousRoomId = null;
-  pendingDirection = null;
+  movementIntents = [];
+  lastResyncByArea.clear();
   localStorage.removeItem(STORAGE_KEY);
 }
 
@@ -423,7 +536,11 @@ function debugSummary() {
     currentRoom: currentRoomId ? currentRoomId.slice(0, 8) : null,
     currentName: currentRoomId && rooms.get(currentRoomId) ? rooms.get(currentRoomId).name : null,
     previousRoom: previousRoomId ? previousRoomId.slice(0, 8) : null,
-    pendingDirection,
+    movementQueue: movementIntents.map((intent) => ({
+      seq: intent.seq,
+      direction: intent.direction,
+      ageMs: Date.now() - intent.ts,
+    })),
     roomsByArea: areas,
     recentLog: debugLog.slice(-10),
   };
