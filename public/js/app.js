@@ -2,10 +2,11 @@ import { state, dom, initDom } from './state.js';
 import { gmcp } from './gmcp.js';
 import { initOutput } from './output.js';
 import { panelManager } from './panel-manager.js';
-import { connect, disconnect } from './connection.js';
+import { connect } from './connection.js';
 import { loadHistory, saveHistory, saveHistoryNow, initInput } from './input.js';
 import { windowManager } from './window-manager.js';
 import { ideManager } from './ide-manager.js';
+import { settingsManager } from './settings-manager.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -163,15 +164,9 @@ dom.connectBtn.addEventListener('click', function() {
   connect();
 });
 
-// ── Gear Menu ───────────────────────────────────────────────────────
-document.getElementById('gear-btn').addEventListener('click', function(e) {
-  e.stopPropagation();
-  dom.gearMenu.classList.toggle('open');
-});
-
-dom.gearDisconnectBtn.addEventListener('click', function() {
-  disconnect();
-  dom.gearMenu.classList.remove('open');
+// ── Settings Modal ──────────────────────────────────────────────────
+document.getElementById('gear-btn').addEventListener('click', function() {
+  settingsManager.open();
 });
 
 // ── Sidebar Toggles ─────────────────────────────────────────────────
@@ -204,10 +199,11 @@ document.getElementById('panels-menu-btn').addEventListener('click', function(e)
 // Close dropdowns on outside click
 document.addEventListener('click', function() {
   document.getElementById('panels-menu').classList.remove('open');
-  dom.gearMenu.classList.remove('open');
 });
 
 // ── Init ────────────────────────────────────────────────────────────
+settingsManager.init();
+
 // Load server config, then apply URL param overrides
 fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
   const urlParams = new URLSearchParams(window.location.search);
@@ -215,7 +211,6 @@ fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
   dom.port.value = urlParams.get('port') || config.port || '4242';
   dom.wssToggle.checked = urlParams.has('wss') ? urlParams.get('wss') !== '0'
     : config.wss !== undefined ? config.wss : true;
-  dom.autoReconnect.checked = true;
   if (config.gameName) {
     updateBranding(config.gameName);
   }

@@ -3,6 +3,7 @@ import { appendEcho, clearOutput } from './output.js';
 import { MAX_HISTORY, SESSION_KEY } from './constants.js';
 import { trackCommand } from './map-data.js';
 import { initCompletion, requestCompletion, resetCompletionState } from './completion.js';
+import { settingsManager } from './settings-manager.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -51,11 +52,17 @@ export function sendCommand() {
   }
 
   appendEcho(text);
-  dom.commandInput.value = '';
   resetCompletionState();
   historyIndex = commandHistory.length;
   currentInput = '';
   dom.commandInput.focus();
+
+  if (settingsManager.get('repeatLastCommand')) {
+    dom.commandInput.value = text;
+    dom.commandInput.select();
+  } else {
+    dom.commandInput.value = '';
+  }
 }
 
 export function initInput() {

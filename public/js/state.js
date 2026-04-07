@@ -6,6 +6,10 @@ export const state = {
   reconnectAttempts: 0,
   reconnectTimer: null,
   userDisconnected: false,
+  settings: {
+    autoReconnect: true,
+    repeatLastCommand: true,
+  },
 };
 
 export const dom = {
@@ -13,14 +17,10 @@ export const dom = {
   port: null,
   wssToggle: null,
   connectBtn: null,
-  autoReconnect: null,
   connectionState: null,
   connectionDot: null,
   connectFields: null,
   toolbarStatus: null,
-  gearMenu: null,
-  gearConnInfo: null,
-  gearDisconnectBtn: null,
   output: null,
   commandInput: null,
   sendBtn: null,
@@ -41,14 +41,10 @@ export function initDom() {
   dom.port = document.getElementById('port');
   dom.wssToggle = document.getElementById('wss-toggle');
   dom.connectBtn = document.getElementById('connect-btn');
-  dom.autoReconnect = document.getElementById('auto-reconnect');
   dom.connectionState = document.getElementById('connection-state');
   dom.connectionDot = document.getElementById('connection-dot');
   dom.connectFields = document.getElementById('toolbar-connect-fields');
   dom.toolbarStatus = document.getElementById('toolbar-status');
-  dom.gearMenu = document.getElementById('gear-menu');
-  dom.gearConnInfo = document.getElementById('gear-conn-info');
-  dom.gearDisconnectBtn = document.getElementById('gear-disconnect-btn');
   dom.output = document.getElementById('output');
   dom.commandInput = document.getElementById('command-input');
   dom.sendBtn = document.getElementById('send-btn');
