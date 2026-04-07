@@ -64,6 +64,7 @@ function isBlockedEditableTarget(target) {
 }
 
 function handleMappedKey(event) {
+  if (event.defaultPrevented || event.repeat) return false;
   if (event.ctrlKey || event.altKey || event.metaKey) return false;
 
   const command = getMappedCommand(event.key);
@@ -71,6 +72,7 @@ function handleMappedKey(event) {
   if (isBlockedEditableTarget(event.target)) return false;
 
   event.preventDefault();
+  event.stopPropagation();
   sendCommandText(command);
   return true;
 }
@@ -153,6 +155,8 @@ export function initInput() {
 
   // Global keyboard shortcuts
   document.addEventListener('keydown', function(e) {
+    if (e.defaultPrevented) return;
+
     if (e.ctrlKey && e.key === 'l') {
       e.preventDefault();
       clearOutput();
