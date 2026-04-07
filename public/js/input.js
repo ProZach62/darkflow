@@ -10,6 +10,71 @@ let historyIndex = 0;
 let currentInput = '';
 let _saveTimer = null;
 
+function sendCommandText(text) {
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+
+  trackCommand(text);
+  state.ws.send(text);
+  state.bytesSent += text.length;
+
+  if (text) {
+    commandHistory.push(text);
+    if (commandHistory.length > MAX_HISTORY) {
+      commandHistory = commandHistory.slice(-MAX_HISTORY);
+    }
+    saveHistory();
+  }
+
+  appendEcho(text);
+  resetCompletionState();
+  historyIndex = commandHistory.length;
+  currentInput = '';
+  dom.commandInput.focus();
+
+  if (settingsManager.get('repeatLastCommand')) {
+    dom.commandInput.value = text;
+    dom.commandInput.select();
+  } else {
+    dom.commandInput.value = '';
+  }
+
+  return true;
+}
+
+function getMappedCommand(key) {
+  if (!settingsManager.get('keyMapperEnabled')) return null;
+
+  const mappings = settingsManager.get('keyMappings');
+  if (!Array.isArray(mappings) || mappings.length === 0) return null;
+
+  for (let index = mappings.length - 1; index >= 0; index--) {
+    const mapping = mappings[index];
+    if (!mapping || mapping.key !== key || !mapping.command) continue;
+    return mapping.command;
+  }
+
+  return null;
+}
+
+function isBlockedEditableTarget(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target === dom.commandInput) return false;
+  if (target.isContentEditable) return true;
+  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+}
+
+function handleMappedKey(event) {
+  if (event.ctrlKey || event.altKey || event.metaKey) return false;
+
+  const command = getMappedCommand(event.key);
+  if (!command) return false;
+  if (isBlockedEditableTarget(event.target)) return false;
+
+  event.preventDefault();
+  sendCommandText(command);
+  return true;
+}
+
 export function loadHistory() {
   try {
     const stored = sessionStorage.getItem(SESSION_KEY);
@@ -36,40 +101,16 @@ export function saveHistoryNow() {
 }
 
 export function sendCommand() {
-  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-
-  const text = dom.commandInput.value;
-  trackCommand(text);
-  state.ws.send(text);
-  state.bytesSent += text.length;
-
-  if (text) {
-    commandHistory.push(text);
-    if (commandHistory.length > MAX_HISTORY) {
-      commandHistory = commandHistory.slice(-MAX_HISTORY);
-    }
-    saveHistory();
-  }
-
-  appendEcho(text);
-  resetCompletionState();
-  historyIndex = commandHistory.length;
-  currentInput = '';
-  dom.commandInput.focus();
-
-  if (settingsManager.get('repeatLastCommand')) {
-    dom.commandInput.value = text;
-    dom.commandInput.select();
-  } else {
-    dom.commandInput.value = '';
-  }
+  return sendCommandText(dom.commandInput.value);
 }
 
 export function initInput() {
   initCompletion();
 
   dom.commandInput.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
+    if (handleMappedKey(e)) {
+      return;
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       sendCommand();
     } else if (e.key === 'Tab') {
@@ -126,6 +167,8 @@ export function initInput() {
       e.preventDefault();
       dom.output.scrollBy(0, dom.output.clientHeight * 0.8);
     }
+
+    if (handleMappedKey(e)) return;
 
     // Auto-focus: redirect printable keys to command input
     if (document.activeElement === dom.commandInput) return;

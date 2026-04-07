@@ -221,6 +221,52 @@ body {
   padding-top: 4px;
 }
 
+.settings-mapper-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+}
+
+.settings-helper-text {
+  margin: 0;
+}
+
+.settings-mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-mapping-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-key-input {
+  text-align: center;
+  cursor: pointer;
+}
+
+.settings-command-input {
+  min-width: 0;
+}
+
+.settings-inline-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.settings-row-remove,
+.settings-add-mapping {
+  white-space: nowrap;
+}
+
 #output {
   flex: 1 1 0;
   overflow-y: auto;

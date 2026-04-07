@@ -9,6 +9,8 @@ export const state = {
   settings: {
     autoReconnect: true,
     repeatLastCommand: true,
+    keyMapperEnabled: false,
+    keyMappings: [],
   },
 };
 

@@ -6,6 +6,8 @@ export const settingsManager = {
   _defaults: {
     autoReconnect: true,
     repeatLastCommand: true,
+    keyMapperEnabled: false,
+    keyMappings: [],
   },
   _settings: {},
   _draftSettings: {},
@@ -27,6 +29,7 @@ export const settingsManager = {
       console.warn('Failed to load client settings', error);
     }
 
+    this._settings = this._normalizeSettings(this._settings);
     state.settings = { ...this._settings };
   },
 
@@ -38,14 +41,18 @@ export const settingsManager = {
   },
 
   set(key, value) {
-    this._settings[key] = value;
-    state.settings[key] = value;
-    this._save();
+    this._applySettings({ [key]: value });
   },
 
   open() {
     this.close();
-    this._draftSettings = { ...this._settings };
+    this._draftSettings = {
+      ...this._settings,
+      keyMappings: this._settings.keyMappings.map((mapping) => ({
+        key: mapping.key,
+        command: mapping.command,
+      })),
+    };
 
     const overlay = this._buildModal();
     const escHandler = (event) => {
@@ -81,6 +88,163 @@ export const settingsManager = {
     }
   },
 
+  _applySettings(nextSettings) {
+    this._settings = this._normalizeSettings({
+      ...this._settings,
+      ...nextSettings,
+    });
+    state.settings = { ...this._settings };
+    this._save();
+  },
+
+  _normalizeSettings(settings) {
+    return {
+      autoReconnect: settings.autoReconnect !== false,
+      repeatLastCommand: settings.repeatLastCommand !== false,
+      keyMapperEnabled: Boolean(settings.keyMapperEnabled),
+      keyMappings: this._normalizeKeyMappings(settings.keyMappings),
+    };
+  },
+
+  _normalizeKeyMappings(mappings) {
+    if (!Array.isArray(mappings)) return [];
+
+    return mappings
+      .map((mapping) => {
+        if (!mapping || typeof mapping !== 'object') return null;
+        const key = typeof mapping.key === 'string' ? mapping.key.trim() : '';
+        const command = typeof mapping.command === 'string' ? mapping.command.trim() : '';
+        if (!key || !command) return null;
+        return { key, command };
+      })
+      .filter(Boolean);
+  },
+
+  _createCheckboxRow(labelText, descriptionText, checked, onChange) {
+    const row = document.createElement('label');
+    row.className = 'settings-checkbox-row';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked;
+    input.addEventListener('change', () => onChange(input.checked));
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+
+    const label = document.createElement('div');
+    label.className = 'settings-label';
+    label.textContent = labelText;
+
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = descriptionText;
+
+    copy.appendChild(label);
+    copy.appendChild(description);
+    row.appendChild(input);
+    row.appendChild(copy);
+
+    return row;
+  },
+
+  _createKeyMappingsEditor() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'settings-mapper-editor';
+
+    const helpText = document.createElement('p');
+    helpText.className = 'dw-paragraph settings-helper-text';
+    helpText.textContent = 'Press a key in the Key field to capture it. Bound keys send their command instantly without pressing Enter.';
+
+    const list = document.createElement('div');
+    list.className = 'settings-mapping-list';
+
+    const ensureMappings = () => {
+      if (!Array.isArray(this._draftSettings.keyMappings)) {
+        this._draftSettings.keyMappings = [];
+      }
+      return this._draftSettings.keyMappings;
+    };
+
+    const addRow = (mapping) => {
+      const mappings = ensureMappings();
+      mappings.push(mapping);
+
+      const row = document.createElement('div');
+      row.className = 'settings-mapping-row';
+
+      const keyInput = document.createElement('input');
+      keyInput.type = 'text';
+      keyInput.className = 'dw-input settings-key-input';
+      keyInput.placeholder = 'Press a key';
+      keyInput.readOnly = true;
+      keyInput.value = mapping.key;
+      keyInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Tab') return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (event.key === 'Backspace' || event.key === 'Delete') {
+          mapping.key = '';
+          keyInput.value = '';
+          return;
+        }
+
+        if (event.ctrlKey || event.altKey || event.metaKey) return;
+        if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta') return;
+
+        mapping.key = event.key;
+        keyInput.value = event.key;
+      });
+
+      const commandInput = document.createElement('input');
+      commandInput.type = 'text';
+      commandInput.className = 'dw-input settings-command-input';
+      commandInput.placeholder = 'Command to send';
+      commandInput.value = mapping.command;
+      commandInput.addEventListener('input', () => {
+        mapping.command = commandInput.value;
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', () => {
+        const index = mappings.indexOf(mapping);
+        if (index !== -1) mappings.splice(index, 1);
+        row.remove();
+      });
+
+      row.appendChild(keyInput);
+      row.appendChild(commandInput);
+      row.appendChild(removeBtn);
+      list.appendChild(row);
+    };
+
+    const savedMappings = ensureMappings().map((mapping) => ({
+      key: mapping.key,
+      command: mapping.command,
+    }));
+    this._draftSettings.keyMappings = [];
+    savedMappings.forEach((mapping) => addRow(mapping));
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-inline-actions';
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'dw-button dw-button-secondary settings-add-mapping';
+    addBtn.textContent = 'Add mapping';
+    addBtn.addEventListener('click', () => addRow({ key: '', command: '' }));
+
+    actions.appendChild(addBtn);
+    wrapper.appendChild(helpText);
+    wrapper.appendChild(list);
+    wrapper.appendChild(actions);
+
+    return wrapper;
+  },
+
   _buildModal() {
     const overlay = document.createElement('div');
     overlay.className = 'dw-modal-overlay';
@@ -92,7 +256,7 @@ export const settingsManager = {
 
     const modal = document.createElement('div');
     modal.className = 'dw-modal settings-modal';
-    modal.style.width = '460px';
+    modal.style.width = '560px';
 
     const header = document.createElement('div');
     header.className = 'dw-modal-header';
@@ -119,62 +283,15 @@ export const settingsManager = {
     sectionTitle.className = 'dw-heading';
     sectionTitle.textContent = 'Connection';
 
-    const autoReconnectRow = document.createElement('label');
-    autoReconnectRow.className = 'settings-checkbox-row';
-
-    const autoReconnectInput = document.createElement('input');
-    autoReconnectInput.type = 'checkbox';
-    autoReconnectInput.checked = !!this._draftSettings.autoReconnect;
-    autoReconnectInput.addEventListener('change', () => {
-      this._draftSettings.autoReconnect = autoReconnectInput.checked;
-    });
-
-    const autoReconnectText = document.createElement('div');
-    autoReconnectText.className = 'settings-copy';
-
-    const autoReconnectLabel = document.createElement('div');
-    autoReconnectLabel.className = 'settings-label';
-    autoReconnectLabel.textContent = 'Auto-reconnect';
-
-    const autoReconnectDescription = document.createElement('p');
-    autoReconnectDescription.className = 'dw-paragraph';
-    autoReconnectDescription.textContent = 'Reconnect automatically after unexpected connection loss.';
-
-    autoReconnectText.appendChild(autoReconnectLabel);
-    autoReconnectText.appendChild(autoReconnectDescription);
-    autoReconnectRow.appendChild(autoReconnectInput);
-    autoReconnectRow.appendChild(autoReconnectText);
-
     connectionSection.appendChild(sectionTitle);
-    connectionSection.appendChild(autoReconnectRow);
-
-    const repeatLastCommandRow = document.createElement('label');
-    repeatLastCommandRow.className = 'settings-checkbox-row';
-
-    const repeatLastCommandInput = document.createElement('input');
-    repeatLastCommandInput.type = 'checkbox';
-    repeatLastCommandInput.checked = !!this._draftSettings.repeatLastCommand;
-    repeatLastCommandInput.addEventListener('change', () => {
-      this._draftSettings.repeatLastCommand = repeatLastCommandInput.checked;
-    });
-
-    const repeatLastCommandText = document.createElement('div');
-    repeatLastCommandText.className = 'settings-copy';
-
-    const repeatLastCommandLabel = document.createElement('div');
-    repeatLastCommandLabel.className = 'settings-label';
-    repeatLastCommandLabel.textContent = 'Keep last command selected after send';
-
-    const repeatLastCommandDescription = document.createElement('p');
-    repeatLastCommandDescription.className = 'dw-paragraph';
-    repeatLastCommandDescription.textContent = 'Keep the last command in the input selected so Enter repeats it and typing replaces it.';
-
-    repeatLastCommandText.appendChild(repeatLastCommandLabel);
-    repeatLastCommandText.appendChild(repeatLastCommandDescription);
-    repeatLastCommandRow.appendChild(repeatLastCommandInput);
-    repeatLastCommandRow.appendChild(repeatLastCommandText);
-
-    connectionSection.appendChild(repeatLastCommandRow);
+    connectionSection.appendChild(this._createCheckboxRow(
+      'Auto-reconnect',
+      'Reconnect automatically after unexpected connection loss.',
+      !!this._draftSettings.autoReconnect,
+      (checked) => {
+        this._draftSettings.autoReconnect = checked;
+      }
+    ));
 
     if (state.ws) {
       const connectionDetails = document.createElement('div');
@@ -216,15 +333,37 @@ export const settingsManager = {
     divider.className = 'dw-divider';
     body.appendChild(divider);
 
-    const futureSection = document.createElement('section');
-    futureSection.className = 'settings-section settings-section-muted';
+    const controlsSection = document.createElement('section');
+    controlsSection.className = 'settings-section';
 
-    const futureCopy = document.createElement('p');
-    futureCopy.className = 'dw-paragraph';
-    futureCopy.textContent = 'More client settings can be added here as the UI expands.';
+    const controlsTitle = document.createElement('h3');
+    controlsTitle.className = 'dw-heading';
+    controlsTitle.textContent = 'Controls';
 
-    futureSection.appendChild(futureCopy);
-    body.appendChild(futureSection);
+    controlsSection.appendChild(controlsTitle);
+    controlsSection.appendChild(this._createCheckboxRow(
+      'Keep last command selected after send',
+      'Keep the last command in the input selected so Enter repeats it and typing replaces it.',
+      !!this._draftSettings.repeatLastCommand,
+      (checked) => {
+        this._draftSettings.repeatLastCommand = checked;
+      }
+    ));
+
+    const keyMapperFields = this._createKeyMappingsEditor();
+    keyMapperFields.style.display = this._draftSettings.keyMapperEnabled ? 'flex' : 'none';
+
+    controlsSection.appendChild(this._createCheckboxRow(
+      'Enable custom key mappings',
+      'Bind keys like ArrowUp or 1 to send commands immediately without pressing Enter.',
+      !!this._draftSettings.keyMapperEnabled,
+      (checked) => {
+        this._draftSettings.keyMapperEnabled = checked;
+        keyMapperFields.style.display = checked ? 'flex' : 'none';
+      }
+    ));
+    controlsSection.appendChild(keyMapperFields);
+    body.appendChild(controlsSection);
 
     const footer = document.createElement('div');
     footer.className = 'settings-modal-footer';
@@ -238,9 +377,7 @@ export const settingsManager = {
     saveBtn.className = 'dw-button dw-button-primary';
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', () => {
-      Object.keys(this._draftSettings).forEach((key) => {
-        this.set(key, this._draftSettings[key]);
-      });
+      this._applySettings(this._draftSettings);
       this.close();
     });
 
