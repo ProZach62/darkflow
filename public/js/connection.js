@@ -4,6 +4,7 @@ import { appendOutput, appendSystemMessage } from './output.js';
 import { panelManager } from './panel-manager.js';
 import { windowManager } from './window-manager.js';
 import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
+import { settingsManager } from './settings-manager.js';
 
 export function setConnectionState(connState) {
   dom.connectionState.textContent = connState.charAt(0).toUpperCase() + connState.slice(1);
@@ -14,25 +15,17 @@ export function setConnectionState(connState) {
     dom.connectBtn.disabled = true;
     dom.connectFields.style.display = 'flex';
     dom.toolbarStatus.style.display = 'none';
-    dom.gearDisconnectBtn.style.display = 'none';
   } else if (connState === 'connected') {
     dom.connectFields.style.display = 'none';
     dom.toolbarStatus.style.display = 'flex';
     dom.commandInput.disabled = false;
     dom.sendBtn.disabled = false;
-    dom.gearDisconnectBtn.style.display = '';
-    // Show connection info in gear menu
-    const proto = dom.wssToggle.checked ? 'wss' : 'ws';
-    dom.gearConnInfo.textContent = proto + '://' + (dom.host.value || 'localhost') + ':' + (dom.port.value || '4242');
-    dom.gearConnInfo.style.display = '';
   } else {
     // Disconnected
     dom.connectBtn.textContent = 'Connect';
     dom.connectBtn.disabled = false;
     dom.connectFields.style.display = 'flex';
     dom.toolbarStatus.style.display = 'none';
-    dom.gearDisconnectBtn.style.display = 'none';
-    dom.gearConnInfo.style.display = 'none';
     dom.commandInput.disabled = false;
     dom.sendBtn.disabled = false;
   }
@@ -127,7 +120,7 @@ export function connect() {
     dom.statusConnection.title = '';
     dom.statusUptime.textContent = '';
 
-    if (!state.userDisconnected && dom.autoReconnect.checked) {
+    if (!state.userDisconnected && settingsManager.get('autoReconnect')) {
       scheduleReconnect();
     }
   };

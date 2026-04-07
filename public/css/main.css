@@ -146,51 +146,80 @@ body {
 }
 
 /* Gear dropdown */
-.gear-menu-wrap { position: relative; }
-.gear-menu {
-  display: none;
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 2000;
-  background: #161b22;
+.gear-menu-wrap { display: inline-flex; }
+
+.settings-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-section-muted {
+  gap: 0;
+}
+
+.settings-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.settings-checkbox-row input[type="checkbox"] {
+  margin-top: 2px;
+}
+
+.settings-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.settings-connection-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid #30363d;
   border-radius: 6px;
-  padding: 8px 12px;
-  min-width: 200px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-  margin-top: 4px;
+  background: #0d1117;
 }
-.gear-menu.open { display: flex; flex-direction: column; gap: 8px; }
 
-.gear-conn-info {
-  font-size: 11px;
+.settings-connection-value {
+  font-size: 12px;
   color: #8b949e;
-  padding: 4px 0;
-  border-bottom: 1px solid #21262d;
+  overflow-wrap: anywhere;
 }
 
-.gear-label {
-  font-size: 11px;
-  color: #c9d1d9;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-}
-
-.gear-disconnect {
+.settings-disconnect-btn {
+  align-self: flex-start;
   background: #da3633;
+  border-color: #f85149;
   color: #fff;
-  border: 1px solid #f85149;
-  padding: 4px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 11px;
-  width: 100%;
 }
-.gear-disconnect:hover { background: #f85149; }
+
+.settings-disconnect-btn:hover {
+  background: #f85149;
+}
+
+.settings-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
 
 #output {
   flex: 1 1 0;
