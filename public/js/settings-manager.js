@@ -301,7 +301,6 @@ export const settingsManager = {
 
     const modal = document.createElement('div');
     modal.className = 'dw-modal settings-modal';
-    modal.style.width = '560px';
 
     const header = document.createElement('div');
     header.className = 'dw-modal-header';
@@ -321,8 +320,42 @@ export const settingsManager = {
     const body = document.createElement('div');
     body.className = 'dw-modal-body settings-modal-body';
 
-    const connectionSection = document.createElement('section');
-    connectionSection.className = 'settings-section';
+    const tabs = document.createElement('div');
+    tabs.className = 'settings-tabs';
+
+    const tabPanels = document.createElement('div');
+    tabPanels.className = 'settings-tab-panels';
+
+    const tabButtons = new Map();
+    const tabContents = new Map();
+    const activateTab = (key) => {
+      for (const [tabKey, btn] of tabButtons) {
+        btn.classList.toggle('active', tabKey === key);
+      }
+      for (const [tabKey, panel] of tabContents) {
+        panel.style.display = tabKey === key ? 'flex' : 'none';
+      }
+    };
+    const createTab = (key, label) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'settings-tab-btn';
+      btn.textContent = label;
+      btn.addEventListener('click', () => activateTab(key));
+      tabButtons.set(key, btn);
+      tabs.appendChild(btn);
+
+      const panel = document.createElement('section');
+      panel.className = 'settings-section';
+      panel.style.display = 'none';
+      tabContents.set(key, panel);
+      tabPanels.appendChild(panel);
+      return panel;
+    };
+
+    const connectionSection = createTab('connection', 'Connection');
+    const terminalSection = createTab('terminal', 'Terminal');
+    const controlsSection = createTab('controls', 'Controls');
 
     const sectionTitle = document.createElement('h3');
     sectionTitle.className = 'dw-heading';
@@ -372,15 +405,6 @@ export const settingsManager = {
       connectionSection.appendChild(connectionDetails);
     }
 
-    body.appendChild(connectionSection);
-
-    const divider = document.createElement('hr');
-    divider.className = 'dw-divider';
-    body.appendChild(divider);
-
-    const terminalSection = document.createElement('section');
-    terminalSection.className = 'settings-section';
-
     const terminalTitle = document.createElement('h3');
     terminalTitle.className = 'dw-heading';
     terminalTitle.textContent = 'Terminal';
@@ -399,16 +423,6 @@ export const settingsManager = {
         this._draftSettings.outputScrollbackPreset = value;
       }
     ));
-
-    body.appendChild(terminalSection);
-
-    const controlsDivider = document.createElement('hr');
-    controlsDivider.className = 'dw-divider';
-    body.appendChild(controlsDivider);
-
-    const controlsSection = document.createElement('section');
-    controlsSection.className = 'settings-section';
-
     const controlsTitle = document.createElement('h3');
     controlsTitle.className = 'dw-heading';
     controlsTitle.textContent = 'Controls';
@@ -436,7 +450,10 @@ export const settingsManager = {
       }
     ));
     controlsSection.appendChild(keyMapperFields);
-    body.appendChild(controlsSection);
+
+    activateTab('connection');
+    body.appendChild(tabs);
+    body.appendChild(tabPanels);
 
     const footer = document.createElement('div');
     footer.className = 'settings-modal-footer';

@@ -148,16 +148,66 @@ body {
 /* Gear dropdown */
 .gear-menu-wrap { display: inline-flex; }
 
+.settings-modal {
+  width: 1000px;
+  height: 700px;
+  max-width: 1000px;
+  max-height: 700px;
+  display: flex;
+  flex-direction: column;
+}
+
 .settings-modal-body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 12px;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #30363d;
+}
+
+.settings-tab-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.settings-tab-btn:hover {
+  color: #c9d1d9;
+  border-color: #484f58;
+}
+
+.settings-tab-btn.active {
+  background: #1f2937;
+  color: #fff;
+  border-color: #58a6ff;
+}
+
+.settings-tab-panels {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .settings-section-muted {
@@ -216,6 +266,7 @@ body {
 
 .settings-modal-footer {
   display: flex;
+  flex: 0 0 auto;
   justify-content: flex-end;
   gap: 8px;
   padding-top: 4px;
