@@ -257,6 +257,13 @@ body {
   min-width: 0;
 }
 
+.settings-select-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 12px;
+  align-items: center;
+}
+
 .settings-inline-actions {
   display: flex;
   justify-content: flex-start;
@@ -271,6 +278,7 @@ body {
   flex: 1 1 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overflow-anchor: none;
   padding: 8px 12px;
   white-space: pre-wrap;
   overflow-wrap: break-word;
@@ -325,6 +333,15 @@ body {
 #output::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
 .output-line { min-height: 1.4em; }
+.output-spacer {
+  width: 100%;
+  pointer-events: none;
+}
+
+.output-viewport {
+  width: 100%;
+}
+
 .echo-line { color: #6e7681; }
 .system-line { color: #3fb950; font-style: italic; }
 

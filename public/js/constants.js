@@ -4,6 +4,13 @@ export const MAX_HISTORY = 200;
 export const RECONNECT_BASE_MS = 1000;
 export const RECONNECT_MAX_MS = 30000;
 export const SESSION_KEY = 'darkwind-cmd-history';
+export const OUTPUT_SCROLLBACK_PRESETS = {
+  low: 5000,
+  normal: 10000,
+  high: 20000,
+};
+export const DEFAULT_OUTPUT_SCROLLBACK_PRESET = 'normal';
+export const OUTPUT_OVERSCAN_LINES = 40;
 
 export const FG_NAMES = ['black','red','green','yellow','blue','magenta','cyan','white'];
 export const BRIGHT_FG_NAMES = ['bright-black','bright-red','bright-green','bright-yellow',
