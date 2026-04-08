@@ -1,4 +1,6 @@
 import { state, dom } from './state.js';
+import { DEFAULT_OUTPUT_SCROLLBACK_PRESET } from './constants.js';
+import { setOutputScrollbackPreset } from './output.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 
@@ -8,6 +10,7 @@ export const settingsManager = {
     repeatLastCommand: true,
     keyMapperEnabled: false,
     keyMappings: [],
+    outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
   },
   _settings: {},
   _draftSettings: {},
@@ -31,6 +34,7 @@ export const settingsManager = {
 
     this._settings = this._normalizeSettings(this._settings);
     state.settings = { ...this._settings };
+    setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
   },
 
   get(key) {
@@ -94,6 +98,7 @@ export const settingsManager = {
       ...nextSettings,
     });
     state.settings = { ...this._settings };
+    setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
     this._save();
   },
 
@@ -103,7 +108,47 @@ export const settingsManager = {
       repeatLastCommand: settings.repeatLastCommand !== false,
       keyMapperEnabled: Boolean(settings.keyMapperEnabled),
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
+      outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
     };
+  },
+
+  _normalizeOutputScrollbackPreset(preset) {
+    if (preset === 'low' || preset === 'high') return preset;
+    return DEFAULT_OUTPUT_SCROLLBACK_PRESET;
+  },
+
+  _createSelectRow(labelText, descriptionText, value, options, onChange) {
+    const row = document.createElement('div');
+    row.className = 'settings-select-row';
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+
+    const label = document.createElement('div');
+    label.className = 'settings-label';
+    label.textContent = labelText;
+
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = descriptionText;
+
+    const select = document.createElement('select');
+    select.className = 'dw-select';
+    for (const option of options) {
+      const el = document.createElement('option');
+      el.value = option.value;
+      el.textContent = option.label;
+      if (option.value === value) el.selected = true;
+      select.appendChild(el);
+    }
+    select.addEventListener('change', () => onChange(select.value));
+
+    copy.appendChild(label);
+    copy.appendChild(description);
+    row.appendChild(copy);
+    row.appendChild(select);
+
+    return row;
   },
 
   _normalizeKeyMappings(mappings) {
@@ -256,7 +301,6 @@ export const settingsManager = {
 
     const modal = document.createElement('div');
     modal.className = 'dw-modal settings-modal';
-    modal.style.width = '560px';
 
     const header = document.createElement('div');
     header.className = 'dw-modal-header';
@@ -276,8 +320,42 @@ export const settingsManager = {
     const body = document.createElement('div');
     body.className = 'dw-modal-body settings-modal-body';
 
-    const connectionSection = document.createElement('section');
-    connectionSection.className = 'settings-section';
+    const tabs = document.createElement('div');
+    tabs.className = 'settings-tabs';
+
+    const tabPanels = document.createElement('div');
+    tabPanels.className = 'settings-tab-panels';
+
+    const tabButtons = new Map();
+    const tabContents = new Map();
+    const activateTab = (key) => {
+      for (const [tabKey, btn] of tabButtons) {
+        btn.classList.toggle('active', tabKey === key);
+      }
+      for (const [tabKey, panel] of tabContents) {
+        panel.style.display = tabKey === key ? 'flex' : 'none';
+      }
+    };
+    const createTab = (key, label) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'settings-tab-btn';
+      btn.textContent = label;
+      btn.addEventListener('click', () => activateTab(key));
+      tabButtons.set(key, btn);
+      tabs.appendChild(btn);
+
+      const panel = document.createElement('section');
+      panel.className = 'settings-section';
+      panel.style.display = 'none';
+      tabContents.set(key, panel);
+      tabPanels.appendChild(panel);
+      return panel;
+    };
+
+    const connectionSection = createTab('connection', 'Connection');
+    const terminalSection = createTab('terminal', 'Terminal');
+    const controlsSection = createTab('controls', 'Controls');
 
     const sectionTitle = document.createElement('h3');
     sectionTitle.className = 'dw-heading';
@@ -327,15 +405,24 @@ export const settingsManager = {
       connectionSection.appendChild(connectionDetails);
     }
 
-    body.appendChild(connectionSection);
+    const terminalTitle = document.createElement('h3');
+    terminalTitle.className = 'dw-heading';
+    terminalTitle.textContent = 'Terminal';
 
-    const divider = document.createElement('hr');
-    divider.className = 'dw-divider';
-    body.appendChild(divider);
-
-    const controlsSection = document.createElement('section');
-    controlsSection.className = 'settings-section';
-
+    terminalSection.appendChild(terminalTitle);
+    terminalSection.appendChild(this._createSelectRow(
+      'Scrollback memory',
+      'Choose how much terminal history to retain before the oldest lines are discarded.',
+      this._draftSettings.outputScrollbackPreset,
+      [
+        { value: 'low', label: 'Low (5,000 lines)' },
+        { value: 'normal', label: 'Normal (10,000 lines)' },
+        { value: 'high', label: 'High (20,000 lines)' },
+      ],
+      (value) => {
+        this._draftSettings.outputScrollbackPreset = value;
+      }
+    ));
     const controlsTitle = document.createElement('h3');
     controlsTitle.className = 'dw-heading';
     controlsTitle.textContent = 'Controls';
@@ -363,7 +450,10 @@ export const settingsManager = {
       }
     ));
     controlsSection.appendChild(keyMapperFields);
-    body.appendChild(controlsSection);
+
+    activateTab('connection');
+    body.appendChild(tabs);
+    body.appendChild(tabPanels);
 
     const footer = document.createElement('div');
     footer.className = 'settings-modal-footer';

@@ -11,6 +11,7 @@ export const state = {
     repeatLastCommand: true,
     keyMapperEnabled: false,
     keyMappings: [],
+    outputScrollbackPreset: 'normal',
   },
 };
 
