@@ -1,0 +1,39 @@
+# Darkwind GMCP Package Index
+
+This index lists every custom `Darkwind.*` package currently advertised by the web client handshake in [`public/js/gmcp.js`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/public/js/gmcp.js).
+
+## Advertised Packages
+
+| Package | Support String | Messages | Direction | Source Doc | Implementation Note |
+|---------|----------------|----------|-----------|------------|---------------------|
+| `Darkwind.Window` | `Darkwind.Window 1` | `Open`, `Update`, `Close`, `Submit`, `Action`, `Closed` | Mixed | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) | `Update` supports only the renderer operations implemented in the current client. |
+| `Darkwind.IDE` | `Darkwind.IDE 1` | `Open`, `Save`, `SaveResult`, `Close` | Mixed | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) | `Close` includes `{ "path": ... }` in the current client manager. |
+| `Darkwind.MapData` | `Darkwind.MapData 1` | `RoomUpdate`, `Area`, `Update`, `Sync`, `RoomCoords` | Mixed | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) | `Update` and `Sync` are live client behavior; `RoomCoords` is implemented as an active correction path, not reserved. |
+| `Darkwind.Completion` | `Darkwind.Completion 1` | `Request`, `Result` | Mixed | [`docs/gmcp-darkwind-completion.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-completion.md) | Ambiguous results are shown to the user only on repeated Tab for the same line and cursor state. |
+| `Darkwind.Quests` | `Darkwind.Quests 1` | `List`, `Active`, `Update`, `Complete` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) | Payload shapes are documented from current client usage because no prior in-repo spec existed. |
+
+## Message Catalog
+
+| Message | Direction | Documented In |
+|---------|-----------|---------------|
+| `Darkwind.Window.Open` | Server -> Client | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
+| `Darkwind.Window.Update` | Server -> Client | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
+| `Darkwind.Window.Close` | Server -> Client | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
+| `Darkwind.Window.Submit` | Client -> Server | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
+| `Darkwind.Window.Action` | Client -> Server | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
+| `Darkwind.Window.Closed` | Client -> Server | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
+| `Darkwind.IDE.Open` | Server -> Client | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) |
+| `Darkwind.IDE.Save` | Client -> Server | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) |
+| `Darkwind.IDE.SaveResult` | Server -> Client | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) |
+| `Darkwind.IDE.Close` | Client -> Server | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) |
+| `Darkwind.MapData.RoomUpdate` | Client -> Server | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
+| `Darkwind.MapData.Area` | Server -> Client | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
+| `Darkwind.MapData.Update` | Server -> Client | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
+| `Darkwind.MapData.Sync` | Client -> Server | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
+| `Darkwind.MapData.RoomCoords` | Server -> Client | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
+| `Darkwind.Completion.Request` | Client -> Server | [`docs/gmcp-darkwind-completion.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-completion.md) |
+| `Darkwind.Completion.Result` | Server -> Client | [`docs/gmcp-darkwind-completion.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-completion.md) |
+| `Darkwind.Quests.List` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
+| `Darkwind.Quests.Active` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
+| `Darkwind.Quests.Update` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
+| `Darkwind.Quests.Complete` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |

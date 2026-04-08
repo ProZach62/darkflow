@@ -30,6 +30,8 @@ The client declares support via `Core.Supports.Set`:
 
 ## Darkwind.Completion.Request
 
+Direction: `Client -> Server`
+
 Sent by the client when the user presses Tab in the command input.
 
 ### Schema
@@ -51,6 +53,8 @@ Sent by the client when the user presses Tab in the command input.
 ---
 
 ## Darkwind.Completion.Result
+
+Direction: `Server -> Client`
 
 Sent by the server in response to each request.
 
@@ -85,7 +89,7 @@ Ambiguous result example:
 | `line` | string | Yes | Updated command line after applying unique/common-prefix completion |
 | `cursor` | number | Yes | Updated 0-based cursor index |
 | `matches` | array of strings | Yes | Candidate completion tokens |
-| `kind` | string | Yes | Completion category: `command`, `object`, `path`, or `argument` |
+| `kind` | string | No | Completion category such as `command`, `object`, `path`, or `argument` |
 | `ambiguous` | boolean | Yes | True when multiple candidates still match |
 
 ---
@@ -130,7 +134,7 @@ The web client uses Linux shell style interaction:
 
 - First Tab: apply unique match or longest common prefix
 - Repeated Tab on the same ambiguous state: print candidate list to output
-- Any non-modifier edit key resets repeated-tab ambiguity state
+- Any input edit resets repeated-tab ambiguity state
 
 ---
 
