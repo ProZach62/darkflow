@@ -3,15 +3,34 @@ import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { panelRenderers } from './panel-renderers.js';
 import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorrection, load as loadMapData } from './map-data.js';
 
+const MOBILE_BREAKPOINT_PX = 700;
+const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'inventory', 'map', 'chat', 'quests'];
+
+function cloneState(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 export const panelManager = {
   state: { docks: { left: false, right: false }, panels: {} },
   panels: {},
   gmcpData: {},
   _saveTimer: null,
+  _mobile: {
+    enabled: false,
+    sheetOpen: false,
+    activePanelId: null,
+    desktopSnapshot: null,
+    overlayEl: null,
+    tabsEl: null,
+    extraSelectEl: null,
+    contentEl: null,
+    emptyEl: null,
+  },
 
   init() {
     this.loadState();
     this.buildPanelsMenu();
+    this._ensureMobileSheet();
 
     for (const id of Object.keys(PANEL_DEFS)) {
       if (this.state.panels[id].visible) {
@@ -19,18 +38,12 @@ export const panelManager = {
       }
     }
 
-    const leftDock = document.getElementById('left-dock');
-    const rightDock = document.getElementById('right-dock');
-    if (this.state.docks.left) leftDock.classList.add('collapsed');
-    if (this.state.docks.right) rightDock.classList.add('collapsed');
-
-    document.getElementById('left-dock-toggle').classList.toggle('active', !this.state.docks.left);
-    document.getElementById('right-dock-toggle').classList.toggle('active', !this.state.docks.right);
-
+    this._applyDockStateToDom();
     loadMapData();
     this.attachDragHandlers();
     this.registerGmcpHandlers();
     this._attachResizeHandler();
+    this._syncResponsiveMode(true);
   },
 
   loadState() {
@@ -49,19 +62,18 @@ export const panelManager = {
       const s = (saved && saved.panels && saved.panels[id]) || {};
       const defW = def.defaultFloatW || 280;
       const defH = def.defaultFloatH || 200;
-      let defX, defY;
+      let defX;
+      let defY;
       if (def.defaultFloatX !== undefined) {
         defX = def.defaultFloatX;
         if (defX < 0) defX = window.innerWidth + defX;
       } else {
-        // Center horizontally
         defX = Math.round((window.innerWidth - defW) / 2);
       }
       if (def.defaultFloatY !== undefined) {
         defY = def.defaultFloatY;
         if (defY < 0) defY = window.innerHeight + defY;
       } else {
-        // Center vertically
         defY = Math.round((window.innerHeight - defH) / 2);
       }
       panels[id] = {
@@ -83,6 +95,7 @@ export const panelManager = {
   },
 
   saveState() {
+    if (this._mobile.enabled) return;
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {
       try { localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(this.state)); }
@@ -107,6 +120,32 @@ export const panelManager = {
       label.appendChild(document.createTextNode(' ' + def.title));
       menu.appendChild(label);
     }
+  },
+
+  setDockCollapsed(side, collapsed) {
+    if (this._mobile.enabled) return;
+    this.state.docks[side] = collapsed;
+    this._applyDockStateToDom();
+    this.saveState();
+  },
+
+  toggleMobileSheet() {
+    if (!this._mobile.enabled) return;
+    if (this._mobile.sheetOpen) this.closeMobileSheet();
+    else this.openMobileSheet();
+  },
+
+  openMobileSheet() {
+    if (!this._mobile.enabled || !this._mobile.overlayEl) return;
+    this._mobile.sheetOpen = true;
+    this._mobile.overlayEl.classList.add('open');
+    this._renderMobileSheet();
+  },
+
+  closeMobileSheet() {
+    if (!this._mobile.overlayEl) return;
+    this._mobile.sheetOpen = false;
+    this._mobile.overlayEl.classList.remove('open');
   },
 
   createPanel(id) {
@@ -145,6 +184,7 @@ export const panelManager = {
     floatBtn.innerHTML = st.dock === 'float' ? '&#x25A3;' : '&#x25A1;';
     floatBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (this._mobile.enabled) return;
       if (this.state.panels[id].dock === 'float') {
         this.dockPanel(id, PANEL_DEFS[id].defaultDock);
       } else {
@@ -176,16 +216,34 @@ export const panelManager = {
     el.appendChild(header);
     el.appendChild(body);
 
-    this.panels[id] = { el, headerEl: header, bodyEl: body };
+    this.panels[id] = { el, headerEl: header, bodyEl: body, title: def.title };
+    this._placePanelElement(id, el, st);
 
+    if (this.gmcpData[id]) {
+      this._renderPanel(id);
+    }
+    this._renderMobileSheet();
+  },
+
+  _placePanelElement(id, el, st) {
+    if (this._mobile.enabled) {
+      if (!this._mobile.contentEl) return;
+      el.classList.add('mobile-panel');
+      el.classList.remove('floating');
+      el.style.cssText = '';
+      this._mobile.contentEl.appendChild(el);
+      if (!this._mobile.activePanelId || !this.state.panels[this._mobile.activePanelId] || !this.state.panels[this._mobile.activePanelId].visible) {
+        this._mobile.activePanelId = this._getDefaultMobileActivePanelId();
+      }
+      this._syncMobilePanelVisibility();
+      return;
+    }
+
+    el.classList.remove('mobile-panel');
     if (st.dock === 'float') {
       this._makeFloat(el, st);
     } else {
       this._insertIntoDock(id, el, st.dock, st.order);
-    }
-
-    if (this.gmcpData[id]) {
-      this._renderPanel(id);
     }
   },
 
@@ -215,7 +273,7 @@ export const panelManager = {
     const id = el.dataset.panelId;
     const ro = new ResizeObserver(() => {
       const s = this.state.panels[id];
-      if (s && s.dock === 'float') {
+      if (s && s.dock === 'float' && !this._mobile.enabled) {
         s.floatW = el.offsetWidth;
         s.floatH = el.offsetHeight;
         this.saveState();
@@ -235,7 +293,6 @@ export const panelManager = {
       + (inputBar ? inputBar.offsetHeight : 0);
     const leftEdge = leftDock ? leftDock.getBoundingClientRect().right : 0;
     let rightEdge = rightDock ? rightDock.getBoundingClientRect().left : window.innerWidth;
-    // Always account for the output scrollbar width (8px per CSS)
     rightEdge -= 8;
     return {
       left: leftEdge,
@@ -250,7 +307,6 @@ export const panelManager = {
     el.style.height = st.floatH + 'px';
     const bounds = this._getSnapBounds();
 
-    // Horizontal
     if (st.snapRight) {
       el.style.left = 'auto';
       el.style.right = (window.innerWidth - bounds.right) + 'px';
@@ -262,7 +318,6 @@ export const panelManager = {
       el.style.right = 'auto';
     }
 
-    // Vertical
     if (st.snapBottom) {
       el.style.top = 'auto';
       el.style.bottom = (window.innerHeight - bounds.bottom) + 'px';
@@ -276,6 +331,7 @@ export const panelManager = {
   },
 
   repositionSnappedPanels() {
+    if (this._mobile.enabled) return;
     for (const [id, st] of Object.entries(this.state.panels)) {
       if (st.dock !== 'float') continue;
       if (!st.snapRight && !st.snapBottom && !st.snapLeft && !st.snapTop) continue;
@@ -287,14 +343,119 @@ export const panelManager = {
 
   _attachResizeHandler() {
     window.addEventListener('resize', () => {
-      this.repositionSnappedPanels();
+      this._syncResponsiveMode();
+      if (!this._mobile.enabled) {
+        this.repositionSnappedPanels();
+      }
     });
+  },
+
+  _syncResponsiveMode(force) {
+    const shouldEnable = window.innerWidth <= MOBILE_BREAKPOINT_PX;
+    if (shouldEnable === this._mobile.enabled && !force) return;
+    if (shouldEnable) this._enterMobileMode();
+    else this._exitMobileMode();
+  },
+
+  _enterMobileMode() {
+    if (this._mobile.enabled) return;
+    this._mobile.desktopSnapshot = cloneState(this.state);
+    this._mobile.enabled = true;
+    this._mobile.sheetOpen = false;
+    this._mobile.activePanelId = null;
+
+    document.body.classList.add('mobile-panel-mode');
+    this.closeMobileSheet();
+    this._normalizeStateForMobile();
+    this._resetLivePanels();
+    this.buildPanelsMenu();
+
+    for (const id of Object.keys(PANEL_DEFS)) {
+      if (this.state.panels[id] && this.state.panels[id].visible) {
+        this.createPanel(id);
+      }
+    }
+
+    this._applyDockStateToDom();
+    this._renderMobileSheet();
+  },
+
+  _exitMobileMode() {
+    if (!this._mobile.enabled) return;
+    this._mobile.enabled = false;
+    this._mobile.sheetOpen = false;
+    this.closeMobileSheet();
+    document.body.classList.remove('mobile-panel-mode');
+
+    this._resetLivePanels();
+    if (this._mobile.desktopSnapshot) {
+      this.state = cloneState(this._mobile.desktopSnapshot);
+    }
+    this._mobile.desktopSnapshot = null;
+    this._mobile.activePanelId = null;
+    this.buildPanelsMenu();
+
+    for (const id of Object.keys(PANEL_DEFS)) {
+      if (this.state.panels[id] && this.state.panels[id].visible) {
+        this.createPanel(id);
+      }
+    }
+    this._applyDockStateToDom();
+  },
+
+  _normalizeStateForMobile() {
+    this.state.docks.left = true;
+    this.state.docks.right = true;
+
+    for (const [id, st] of Object.entries(this.state.panels)) {
+      const def = PANEL_DEFS[id];
+      if (!def) continue;
+      if (!st.visible) continue;
+      st.collapsed = false;
+      if (st.dock === 'float') {
+        st.dock = def.defaultDock === 'float' ? 'right' : def.defaultDock;
+      }
+    }
+
+    this._mobile.activePanelId = this._getDefaultMobileActivePanelId();
+  },
+
+  _getDefaultMobileActivePanelId() {
+    const visibleIds = this._getMobileVisiblePanelIds();
+    if (this._mobile.activePanelId && visibleIds.includes(this._mobile.activePanelId)) {
+      return this._mobile.activePanelId;
+    }
+    for (const id of MOBILE_PRIMARY_PANELS) {
+      if (visibleIds.includes(id)) return id;
+    }
+    return visibleIds[0] || null;
+  },
+
+  _applyDockStateToDom() {
+    const leftDock = document.getElementById('left-dock');
+    const rightDock = document.getElementById('right-dock');
+    const leftCollapsed = this._mobile.enabled ? true : !!this.state.docks.left;
+    const rightCollapsed = this._mobile.enabled ? true : !!this.state.docks.right;
+
+    leftDock.classList.toggle('collapsed', leftCollapsed);
+    rightDock.classList.toggle('collapsed', rightCollapsed);
+
+    document.getElementById('left-dock-toggle').classList.toggle('active', !leftCollapsed);
+    document.getElementById('right-dock-toggle').classList.toggle('active', !rightCollapsed);
   },
 
   dockPanel(id, side, order) {
     const st = this.state.panels[id];
     const p = this.panels[id];
     if (!p) return;
+
+    if (this._mobile.enabled) {
+      st.dock = side;
+      st.order = order !== undefined ? order : st.order;
+      this._placePanelElement(id, p.el, st);
+      this._renderMobileSheet();
+      return;
+    }
 
     if (order === undefined) {
       const existing = Object.entries(this.state.panels)
@@ -306,7 +467,6 @@ export const panelManager = {
     st.order = order;
     this._insertIntoDock(id, p.el, side, order);
 
-    // Renumber all panels in this dock to match actual DOM order
     const dock = document.getElementById(side + '-dock');
     const children = Array.from(dock.querySelectorAll('.gmcp-panel-widget'));
     children.forEach((child, i) => {
@@ -324,6 +484,10 @@ export const panelManager = {
     const st = this.state.panels[id];
     const p = this.panels[id];
     if (!p) return;
+    if (this._mobile.enabled) {
+      this.dockPanel(id, PANEL_DEFS[id].defaultDock === 'float' ? 'right' : PANEL_DEFS[id].defaultDock);
+      return;
+    }
 
     st.dock = 'float';
     st.floatX = x;
@@ -356,6 +520,7 @@ export const panelManager = {
     const st = this.state.panels[id];
     const p = this.panels[id];
     if (!p) return;
+    if (this._mobile.enabled) return;
     st.collapsed = collapsed;
     p.bodyEl.classList.toggle('collapsed', collapsed);
     const cb = p.el.querySelector('.panel-collapse');
@@ -373,6 +538,10 @@ export const panelManager = {
     }
     const cb = document.querySelector('#panels-menu input[data-panel-id="' + id + '"]');
     if (cb) cb.checked = false;
+    if (this._mobile.activePanelId === id) {
+      this._mobile.activePanelId = this._getDefaultMobileActivePanelId();
+    }
+    this._renderMobileSheet();
     this.saveState();
   },
 
@@ -382,10 +551,13 @@ export const panelManager = {
     this.createPanel(id);
     const cb = document.querySelector('#panels-menu input[data-panel-id="' + id + '"]');
     if (cb) cb.checked = true;
+    if (this._mobile.enabled) {
+      this._mobile.activePanelId = id;
+      this._renderMobileSheet();
+    }
     this.saveState();
   },
 
-  // ── Dynamic panels (server-driven, not persisted) ─────────────────
   createDynamicPanel(id, title, dock, order, onClose) {
     if (this.panels[id]) return this.panels[id].bodyEl;
 
@@ -410,6 +582,7 @@ export const panelManager = {
     let collapsed = false;
     collapseBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (this._mobile.enabled) return;
       collapsed = !collapsed;
       body.classList.toggle('collapsed', collapsed);
       collapseBtn.innerHTML = collapsed ? '&#x25BC;' : '&#x25B2;';
@@ -435,10 +608,18 @@ export const panelManager = {
     el.appendChild(header);
     el.appendChild(body);
 
-    this._insertIntoDock(id, el, dock, order);
-    this.panels[id] = { el, headerEl: header, bodyEl: body, dynamic: true };
+    this.panels[id] = { el, headerEl: header, bodyEl: body, dynamic: true, title };
     this.state.panels[id] = { dock, order, collapsed: false, visible: true };
 
+    if (this._mobile.enabled) {
+      this._placePanelElement(id, el, this.state.panels[id]);
+      this._mobile.activePanelId = id;
+      this.openMobileSheet();
+    } else {
+      this._insertIntoDock(id, el, dock, order);
+    }
+
+    this._renderMobileSheet();
     return body;
   },
 
@@ -448,11 +629,15 @@ export const panelManager = {
     p.el.remove();
     delete this.panels[id];
     delete this.state.panels[id];
+    if (this._mobile.activePanelId === id) {
+      this._mobile.activePanelId = this._getDefaultMobileActivePanelId();
+    }
+    this._renderMobileSheet();
   },
 
   resetData() {
     this.gmcpData = {};
-    for (const [id, p] of Object.entries(this.panels)) {
+    for (const p of Object.values(this.panels)) {
       p.bodyEl.innerHTML = '<div class="placeholder">Waiting for data...</div>';
     }
   },
@@ -464,9 +649,157 @@ export const panelManager = {
     if (renderer) renderer(p.bodyEl, this.gmcpData[id]);
   },
 
-  // ── Drag & Drop ───────────────────────────────────────────────────
+  _resetLivePanels() {
+    for (const p of Object.values(this.panels)) {
+      p.el.remove();
+    }
+    this.panels = {};
+    if (this._mobile.contentEl) {
+      this._mobile.contentEl.textContent = '';
+    }
+  },
+
+  _ensureMobileSheet() {
+    if (this._mobile.overlayEl) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'mobile-panels-overlay';
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) this.closeMobileSheet();
+    });
+
+    const sheet = document.createElement('div');
+    sheet.className = 'mobile-panels-sheet';
+
+    const header = document.createElement('div');
+    header.className = 'mobile-panels-header';
+
+    const title = document.createElement('div');
+    title.className = 'mobile-panels-title';
+    title.textContent = 'Panels';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'mobile-panels-close';
+    closeBtn.innerHTML = '&#x2715;';
+    closeBtn.addEventListener('click', () => this.closeMobileSheet());
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const tabs = document.createElement('div');
+    tabs.className = 'mobile-panels-tabs';
+
+    const extraSelect = document.createElement('select');
+    extraSelect.className = 'mobile-panels-select';
+    extraSelect.style.display = 'none';
+    extraSelect.addEventListener('change', () => {
+      if (!extraSelect.value) return;
+      this._mobile.activePanelId = extraSelect.value;
+      this._syncMobilePanelVisibility();
+      this._renderMobileSheet();
+    });
+
+    const content = document.createElement('div');
+    content.className = 'mobile-panels-content';
+
+    const empty = document.createElement('div');
+    empty.className = 'mobile-panels-empty';
+    empty.textContent = 'No mobile panels are open.';
+    content.appendChild(empty);
+
+    sheet.appendChild(header);
+    sheet.appendChild(tabs);
+    sheet.appendChild(extraSelect);
+    sheet.appendChild(content);
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+
+    this._mobile.overlayEl = overlay;
+    this._mobile.tabsEl = tabs;
+    this._mobile.extraSelectEl = extraSelect;
+    this._mobile.contentEl = content;
+    this._mobile.emptyEl = empty;
+  },
+
+  _getMobileVisiblePanelIds() {
+    return Object.keys(this.state.panels).filter((id) => this.state.panels[id] && this.state.panels[id].visible && this.panels[id]);
+  },
+
+  _getPanelTitle(id) {
+    if (PANEL_DEFS[id]) return PANEL_DEFS[id].title;
+    const panel = this.panels[id];
+    return panel && panel.title ? panel.title : id;
+  },
+
+  _renderMobileSheet() {
+    if (!this._mobile.overlayEl) return;
+
+    const visibleIds = this._getMobileVisiblePanelIds();
+    const primaryIds = MOBILE_PRIMARY_PANELS.filter((id) => visibleIds.includes(id));
+    const extraIds = visibleIds.filter((id) => !primaryIds.includes(id));
+    this._mobile.tabsEl.textContent = '';
+
+    if (!visibleIds.includes(this._mobile.activePanelId)) {
+      this._mobile.activePanelId = this._getDefaultMobileActivePanelId();
+    }
+
+    for (const id of primaryIds) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mobile-panels-tab' + (id === this._mobile.activePanelId ? ' active' : '');
+      btn.textContent = this._getPanelTitle(id);
+      btn.addEventListener('click', () => {
+        this._mobile.activePanelId = id;
+        this._syncMobilePanelVisibility();
+        this._renderMobileSheet();
+      });
+      this._mobile.tabsEl.appendChild(btn);
+    }
+
+    this._mobile.extraSelectEl.textContent = '';
+    if (extraIds.length > 0) {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'More panels';
+      this._mobile.extraSelectEl.appendChild(placeholder);
+
+      for (const id of extraIds) {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = this._getPanelTitle(id);
+        option.selected = id === this._mobile.activePanelId;
+        this._mobile.extraSelectEl.appendChild(option);
+      }
+
+      if (!extraIds.includes(this._mobile.activePanelId)) {
+        this._mobile.extraSelectEl.value = '';
+      }
+      this._mobile.extraSelectEl.style.display = 'block';
+    } else {
+      this._mobile.extraSelectEl.style.display = 'none';
+    }
+
+    this._syncMobilePanelVisibility();
+  },
+
+  _syncMobilePanelVisibility() {
+    if (!this._mobile.contentEl) return;
+    const activeId = this._mobile.activePanelId;
+    let hasVisible = false;
+    for (const [id, panel] of Object.entries(this.panels)) {
+      panel.el.classList.toggle('mobile-panel-active', id === activeId);
+      panel.el.classList.toggle('mobile-panel-hidden', id !== activeId);
+      if (this.state.panels[id] && this.state.panels[id].visible) {
+        hasVisible = true;
+      }
+    }
+    if (this._mobile.emptyEl) {
+      this._mobile.emptyEl.style.display = hasVisible ? 'none' : 'flex';
+    }
+  },
+
   attachDragHandlers() {
-    // Create snap edge indicators
     const snapEdges = {};
     ['left', 'top', 'right', 'bottom'].forEach(side => {
       const el = document.createElement('div');
@@ -482,7 +815,7 @@ export const panelManager = {
       startX: 0, startY: 0,
       offsetX: 0, offsetY: 0,
       indicator: null,
-      snapEdges: snapEdges,
+      snapEdges,
     };
 
     drag.indicator = document.createElement('div');
@@ -493,6 +826,7 @@ export const panelManager = {
     let pointerStarted = false;
 
     document.addEventListener('pointerdown', (e) => {
+      if (this._mobile.enabled) return;
       const header = e.target.closest('.panel-header');
       if (!header) return;
       if (e.target.closest('.panel-btn')) return;
@@ -514,7 +848,7 @@ export const panelManager = {
     });
 
     document.addEventListener('pointermove', (e) => {
-      if (!pointerStarted) return;
+      if (!pointerStarted || this._mobile.enabled) return;
 
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
@@ -539,13 +873,11 @@ export const panelManager = {
       const SNAP = 30;
       const bounds = this._getSnapBounds();
 
-      // Detect snap edges and show indicators
       const snL = gx < (bounds.left + SNAP);
       const snT = gy < (bounds.top + SNAP);
       const snR = (gx + gw) > (bounds.right - SNAP);
       const snB = (gy + gh) > (bounds.bottom - SNAP);
 
-      // Snap ghost position to edge
       if (snL) gx = bounds.left;
       if (snT) gy = bounds.top;
       if (snR) gx = bounds.right - gw;
@@ -554,9 +886,7 @@ export const panelManager = {
       drag.ghostEl.style.left = gx + 'px';
       drag.ghostEl.style.top = gy + 'px';
 
-      // Show/hide snap edge indicators
       this._showSnapEdges(snL, snT, snR, snB, bounds, drag);
-
       this._updateDropZone(e.clientX, e.clientY, drag);
     });
 
@@ -697,7 +1027,6 @@ export const panelManager = {
     return { target: side, order };
   },
 
-  // ── GMCP Handlers ─────────────────────────────────────────────────
   registerGmcpHandlers() {
     gmcp.on('Char.Vitals', (data) => {
       this.gmcpData.vitals = data;
@@ -842,17 +1171,12 @@ export const panelManager = {
     gmcp.on('Darkwind.Quests.Update', (data) => {
       if (!this.gmcpData.quests) this.gmcpData.quests = {};
       this.gmcpData.quests.lastUpdate = data;
-      // Update the active quest objective in-place if we have it
       if (this.gmcpData.quests.active && Array.isArray(this.gmcpData.quests.active.objectives)) {
-        for (var i = 0; i < this.gmcpData.quests.active.objectives.length; i++) {
+        for (let i = 0; i < this.gmcpData.quests.active.objectives.length; i++) {
           if (this.gmcpData.quests.active.objectives[i].name === data.objective) {
             this.gmcpData.quests.active.objectives[i].current = data.current;
             this.gmcpData.quests.active.objectives[i].required = data.required;
-            if (data.current >= data.required) {
-              this.gmcpData.quests.active.objectives[i].status = 'finished';
-            } else {
-              this.gmcpData.quests.active.objectives[i].status = 'started';
-            }
+            this.gmcpData.quests.active.objectives[i].status = data.current >= data.required ? 'finished' : 'started';
             break;
           }
         }
@@ -865,5 +1189,5 @@ export const panelManager = {
       this.gmcpData.quests.lastComplete = data;
       this._renderPanel('quests');
     });
-  }
+  },
 };
