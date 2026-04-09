@@ -173,21 +173,19 @@ document.getElementById('gear-btn').addEventListener('click', function() {
 document.getElementById('left-dock-toggle').addEventListener('click', function() {
   const dock = document.getElementById('left-dock');
   const collapsed = !dock.classList.contains('collapsed');
-  dock.classList.toggle('collapsed', collapsed);
-  this.classList.toggle('active', !collapsed);
-  panelManager.state.docks.left = collapsed;
-  panelManager.saveState();
+  panelManager.setDockCollapsed('left', collapsed);
   setTimeout(() => panelManager.repositionSnappedPanels(), 310);
 });
 
 document.getElementById('right-dock-toggle').addEventListener('click', function() {
   const dock = document.getElementById('right-dock');
   const collapsed = !dock.classList.contains('collapsed');
-  dock.classList.toggle('collapsed', collapsed);
-  this.classList.toggle('active', !collapsed);
-  panelManager.state.docks.right = collapsed;
-  panelManager.saveState();
+  panelManager.setDockCollapsed('right', collapsed);
   setTimeout(() => panelManager.repositionSnappedPanels(), 310);
+});
+
+dom.mobilePanelsBtn.addEventListener('click', function() {
+  panelManager.toggleMobileSheet();
 });
 
 // ── Panels Menu ─────────────────────────────────────────────────────
