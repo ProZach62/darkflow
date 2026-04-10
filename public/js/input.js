@@ -59,6 +59,7 @@ function getMappedCommand(key) {
 function isBlockedEditableTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
   if (target === dom.commandInput) return false;
+  if (target.closest('.ide-overlay, .cm-editor, .cm-content')) return true;
   if (target.isContentEditable) return true;
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
 }
@@ -156,6 +157,7 @@ export function initInput() {
   // Global keyboard shortcuts
   document.addEventListener('keydown', function(e) {
     if (e.defaultPrevented) return;
+    if (isBlockedEditableTarget(e.target)) return;
 
     if (e.ctrlKey && e.key === 'l') {
       e.preventDefault();
