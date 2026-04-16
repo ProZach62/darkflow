@@ -240,12 +240,14 @@ function renderCheckboxInput(schema) {
 
 function renderButtonInput(schema, buttonHandler) {
   const btn = document.createElement('button');
+  btn.type = 'button';
   btn.className = 'dw-button';
   btn.textContent = schema.text || schema.label || 'Button';
   setAttr(btn, schema);
   if (schema.action === 'submit') btn.classList.add('dw-button-primary');
   else if (schema.action === 'close') btn.classList.add('dw-button-secondary');
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', (event) => {
+    event.preventDefault();
     if (buttonHandler) buttonHandler(schema.id, schema.action || 'action');
   });
   return btn;
