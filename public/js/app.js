@@ -141,6 +141,12 @@ function updateVersionDisplay() {
   dom.statusVersions.textContent = parts.join(' | ');
 }
 
+function setClientVersion(version) {
+  clientVersion = version || 'unknown';
+  state.clientVersion = clientVersion;
+  updateVersionDisplay();
+}
+
 gmcp.on('Game', function(data) {
   if (data && data.game_uptime !== undefined) {
     dom.statusUptime.textContent = 'Uptime: ' + formatUptime(data.game_uptime);
@@ -237,9 +243,9 @@ function fetchClientVersion() {
     .catch(() => null);
 }
 
-fetchClientVersion().then(v => {
-  clientVersion = v;
-  updateVersionDisplay();
+state.clientVersionPromise = fetchClientVersion().then(version => {
+  setClientVersion(version);
+  return state.clientVersion;
 });
 
 // Poll for updates every 5 minutes; only when tab is visible

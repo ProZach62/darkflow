@@ -1,11 +1,14 @@
 export const state = {
   ws: null,
+  connectionPending: false,
   connectTime: null,
   bytesSent: 0,
   bytesReceived: 0,
   reconnectAttempts: 0,
   reconnectTimer: null,
   userDisconnected: false,
+  clientVersion: 'unknown',
+  clientVersionPromise: null,
   settings: {
     autoReconnect: true,
     repeatLastCommand: true,

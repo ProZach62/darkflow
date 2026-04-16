@@ -1,7 +1,6 @@
 import { state } from './state.js';
 
 const GMCP_CLIENT_NAME = 'WebMUD Client';
-const GMCP_CLIENT_VERSION = '1.0';
 const gmcpTextEncoder = new TextEncoder();
 export const gmcpTextDecoder = new TextDecoder('utf-8');
 
@@ -39,7 +38,7 @@ export const gmcp = {
   sendHandshake() {
     this.send('Core.Hello', {
       client: GMCP_CLIENT_NAME,
-      version: GMCP_CLIENT_VERSION
+      version: state.clientVersion || 'unknown'
     });
     this.send('Core.Supports.Set', [
       'Char 1',
