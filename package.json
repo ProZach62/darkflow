@@ -1,6 +1,6 @@
 {
   "name": "darkwind-webclient",
-  "version": "1.0.0",
+  "version": "0.9.6",
   "description": "WebSocket MUD client for play.darkwind.ai",
   "main": "server.js",
   "scripts": {
