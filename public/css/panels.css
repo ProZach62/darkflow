@@ -250,6 +250,37 @@ body.mobile-panel-mode #mobile-panels-btn {
 .panel-body.collapsed { display: none; }
 .panel-body .placeholder { color: #484f58; font-style: italic; }
 
+.avatar-panel-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.avatar-panel-image {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  transition: opacity 0.3s ease;
+}
+
+.avatar-panel-image.avatar-loading { opacity: 0.5; }
+.avatar-panel-image.avatar-default { opacity: 0.6; }
+
+.avatar-panel-name {
+  width: 100%;
+  text-align: center;
+  color: #8b949e;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .gmcp-panel-widget.mobile-panel {
   display: flex;
   flex: 1 1 auto;

@@ -38,6 +38,20 @@ export function renderVitalBar(bodyEl, label, cur, max) {
 }
 
 export const panelRenderers = {
+  avatar(bodyEl, data) {
+    const src = (data && data.url) ? data.url : '/assets/avatar-ghost.svg';
+    const alt = (data && data.name) ? data.name : 'Avatar';
+    const defaultClass = (data && data.url) ? '' : ' avatar-default';
+    const loadingClass = (data && data.loading) ? ' avatar-loading' : '';
+    let html = '<div class="avatar-panel-wrap">';
+    html += '<img class="avatar-panel-image' + defaultClass + loadingClass + '" src="' + escHtml(src) + '" alt="' + escHtml(alt) + '" draggable="false">';
+    if (data && data.name) {
+      html += '<div class="avatar-panel-name">' + escHtml(data.name) + '</div>';
+    }
+    html += '</div>';
+    bodyEl.innerHTML = html;
+  },
+
   vitals(bodyEl, data) {
     if (!data) return;
     if (bodyEl.querySelector('.placeholder')) bodyEl.innerHTML = '';

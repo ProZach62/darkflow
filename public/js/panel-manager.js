@@ -640,6 +640,7 @@ export const panelManager = {
     for (const p of Object.values(this.panels)) {
       p.bodyEl.innerHTML = '<div class="placeholder">Waiting for data...</div>';
     }
+    this._renderPanel('avatar');
   },
 
   _renderPanel(id) {
@@ -1142,6 +1143,36 @@ export const panelManager = {
         this.panels.enemy.el.style.display = inCombat ? '' : 'none';
       }
       this._renderPanel('enemy');
+    });
+
+    gmcp.on('Darkwind.Char.Avatar', (data) => {
+      if (!data || !data.url) return;
+
+      this.gmcpData.avatar = {
+        url: this.gmcpData.avatar ? this.gmcpData.avatar.url : null,
+        name: data.name || (this.gmcpData.avatar ? this.gmcpData.avatar.name : 'Avatar'),
+        loading: true,
+      };
+      this._renderPanel('avatar');
+
+      const probe = new Image();
+      probe.onload = () => {
+        this.gmcpData.avatar = {
+          url: data.url,
+          name: data.name || 'Avatar',
+          loading: false,
+        };
+        this._renderPanel('avatar');
+      };
+      probe.onerror = () => {
+        this.gmcpData.avatar = {
+          url: this.gmcpData.avatar && this.gmcpData.avatar.url ? this.gmcpData.avatar.url : null,
+          name: data.name || 'Avatar',
+          loading: false,
+        };
+        this._renderPanel('avatar');
+      };
+      probe.src = data.url;
     });
 
     gmcp.on('Group', (data) => {

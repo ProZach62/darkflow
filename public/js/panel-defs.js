@@ -1,8 +1,9 @@
 export const PANEL_DEFS = {
-  status:    { title: 'Status',    defaultDock: 'left',  defaultOrder: 0 },
-  vitals:    { title: 'Vitals',    defaultDock: 'left',  defaultOrder: 1 },
-  worth:     { title: 'Worth',     defaultDock: 'left',  defaultOrder: 2 },
-  stats:     { title: 'Stats',     defaultDock: 'left',  defaultOrder: 3 },
+  avatar:    { title: 'Avatar',    defaultDock: 'left',  defaultOrder: 0 },
+  status:    { title: 'Status',    defaultDock: 'left',  defaultOrder: 1 },
+  vitals:    { title: 'Vitals',    defaultDock: 'left',  defaultOrder: 2 },
+  worth:     { title: 'Worth',     defaultDock: 'left',  defaultOrder: 3 },
+  stats:     { title: 'Stats',     defaultDock: 'left',  defaultOrder: 4 },
   room:      { title: 'Room',      defaultDock: 'right', defaultOrder: 0 },
   group:     { title: 'Group',     defaultDock: 'right', defaultOrder: 1 },
   inventory: { title: 'Inventory', defaultDock: 'right', defaultOrder: 2 },
