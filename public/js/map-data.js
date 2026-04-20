@@ -5,6 +5,7 @@ const STORAGE_KEY = 'darkwind-map-data';
 const MOVEMENT_INTENT_TTL_MS = 2500;
 const MAX_MOVEMENT_INTENTS = 25;
 const RESYNC_COOLDOWN_MS = 2000;
+const SAVE_DEBOUNCE_MS = 200;
 
 const DIR_OFFSETS = {
   north:     { dx:  0, dy: -1, dz: 0 },
@@ -41,6 +42,7 @@ let coordIndex = new Map();
 // Server area versions for incremental sync
 let areaVersions = new Map();
 let lastResyncByArea = new Map();
+let saveTimer = null;
 
 // Debug transition log — captures every Room.Info event with context
 const debugLog = [];
@@ -294,6 +296,18 @@ function rebuildCoordIndex() {
 }
 
 function save() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    flushPendingMapSave();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+export function flushPendingMapSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
   try {
     const data = {};
     for (const [id, room] of rooms) {
@@ -455,6 +469,10 @@ export function requestAreaSync(area, forceFull) {
 }
 
 export function clearMapData() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
   rooms.clear();
   coordIndex.clear();
   areaVersions.clear();

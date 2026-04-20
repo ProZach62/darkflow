@@ -4,6 +4,7 @@ import { MAX_HISTORY, SESSION_KEY } from './constants.js';
 import { trackCommand } from './map-data.js';
 import { initCompletion, requestCompletion, resetCompletionState } from './completion.js';
 import { settingsManager } from './settings-manager.js';
+import { sendSocketPayload } from './connection.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -14,7 +15,13 @@ export function sendCommandText(text) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
 
   trackCommand(text);
-  state.ws.send(text);
+  if (!sendSocketPayload(text, {
+    kind: 'command',
+    size: text.length,
+    preview: text.slice(0, 80),
+  })) {
+    return false;
+  }
   state.bytesSent += text.length;
 
   if (text) {

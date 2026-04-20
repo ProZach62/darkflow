@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { sendSocketPayload } from './connection.js';
 
 const GMCP_CLIENT_NAME = 'WebMUD Client';
 const gmcpTextEncoder = new TextEncoder();
@@ -32,7 +33,11 @@ export const gmcp = {
     const payload = data !== undefined
       ? packageName + ' ' + JSON.stringify(data)
       : packageName;
-    state.ws.send(gmcpTextEncoder.encode(payload));
+    sendSocketPayload(gmcpTextEncoder.encode(payload), {
+      kind: 'gmcp',
+      size: payload.length,
+      preview: packageName,
+    });
   },
 
   sendHandshake() {

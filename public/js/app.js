@@ -2,15 +2,20 @@ import { state, dom, initDom } from './state.js';
 import { gmcp } from './gmcp.js';
 import { initOutput } from './output.js';
 import { panelManager } from './panel-manager.js';
-import { connect } from './connection.js';
+import { connect, getWsDebugSnapshot } from './connection.js';
 import { loadHistory, saveHistory, saveHistoryNow, initInput } from './input.js';
 import { windowManager } from './window-manager.js';
 import { ideManager } from './ide-manager.js';
 import { settingsManager } from './settings-manager.js';
+import { flushPendingMapSave } from './map-data.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
 initOutput();
+
+const startupUrlParams = new URLSearchParams(window.location.search);
+const wsDebugEnabled = startupUrlParams.get('debugWs') === '1';
+const gmcpDebugEnabled = startupUrlParams.get('debugGmcp') === '1';
 
 // ── Status Bar ──────────────────────────────────────────────────────
 function formatDuration(ms) {
@@ -36,13 +41,48 @@ setInterval(function() {
 }, 1000);
 
 // ── GMCP Debug Panel ────────────────────────────────────────────────
+const gmcpEntries = [];
+const GMCP_ENTRY_LIMIT = 200;
+
+function renderGmcpEntries() {
+  gmcpEntriesEl.textContent = '';
+  const frag = document.createDocumentFragment();
+  for (const line of gmcpEntries) {
+    const entry = document.createElement('div');
+    entry.className = 'gmcp-entry';
+    entry.textContent = line;
+    frag.appendChild(entry);
+  }
+  gmcpEntriesEl.appendChild(frag);
+}
+
+function pushGmcpEntry(line) {
+  gmcpEntries.push(line);
+  if (gmcpEntries.length > GMCP_ENTRY_LIMIT) {
+    gmcpEntries.splice(0, gmcpEntries.length - GMCP_ENTRY_LIMIT);
+  }
+
+  if (!gmcpDebugEnabled && !dom.gmcpPanel.classList.contains('open')) {
+    return;
+  }
+
+  renderGmcpEntries();
+  dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
+}
+
 dom.gmcpToggle.addEventListener('click', function() {
   const visible = dom.gmcpPanel.classList.toggle('open');
   dom.gmcpToggle.style.color = visible ? '#58a6ff' : '#8b949e';
+  if (visible) {
+    renderGmcpEntries();
+    dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
+  }
 });
 
 const gmcpToolbar = document.createElement('div');
 gmcpToolbar.className = 'gmcp-toolbar';
+const gmcpEntriesEl = document.createElement('div');
+gmcpEntriesEl.className = 'gmcp-entries';
 
 function makeGmcpBtn(label, cls) {
   const btn = document.createElement('button');
@@ -53,11 +93,7 @@ function makeGmcpBtn(label, cls) {
 
 const gmcpCopyBtn = makeGmcpBtn('Copy All');
 gmcpCopyBtn.addEventListener('click', function() {
-  const lines = [];
-  dom.gmcpPanel.querySelectorAll('.gmcp-entry').forEach(function(el) {
-    lines.push(el.textContent);
-  });
-  navigator.clipboard.writeText(lines.join('\n')).then(function() {
+  navigator.clipboard.writeText(gmcpEntries.join('\n')).then(function() {
     gmcpCopyBtn.textContent = 'Copied!';
     setTimeout(function() { gmcpCopyBtn.textContent = 'Copy All'; }, 1500);
   });
@@ -67,11 +103,7 @@ const mapSummaryBtn = makeGmcpBtn('Map Summary');
 mapSummaryBtn.addEventListener('click', function() {
   if (!window.mapDebug) return;
   const summary = window.mapDebug.summary();
-  const entry = document.createElement('div');
-  entry.className = 'gmcp-entry';
-  entry.textContent = '[' + new Date().toLocaleTimeString() + '] mapDebug.summary ' + JSON.stringify(summary);
-  dom.gmcpPanel.appendChild(entry);
-  dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
+  pushGmcpEntry('[' + new Date().toLocaleTimeString() + '] mapDebug.summary ' + JSON.stringify(summary));
 });
 
 const mapExportBtn = makeGmcpBtn('Map Export');
@@ -89,11 +121,7 @@ mapClearBtn.addEventListener('click', function() {
   if (!window.mapDebug) return;
   if (!confirm('Clear all map data? This cannot be undone.')) return;
   window.mapDebug.clearData();
-  const entry = document.createElement('div');
-  entry.className = 'gmcp-entry';
-  entry.textContent = '[' + new Date().toLocaleTimeString() + '] mapDebug.clearData -- Map data cleared';
-  dom.gmcpPanel.appendChild(entry);
-  dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
+  pushGmcpEntry('[' + new Date().toLocaleTimeString() + '] mapDebug.clearData -- Map data cleared');
 });
 
 gmcpToolbar.appendChild(mapSummaryBtn);
@@ -101,20 +129,14 @@ gmcpToolbar.appendChild(mapExportBtn);
 gmcpToolbar.appendChild(mapClearBtn);
 gmcpToolbar.appendChild(gmcpCopyBtn);
 dom.gmcpPanel.appendChild(gmcpToolbar);
+dom.gmcpPanel.appendChild(gmcpEntriesEl);
 
 gmcp.on('*', function(packageName, data) {
-  console.log('[GMCP]', packageName, data);
-  const entry = document.createElement('div');
-  entry.className = 'gmcp-entry';
-  entry.textContent = '[' + new Date().toLocaleTimeString() + '] '
-    + packageName + ' ' + JSON.stringify(data);
-  dom.gmcpPanel.appendChild(entry);
-  while (dom.gmcpPanel.querySelectorAll('.gmcp-entry').length > 200) {
-    dom.gmcpPanel.querySelector('.gmcp-entry').remove();
+  if (wsDebugEnabled) {
+    console.log('[GMCP]', packageName, data);
   }
-  if (dom.gmcpPanel.classList.contains('open')) {
-    dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
-  }
+  pushGmcpEntry('[' + new Date().toLocaleTimeString() + '] '
+    + packageName + ' ' + JSON.stringify(data));
 });
 
 // ── Game Uptime (from GMCP Game package) ────────────────────────────
@@ -230,8 +252,16 @@ ideManager.init();
 initInput();
 dom.commandInput.focus();
 
+window.wsDebug = {
+  snapshot: getWsDebugSnapshot,
+  exportAll: function() {
+    return JSON.stringify(getWsDebugSnapshot(), null, 2);
+  },
+};
+
 window.addEventListener('beforeunload', function() {
   saveHistoryNow();
+  flushPendingMapSave();
   if (state.ws) state.ws.close(1000, 'Page unload');
 });
 

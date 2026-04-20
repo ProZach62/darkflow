@@ -15,6 +15,8 @@ export const panelManager = {
   panels: {},
   gmcpData: {},
   _saveTimer: null,
+  _pendingPanelRenders: new Set(),
+  _panelRenderFrame: null,
   _mobile: {
     enabled: false,
     sheetOpen: false,
@@ -637,6 +639,11 @@ export const panelManager = {
 
   resetData() {
     this.gmcpData = {};
+    this._pendingPanelRenders.clear();
+    if (this._panelRenderFrame) {
+      cancelAnimationFrame(this._panelRenderFrame);
+      this._panelRenderFrame = null;
+    }
     for (const p of Object.values(this.panels)) {
       p.bodyEl.innerHTML = '<div class="placeholder">Waiting for data...</div>';
     }
@@ -648,6 +655,19 @@ export const panelManager = {
     if (!p) return;
     const renderer = panelRenderers[id];
     if (renderer) renderer(p.bodyEl, this.gmcpData[id]);
+  },
+
+  _queuePanelRender(id) {
+    this._pendingPanelRenders.add(id);
+    if (this._panelRenderFrame) return;
+    this._panelRenderFrame = requestAnimationFrame(() => {
+      this._panelRenderFrame = null;
+      const ids = Array.from(this._pendingPanelRenders);
+      this._pendingPanelRenders.clear();
+      for (const panelId of ids) {
+        this._renderPanel(panelId);
+      }
+    });
   },
 
   _resetLivePanels() {
@@ -1065,22 +1085,22 @@ export const panelManager = {
       Object.assign(this.gmcpData.room, data);
       this._renderPanel('room');
       processRoomInfo(data);
-      this._renderPanel('map');
+      this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData.Area', (data) => {
       const merged = mergeServerAreaData(data);
-      if (merged) this._renderPanel('map');
+      if (merged) this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData.Update', (data) => {
       const merged = mergeServerUpdate(data);
-      if (merged) this._renderPanel('map');
+      if (merged) this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData.RoomCoords', (data) => {
       const merged = applyRoomCorrection(data);
-      if (merged) this._renderPanel('map');
+      if (merged) this._queuePanelRender('map');
     });
 
     gmcp.on('Room.Players', (data) => {
