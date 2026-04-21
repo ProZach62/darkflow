@@ -2,6 +2,9 @@ import { state } from './state.js';
 import { renderMap } from './map-renderer.js';
 import { sendCommandText } from './input.js';
 
+let roomImageModal = null;
+let roomImageModalKeyHandler = null;
+
 export function escHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -18,6 +21,72 @@ export function vitalBarColor(pct) {
   if (pct > 60) return '#3fb950';
   if (pct > 30) return '#d29922';
   return '#f85149';
+}
+
+function closeRoomImageModal() {
+  if (!roomImageModal) return;
+  if (roomImageModalKeyHandler) {
+    document.removeEventListener('keydown', roomImageModalKeyHandler);
+    roomImageModalKeyHandler = null;
+  }
+  roomImageModal.remove();
+  roomImageModal = null;
+}
+
+function openRoomImageModal(src, altText) {
+  closeRoomImageModal();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'dw-modal-overlay room-image-modal-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'dw-modal room-image-modal';
+
+  const header = document.createElement('div');
+  header.className = 'dw-modal-header';
+
+  const title = document.createElement('span');
+  title.className = 'dw-modal-title';
+  title.textContent = altText || 'Room Image';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'dw-modal-close';
+  closeBtn.innerHTML = '&#x2715;';
+  closeBtn.addEventListener('click', closeRoomImageModal);
+
+  const body = document.createElement('div');
+  body.className = 'dw-modal-body room-image-modal-body';
+
+  const img = document.createElement('img');
+  img.className = 'room-image-modal-img';
+  img.src = src;
+  img.alt = altText || 'Room Image';
+  img.draggable = false;
+
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  body.appendChild(img);
+  modal.appendChild(header);
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+
+  overlay.addEventListener('click', function(event) {
+    if (event.target === overlay) {
+      closeRoomImageModal();
+    }
+  });
+
+  roomImageModalKeyHandler = function(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeRoomImageModal();
+    }
+  };
+  document.addEventListener('keydown', roomImageModalKeyHandler);
+
+  document.body.appendChild(overlay);
+  roomImageModal = overlay;
 }
 
 export function renderVitalBar(bodyEl, label, cur, max) {
@@ -55,6 +124,7 @@ export const panelRenderers = {
   roomImage(bodyEl, data) {
     let alt;
     let loadingClass;
+    let img;
 
     if (!data || !data.url) {
       bodyEl.innerHTML = '<div class="room-image-placeholder">Generating room image...</div>';
@@ -67,6 +137,13 @@ export const panelRenderers = {
       '<div class="room-image-wrap">' +
         '<img class="room-image-img' + loadingClass + '" src="' + escHtml(data.url) + '" alt="' + alt + '" draggable="false">' +
       '</div>';
+
+    img = bodyEl.querySelector('.room-image-img');
+    if (!img) return;
+
+    img.addEventListener('click', function() {
+      openRoomImageModal(data.url, data.name || 'Room');
+    });
   },
 
   vitals(bodyEl, data) {
