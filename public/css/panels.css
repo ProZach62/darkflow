@@ -250,6 +250,44 @@ body.mobile-panel-mode #mobile-panels-btn {
 .panel-body.collapsed { display: none; }
 .panel-body .placeholder { color: #484f58; font-style: italic; }
 
+.panel-body,
+.gmcp-panel-widget.floating,
+.inv-list,
+.chat-log {
+  scrollbar-width: thin;
+  scrollbar-color: #30363d #000000;
+}
+
+.panel-body::-webkit-scrollbar,
+.gmcp-panel-widget.floating::-webkit-scrollbar,
+.inv-list::-webkit-scrollbar,
+.chat-log::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.panel-body::-webkit-scrollbar-track,
+.gmcp-panel-widget.floating::-webkit-scrollbar-track,
+.inv-list::-webkit-scrollbar-track,
+.chat-log::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+.panel-body::-webkit-scrollbar-thumb,
+.gmcp-panel-widget.floating::-webkit-scrollbar-thumb,
+.inv-list::-webkit-scrollbar-thumb,
+.chat-log::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+.panel-body::-webkit-scrollbar-thumb:hover,
+.gmcp-panel-widget.floating::-webkit-scrollbar-thumb:hover,
+.inv-list::-webkit-scrollbar-thumb:hover,
+.chat-log::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
 .avatar-panel-wrap {
   display: flex;
   flex-direction: column;
@@ -552,9 +590,6 @@ body.mobile-panel-mode #mobile-panels-btn {
   max-height: 280px;
   overflow-y: auto;
 }
-.inv-list::-webkit-scrollbar { width: 6px; }
-.inv-list::-webkit-scrollbar-track { background: #0d1117; }
-.inv-list::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
 
 .inv-group-header {
   font-size: 10px;
