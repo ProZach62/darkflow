@@ -23,6 +23,7 @@ let viewportEl = null;
 let bottomSpacer = null;
 let resizeObserver = null;
 let suppressScrollEvents = false;
+let suppressAutoPause = false;
 
 function syncPauseUi() {
   if (!dom.outputShell || !dom.outputPauseBtn) return;
@@ -31,8 +32,48 @@ function syncPauseUi() {
   dom.outputPauseBtn.title = isOutputPaused ? 'Resume live terminal' : 'Pause live terminal';
 }
 
+function snapOutputToBottom() {
+  if (!dom.output) return;
+  suppressScrollEvents = true;
+  dom.output.scrollTop = dom.output.scrollHeight;
+  suppressScrollEvents = false;
+}
+
+function releaseAutoPauseSuppression() {
+  requestAnimationFrame(() => {
+    suppressAutoPause = false;
+  });
+}
+
+function resumeOutputLive() {
+  isOutputPaused = false;
+  isScrollLocked = false;
+  suppressAutoPause = true;
+  syncPauseUi();
+
+  if (pendingLines.length > 0) {
+    lineStore.push(...pendingLines);
+    pendingLines = [];
+    evictOverflowLines();
+    renderInvalidated = true;
+    renderViewport();
+  } else if (renderInvalidated) {
+    renderViewport();
+  }
+
+  snapOutputToBottom();
+  renderInvalidated = true;
+  scheduleFrame();
+  releaseAutoPauseSuppression();
+}
+
 function setOutputPaused(paused) {
-  if (isOutputPaused === paused) return;
+  if (isOutputPaused === paused) {
+    if (!paused) {
+      resumeOutputLive();
+    }
+    return;
+  }
   isOutputPaused = paused;
 
   if (paused) {
@@ -41,10 +82,7 @@ function setOutputPaused(paused) {
     return;
   }
 
-  isScrollLocked = false;
-  syncPauseUi();
-  renderInvalidated = true;
-  scheduleFrame();
+  resumeOutputLive();
 }
 
 function getPresetLimit(preset) {
@@ -315,7 +353,7 @@ export function initOutput() {
     if (suppressScrollEvents) return;
     const atBottom = isAtBottom();
     isScrollLocked = !atBottom;
-    if (!atBottom) {
+    if (!atBottom && !suppressAutoPause) {
       setOutputPaused(true);
     }
     invalidateRender();
@@ -329,9 +367,6 @@ export function initOutput() {
       }
 
       setOutputPaused(false);
-      suppressScrollEvents = true;
-      dom.output.scrollTop = dom.output.scrollHeight;
-      suppressScrollEvents = false;
     });
   }
 
