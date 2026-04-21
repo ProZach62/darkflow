@@ -318,7 +318,6 @@ function executeAliasLine(text, context = {}) {
   let handled = false;
 
   if (!match) {
-    if (!text.trim()) return { sent: false, localOnly: false, handled: false };
     if (!sendRawCommand(text)) {
       if (!isRoot) {
         appendAliasWarning('Unable to send "' + text + '" because you are not connected.');
