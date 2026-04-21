@@ -45,7 +45,9 @@ export const dom = {
   connectionDot: null,
   connectFields: null,
   toolbarStatus: null,
+  outputShell: null,
   output: null,
+  outputPauseBtn: null,
   commandInput: null,
   sendBtn: null,
   statusConnection: null,
@@ -70,7 +72,9 @@ export function initDom() {
   dom.connectionDot = document.getElementById('connection-dot');
   dom.connectFields = document.getElementById('toolbar-connect-fields');
   dom.toolbarStatus = document.getElementById('toolbar-status');
+  dom.outputShell = document.getElementById('output-shell');
   dom.output = document.getElementById('output');
+  dom.outputPauseBtn = document.getElementById('output-pause-btn');
   dom.commandInput = document.getElementById('command-input');
   dom.sendBtn = document.getElementById('send-btn');
   dom.statusConnection = document.getElementById('status-connection');

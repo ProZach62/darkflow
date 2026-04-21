@@ -1,17 +1,18 @@
 import { state, dom } from './state.js';
-import { appendEcho, clearOutput } from './output.js';
+import { appendEcho, appendSystemMessage, clearOutput } from './output.js';
 import { MAX_HISTORY, SESSION_KEY } from './constants.js';
 import { trackCommand } from './map-data.js';
 import { initCompletion, requestCompletion, resetCompletionState } from './completion.js';
 import { settingsManager } from './settings-manager.js';
 import { sendSocketPayload } from './connection.js';
+import { aliasManager, tokenizeInput } from './alias-manager.js';
 
 let commandHistory = [];
 let historyIndex = 0;
 let currentInput = '';
 let _saveTimer = null;
 
-export function sendCommandText(text) {
+function sendRawCommand(text) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
 
   trackCommand(text);
@@ -23,16 +24,19 @@ export function sendCommandText(text) {
     return false;
   }
   state.bytesSent += text.length;
+  return true;
+}
 
-  if (text) {
-    commandHistory.push(text);
-    if (commandHistory.length > MAX_HISTORY) {
-      commandHistory = commandHistory.slice(-MAX_HISTORY);
-    }
-    saveHistory();
+function pushHistory(text) {
+  if (!text) return;
+  commandHistory.push(text);
+  if (commandHistory.length > MAX_HISTORY) {
+    commandHistory = commandHistory.slice(-MAX_HISTORY);
   }
+  saveHistory();
+}
 
-  appendEcho(text);
+function finishSubmittedInput(text) {
   resetCompletionState();
   historyIndex = commandHistory.length;
   currentInput = '';
@@ -44,8 +48,250 @@ export function sendCommandText(text) {
   } else {
     dom.commandInput.value = '';
   }
+}
 
-  return true;
+function appendAliasWarning(message) {
+  appendSystemMessage('Alias: ' + message);
+}
+
+function formatAliasVariableValue(value) {
+  const text = String(value ?? '');
+  return /\s/.test(text) ? '"' + text.replace(/"/g, '\\"') + '"' : text;
+}
+
+function formatAliasStepTemplate(template) {
+  const text = String(template ?? '');
+  return /\s/.test(text) ? '"' + text.replace(/"/g, '\\"') + '"' : text;
+}
+
+function handleAliasSlashCommand(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed.startsWith('/')) return null;
+
+  const tokens = tokenizeInput(trimmed);
+  if (!tokens.length) return null;
+
+  const command = tokens[0].lower;
+  const scopeKey = aliasManager.getActiveScopeKey();
+
+  if (command === '/vars') {
+    const scope = aliasManager.getScopeSnapshot(scopeKey);
+    const entries = Object.entries(scope.variables).sort((a, b) => a[0].localeCompare(b[0]));
+    if (!entries.length) {
+      appendSystemMessage('Alias vars: none set for this server.');
+    } else {
+      appendSystemMessage(
+        'Alias vars: ' + entries.map(([name, value]) => '$' + name + '=' + formatAliasVariableValue(value)).join(', ')
+      );
+    }
+    return { handled: true, localOnly: true };
+  }
+
+  if (command === '/var' || command === '/variable') {
+    const name = tokens[1] ? tokens[1].value : '';
+    if (!name) {
+      appendAliasWarning('Usage: /var <name> <value>, /var <name>, or /vars');
+      return { handled: true, localOnly: true };
+    }
+
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      appendAliasWarning('Variable names must start with a letter or underscore and use only letters, digits, and underscores.');
+      return { handled: true, localOnly: true };
+    }
+
+    if (!tokens[2]) {
+      const existing = aliasManager.getVariable(name, scopeKey);
+      if (existing === undefined) {
+        appendSystemMessage('Alias var: $' + name + ' is not set.');
+      } else {
+        appendSystemMessage('Alias var: $' + name + ' = ' + formatAliasVariableValue(existing));
+      }
+      return { handled: true, localOnly: true };
+    }
+
+    const value = tokens.slice(2).map((token) => token.value).join(' ');
+    aliasManager.setVariable(name, value, scopeKey);
+    appendSystemMessage('Alias var set: $' + name + ' = ' + formatAliasVariableValue(value));
+    return { handled: true, localOnly: true };
+  }
+
+  if (command === '/alias') {
+    const scope = aliasManager.getScopeSnapshot(scopeKey);
+    const trigger = tokens[1] ? tokens[1].value : '';
+
+    if (!trigger) {
+      const aliases = scope.aliases
+        .slice()
+        .sort((a, b) => a.trigger.localeCompare(b.trigger));
+      if (!aliases.length) {
+        appendSystemMessage('Aliases: none set for this server.');
+      } else {
+        appendSystemMessage(
+          'Aliases: ' + aliases.map((alias) => alias.trigger).join(', ')
+        );
+      }
+      return { handled: true, localOnly: true };
+    }
+
+    if (!tokens[2]) {
+      const alias = aliasManager.findAliasByTrigger(trigger, scopeKey);
+      if (!alias) {
+        appendSystemMessage('Alias: "' + trigger + '" is not defined.');
+        return { handled: true, localOnly: true };
+      }
+
+      if (alias.steps.length === 1 && alias.steps[0].type === 'send_command') {
+        appendSystemMessage(
+          'Alias: ' + alias.trigger + ' -> ' + formatAliasStepTemplate(alias.steps[0].template)
+        );
+      } else {
+        appendSystemMessage(
+          'Alias: ' + alias.trigger + ' is defined with ' + alias.steps.length + ' step'
+          + (alias.steps.length === 1 ? '' : 's')
+          + '. Edit it in Settings for full details.'
+        );
+      }
+      return { handled: true, localOnly: true };
+    }
+
+    const template = tokens.slice(2).map((token) => token.value).join(' ').trim();
+    if (!template) {
+      appendAliasWarning('Usage: /alias <trigger> <command>');
+      return { handled: true, localOnly: true };
+    }
+
+    aliasManager.upsertSimpleAlias(trigger, template, scopeKey);
+    appendSystemMessage(
+      'Alias set: ' + trigger + ' -> ' + formatAliasStepTemplate(template)
+    );
+    return { handled: true, localOnly: true };
+  }
+
+  if (command === '/unvar' || command === '/unsetvar' || command === '/unsetvariable') {
+    const name = tokens[1] ? tokens[1].value : '';
+    if (!name) {
+      appendAliasWarning('Usage: /unvar <name>');
+      return { handled: true, localOnly: true };
+    }
+
+    const existing = aliasManager.getVariable(name, scopeKey);
+    if (existing === undefined) {
+      appendSystemMessage('Alias var: $' + name + ' was not set.');
+    } else {
+      aliasManager.removeVariable(name, scopeKey);
+      appendSystemMessage('Alias var cleared: $' + name);
+    }
+    return { handled: true, localOnly: true };
+  }
+
+  if (command === '/unalias') {
+    const trigger = tokens[1] ? tokens[1].value : '';
+    if (!trigger) {
+      appendAliasWarning('Usage: /unalias <trigger>');
+      return { handled: true, localOnly: true };
+    }
+
+    if (!aliasManager.removeAliasByTrigger(trigger, scopeKey)) {
+      appendSystemMessage('Alias: "' + trigger + '" was not defined.');
+    } else {
+      appendSystemMessage('Alias cleared: ' + trigger);
+    }
+    return { handled: true, localOnly: true };
+  }
+
+  return null;
+}
+
+function executeAliasLine(text, context = {}) {
+  const scopeKey = context.scopeKey || aliasManager.getActiveScopeKey();
+  const depth = context.depth || 0;
+  const trail = Array.isArray(context.trail) ? context.trail : [];
+  const isRoot = context.isRoot === true;
+  const match = aliasManager.matchAlias(text, scopeKey);
+  let sent = false;
+  let localOnly = false;
+  let handled = false;
+
+  if (!match) {
+    if (!text.trim()) return { sent: false, localOnly: false, handled: false };
+    if (!sendRawCommand(text)) {
+      if (!isRoot) {
+        appendAliasWarning('Unable to send "' + text + '" because you are not connected.');
+      }
+      return { sent: false, localOnly: false, handled: false };
+    }
+    return { sent: true, localOnly: false, handled: false };
+  }
+
+  handled = true;
+
+  if (depth >= aliasManager.getMaxAliasDepth()) {
+    appendAliasWarning('Alias depth limit reached while expanding "' + match.alias.trigger + '".');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  if (trail.includes(match.alias.id)) {
+    appendAliasWarning('Alias recursion detected for "' + match.alias.trigger + '".');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  for (const step of match.alias.steps) {
+    const variables = aliasManager.getScopeSnapshot(scopeKey).variables;
+    const resolved = aliasManager.resolveTemplate(step.template, {
+      args: match.args,
+      remainder: match.remainder,
+      variables,
+    });
+
+    if ((step.type === 'send_command' || step.type === 'set_variable') && resolved.missingVariables.length) {
+      appendAliasWarning(
+        'Missing variable' + (resolved.missingVariables.length === 1 ? '' : 's') + ' '
+        + resolved.missingVariables.map((name) => '$' + name).join(', ')
+        + ' in alias "' + match.alias.trigger + '".'
+      );
+      localOnly = true;
+      continue;
+    }
+
+    if (step.type === 'set_variable') {
+      if (aliasManager.setVariable(step.name, resolved.text, scopeKey)) {
+        localOnly = true;
+      }
+      continue;
+    }
+
+    if (step.type === 'show_message') {
+      appendSystemMessage(resolved.text);
+      localOnly = true;
+      continue;
+    }
+
+    const nextText = resolved.text.trim();
+    if (!nextText) continue;
+    const result = executeAliasLine(nextText, {
+      scopeKey,
+      depth: depth + 1,
+      trail: [...trail, match.alias.id],
+      isRoot: false,
+    });
+    sent = sent || result.sent;
+    localOnly = localOnly || result.localOnly || result.handled;
+  }
+
+  return { sent, localOnly, handled };
+}
+
+export function sendCommandText(text) {
+  const trimmed = String(text || '');
+  const slashCommandResult = handleAliasSlashCommand(trimmed);
+  const aliasResult = slashCommandResult || executeAliasLine(trimmed, { isRoot: true });
+
+  if (!aliasResult.handled && !aliasResult.sent) return false;
+
+  pushHistory(trimmed);
+  appendEcho(trimmed);
+  finishSubmittedInput(trimmed);
+  return aliasResult.sent || aliasResult.localOnly || aliasResult.handled;
 }
 
 function getMappedCommand(key) {

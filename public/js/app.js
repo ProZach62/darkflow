@@ -8,6 +8,7 @@ import { windowManager } from './window-manager.js';
 import { ideManager } from './ide-manager.js';
 import { settingsManager } from './settings-manager.js';
 import { flushPendingMapSave } from './map-data.js';
+import { aliasManager } from './alias-manager.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -229,6 +230,7 @@ document.addEventListener('click', function() {
 
 // ── Init ────────────────────────────────────────────────────────────
 settingsManager.init();
+aliasManager.init();
 
 // Load server config, then apply URL param overrides
 fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
@@ -256,6 +258,15 @@ window.wsDebug = {
   snapshot: getWsDebugSnapshot,
   exportAll: function() {
     return JSON.stringify(getWsDebugSnapshot(), null, 2);
+  },
+};
+
+window.aliasDebug = {
+  scope: function() {
+    return aliasManager.getActiveScopeKey();
+  },
+  data: function() {
+    return aliasManager.getScopeSnapshot();
   },
 };
 

@@ -10,6 +10,7 @@ const BOTTOM_THRESHOLD_PX = 5;
 const DEFAULT_LINE_HEIGHT_PX = 23;
 
 let isScrollLocked = false;
+let isOutputPaused = false;
 let lineStore = [];
 let nextLineId = 1;
 let pendingLines = [];
@@ -22,6 +23,29 @@ let viewportEl = null;
 let bottomSpacer = null;
 let resizeObserver = null;
 let suppressScrollEvents = false;
+
+function syncPauseUi() {
+  if (!dom.outputShell || !dom.outputPauseBtn) return;
+  dom.outputShell.classList.toggle('paused', isOutputPaused);
+  dom.outputPauseBtn.setAttribute('aria-pressed', isOutputPaused ? 'true' : 'false');
+  dom.outputPauseBtn.title = isOutputPaused ? 'Resume live terminal' : 'Pause live terminal';
+}
+
+function setOutputPaused(paused) {
+  if (isOutputPaused === paused) return;
+  isOutputPaused = paused;
+
+  if (paused) {
+    isScrollLocked = true;
+    syncPauseUi();
+    return;
+  }
+
+  isScrollLocked = false;
+  syncPauseUi();
+  renderInvalidated = true;
+  scheduleFrame();
+}
 
 function getPresetLimit(preset) {
   return OUTPUT_SCROLLBACK_PRESETS[preset] || OUTPUT_SCROLLBACK_PRESETS[DEFAULT_OUTPUT_SCROLLBACK_PRESET];
@@ -227,6 +251,13 @@ function renderViewport() {
 function flushAndRender() {
   frameScheduled = false;
 
+  if (isOutputPaused) {
+    if (renderInvalidated) {
+      renderViewport();
+    }
+    return;
+  }
+
   if (pendingLines.length > 0) {
     const shouldStickToBottom = !isScrollLocked || isAtBottom();
     const previousScrollTop = dom.output.scrollTop;
@@ -263,6 +294,7 @@ function queueLines(lines) {
 
 export function initOutput() {
   dom.output.textContent = '';
+  syncPauseUi();
 
   topSpacer = document.createElement('div');
   topSpacer.className = 'output-spacer';
@@ -281,9 +313,27 @@ export function initOutput() {
 
   dom.output.addEventListener('scroll', function() {
     if (suppressScrollEvents) return;
-    isScrollLocked = !isAtBottom();
+    const atBottom = isAtBottom();
+    isScrollLocked = !atBottom;
+    if (!atBottom) {
+      setOutputPaused(true);
+    }
     invalidateRender();
   });
+
+  if (dom.outputPauseBtn) {
+    dom.outputPauseBtn.addEventListener('click', function() {
+      if (!isOutputPaused) {
+        setOutputPaused(true);
+        return;
+      }
+
+      setOutputPaused(false);
+      suppressScrollEvents = true;
+      dom.output.scrollTop = dom.output.scrollHeight;
+      suppressScrollEvents = false;
+    });
+  }
 
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(() => {
@@ -334,6 +384,8 @@ export function clearOutput() {
   pendingLines = [];
   nextLineId = 1;
   isScrollLocked = false;
+  isOutputPaused = false;
+  syncPauseUi();
 
   if (topSpacer) topSpacer.style.height = '0px';
   if (bottomSpacer) bottomSpacer.style.height = '0px';
