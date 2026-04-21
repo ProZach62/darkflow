@@ -1,7 +1,9 @@
 import { state, dom } from './state.js';
-import { DEFAULT_OUTPUT_SCROLLBACK_PRESET } from './constants.js';
+import { DEFAULT_OUTPUT_SCROLLBACK_PRESET, FG_NAMES } from './constants.js';
 import { setOutputScrollbackPreset } from './output.js';
 import { aliasManager } from './alias-manager.js';
+import { highlightManager } from './highlight-manager.js';
+import { styleToElement } from './ansi.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 
@@ -17,8 +19,12 @@ export const settingsManager = {
   _draftSettings: {},
   _aliasScopeKey: '',
   _draftAliasScope: null,
+  _highlightScopeKey: '',
+  _draftHighlightScope: null,
   _overlay: null,
   _escHandler: null,
+  _dataSyncHandler: null,
+  _refreshEditors: null,
 
   init() {
     this._settings = { ...this._defaults };
@@ -62,6 +68,8 @@ export const settingsManager = {
     };
     this._aliasScopeKey = aliasManager.getActiveScopeKey();
     this._draftAliasScope = aliasManager.getScopeSnapshot(this._aliasScopeKey);
+    this._highlightScopeKey = highlightManager.getActiveScopeKey();
+    this._draftHighlightScope = highlightManager.getScopeSnapshot(this._highlightScopeKey);
 
     const overlay = this._buildModal();
     const escHandler = (event) => {
@@ -71,10 +79,19 @@ export const settingsManager = {
     };
 
     document.addEventListener('keydown', escHandler);
+    const dataSyncHandler = (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      if (!this._overlay || !this._refreshEditors) return;
+      if (detail.scopeKey && detail.scopeKey !== this._highlightScopeKey) return;
+      this._draftHighlightScope = highlightManager.getScopeSnapshot(this._highlightScopeKey);
+      this._refreshEditors();
+    };
+    window.addEventListener('darkwind:highlight-data-changed', dataSyncHandler);
     document.body.appendChild(overlay);
 
     this._overlay = overlay;
     this._escHandler = escHandler;
+    this._dataSyncHandler = dataSyncHandler;
   },
 
   close() {
@@ -86,9 +103,16 @@ export const settingsManager = {
       this._overlay.remove();
       this._overlay = null;
     }
+    if (this._dataSyncHandler) {
+      window.removeEventListener('darkwind:highlight-data-changed', this._dataSyncHandler);
+      this._dataSyncHandler = null;
+    }
     this._draftSettings = {};
     this._draftAliasScope = null;
     this._aliasScopeKey = '';
+    this._draftHighlightScope = null;
+    this._highlightScopeKey = '';
+    this._refreshEditors = null;
   },
 
   _save() {
@@ -297,6 +321,373 @@ export const settingsManager = {
     return wrapper;
   },
 
+  _createColorSelect(value, onChange) {
+    const select = document.createElement('select');
+    select.className = 'dw-select';
+    FG_NAMES.forEach((name) => {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+      if (name === value) option.selected = true;
+      select.appendChild(option);
+    });
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  },
+
+  _createHighlightEditor() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'settings-aliases-editor';
+
+    const scopeCard = document.createElement('div');
+    scopeCard.className = 'settings-connection-card';
+
+    const scopeLabel = document.createElement('div');
+    scopeLabel.className = 'settings-label';
+    scopeLabel.textContent = 'Active highlight scope';
+
+    const scopeValue = document.createElement('div');
+    scopeValue.className = 'settings-connection-value';
+    scopeValue.textContent = this._highlightScopeKey;
+
+    const scopeHelp = document.createElement('p');
+    scopeHelp.className = 'dw-paragraph';
+    scopeHelp.textContent = 'Highlights are saved separately for each server connection target and apply to incoming terminal output.';
+
+    scopeCard.appendChild(scopeLabel);
+    scopeCard.appendChild(scopeValue);
+    scopeCard.appendChild(scopeHelp);
+    wrapper.appendChild(scopeCard);
+
+    const layout = document.createElement('div');
+    layout.className = 'settings-alias-layout';
+
+    const sidebar = document.createElement('div');
+    sidebar.className = 'settings-alias-sidebar';
+
+    const editor = document.createElement('div');
+    editor.className = 'settings-alias-detail';
+
+    const previewCard = document.createElement('div');
+    previewCard.className = 'settings-mapper-editor settings-alias-preview-card';
+
+    let searchTerm = '';
+    let sampleInput = 'You have emptied the keg!';
+    let selectedRuleId = this._draftHighlightScope.rules[0] ? this._draftHighlightScope.rules[0].id : null;
+
+    const ensureSelectedRule = () => {
+      const rules = this._draftHighlightScope.rules;
+      if (!rules.length) {
+        selectedRuleId = null;
+        return null;
+      }
+      const existing = rules.find((rule) => rule.id === selectedRuleId);
+      if (existing) return existing;
+      selectedRuleId = rules[0].id;
+      return rules[0];
+    };
+
+    const createFieldLabel = (text) => {
+      const label = document.createElement('div');
+      label.className = 'settings-label';
+      label.textContent = text;
+      return label;
+    };
+
+    const previewBody = document.createElement('div');
+    const sampleControl = document.createElement('textarea');
+    sampleControl.className = 'dw-input settings-alias-template';
+    sampleControl.value = sampleInput;
+    sampleControl.addEventListener('input', () => {
+      sampleInput = sampleControl.value;
+      renderPreviewBody();
+    });
+
+    const renderPreviewBody = () => {
+      previewBody.textContent = '';
+
+      const previewLine = document.createElement('div');
+      previewLine.className = 'settings-alias-preview-step';
+      const fragments = highlightManager.applyHighlightsToText(sampleInput, this._draftHighlightScope.rules);
+      fragments.forEach((fragment) => {
+        const node = styleToElement(fragment.text, fragment.style || {});
+        if (node) previewLine.appendChild(node);
+      });
+      previewBody.appendChild(previewLine);
+    };
+
+    const renderPreview = () => {
+      previewCard.textContent = '';
+
+      const title = document.createElement('div');
+      title.className = 'settings-label';
+      title.textContent = 'Preview';
+      previewCard.appendChild(title);
+
+      const help = document.createElement('p');
+      help.className = 'dw-paragraph settings-helper-text';
+      help.textContent = 'Preview how the current rules will recolor matching terminal text.';
+      previewCard.appendChild(help);
+
+      const sampleField = document.createElement('label');
+      sampleField.className = 'dw-field';
+      sampleField.appendChild(createFieldLabel('Sample output'));
+      sampleControl.value = sampleInput;
+      sampleField.appendChild(sampleControl);
+      previewCard.appendChild(sampleField);
+      previewCard.appendChild(previewBody);
+      renderPreviewBody();
+    };
+
+    const renderRuleDetail = () => {
+      editor.textContent = '';
+      const rule = ensureSelectedRule();
+      if (!rule) {
+        const empty = document.createElement('div');
+        empty.className = 'settings-alias-empty';
+        empty.textContent = 'Create a highlight rule to start coloring matched terminal output.';
+        editor.appendChild(empty);
+        return;
+      }
+
+      const title = document.createElement('div');
+      title.className = 'settings-label';
+      title.textContent = 'Highlight editor';
+      editor.appendChild(title);
+
+      const diagnostics = highlightManager.getRuleDiagnostics(this._draftHighlightScope, rule.id);
+      if (diagnostics.length) {
+        const warningBox = document.createElement('div');
+        warningBox.className = 'settings-alias-diagnostics';
+        diagnostics.forEach((message) => {
+          const item = document.createElement('div');
+          item.textContent = message;
+          warningBox.appendChild(item);
+        });
+        editor.appendChild(warningBox);
+      }
+
+      const patternField = document.createElement('label');
+      patternField.className = 'dw-field';
+      patternField.appendChild(createFieldLabel('Regex pattern'));
+      const patternInput = document.createElement('input');
+      patternInput.type = 'text';
+      patternInput.className = 'dw-input';
+      patternInput.placeholder = 'You have emptied the keg!';
+      patternInput.value = rule.patternSource;
+      patternInput.addEventListener('input', () => {
+        rule.patternSource = patternInput.value;
+        renderHighlightList();
+        renderPreview();
+      });
+      patternInput.addEventListener('blur', () => render());
+      patternField.appendChild(patternInput);
+      editor.appendChild(patternField);
+
+      editor.appendChild(this._createCheckboxRow(
+        'Highlight enabled',
+        'Disabled highlight rules stay saved but never recolor output.',
+        rule.enabled !== false,
+        (checked) => {
+          rule.enabled = checked;
+          render();
+        }
+      ));
+
+      editor.appendChild(this._createCheckboxRow(
+        'Ignore letter casing',
+        'Use regex ignore-case matching so pattern text matches regardless of capitalization.',
+        rule.ignoreCase === true,
+        (checked) => {
+          rule.ignoreCase = checked;
+          renderPreview();
+        }
+      ));
+
+      const styleGrid = document.createElement('div');
+      styleGrid.className = 'settings-highlight-style-grid';
+
+      const fgField = document.createElement('label');
+      fgField.className = 'dw-field';
+      fgField.appendChild(createFieldLabel('Foreground'));
+      fgField.appendChild(this._createColorSelect(rule.style.fg, (value) => {
+        rule.style.fg = value;
+        renderPreview();
+      }));
+      styleGrid.appendChild(fgField);
+
+      const bgField = document.createElement('label');
+      bgField.className = 'dw-field';
+      bgField.appendChild(createFieldLabel('Background'));
+      bgField.appendChild(this._createColorSelect(rule.style.bg, (value) => {
+        rule.style.bg = value;
+        renderPreview();
+      }));
+      styleGrid.appendChild(bgField);
+
+      editor.appendChild(styleGrid);
+
+      editor.appendChild(this._createCheckboxRow(
+        'Bold matched text',
+        'Force matched text to render bold in addition to the selected colors.',
+        rule.style.bold === true,
+        (checked) => {
+          rule.style.bold = checked;
+          renderPreview();
+        }
+      ));
+    };
+
+    const renderHighlightList = () => {
+      sidebar.textContent = '';
+
+      const title = document.createElement('div');
+      title.className = 'settings-label';
+      title.textContent = 'Highlight rules';
+
+      const search = document.createElement('input');
+      search.type = 'text';
+      search.className = 'dw-input';
+      search.placeholder = 'Search highlights';
+      search.value = searchTerm;
+      search.addEventListener('input', () => {
+        searchTerm = search.value;
+        render();
+      });
+
+      const list = document.createElement('div');
+      list.className = 'settings-alias-list';
+
+      const filteredRules = this._draftHighlightScope.rules.filter((rule) => (
+        rule.patternSource.toLowerCase().includes(searchTerm.trim().toLowerCase())
+      ));
+
+      filteredRules.forEach((rule) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'settings-alias-list-item' + (rule.id === selectedRuleId ? ' active' : '');
+        row.addEventListener('click', () => {
+          selectedRuleId = rule.id;
+          render();
+        });
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = rule.enabled !== false;
+        checkbox.addEventListener('click', (event) => event.stopPropagation());
+        checkbox.addEventListener('change', () => {
+          rule.enabled = checkbox.checked;
+          render();
+        });
+
+        const copy = document.createElement('div');
+        copy.className = 'settings-copy';
+
+        const pattern = document.createElement('div');
+        pattern.className = 'settings-label';
+        pattern.textContent = rule.patternSource || '(untitled)';
+
+        const detail = document.createElement('div');
+        detail.className = 'settings-alias-list-meta';
+        detail.textContent = highlightManager.formatRuleStyle(rule) + (rule.ignoreCase ? ' | ignore case' : '');
+
+        copy.appendChild(pattern);
+        copy.appendChild(detail);
+        row.appendChild(checkbox);
+        row.appendChild(copy);
+        list.appendChild(row);
+      });
+
+      if (!filteredRules.length) {
+        const empty = document.createElement('div');
+        empty.className = 'settings-alias-empty';
+        empty.textContent = searchTerm ? 'No highlight rules match this filter.' : 'No highlight rules defined for this scope.';
+        list.appendChild(empty);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'settings-inline-actions';
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'dw-button dw-button-secondary';
+      addBtn.textContent = 'Add rule';
+      addBtn.addEventListener('click', () => {
+        const rule = highlightManager.createEmptyRule();
+        this._draftHighlightScope.rules.push(rule);
+        selectedRuleId = rule.id;
+        render();
+      });
+
+      const upBtn = document.createElement('button');
+      upBtn.type = 'button';
+      upBtn.className = 'dw-button dw-button-secondary';
+      upBtn.textContent = 'Up';
+      upBtn.disabled = !ensureSelectedRule() || this._draftHighlightScope.rules.findIndex((rule) => rule.id === selectedRuleId) <= 0;
+      upBtn.addEventListener('click', () => {
+        const index = this._draftHighlightScope.rules.findIndex((rule) => rule.id === selectedRuleId);
+        if (index <= 0) return;
+        const previous = this._draftHighlightScope.rules[index - 1];
+        this._draftHighlightScope.rules[index - 1] = this._draftHighlightScope.rules[index];
+        this._draftHighlightScope.rules[index] = previous;
+        render();
+      });
+
+      const downBtn = document.createElement('button');
+      downBtn.type = 'button';
+      downBtn.className = 'dw-button dw-button-secondary';
+      downBtn.textContent = 'Down';
+      downBtn.disabled = !ensureSelectedRule()
+        || this._draftHighlightScope.rules.findIndex((rule) => rule.id === selectedRuleId) === this._draftHighlightScope.rules.length - 1;
+      downBtn.addEventListener('click', () => {
+        const index = this._draftHighlightScope.rules.findIndex((rule) => rule.id === selectedRuleId);
+        if (index < 0 || index >= this._draftHighlightScope.rules.length - 1) return;
+        const next = this._draftHighlightScope.rules[index + 1];
+        this._draftHighlightScope.rules[index + 1] = this._draftHighlightScope.rules[index];
+        this._draftHighlightScope.rules[index] = next;
+        render();
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
+      removeBtn.textContent = 'Remove selected';
+      removeBtn.disabled = !ensureSelectedRule();
+      removeBtn.addEventListener('click', () => {
+        const rule = ensureSelectedRule();
+        if (!rule) return;
+        this._draftHighlightScope.rules = this._draftHighlightScope.rules.filter((item) => item.id !== rule.id);
+        selectedRuleId = this._draftHighlightScope.rules[0] ? this._draftHighlightScope.rules[0].id : null;
+        render();
+      });
+
+      actions.appendChild(addBtn);
+      actions.appendChild(upBtn);
+      actions.appendChild(downBtn);
+      actions.appendChild(removeBtn);
+
+      sidebar.appendChild(title);
+      sidebar.appendChild(search);
+      sidebar.appendChild(list);
+      sidebar.appendChild(actions);
+    };
+
+    const render = () => {
+      ensureSelectedRule();
+      renderHighlightList();
+      renderRuleDetail();
+      renderPreview();
+    };
+
+    layout.appendChild(sidebar);
+    layout.appendChild(editor);
+    wrapper.appendChild(layout);
+    wrapper.appendChild(previewCard);
+
+    render();
+    return wrapper;
+  },
+
   _createAliasEditor() {
     const wrapper = document.createElement('div');
     wrapper.className = 'settings-aliases-editor';
@@ -359,31 +750,20 @@ export const settingsManager = {
       return label;
     };
 
-    const renderPreview = () => {
-      previewCard.textContent = '';
+    const aliasPreviewBody = document.createElement('div');
 
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Live preview';
+    const sampleInputEl = document.createElement('input');
+    sampleInputEl.type = 'text';
+    sampleInputEl.className = 'dw-input';
+    sampleInputEl.placeholder = 'Example: gi sword';
+    sampleInputEl.value = sampleInput;
+    sampleInputEl.addEventListener('input', () => {
+      sampleInput = sampleInputEl.value;
+      renderPreviewBody();
+    });
 
-      const help = document.createElement('p');
-      help.className = 'dw-paragraph settings-helper-text';
-      help.textContent = 'Try an input line to see which alias matches and what it will do with the current variables.';
-
-      const sampleInputEl = document.createElement('input');
-      sampleInputEl.type = 'text';
-      sampleInputEl.className = 'dw-input';
-      sampleInputEl.placeholder = 'Example: gi sword';
-      sampleInputEl.value = sampleInput;
-      sampleInputEl.addEventListener('input', () => {
-        sampleInput = sampleInputEl.value;
-        render();
-      });
-
-      previewCard.appendChild(title);
-      previewCard.appendChild(help);
-      previewCard.appendChild(sampleInputEl);
-
+    const renderPreviewBody = () => {
+      aliasPreviewBody.textContent = '';
       if (!sampleInput.trim()) return;
 
       const match = aliasManager.matchAliasInAliases(sampleInput, this._draftAliasScope.aliases);
@@ -395,7 +775,7 @@ export const settingsManager = {
         empty.className = 'settings-alias-empty';
         empty.textContent = 'No enabled alias matches this input.';
         body.appendChild(empty);
-        previewCard.appendChild(body);
+        aliasPreviewBody.appendChild(body);
         return;
       }
 
@@ -429,7 +809,26 @@ export const settingsManager = {
         body.appendChild(row);
       }
 
-      previewCard.appendChild(body);
+      aliasPreviewBody.appendChild(body);
+    };
+
+    const renderPreview = () => {
+      previewCard.textContent = '';
+
+      const title = document.createElement('div');
+      title.className = 'settings-label';
+      title.textContent = 'Live preview';
+
+      const help = document.createElement('p');
+      help.className = 'dw-paragraph settings-helper-text';
+      help.textContent = 'Try an input line to see which alias matches and what it will do with the current variables.';
+
+      sampleInputEl.value = sampleInput;
+      previewCard.appendChild(title);
+      previewCard.appendChild(help);
+      previewCard.appendChild(sampleInputEl);
+      previewCard.appendChild(aliasPreviewBody);
+      renderPreviewBody();
     };
 
     const renderVariables = () => {
@@ -918,6 +1317,7 @@ export const settingsManager = {
     const connectionSection = createTab('connection', 'Connection');
     const terminalSection = createTab('terminal', 'Terminal');
     const controlsSection = createTab('controls', 'Controls');
+    const highlightsSection = createTab('highlights', 'Highlights');
     const aliasesSection = createTab('aliases', 'Aliases');
 
     const sectionTitle = document.createElement('h3');
@@ -1014,11 +1414,26 @@ export const settingsManager = {
     ));
     controlsSection.appendChild(keyMapperFields);
 
+    const highlightsTitle = document.createElement('h3');
+    highlightsTitle.className = 'dw-heading';
+    highlightsTitle.textContent = 'Highlights';
+    highlightsSection.appendChild(highlightsTitle);
+    highlightsSection.appendChild(this._createHighlightEditor());
+
     const aliasesTitle = document.createElement('h3');
     aliasesTitle.className = 'dw-heading';
     aliasesTitle.textContent = 'Aliases';
     aliasesSection.appendChild(aliasesTitle);
     aliasesSection.appendChild(this._createAliasEditor());
+
+    this._refreshEditors = () => {
+      highlightsSection.textContent = '';
+      const nextHighlightsTitle = document.createElement('h3');
+      nextHighlightsTitle.className = 'dw-heading';
+      nextHighlightsTitle.textContent = 'Highlights';
+      highlightsSection.appendChild(nextHighlightsTitle);
+      highlightsSection.appendChild(this._createHighlightEditor());
+    };
 
     activateTab('connection');
     body.appendChild(tabs);
@@ -1037,6 +1452,7 @@ export const settingsManager = {
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', () => {
       this._applySettings(this._draftSettings);
+      highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
       aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
       this.close();
     });

@@ -6,6 +6,7 @@ import { initCompletion, requestCompletion, resetCompletionState } from './compl
 import { settingsManager } from './settings-manager.js';
 import { sendSocketPayload } from './connection.js';
 import { aliasManager, tokenizeInput } from './alias-manager.js';
+import { highlightManager } from './highlight-manager.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -54,6 +55,10 @@ function appendAliasWarning(message) {
   appendSystemMessage('Alias: ' + message);
 }
 
+function appendHighlightWarning(message) {
+  appendSystemMessage('Highlight: ' + message);
+}
+
 function formatAliasVariableValue(value) {
   const text = String(value ?? '');
   return /\s/.test(text) ? '"' + text.replace(/"/g, '\\"') + '"' : text;
@@ -62,6 +67,52 @@ function formatAliasVariableValue(value) {
 function formatAliasStepTemplate(template) {
   const text = String(template ?? '');
   return /\s/.test(text) ? '"' + text.replace(/"/g, '\\"') + '"' : text;
+}
+
+function parseBraceArguments(text, command) {
+  const prefix = '/' + command;
+  const remainder = String(text || '').trim().slice(prefix.length).trim();
+  if (!remainder) return [];
+
+  const values = [];
+  let index = 0;
+
+  while (index < remainder.length) {
+    while (index < remainder.length && /\s/.test(remainder[index])) index++;
+    if (index >= remainder.length) break;
+    if (remainder[index] !== '{') return null;
+
+    index++;
+    let value = '';
+    let depth = 1;
+
+    while (index < remainder.length) {
+      const ch = remainder[index];
+      if (ch === '{') {
+        depth++;
+        value += ch;
+        index++;
+        continue;
+      }
+      if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          index++;
+          break;
+        }
+        value += ch;
+        index++;
+        continue;
+      }
+      value += ch;
+      index++;
+    }
+
+    if (depth !== 0) return null;
+    values.push(value);
+  }
+
+  return values;
 }
 
 function handleAliasSlashCommand(text) {
@@ -167,6 +218,45 @@ function handleAliasSlashCommand(text) {
     return { handled: true, localOnly: true };
   }
 
+  if (command === '/highlight') {
+    const scope = highlightManager.getScopeSnapshot(scopeKey);
+    const args = parseBraceArguments(trimmed, 'highlight');
+    if (args === null) {
+      appendHighlightWarning('Usage: /highlight {pattern} {foreground [b] background}');
+      return { handled: true, localOnly: true };
+    }
+
+    if (!args.length) {
+      const rules = scope.rules.slice();
+      if (!rules.length) {
+        appendSystemMessage('Highlights: none set for this server.');
+      } else {
+        appendSystemMessage(
+          'Highlights: ' + rules.map((rule) => highlightManager.describeRule(rule)).join(' | ')
+        );
+      }
+      return { handled: true, localOnly: true };
+    }
+
+    if (args.length === 1) {
+      const rule = highlightManager.findRuleByPattern(args[0], scopeKey);
+      if (!rule) {
+        appendSystemMessage('Highlight: "' + args[0] + '" is not defined.');
+      } else {
+        appendSystemMessage('Highlight: ' + highlightManager.describeRule(rule));
+      }
+      return { handled: true, localOnly: true };
+    }
+
+    const result = highlightManager.upsertSimpleRule(args[0], args[1], scopeKey);
+    if (result.error) {
+      appendHighlightWarning(result.error);
+    } else {
+      appendSystemMessage('Highlight set: ' + highlightManager.describeRule(result.rule));
+    }
+    return { handled: true, localOnly: true };
+  }
+
   if (command === '/unvar' || command === '/unsetvar' || command === '/unsetvariable') {
     const name = tokens[1] ? tokens[1].value : '';
     if (!name) {
@@ -195,6 +285,21 @@ function handleAliasSlashCommand(text) {
       appendSystemMessage('Alias: "' + trigger + '" was not defined.');
     } else {
       appendSystemMessage('Alias cleared: ' + trigger);
+    }
+    return { handled: true, localOnly: true };
+  }
+
+  if (command === '/unhighlight') {
+    const args = parseBraceArguments(trimmed, 'unhighlight');
+    if (args === null || args.length !== 1) {
+      appendHighlightWarning('Usage: /unhighlight {pattern}');
+      return { handled: true, localOnly: true };
+    }
+
+    if (!highlightManager.removeRuleByPattern(args[0], scopeKey)) {
+      appendSystemMessage('Highlight: "' + args[0] + '" was not defined.');
+    } else {
+      appendSystemMessage('Highlight cleared: ' + args[0]);
     }
     return { handled: true, localOnly: true };
   }

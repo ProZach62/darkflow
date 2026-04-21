@@ -1,5 +1,6 @@
 import { dom } from './state.js';
 import { parseAnsi, styleToElement } from './ansi.js';
+import { highlightManager } from './highlight-manager.js';
 import {
   DEFAULT_OUTPUT_SCROLLBACK_PRESET,
   OUTPUT_OVERSCAN_LINES,
@@ -353,6 +354,10 @@ export function initOutput() {
     if (suppressScrollEvents) return;
     const atBottom = isAtBottom();
     isScrollLocked = !atBottom;
+    if (atBottom && isOutputPaused) {
+      setOutputPaused(false);
+      return;
+    }
     if (!atBottom && !suppressAutoPause) {
       setOutputPaused(true);
     }
@@ -403,7 +408,7 @@ export function setOutputScrollbackPreset(preset) {
 
 export function appendOutput(text, cssClass) {
   const fragments = parseAnsi(text);
-  queueLines(buildLinesFromFragments(fragments, cssClass));
+  queueLines(highlightManager.applyHighlightsToLines(buildLinesFromFragments(fragments, cssClass)));
 }
 
 export function appendSystemMessage(text) {
