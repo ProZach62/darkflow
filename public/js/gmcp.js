@@ -54,6 +54,7 @@ export const gmcp = {
       'Group 1',
       'Game 1',
       'Darkwind.Char.Avatar 1',
+      'Darkwind.Room.Image 1',
       'Darkwind.Window 1',
       'Darkwind.IDE 1',
       'Darkwind.MapData 1',

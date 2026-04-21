@@ -62,8 +62,13 @@ export const panelManager = {
     const panels = {};
     for (const [id, def] of Object.entries(PANEL_DEFS)) {
       const s = (saved && saved.panels && saved.panels[id]) || {};
+      const hasSavedState = !!(saved && saved.panels && saved.panels[id]);
       const defW = def.defaultFloatW || 280;
       const defH = def.defaultFloatH || 200;
+      let defaultSnapLeft = !!def.defaultSnapLeft;
+      let defaultSnapTop = !!def.defaultSnapTop;
+      let defaultSnapRight = !!def.defaultSnapRight;
+      let defaultSnapBottom = !!def.defaultSnapBottom;
       let defX;
       let defY;
       if (def.defaultFloatX !== undefined) {
@@ -78,6 +83,15 @@ export const panelManager = {
       } else {
         defY = Math.round((window.innerHeight - defH) / 2);
       }
+      if (!hasSavedState && def.defaultBelowPanel && panels[def.defaultBelowPanel]) {
+        const refPanel = panels[def.defaultBelowPanel];
+        defX = refPanel.floatX;
+        defY = refPanel.floatY + refPanel.floatH + 8;
+        defaultSnapLeft = !!refPanel.snapLeft;
+        defaultSnapRight = !!refPanel.snapRight;
+        defaultSnapBottom = false;
+        defaultSnapTop = false;
+      }
       panels[id] = {
         dock: s.dock || def.defaultDock,
         order: s.order !== undefined ? s.order : def.defaultOrder,
@@ -87,10 +101,10 @@ export const panelManager = {
         floatY: s.floatY !== undefined ? s.floatY : defY,
         floatW: s.floatW || defW,
         floatH: s.floatH || defH,
-        snapLeft: s.snapLeft !== undefined ? !!s.snapLeft : !!def.defaultSnapLeft,
-        snapTop: s.snapTop !== undefined ? !!s.snapTop : !!def.defaultSnapTop,
-        snapRight: s.snapRight !== undefined ? !!s.snapRight : !!def.defaultSnapRight,
-        snapBottom: s.snapBottom !== undefined ? !!s.snapBottom : !!def.defaultSnapBottom,
+        snapLeft: s.snapLeft !== undefined ? !!s.snapLeft : defaultSnapLeft,
+        snapTop: s.snapTop !== undefined ? !!s.snapTop : defaultSnapTop,
+        snapRight: s.snapRight !== undefined ? !!s.snapRight : defaultSnapRight,
+        snapBottom: s.snapBottom !== undefined ? !!s.snapBottom : defaultSnapBottom,
       };
     }
     this.state.panels = panels;
@@ -1081,8 +1095,13 @@ export const panelManager = {
     });
 
     gmcp.on('Room.Info', (data) => {
+      const prevRoomNum = this.gmcpData.room ? this.gmcpData.room.num : null;
       if (!this.gmcpData.room) this.gmcpData.room = {};
       Object.assign(this.gmcpData.room, data);
+      if (data && data.num !== undefined && data.num !== prevRoomNum) {
+        this.gmcpData.roomImage = null;
+        this._renderPanel('roomImage');
+      }
       this._renderPanel('room');
       processRoomInfo(data);
       this._queuePanelRender('map');
@@ -1191,6 +1210,40 @@ export const panelManager = {
           loading: false,
         };
         this._renderPanel('avatar');
+      };
+      probe.src = data.url;
+    });
+
+    gmcp.on('Darkwind.Room.Image', (data) => {
+      let prev;
+      let probe;
+
+      if (!data || !data.url) return;
+
+      prev = this.gmcpData.roomImage;
+      this.gmcpData.roomImage = {
+        url: prev ? prev.url : null,
+        name: data.name,
+        loading: true,
+      };
+      this._renderPanel('roomImage');
+
+      probe = new Image();
+      probe.onload = () => {
+        this.gmcpData.roomImage = {
+          url: data.url,
+          name: data.name,
+          loading: false,
+        };
+        this._renderPanel('roomImage');
+      };
+      probe.onerror = () => {
+        this.gmcpData.roomImage = {
+          url: prev ? prev.url : null,
+          name: data.name,
+          loading: false,
+        };
+        this._renderPanel('roomImage');
       };
       probe.src = data.url;
     });

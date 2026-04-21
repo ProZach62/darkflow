@@ -16,6 +16,10 @@ export const PANEL_DEFS = {
   map:       { title: 'Map',       defaultDock: 'float', defaultOrder: 0,
                defaultFloatW: 400, defaultFloatH: 350,
                defaultSnapRight: true, defaultSnapTop: true },
+  roomImage: { title: 'Room Image', defaultDock: 'float', defaultOrder: 0,
+               defaultFloatW: 400, defaultFloatH: 225,
+               defaultSnapRight: true, defaultBelowPanel: 'map',
+               defaultVisible: true },
   quests:    { title: 'Quests',    defaultDock: 'right', defaultOrder: 3 },
 };
 

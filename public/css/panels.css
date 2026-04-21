@@ -281,6 +281,40 @@ body.mobile-panel-mode #mobile-panels-btn {
   text-transform: uppercase;
 }
 
+[data-panel-id="roomImage"] .panel-body {
+  padding: 0;
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.room-image-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.room-image-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.3s ease;
+}
+
+.room-image-img.room-image-loading { opacity: 0.5; }
+
+.room-image-placeholder {
+  color: #8b949e;
+  font-size: 12px;
+  padding: 12px;
+  text-align: center;
+}
+
 .gmcp-panel-widget.mobile-panel {
   display: flex;
   flex: 1 1 auto;

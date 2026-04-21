@@ -52,6 +52,23 @@ export const panelRenderers = {
     bodyEl.innerHTML = html;
   },
 
+  roomImage(bodyEl, data) {
+    let alt;
+    let loadingClass;
+
+    if (!data || !data.url) {
+      bodyEl.innerHTML = '<div class="room-image-placeholder">Generating room image...</div>';
+      return;
+    }
+
+    loadingClass = data.loading ? ' room-image-loading' : '';
+    alt = data.name ? escHtml(data.name) : 'Room';
+    bodyEl.innerHTML =
+      '<div class="room-image-wrap">' +
+        '<img class="room-image-img' + loadingClass + '" src="' + escHtml(data.url) + '" alt="' + alt + '" draggable="false">' +
+      '</div>';
+  },
+
   vitals(bodyEl, data) {
     if (!data) return;
     if (bodyEl.querySelector('.placeholder')) bodyEl.innerHTML = '';
