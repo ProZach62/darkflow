@@ -412,7 +412,7 @@ export function sendCommandText(text) {
   return aliasResult.sent || aliasResult.localOnly || aliasResult.handled;
 }
 
-function getMappedCommand(key) {
+function getMappedCommand(event) {
   if (!settingsManager.get('keyMapperEnabled')) return null;
 
   const mappings = settingsManager.get('keyMappings');
@@ -420,8 +420,10 @@ function getMappedCommand(key) {
 
   for (let index = mappings.length - 1; index >= 0; index--) {
     const mapping = mappings[index];
-    if (!mapping || mapping.key !== key || !mapping.command) continue;
-    return mapping.command;
+    if (!mapping || !mapping.command) continue;
+    if (mapping.code && mapping.code === event.code) return mapping.command;
+    if (!mapping.code && mapping.legacyKey && mapping.legacyKey === event.key) return mapping.command;
+    if (mapping.legacyKey && mapping.legacyKey === event.key) return mapping.command;
   }
 
   return null;
@@ -439,7 +441,7 @@ function handleMappedKey(event) {
   if (event.defaultPrevented || event.repeat) return false;
   if (event.ctrlKey || event.altKey || event.metaKey) return false;
 
-  const command = getMappedCommand(event.key);
+  const command = getMappedCommand(event);
   if (!command) return false;
   if (isBlockedEditableTarget(event.target)) return false;
 

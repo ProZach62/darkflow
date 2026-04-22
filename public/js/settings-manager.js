@@ -7,6 +7,37 @@ import { styleToElement } from './ansi.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 
+function formatKeyCodeLabel(code) {
+  const value = String(code || '').trim();
+  if (!value) return '';
+
+  if (/^Digit[0-9]$/.test(value)) return value.slice(-1);
+  if (/^Numpad[0-9]$/.test(value)) return 'Num ' + value.slice(-1);
+  if (value === 'NumpadDecimal') return 'Num .';
+  if (value === 'NumpadAdd') return 'Num +';
+  if (value === 'NumpadSubtract') return 'Num -';
+  if (value === 'NumpadMultiply') return 'Num *';
+  if (value === 'NumpadDivide') return 'Num /';
+  if (value === 'NumpadEnter') return 'Num Enter';
+  if (value === 'Space') return 'Space';
+  if (value.startsWith('Arrow')) return value.slice(5);
+  if (/^Key[A-Z]$/.test(value)) return value.slice(3);
+  if (/^F[0-9]{1,2}$/.test(value)) return value;
+
+  return value.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+}
+
+function normalizeLegacyKeyToCode(key) {
+  const value = String(key || '').trim();
+  if (!value) return '';
+  if (/^[0-9]$/.test(value)) return 'Digit' + value;
+  if (/^[a-zA-Z]$/.test(value)) return 'Key' + value.toUpperCase();
+  if (value === ' ') return 'Space';
+  if (value === 'ArrowUp' || value === 'ArrowDown' || value === 'ArrowLeft' || value === 'ArrowRight') return value;
+  if (value === 'Enter' || value === 'Escape' || value === 'Tab' || value === 'Backspace' || value === 'Delete') return value;
+  return '';
+}
+
 export const settingsManager = {
   _defaults: {
     autoReconnect: true,
@@ -67,7 +98,9 @@ export const settingsManager = {
     this._draftSettings = {
       ...this._settings,
       keyMappings: this._settings.keyMappings.map((mapping) => ({
-        key: mapping.key,
+        code: mapping.code || '',
+        label: mapping.label || formatKeyCodeLabel(mapping.code || ''),
+        legacyKey: mapping.legacyKey || '',
         command: mapping.command,
       })),
     };
@@ -209,10 +242,20 @@ export const settingsManager = {
     return mappings
       .map((mapping) => {
         if (!mapping || typeof mapping !== 'object') return null;
-        const key = typeof mapping.key === 'string' ? mapping.key.trim() : '';
+        const code = typeof mapping.code === 'string' ? mapping.code.trim() : '';
+        const legacyKey = typeof mapping.key === 'string' ? mapping.key.trim() : '';
         const command = typeof mapping.command === 'string' ? mapping.command.trim() : '';
-        if (!key || !command) return null;
-        return { key, command };
+        const normalizedCode = code || normalizeLegacyKeyToCode(legacyKey);
+        if (!normalizedCode || !command) return null;
+        const label = typeof mapping.label === 'string' && mapping.label.trim()
+          ? mapping.label.trim()
+          : formatKeyCodeLabel(normalizedCode);
+        return {
+          code: normalizedCode,
+          label,
+          command,
+          legacyKey: code ? '' : legacyKey,
+        };
       })
       .filter(Boolean);
   },
@@ -251,7 +294,7 @@ export const settingsManager = {
 
     const helpText = document.createElement('p');
     helpText.className = 'dw-paragraph settings-helper-text';
-    helpText.textContent = 'Press a key in the Key field to capture it. Bound keys send their command instantly without pressing Enter.';
+    helpText.textContent = 'Press a key in the Key field to capture it. Top-row numbers and numpad numbers are treated as different keys.';
 
     const list = document.createElement('div');
     list.className = 'settings-mapping-list';
@@ -275,7 +318,7 @@ export const settingsManager = {
       keyInput.className = 'dw-input settings-key-input';
       keyInput.placeholder = 'Press a key';
       keyInput.readOnly = true;
-      keyInput.value = mapping.key;
+      keyInput.value = mapping.label || formatKeyCodeLabel(mapping.code);
       keyInput.addEventListener('keydown', (event) => {
         if (event.key === 'Tab') return;
 
@@ -283,7 +326,9 @@ export const settingsManager = {
         event.stopPropagation();
 
         if (event.key === 'Backspace' || event.key === 'Delete') {
-          mapping.key = '';
+          mapping.code = '';
+          mapping.label = '';
+          mapping.legacyKey = '';
           keyInput.value = '';
           return;
         }
@@ -291,8 +336,10 @@ export const settingsManager = {
         if (event.ctrlKey || event.altKey || event.metaKey) return;
         if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta') return;
 
-        mapping.key = event.key;
-        keyInput.value = event.key;
+        mapping.code = event.code;
+        mapping.label = formatKeyCodeLabel(event.code);
+        mapping.legacyKey = '';
+        keyInput.value = mapping.label;
       });
 
       const commandInput = document.createElement('input');
@@ -320,7 +367,9 @@ export const settingsManager = {
     };
 
     const savedMappings = ensureMappings().map((mapping) => ({
-      key: mapping.key,
+      code: mapping.code,
+      label: mapping.label,
+      legacyKey: mapping.legacyKey,
       command: mapping.command,
     }));
     this._draftSettings.keyMappings = [];
@@ -332,7 +381,7 @@ export const settingsManager = {
     const addBtn = document.createElement('button');
     addBtn.className = 'dw-button dw-button-secondary settings-add-mapping';
     addBtn.textContent = 'Add mapping';
-    addBtn.addEventListener('click', () => addRow({ key: '', command: '' }));
+    addBtn.addEventListener('click', () => addRow({ code: '', label: '', legacyKey: '', command: '' }));
 
     actions.appendChild(addBtn);
     wrapper.appendChild(helpText);
