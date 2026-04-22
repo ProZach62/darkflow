@@ -1,4 +1,4 @@
-import { dom } from './state.js';
+import { state, dom } from './state.js';
 import { parseAnsi, styleToElement } from './ansi.js';
 import { highlightManager } from './highlight-manager.js';
 import {
@@ -9,9 +9,14 @@ import {
 
 const BOTTOM_THRESHOLD_PX = 5;
 const DEFAULT_LINE_HEIGHT_PX = 23;
+const DEFAULT_SPLIT_RATIO = 0.6;
+const MIN_SPLIT_RATIO = 0.2;
+const MAX_SPLIT_RATIO = 0.8;
+const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 
 let isScrollLocked = false;
 let isOutputPaused = false;
+let isSplitActive = false;
 let lineStore = [];
 let nextLineId = 1;
 let pendingLines = [];
@@ -19,25 +24,92 @@ let frameScheduled = false;
 let renderInvalidated = false;
 let scrollbackLimit = OUTPUT_SCROLLBACK_PRESETS[DEFAULT_OUTPUT_SCROLLBACK_PRESET];
 let estimatedLineHeight = DEFAULT_LINE_HEIGHT_PX;
-let topSpacer = null;
-let viewportEl = null;
-let bottomSpacer = null;
 let resizeObserver = null;
-let suppressScrollEvents = false;
 let suppressAutoPause = false;
+let splitRatio = DEFAULT_SPLIT_RATIO;
+let activeDividerPointerId = null;
 
-function syncPauseUi() {
-  if (!dom.outputShell || !dom.outputPauseBtn) return;
-  dom.outputShell.classList.toggle('paused', isOutputPaused);
-  dom.outputPauseBtn.setAttribute('aria-pressed', isOutputPaused ? 'true' : 'false');
-  dom.outputPauseBtn.title = isOutputPaused ? 'Resume live terminal' : 'Pause live terminal';
+const panes = {
+  main: createPaneState(),
+  history: createPaneState(),
+  live: createPaneState(),
+};
+
+function createPaneState() {
+  return {
+    scrollEl: null,
+    topSpacer: null,
+    viewportEl: null,
+    bottomSpacer: null,
+    suppressScrollEvents: false,
+  };
 }
 
-function snapOutputToBottom() {
-  if (!dom.output) return;
-  suppressScrollEvents = true;
-  dom.output.scrollTop = dom.output.scrollHeight;
-  suppressScrollEvents = false;
+function getScrollbackBehavior() {
+  return state.settings.scrollbackBehavior === 'split' ? 'split' : 'pause';
+}
+
+function isSplitModeEnabled() {
+  return getScrollbackBehavior() === 'split';
+}
+
+function clampSplitRatio(value) {
+  const ratio = Number(value);
+  if (!Number.isFinite(ratio)) return DEFAULT_SPLIT_RATIO;
+  return Math.max(MIN_SPLIT_RATIO, Math.min(MAX_SPLIT_RATIO, ratio));
+}
+
+function persistSplitRatio() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+      ...(parsed && typeof parsed === 'object' ? parsed : {}),
+      scrollbackSplitRatio: splitRatio,
+    }));
+  } catch (error) {
+    console.warn('Failed to persist split ratio', error);
+  }
+}
+
+function syncOutputUi() {
+  if (!dom.outputShell || !dom.outputPauseBtn || !dom.outputLiveBtn) return;
+  dom.outputShell.classList.toggle('paused', isOutputPaused);
+  dom.outputShell.classList.toggle('split-active', isSplitActive);
+  dom.outputShell.style.setProperty('--output-split-ratio', String(splitRatio));
+  dom.outputPauseBtn.setAttribute('aria-pressed', isOutputPaused ? 'true' : 'false');
+  dom.outputPauseBtn.title = isOutputPaused ? 'Resume live terminal' : 'Pause live terminal';
+  dom.outputLiveBtn.title = isSplitActive ? 'Return to live terminal' : 'Live terminal';
+}
+
+function initPane(pane, scrollEl) {
+  pane.scrollEl = scrollEl;
+  pane.scrollEl.textContent = '';
+
+  pane.topSpacer = document.createElement('div');
+  pane.topSpacer.className = 'output-spacer';
+
+  pane.viewportEl = document.createElement('div');
+  pane.viewportEl.className = 'output-viewport';
+
+  pane.bottomSpacer = document.createElement('div');
+  pane.bottomSpacer.className = 'output-spacer';
+
+  pane.scrollEl.appendChild(pane.topSpacer);
+  pane.scrollEl.appendChild(pane.viewportEl);
+  pane.scrollEl.appendChild(pane.bottomSpacer);
+}
+
+function setPaneScrollTop(pane, value) {
+  if (!pane.scrollEl) return;
+  pane.suppressScrollEvents = true;
+  pane.scrollEl.scrollTop = value;
+  pane.suppressScrollEvents = false;
+}
+
+function snapPaneToBottom(pane) {
+  if (!pane.scrollEl) return;
+  setPaneScrollTop(pane, pane.scrollEl.scrollHeight);
 }
 
 function releaseAutoPauseSuppression() {
@@ -46,23 +118,28 @@ function releaseAutoPauseSuppression() {
   });
 }
 
+function getActivePageScrollPane() {
+  if (isSplitActive) return panes.history;
+  return panes.main;
+}
+
 function resumeOutputLive() {
   isOutputPaused = false;
   isScrollLocked = false;
   suppressAutoPause = true;
-  syncPauseUi();
+  syncOutputUi();
 
   if (pendingLines.length > 0) {
     lineStore.push(...pendingLines);
     pendingLines = [];
     evictOverflowLines();
     renderInvalidated = true;
-    renderViewport();
-  } else if (renderInvalidated) {
-    renderViewport();
+    renderActivePanes();
+  } else if (renderInvalidated || isSplitActive) {
+    renderActivePanes();
   }
 
-  snapOutputToBottom();
+  snapPaneToBottom(panes.main);
   renderInvalidated = true;
   scheduleFrame();
   releaseAutoPauseSuppression();
@@ -79,7 +156,7 @@ function setOutputPaused(paused) {
 
   if (paused) {
     isScrollLocked = true;
-    syncPauseUi();
+    syncOutputUi();
     return;
   }
 
@@ -90,8 +167,9 @@ function getPresetLimit(preset) {
   return OUTPUT_SCROLLBACK_PRESETS[preset] || OUTPUT_SCROLLBACK_PRESETS[DEFAULT_OUTPUT_SCROLLBACK_PRESET];
 }
 
-function isAtBottom() {
-  return (dom.output.scrollHeight - dom.output.scrollTop - dom.output.clientHeight) < BOTTOM_THRESHOLD_PX;
+function isPaneAtBottom(pane) {
+  if (!pane.scrollEl) return true;
+  return (pane.scrollEl.scrollHeight - pane.scrollEl.scrollTop - pane.scrollEl.clientHeight) < BOTTOM_THRESHOLD_PX;
 }
 
 function getLineHeight(line) {
@@ -211,13 +289,14 @@ function findEndIndex(prefix, endOffset, startIndex) {
 }
 
 function measureEstimatedLineHeight() {
-  if (!viewportEl) return;
+  const probeHost = panes.main.viewportEl || panes.history.viewportEl || panes.live.viewportEl;
+  if (!probeHost) return;
 
   const probe = document.createElement('div');
   probe.className = 'output-line';
   probe.style.visibility = 'hidden';
   probe.textContent = 'M';
-  viewportEl.appendChild(probe);
+  probeHost.appendChild(probe);
 
   const measured = probe.getBoundingClientRect().height;
   probe.remove();
@@ -227,22 +306,20 @@ function measureEstimatedLineHeight() {
   }
 }
 
-function renderViewport() {
-  if (!topSpacer || !viewportEl || !bottomSpacer) return;
-
-  renderInvalidated = false;
+function renderPane(pane) {
+  if (!pane.topSpacer || !pane.viewportEl || !pane.bottomSpacer || !pane.scrollEl) return;
 
   if (lineStore.length === 0) {
-    topSpacer.style.height = '0px';
-    bottomSpacer.style.height = '0px';
-    viewportEl.textContent = '';
+    pane.topSpacer.style.height = '0px';
+    pane.bottomSpacer.style.height = '0px';
+    pane.viewportEl.textContent = '';
     return;
   }
 
   const prefix = getPrefixHeights();
   const totalHeight = prefix[prefix.length - 1];
-  const scrollTop = dom.output.scrollTop;
-  const viewportHeight = dom.output.clientHeight || 0;
+  const scrollTop = pane.scrollEl.scrollTop;
+  const viewportHeight = pane.scrollEl.clientHeight || 0;
   const visibleBottom = scrollTop + viewportHeight;
 
   const visibleStart = findStartIndex(prefix, scrollTop);
@@ -252,8 +329,8 @@ function renderViewport() {
   const anchorIndex = visibleStart;
   const anchorOffset = scrollTop - prefix[anchorIndex];
 
-  topSpacer.style.height = prefix[renderStart] + 'px';
-  bottomSpacer.style.height = Math.max(0, totalHeight - prefix[renderEnd]) + 'px';
+  pane.topSpacer.style.height = prefix[renderStart] + 'px';
+  pane.bottomSpacer.style.height = Math.max(0, totalHeight - prefix[renderEnd]) + 'px';
 
   const frag = document.createDocumentFragment();
   const mounted = [];
@@ -265,7 +342,7 @@ function renderViewport() {
     frag.appendChild(el);
   }
 
-  viewportEl.replaceChildren(frag);
+  pane.viewportEl.replaceChildren(frag);
 
   let heightChanged = false;
   for (const [line, el] of mounted) {
@@ -279,49 +356,164 @@ function renderViewport() {
   if (heightChanged) {
     const nextPrefix = getPrefixHeights();
     const anchoredScrollTop = nextPrefix[anchorIndex] + anchorOffset;
-    suppressScrollEvents = true;
-    dom.output.scrollTop = Math.max(0, anchoredScrollTop);
-    suppressScrollEvents = false;
+    setPaneScrollTop(pane, Math.max(0, anchoredScrollTop));
     renderInvalidated = true;
     scheduleFrame();
   }
 }
 
+function renderActivePanes() {
+  renderInvalidated = false;
+  if (isSplitActive) {
+    renderPane(panes.history);
+    renderPane(panes.live);
+    return;
+  }
+  renderPane(panes.main);
+}
+
+function applyRemovedHeightAfterPrune(pane, removedHeight) {
+  if (!pane.scrollEl || removedHeight <= 0) return;
+  if (isPaneAtBottom(pane)) return;
+  setPaneScrollTop(pane, Math.max(0, pane.scrollEl.scrollTop - removedHeight));
+}
+
+function activateSplitView() {
+  if (isSplitActive || !isSplitModeEnabled()) return;
+  isOutputPaused = false;
+  isScrollLocked = false;
+  isSplitActive = true;
+  syncOutputUi();
+  setPaneScrollTop(panes.history, panes.main.scrollEl ? panes.main.scrollEl.scrollTop : 0);
+  snapPaneToBottom(panes.live);
+  renderInvalidated = true;
+  scheduleFrame();
+}
+
+function deactivateSplitView() {
+  if (!isSplitActive) return;
+  isSplitActive = false;
+  syncOutputUi();
+  renderInvalidated = true;
+  scheduleFrame();
+  requestAnimationFrame(() => {
+    snapPaneToBottom(panes.main);
+  });
+}
+
+function handleMainScroll() {
+  if (panes.main.suppressScrollEvents) return;
+  const atBottom = isPaneAtBottom(panes.main);
+  isScrollLocked = !atBottom;
+
+  if (isSplitModeEnabled()) {
+    if (!atBottom && !suppressAutoPause) {
+      activateSplitView();
+    } else {
+      invalidateRender();
+    }
+    return;
+  }
+
+  if (atBottom && isOutputPaused) {
+    setOutputPaused(false);
+    return;
+  }
+  if (!atBottom && !suppressAutoPause) {
+    setOutputPaused(true);
+  }
+  invalidateRender();
+}
+
+function handleHistoryScroll() {
+  if (panes.history.suppressScrollEvents || !isSplitActive) return;
+  if (isPaneAtBottom(panes.history)) {
+    deactivateSplitView();
+    return;
+  }
+  invalidateRender();
+}
+
+function handleLiveScroll() {
+  if (panes.live.suppressScrollEvents || !isSplitActive) return;
+  if (!isPaneAtBottom(panes.live)) {
+    snapPaneToBottom(panes.live);
+  }
+  invalidateRender();
+}
+
+function beginDividerDrag(event) {
+  if (!(event instanceof PointerEvent) || !dom.outputDivider) return;
+  activeDividerPointerId = event.pointerId;
+  dom.outputDivider.setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
+function updateDividerDrag(event) {
+  if (activeDividerPointerId == null || event.pointerId !== activeDividerPointerId) return;
+  if (!dom.outputShell) return;
+
+  const rect = dom.outputShell.getBoundingClientRect();
+  const availableHeight = rect.height - 10;
+  if (availableHeight <= 0) return;
+
+  splitRatio = clampSplitRatio((event.clientY - rect.top) / availableHeight);
+  state.settings.scrollbackSplitRatio = splitRatio;
+  syncOutputUi();
+  renderInvalidated = true;
+  scheduleFrame();
+}
+
+function endDividerDrag(event) {
+  if (activeDividerPointerId == null) return;
+  if (event && event.pointerId != null && event.pointerId !== activeDividerPointerId) return;
+  if (dom.outputDivider) {
+    try {
+      dom.outputDivider.releasePointerCapture(activeDividerPointerId);
+    } catch (error) {
+      void error;
+    }
+  }
+  activeDividerPointerId = null;
+  persistSplitRatio();
+}
+
 function flushAndRender() {
   frameScheduled = false;
 
-  if (isOutputPaused) {
+  if (isOutputPaused && !isSplitActive) {
     if (renderInvalidated) {
-      renderViewport();
+      renderActivePanes();
     }
     return;
   }
 
   if (pendingLines.length > 0) {
-    const shouldStickToBottom = !isScrollLocked || isAtBottom();
-    const previousScrollTop = dom.output.scrollTop;
+    const shouldStickToMainBottom = !isScrollLocked || isPaneAtBottom(panes.main);
+    const historyWasAtBottom = isSplitActive ? isPaneAtBottom(panes.history) : false;
 
     lineStore.push(...pendingLines);
     pendingLines = [];
 
     const removedHeight = evictOverflowLines();
-    if (removedHeight > 0 && isScrollLocked) {
-      suppressScrollEvents = true;
-      dom.output.scrollTop = Math.max(0, previousScrollTop - removedHeight);
-      suppressScrollEvents = false;
-    }
+    applyRemovedHeightAfterPrune(panes.main, removedHeight);
+    applyRemovedHeightAfterPrune(panes.history, removedHeight);
+    applyRemovedHeightAfterPrune(panes.live, removedHeight);
 
     renderInvalidated = true;
-    renderViewport();
+    renderActivePanes();
 
-    if (shouldStickToBottom) {
-      suppressScrollEvents = true;
-      dom.output.scrollTop = dom.output.scrollHeight;
-      suppressScrollEvents = false;
+    if (isSplitActive) {
+      snapPaneToBottom(panes.live);
+      if (historyWasAtBottom) {
+        deactivateSplitView();
+      }
+    } else if (shouldStickToMainBottom) {
+      snapPaneToBottom(panes.main);
       isScrollLocked = false;
     }
   } else if (renderInvalidated) {
-    renderViewport();
+    renderActivePanes();
   }
 }
 
@@ -332,47 +524,41 @@ function queueLines(lines) {
 }
 
 export function initOutput() {
-  dom.output.textContent = '';
-  syncPauseUi();
-
-  topSpacer = document.createElement('div');
-  topSpacer.className = 'output-spacer';
-
-  viewportEl = document.createElement('div');
-  viewportEl.className = 'output-viewport';
-
-  bottomSpacer = document.createElement('div');
-  bottomSpacer.className = 'output-spacer';
-
-  dom.output.appendChild(topSpacer);
-  dom.output.appendChild(viewportEl);
-  dom.output.appendChild(bottomSpacer);
-
+  initPane(panes.main, dom.output);
+  initPane(panes.history, dom.outputHistory);
+  initPane(panes.live, dom.outputLive);
+  syncOutputUi();
   measureEstimatedLineHeight();
 
-  dom.output.addEventListener('scroll', function() {
-    if (suppressScrollEvents) return;
-    const atBottom = isAtBottom();
-    isScrollLocked = !atBottom;
-    if (atBottom && isOutputPaused) {
-      setOutputPaused(false);
-      return;
-    }
-    if (!atBottom && !suppressAutoPause) {
-      setOutputPaused(true);
-    }
-    invalidateRender();
-  });
+  dom.output.addEventListener('scroll', handleMainScroll);
+  dom.outputHistory.addEventListener('scroll', handleHistoryScroll);
+  dom.outputLive.addEventListener('scroll', handleLiveScroll);
 
   if (dom.outputPauseBtn) {
     dom.outputPauseBtn.addEventListener('click', function() {
+      if (isSplitActive) {
+        deactivateSplitView();
+        return;
+      }
       if (!isOutputPaused) {
         setOutputPaused(true);
         return;
       }
-
       setOutputPaused(false);
     });
+  }
+
+  if (dom.outputLiveBtn) {
+    dom.outputLiveBtn.addEventListener('click', function() {
+      deactivateSplitView();
+    });
+  }
+
+  if (dom.outputDivider) {
+    dom.outputDivider.addEventListener('pointerdown', beginDividerDrag);
+    window.addEventListener('pointermove', updateDividerDrag);
+    window.addEventListener('pointerup', endDividerDrag);
+    window.addEventListener('pointercancel', endDividerDrag);
   }
 
   if (typeof ResizeObserver !== 'undefined') {
@@ -381,7 +567,7 @@ export function initOutput() {
       markAllLineHeightsDirty();
       invalidateRender();
     });
-    resizeObserver.observe(dom.output);
+    resizeObserver.observe(dom.outputShell);
   } else {
     window.addEventListener('resize', function() {
       measureEstimatedLineHeight();
@@ -396,14 +582,37 @@ export function setOutputScrollbackPreset(preset) {
 
   if (lineStore.length > scrollbackLimit) {
     const removedHeight = evictOverflowLines();
-    if (removedHeight > 0 && isScrollLocked) {
-      suppressScrollEvents = true;
-      dom.output.scrollTop = Math.max(0, dom.output.scrollTop - removedHeight);
-      suppressScrollEvents = false;
-    }
+    applyRemovedHeightAfterPrune(panes.main, removedHeight);
+    applyRemovedHeightAfterPrune(panes.history, removedHeight);
+    applyRemovedHeightAfterPrune(panes.live, removedHeight);
   }
 
   invalidateRender();
+}
+
+export function setOutputScrollbackBehavior(behavior) {
+  state.settings.scrollbackBehavior = behavior === 'split' ? 'split' : 'pause';
+  if (!isSplitModeEnabled() && isSplitActive) {
+    deactivateSplitView();
+  }
+  if (isSplitModeEnabled() && isOutputPaused) {
+    setOutputPaused(false);
+  }
+  syncOutputUi();
+  invalidateRender();
+}
+
+export function setOutputSplitRatio(value) {
+  splitRatio = clampSplitRatio(value);
+  state.settings.scrollbackSplitRatio = splitRatio;
+  syncOutputUi();
+  invalidateRender();
+}
+
+export function scrollActiveOutputByPage(multiplier) {
+  const pane = getActivePageScrollPane();
+  if (!pane.scrollEl) return;
+  pane.scrollEl.scrollBy(0, pane.scrollEl.clientHeight * multiplier);
 }
 
 export function appendOutput(text, cssClass) {
@@ -425,14 +634,13 @@ export function clearOutput() {
   nextLineId = 1;
   isScrollLocked = false;
   isOutputPaused = false;
-  syncPauseUi();
+  isSplitActive = false;
+  syncOutputUi();
 
-  if (topSpacer) topSpacer.style.height = '0px';
-  if (bottomSpacer) bottomSpacer.style.height = '0px';
-  if (viewportEl) viewportEl.textContent = '';
-  if (dom.output) {
-    suppressScrollEvents = true;
-    dom.output.scrollTop = 0;
-    suppressScrollEvents = false;
+  for (const pane of Object.values(panes)) {
+    if (pane.topSpacer) pane.topSpacer.style.height = '0px';
+    if (pane.bottomSpacer) pane.bottomSpacer.style.height = '0px';
+    if (pane.viewportEl) pane.viewportEl.textContent = '';
+    if (pane.scrollEl) setPaneScrollTop(pane, 0);
   }
 }

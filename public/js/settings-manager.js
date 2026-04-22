@@ -1,6 +1,6 @@
 import { state, dom } from './state.js';
 import { DEFAULT_OUTPUT_SCROLLBACK_PRESET, FG_NAMES } from './constants.js';
-import { setOutputScrollbackPreset } from './output.js';
+import { setOutputScrollbackBehavior, setOutputScrollbackPreset, setOutputSplitRatio } from './output.js';
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { styleToElement } from './ansi.js';
@@ -14,6 +14,8 @@ export const settingsManager = {
     keyMapperEnabled: false,
     keyMappings: [],
     historyTabCompletionEnabled: false,
+    scrollbackBehavior: 'pause',
+    scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
   },
   _settings: {},
@@ -44,6 +46,8 @@ export const settingsManager = {
 
     this._settings = this._normalizeSettings(this._settings);
     state.settings = { ...this._settings };
+    setOutputScrollbackBehavior(this._settings.scrollbackBehavior);
+    setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
   },
 
@@ -130,6 +134,8 @@ export const settingsManager = {
       ...nextSettings,
     });
     state.settings = { ...this._settings };
+    setOutputScrollbackBehavior(this._settings.scrollbackBehavior);
+    setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
     this._save();
   },
@@ -141,9 +147,21 @@ export const settingsManager = {
       keyMapperEnabled: Boolean(settings.keyMapperEnabled),
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
       historyTabCompletionEnabled: Boolean(settings.historyTabCompletionEnabled),
+      scrollbackBehavior: this._normalizeScrollbackBehavior(settings.scrollbackBehavior),
+      scrollbackSplitRatio: this._normalizeSplitRatio(settings.scrollbackSplitRatio),
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
     };
+  },
+
+  _normalizeScrollbackBehavior(value) {
+    return value === 'split' ? 'split' : 'pause';
+  },
+
+  _normalizeSplitRatio(value) {
+    const ratio = Number(value);
+    if (!Number.isFinite(ratio)) return 0.6;
+    return Math.max(0.2, Math.min(0.8, ratio));
   },
 
   _normalizeOutputScrollbackPreset(preset) {
@@ -1387,6 +1405,18 @@ export const settingsManager = {
       ],
       (value) => {
         this._draftSettings.outputScrollbackPreset = value;
+      }
+    ));
+    terminalSection.appendChild(this._createSelectRow(
+      'Scrollback mode',
+      'Choose whether scrolling back pauses the terminal or opens a split view with live output below.',
+      this._draftSettings.scrollbackBehavior,
+      [
+        { value: 'pause', label: 'Pause terminal' },
+        { value: 'split', label: 'Split history + live' },
+      ],
+      (value) => {
+        this._draftSettings.scrollbackBehavior = value;
       }
     ));
     const controlsTitle = document.createElement('h3');

@@ -9,6 +9,7 @@ import { aliasManager, tokenizeInput } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { gmcp } from './gmcp.js';
 import { panelManager } from './panel-manager.js';
+import { scrollActiveOutputByPage } from './output.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -518,7 +519,9 @@ export function initInput() {
 
   dom.sendBtn.addEventListener('click', sendCommand);
 
-  dom.output.addEventListener('click', function() {
+  dom.outputShell.addEventListener('click', function(event) {
+    if (!(event.target instanceof HTMLElement)) return;
+    if (!event.target.closest('.output-pane')) return;
     if (!window.getSelection().toString()) {
       dom.commandInput.focus();
     }
@@ -543,10 +546,10 @@ export function initInput() {
       dom.commandInput.focus();
     } else if (e.key === 'PageUp') {
       e.preventDefault();
-      dom.output.scrollBy(0, -dom.output.clientHeight * 0.8);
+      scrollActiveOutputByPage(-0.8);
     } else if (e.key === 'PageDown') {
       e.preventDefault();
-      dom.output.scrollBy(0, dom.output.clientHeight * 0.8);
+      scrollActiveOutputByPage(0.8);
     }
 
     if (handleMappedKey(e)) return;

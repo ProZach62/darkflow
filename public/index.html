@@ -49,8 +49,14 @@
   <div id="left-dock" class="dock-column"></div>
   <div id="center-column">
     <div id="output-shell">
+      <button id="output-live-btn" type="button" title="Return to live terminal">Live</button>
       <button id="output-pause-btn" type="button" aria-pressed="false" title="Resume live terminal">Paused</button>
-      <div id="output"></div>
+      <div id="output" class="output-pane"></div>
+      <div id="output-split">
+        <div id="output-history" class="output-pane"></div>
+        <div id="output-divider" role="separator" aria-orientation="horizontal" aria-label="Resize terminal split"></div>
+        <div id="output-live" class="output-pane"></div>
+      </div>
     </div>
     <div id="gmcp-panel"></div>
   </div>

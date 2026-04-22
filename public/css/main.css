@@ -519,9 +519,12 @@ body {
   background: #000000;
   border-radius: 0;
   overflow: hidden;
+  --output-split-ratio: 0.6;
 }
 
-#output {
+#output,
+#output-history,
+#output-live {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
@@ -534,6 +537,50 @@ body {
   -webkit-user-select: text;
   line-height: 1.4;
   background: transparent;
+}
+
+#output-split {
+  display: none;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+#output-shell.split-active #output {
+  display: none;
+}
+
+#output-shell.split-active #output-split {
+  display: flex;
+}
+
+#output-history {
+  flex: 0 0 calc(var(--output-split-ratio) * 100%);
+  min-height: 120px;
+}
+
+#output-live {
+  flex: 1 1 auto;
+  min-height: 120px;
+  border-top: 1px solid #30363d;
+  padding-top: 8px;
+}
+
+#output-divider {
+  flex: 0 0 10px;
+  cursor: row-resize;
+  background:
+    linear-gradient(to bottom, transparent 0, transparent 3px, #30363d 3px, #30363d 7px, transparent 7px),
+    #0d1117;
+  border-top: 1px solid #161b22;
+  border-bottom: 1px solid #161b22;
+  touch-action: none;
+}
+
+#output-divider:hover {
+  background:
+    linear-gradient(to bottom, transparent 0, transparent 3px, #58a6ff 3px, #58a6ff 7px, transparent 7px),
+    #0d1117;
 }
 
 #output-shell.paused::after {
@@ -569,6 +616,31 @@ body {
   transition: opacity 120ms ease, transform 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 
+#output-live-btn {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #1f6feb;
+  border-radius: 999px;
+  background: rgba(33, 38, 45, 0.96);
+  color: #8ab4ff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
 #output-pause-btn::before {
   content: '||';
   font-size: 10px;
@@ -581,9 +653,20 @@ body {
   transform: translateY(0);
 }
 
+#output-shell.split-active #output-live-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 #output-pause-btn:hover {
   background: rgba(48, 54, 61, 0.98);
   border-color: #e3b341;
+}
+
+#output-live-btn:hover {
+  background: rgba(48, 54, 61, 0.98);
+  border-color: #58a6ff;
 }
 
 #gmcp-panel {
@@ -624,10 +707,18 @@ body {
 .gmcp-toolbar-btn.danger { color: #f85149; }
 .gmcp-toolbar-btn.danger:hover { background: #da3633; color: #fff; }
 
-#output::-webkit-scrollbar { width: 8px; }
-#output::-webkit-scrollbar-track { background: #000000; }
-#output::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
-#output::-webkit-scrollbar-thumb:hover { background: #484f58; }
+#output::-webkit-scrollbar,
+#output-history::-webkit-scrollbar,
+#output-live::-webkit-scrollbar { width: 8px; }
+#output::-webkit-scrollbar-track,
+#output-history::-webkit-scrollbar-track,
+#output-live::-webkit-scrollbar-track { background: #000000; }
+#output::-webkit-scrollbar-thumb,
+#output-history::-webkit-scrollbar-thumb,
+#output-live::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+#output::-webkit-scrollbar-thumb:hover,
+#output-history::-webkit-scrollbar-thumb:hover,
+#output-live::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
 .output-line { min-height: 1.4em; }
 .output-spacer {

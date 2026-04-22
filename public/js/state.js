@@ -33,6 +33,8 @@ export const state = {
     keyMapperEnabled: false,
     keyMappings: [],
     historyTabCompletionEnabled: false,
+    scrollbackBehavior: 'pause',
+    scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: 'normal',
     tabObservabilityEnabled: false,
   },
@@ -53,6 +55,11 @@ export const dom = {
   toolbarStatus: null,
   outputShell: null,
   output: null,
+  outputSplit: null,
+  outputHistory: null,
+  outputLive: null,
+  outputDivider: null,
+  outputLiveBtn: null,
   outputPauseBtn: null,
   commandInput: null,
   sendBtn: null,
@@ -80,6 +87,11 @@ export function initDom() {
   dom.toolbarStatus = document.getElementById('toolbar-status');
   dom.outputShell = document.getElementById('output-shell');
   dom.output = document.getElementById('output');
+  dom.outputSplit = document.getElementById('output-split');
+  dom.outputHistory = document.getElementById('output-history');
+  dom.outputLive = document.getElementById('output-live');
+  dom.outputDivider = document.getElementById('output-divider');
+  dom.outputLiveBtn = document.getElementById('output-live-btn');
   dom.outputPauseBtn = document.getElementById('output-pause-btn');
   dom.commandInput = document.getElementById('command-input');
   dom.sendBtn = document.getElementById('send-btn');
