@@ -140,6 +140,7 @@ export const settingsManager = {
       keyMapperEnabled: Boolean(settings.keyMapperEnabled),
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
+      tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
     };
   },
 
@@ -1413,6 +1414,14 @@ export const settingsManager = {
       }
     ));
     controlsSection.appendChild(keyMapperFields);
+    controlsSection.appendChild(this._createCheckboxRow(
+      'Send tab-away / tab-back on tab changes',
+      'Automatically notifies the game when this browser tab becomes inactive or active again.',
+      !!this._draftSettings.tabObservabilityEnabled,
+      (checked) => {
+        this._draftSettings.tabObservabilityEnabled = checked;
+      }
+    ));
 
     const highlightsTitle = document.createElement('h3');
     highlightsTitle.className = 'dw-heading';

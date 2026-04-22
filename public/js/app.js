@@ -10,6 +10,7 @@ import { settingsManager } from './settings-manager.js';
 import { flushPendingMapSave } from './map-data.js';
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
+import { sendAutomaticCommand } from './input.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -158,6 +159,31 @@ function formatUptime(totalSeconds) {
 let clientVersion = null;
 let serverVersion = null;
 
+function getTabObservabilityState() {
+  return document.visibilityState === 'visible' ? 'visible' : 'hidden';
+}
+
+function getTabObservabilityCommand(tabState) {
+  return tabState === 'hidden' ? 'tab-away' : 'tab-back';
+}
+
+function emitTabObservabilityState(tabState) {
+  state.tabObservability.currentState = tabState;
+
+  if (!state.settings.tabObservabilityEnabled) return false;
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+  if (state.tabObservability.lastSentState === tabState) return false;
+
+  const command = getTabObservabilityCommand(tabState);
+  if (!sendAutomaticCommand(command, { echo: true })) return false;
+  state.tabObservability.lastSentState = tabState;
+  return true;
+}
+
+export function emitCurrentTabObservabilityState() {
+  return emitTabObservabilityState(getTabObservabilityState());
+}
+
 function updateVersionDisplay() {
   const parts = [];
   if (clientVersion) parts.push('Client v' + clientVersion);
@@ -233,6 +259,7 @@ document.addEventListener('click', function() {
 settingsManager.init();
 aliasManager.init();
 highlightManager.init();
+state.tabObservability.currentState = getTabObservabilityState();
 
 // Load server config, then apply URL param overrides
 fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
@@ -255,6 +282,24 @@ windowManager.init();
 ideManager.init();
 initInput();
 dom.commandInput.focus();
+
+document.addEventListener('visibilitychange', function() {
+  emitCurrentTabObservabilityState();
+});
+
+const statusObserver = new MutationObserver(function() {
+  if (dom.connectionState && dom.connectionState.textContent === 'Connected') {
+    emitCurrentTabObservabilityState();
+  }
+});
+
+if (dom.connectionState) {
+  statusObserver.observe(dom.connectionState, {
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+}
 
 window.wsDebug = {
   snapshot: getWsDebugSnapshot,

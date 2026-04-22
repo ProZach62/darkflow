@@ -64,6 +64,7 @@ function resetSocketState() {
 function finalizeDisconnect() {
   resetSocketState();
   gmcp.reset();
+  state.tabObservability.lastSentState = null;
   panelManager.resetData();
   windowManager.resetAll();
   setConnectionState('disconnected');

@@ -29,6 +29,17 @@ function sendRawCommand(text) {
   return true;
 }
 
+export function sendAutomaticCommand(text, options = {}) {
+  const command = String(text || '');
+  if (!sendRawCommand(command)) return false;
+
+  if (options.echo !== false) {
+    appendEcho(command);
+  }
+
+  return true;
+}
+
 function pushHistory(text) {
   if (!text) return;
   commandHistory.push(text);

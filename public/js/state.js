@@ -33,6 +33,11 @@ export const state = {
     keyMapperEnabled: false,
     keyMappings: [],
     outputScrollbackPreset: 'normal',
+    tabObservabilityEnabled: false,
+  },
+  tabObservability: {
+    currentState: null,
+    lastSentState: null,
   },
 };
 
