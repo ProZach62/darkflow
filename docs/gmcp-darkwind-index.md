@@ -11,6 +11,7 @@ This index lists every custom `Darkwind.*` package currently advertised by the w
 | `Darkwind.MapData` | `Darkwind.MapData 1` | `RoomUpdate`, `Area`, `Update`, `Sync`, `RoomCoords` | Mixed | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) | `Update` and `Sync` are live client behavior; `RoomCoords` is implemented as an active correction path, not reserved. |
 | `Darkwind.Completion` | `Darkwind.Completion 1` | `Request`, `Result` | Mixed | [`docs/gmcp-darkwind-completion.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-completion.md) | Ambiguous results are shown to the user only on repeated Tab for the same line and cursor state. |
 | `Darkwind.Quests` | `Darkwind.Quests 1` | `List`, `Active`, `Update`, `Complete` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) | Payload shapes are documented from current client usage because no prior in-repo spec existed. |
+| `Darkwind.Announcements` | `Darkwind.Announcements 1` | `List`, `New`, `State`, `MarkRead` | Mixed | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) | `MarkRead` is per-character and the server follows it with both a full list refresh and a badge state refresh. |
 
 ## Message Catalog
 
@@ -37,3 +38,7 @@ This index lists every custom `Darkwind.*` package currently advertised by the w
 | `Darkwind.Quests.Active` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
 | `Darkwind.Quests.Update` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
 | `Darkwind.Quests.Complete` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
+| `Darkwind.Announcements.List` | Server -> Client | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
+| `Darkwind.Announcements.New` | Server -> Client | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
+| `Darkwind.Announcements.State` | Server -> Client | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
+| `Darkwind.Announcements.MarkRead` | Client -> Server | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |

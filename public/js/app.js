@@ -6,6 +6,7 @@ import { connect, getWsDebugSnapshot } from './connection.js';
 import { loadHistory, saveHistory, saveHistoryNow, initInput } from './input.js';
 import { windowManager } from './window-manager.js';
 import { ideManager } from './ide-manager.js';
+import { announcementsManager } from './announcements-manager.js';
 import { settingsManager } from './settings-manager.js';
 import { flushPendingMapSave } from './map-data.js';
 import { aliasManager } from './alias-manager.js';
@@ -280,6 +281,7 @@ loadHistory();
 panelManager.init();
 windowManager.init();
 ideManager.init();
+announcementsManager.init();
 initInput();
 dom.commandInput.focus();
 

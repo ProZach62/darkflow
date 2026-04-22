@@ -61,7 +61,8 @@ export const gmcp = {
       'Darkwind.IDE 1',
       'Darkwind.MapData 1',
       'Darkwind.Completion 1',
-      'Darkwind.Quests 1'
+      'Darkwind.Quests 1',
+      'Darkwind.Announcements 1'
     ]);
     this.enabled = true;
   },
