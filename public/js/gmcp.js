@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { appendSystemMessage } from './output.js';
 import { sendSocketPayload } from './connection.js';
 
 const GMCP_CLIENT_NAME = 'WebMUD Client';
@@ -66,5 +67,17 @@ export const gmcp = {
 
   reset() {
     this.enabled = false;
+  },
+
+  restartHandshake() {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      appendSystemMessage('GMCP restart unavailable: not connected.');
+      return false;
+    }
+
+    this.reset();
+    this.sendHandshake();
+    appendSystemMessage('GMCP handshake re-sent.');
+    return true;
   }
 };

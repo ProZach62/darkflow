@@ -7,6 +7,7 @@ import { settingsManager } from './settings-manager.js';
 import { sendSocketPayload } from './connection.js';
 import { aliasManager, tokenizeInput } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
+import { gmcp } from './gmcp.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -519,6 +520,9 @@ export function initInput() {
     if (e.ctrlKey && e.key === 'l') {
       e.preventDefault();
       clearOutput();
+    } else if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      gmcp.restartHandshake();
     } else if (e.key === 'Escape') {
       resetCompletionState();
       dom.commandInput.value = '';
