@@ -69,6 +69,7 @@ export const ideEditor = {
   errorTitle: null,
   saveBtn: null,
   statusText: null,
+  readOnly: false,
 
   async init() {
     await loadCodeMirror();
@@ -78,6 +79,7 @@ export const ideEditor = {
     this.callbacks = callbacks;
     this.currentPath = data.path || '';
     this.originalContent = data.content || '';
+    this.readOnly = !!data.readOnly;
 
     // Remove any existing overlay
     if (this.overlay) this.close(true);
@@ -210,13 +212,22 @@ export const ideEditor = {
 
     // Escape key handler on overlay
     this._keyHandler = (e) => {
+      const loweredKey = String(e.key || '').toLowerCase();
+
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && loweredKey === 's') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!this.readOnly) this.save();
+        return;
+      }
+
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         this.tryClose();
       }
     };
-    this.overlay.addEventListener('keydown', this._keyHandler);
+    document.addEventListener('keydown', this._keyHandler, true);
   },
 
   save() {
@@ -355,7 +366,7 @@ export const ideEditor = {
   close(silent) {
     if (this.overlay) {
       if (this._keyHandler) {
-        this.overlay.removeEventListener('keydown', this._keyHandler);
+        document.removeEventListener('keydown', this._keyHandler, true);
         this._keyHandler = null;
       }
       this.overlay.remove();
