@@ -664,6 +664,46 @@ export const panelManager = {
     this._renderPanel('avatar');
   },
 
+  refreshMediaPanels() {
+    const buildRefreshUrl = (url) => {
+      const separator = url.includes('?') ? '&' : '?';
+      return url + separator + 'gmcpRefresh=' + Date.now();
+    };
+
+    const refreshImage = (panelId, key) => {
+      const current = this.gmcpData[key];
+      if (!current || !current.url) return;
+
+      const refreshedUrl = buildRefreshUrl(current.url);
+      this.gmcpData[key] = {
+        ...current,
+        loading: true,
+      };
+      this._renderPanel(panelId);
+
+      const probe = new Image();
+      probe.onload = () => {
+        this.gmcpData[key] = {
+          ...current,
+          url: refreshedUrl,
+          loading: false,
+        };
+        this._renderPanel(panelId);
+      };
+      probe.onerror = () => {
+        this.gmcpData[key] = {
+          ...current,
+          loading: false,
+        };
+        this._renderPanel(panelId);
+      };
+      probe.src = refreshedUrl;
+    };
+
+    refreshImage('avatar', 'avatar');
+    refreshImage('roomImage', 'roomImage');
+  },
+
   _renderPanel(id) {
     const p = this.panels[id];
     if (!p) return;

@@ -1,6 +1,8 @@
 import { dom } from './state.js';
 import { gmcp } from './gmcp.js';
 import { appendSystemMessage } from './output.js';
+import { settingsManager } from './settings-manager.js';
+import { tokenizeInput } from './alias-manager.js';
 
 const REQUEST_PACKAGE = 'Darkwind.Completion.Request';
 const RESULT_PACKAGE = 'Darkwind.Completion.Result';
@@ -37,6 +39,60 @@ function clearAmbiguousState() {
   lastAmbiguousSignature = null;
 }
 
+function findTokenAtCursor(tokens, cursor) {
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (cursor > token.start && cursor <= token.end) {
+      return { token, index };
+    }
+  }
+  return null;
+}
+
+function applyInputValue(line, cursor) {
+  suppressReset = true;
+  dom.commandInput.value = line;
+  dom.commandInput.setSelectionRange(cursor, cursor);
+  suppressReset = false;
+}
+
+function buildHistoryCompletion(line, cursor, history) {
+  const tokens = tokenizeInput(line);
+  if (tokens.length < 2) return null;
+
+  const active = findTokenAtCursor(tokens, cursor);
+  if (!active || active.index === 0) return null;
+
+  const activeToken = active.token;
+  const partial = line.slice(activeToken.start, cursor);
+  const suffix = line.slice(cursor, activeToken.end);
+  if (!partial || /\s/.test(partial)) return null;
+
+  const verb = tokens[0].lower;
+  const partialLower = partial.toLowerCase();
+  const activeIndex = active.index;
+
+  for (let index = history.length - 1; index >= 0; index--) {
+    const previousLine = typeof history[index] === 'string' ? history[index] : '';
+    if (!previousLine || previousLine === line) continue;
+
+    const previousTokens = tokenizeInput(previousLine);
+    if (previousTokens.length <= activeIndex) continue;
+    if (previousTokens[0].lower !== verb) continue;
+
+    const candidate = previousTokens[activeIndex].value;
+    if (!candidate) continue;
+    if (!candidate.toLowerCase().startsWith(partialLower)) continue;
+    if (candidate === partial + suffix) continue;
+
+    const nextLine = line.slice(0, activeToken.start) + candidate + line.slice(activeToken.end);
+    const nextCursor = activeToken.start + candidate.length;
+    return { line: nextLine, cursor: nextCursor };
+  }
+
+  return null;
+}
+
 function applyCompletionResult(data) {
   let nextLine;
   let nextCursor;
@@ -54,10 +110,7 @@ function applyCompletionResult(data) {
 
   pendingRequest = null;
 
-  suppressReset = true;
-  dom.commandInput.value = nextLine;
-  dom.commandInput.setSelectionRange(nextCursor, nextCursor);
-  suppressReset = false;
+  applyInputValue(nextLine, nextCursor);
 
   if (ambiguous) {
     lastAmbiguousSignature = signatureFor(nextLine, nextCursor);
@@ -85,11 +138,22 @@ export function resetCompletionState() {
   clearAmbiguousState();
 }
 
-export function requestCompletion() {
+export function requestCompletion(history = []) {
   const line = dom.commandInput.value;
   const cursor = dom.commandInput.selectionStart == null
     ? line.length
     : dom.commandInput.selectionStart;
+
+  if (settingsManager.get('historyTabCompletionEnabled')) {
+    const historyCompletion = buildHistoryCompletion(line, cursor, history);
+    if (historyCompletion) {
+      pendingRequest = null;
+      clearAmbiguousState();
+      applyInputValue(historyCompletion.line, historyCompletion.cursor);
+      return;
+    }
+  }
+
   const signature = signatureFor(line, cursor);
 
   pendingRequest = {

@@ -8,6 +8,7 @@ import { sendSocketPayload } from './connection.js';
 import { aliasManager, tokenizeInput } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { gmcp } from './gmcp.js';
+import { panelManager } from './panel-manager.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -487,7 +488,7 @@ export function initInput() {
       sendCommand();
     } else if (e.key === 'Tab') {
       e.preventDefault();
-      requestCompletion();
+      requestCompletion(commandHistory);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       resetCompletionState();
@@ -533,7 +534,9 @@ export function initInput() {
       clearOutput();
     } else if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
-      gmcp.restartHandshake();
+      if (gmcp.restartHandshake()) {
+        panelManager.refreshMediaPanels();
+      }
     } else if (e.key === 'Escape') {
       resetCompletionState();
       dom.commandInput.value = '';

@@ -13,6 +13,7 @@ export const settingsManager = {
     repeatLastCommand: true,
     keyMapperEnabled: false,
     keyMappings: [],
+    historyTabCompletionEnabled: false,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
   },
   _settings: {},
@@ -139,6 +140,7 @@ export const settingsManager = {
       repeatLastCommand: settings.repeatLastCommand !== false,
       keyMapperEnabled: Boolean(settings.keyMapperEnabled),
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
+      historyTabCompletionEnabled: Boolean(settings.historyTabCompletionEnabled),
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
     };
@@ -1398,6 +1400,14 @@ export const settingsManager = {
       !!this._draftSettings.repeatLastCommand,
       (checked) => {
         this._draftSettings.repeatLastCommand = checked;
+      }
+    ));
+    controlsSection.appendChild(this._createCheckboxRow(
+      'Use command history for Tab completion',
+      'Try recent commands with the same verb before falling back to server-side Tab completion.',
+      !!this._draftSettings.historyTabCompletionEnabled,
+      (checked) => {
+        this._draftSettings.historyTabCompletionEnabled = checked;
       }
     ));
 

@@ -32,6 +32,7 @@ export const state = {
     repeatLastCommand: true,
     keyMapperEnabled: false,
     keyMappings: [],
+    historyTabCompletionEnabled: false,
     outputScrollbackPreset: 'normal',
     tabObservabilityEnabled: false,
   },

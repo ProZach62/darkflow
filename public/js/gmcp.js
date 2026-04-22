@@ -3,6 +3,7 @@ import { appendSystemMessage } from './output.js';
 import { sendSocketPayload } from './connection.js';
 
 const GMCP_CLIENT_NAME = 'WebMUD Client';
+const GMCP_MEDIA_REFRESH_PACKAGE = 'Darkwind.Client.RefreshMedia';
 const gmcpTextEncoder = new TextEncoder();
 export const gmcpTextDecoder = new TextDecoder('utf-8');
 
@@ -69,6 +70,15 @@ export const gmcp = {
     this.enabled = false;
   },
 
+  requestMediaRefresh() {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    this.send(GMCP_MEDIA_REFRESH_PACKAGE);
+    return true;
+  },
+
   restartHandshake() {
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
       appendSystemMessage('GMCP restart unavailable: not connected.');
@@ -77,7 +87,8 @@ export const gmcp = {
 
     this.reset();
     this.sendHandshake();
-    appendSystemMessage('GMCP handshake re-sent.');
+    this.requestMediaRefresh();
+    appendSystemMessage('GMCP handshake re-sent and media refresh requested.');
     return true;
   }
 };

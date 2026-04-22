@@ -1,6 +1,6 @@
 # Darkwind.Completion GMCP Protocol Specification
 
-This document specifies the `Darkwind.Completion` GMCP package, a server-authoritative tab-completion system used by the web client command input.
+This document specifies the `Darkwind.Completion` GMCP package, the server-authoritative fallback used by the web client's tab-completion system.
 
 ---
 
@@ -25,6 +25,7 @@ The client declares support via `Core.Supports.Set`:
 - Command completion based on the player's actual command path
 - Argument completion using game semantics
 - Filesystem completion only for apprentice+ commands with filesystem access
+- Optional client-side history-aware completion ahead of GMCP fallback
 
 ---
 
@@ -129,6 +130,16 @@ Directory-only subset:
 ---
 
 ## Client Behavior
+
+When the `Use command history for Tab completion` setting is enabled, the web client first checks recent local command history before sending a GMCP completion request.
+
+History-aware completion rules:
+
+- Only runs when the cursor is inside a non-first token
+- Matches prior commands with the same first token/verb
+- Completes the active argument position using the newest history entry whose token starts with the current partial text
+- Replaces only the token under the cursor
+- Falls back to `Darkwind.Completion.Request` immediately when no local match exists
 
 The web client uses Linux shell style interaction:
 
