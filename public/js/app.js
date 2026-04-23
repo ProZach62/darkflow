@@ -11,6 +11,7 @@ import { settingsManager } from './settings-manager.js';
 import { flushPendingMapSave } from './map-data.js';
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
+import { triggerManager } from './trigger-manager.js';
 import { sendAutomaticCommand } from './input.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
@@ -260,6 +261,7 @@ document.addEventListener('click', function() {
 settingsManager.init();
 aliasManager.init();
 highlightManager.init();
+triggerManager.init();
 state.tabObservability.currentState = getTabObservabilityState();
 
 // Load server config, then apply URL param overrides
@@ -325,6 +327,15 @@ window.highlightDebug = {
   },
   data: function() {
     return highlightManager.getScopeSnapshot();
+  },
+};
+
+window.triggerDebug = {
+  scope: function() {
+    return triggerManager.getActiveScopeKey();
+  },
+  data: function() {
+    return triggerManager.getScopeSnapshot();
   },
 };
 

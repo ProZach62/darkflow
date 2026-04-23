@@ -7,6 +7,7 @@ import { settingsManager } from './settings-manager.js';
 import { sendSocketPayload } from './connection.js';
 import { aliasManager, tokenizeInput } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
+import { triggerManager } from './trigger-manager.js';
 import { gmcp } from './gmcp.js';
 import { panelManager } from './panel-manager.js';
 import { scrollActiveOutputByPage } from './output.js';
@@ -71,6 +72,10 @@ function appendAliasWarning(message) {
 
 function appendHighlightWarning(message) {
   appendSystemMessage('Highlight: ' + message);
+}
+
+function appendTriggerWarning(message) {
+  appendSystemMessage('Trigger: ' + message);
 }
 
 function formatAliasVariableValue(value) {
@@ -271,6 +276,45 @@ function handleAliasSlashCommand(text) {
     return { handled: true, localOnly: true };
   }
 
+  if (command === '/trigger') {
+    const scope = triggerManager.getScopeSnapshot(scopeKey);
+    const args = parseBraceArguments(trimmed, 'trigger');
+    if (args === null) {
+      appendTriggerWarning('Usage: /trigger {pattern} {command}');
+      return { handled: true, localOnly: true };
+    }
+
+    if (!args.length) {
+      const triggers = scope.triggers.slice();
+      if (!triggers.length) {
+        appendSystemMessage('Triggers: none set for this server.');
+      } else {
+        appendSystemMessage(
+          'Triggers: ' + triggers.map((trigger) => triggerManager.describeTrigger(trigger)).join(' | ')
+        );
+      }
+      return { handled: true, localOnly: true };
+    }
+
+    if (args.length === 1) {
+      const trigger = triggerManager.findTriggerByPattern(args[0], scopeKey);
+      if (!trigger) {
+        appendSystemMessage('Trigger: "' + args[0] + '" is not defined.');
+      } else {
+        appendSystemMessage('Trigger: ' + triggerManager.describeTrigger(trigger));
+      }
+      return { handled: true, localOnly: true };
+    }
+
+    const result = triggerManager.upsertSimpleTrigger(args[0], args[1], scopeKey);
+    if (result.error) {
+      appendTriggerWarning(result.error);
+    } else {
+      appendSystemMessage('Trigger set: ' + triggerManager.describeTrigger(result.trigger));
+    }
+    return { handled: true, localOnly: true };
+  }
+
   if (command === '/unvar' || command === '/unsetvar' || command === '/unsetvariable') {
     const name = tokens[1] ? tokens[1].value : '';
     if (!name) {
@@ -314,6 +358,21 @@ function handleAliasSlashCommand(text) {
       appendSystemMessage('Highlight: "' + args[0] + '" was not defined.');
     } else {
       appendSystemMessage('Highlight cleared: ' + args[0]);
+    }
+    return { handled: true, localOnly: true };
+  }
+
+  if (command === '/untrigger') {
+    const args = parseBraceArguments(trimmed, 'untrigger');
+    if (args === null || args.length !== 1) {
+      appendTriggerWarning('Usage: /untrigger {pattern}');
+      return { handled: true, localOnly: true };
+    }
+
+    if (!triggerManager.removeTriggerByPattern(args[0], scopeKey)) {
+      appendSystemMessage('Trigger: "' + args[0] + '" was not defined.');
+    } else {
+      appendSystemMessage('Trigger cleared: ' + args[0]);
     }
     return { handled: true, localOnly: true };
   }

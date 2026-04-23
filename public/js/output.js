@@ -1,6 +1,10 @@
 import { state, dom } from './state.js';
 import { parseAnsi, styleToElement } from './ansi.js';
 import { highlightManager } from './highlight-manager.js';
+import { triggerManager } from './trigger-manager.js';
+import { aliasManager } from './alias-manager.js';
+import { sendSocketPayload } from './connection.js';
+import { trackCommand } from './map-data.js';
 import {
   DEFAULT_OUTPUT_SCROLLBACK_PRESET,
   OUTPUT_OVERSCAN_LINES,
@@ -523,6 +527,62 @@ function queueLines(lines) {
   scheduleFrame();
 }
 
+function sendTriggerCommand(text) {
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+
+  trackCommand(text);
+  if (!sendSocketPayload(text, {
+    kind: 'command',
+    size: text.length,
+    preview: text.slice(0, 80),
+  })) {
+    return false;
+  }
+  state.bytesSent += text.length;
+  return true;
+}
+
+function executeTriggerMatches(matches, scopeKey) {
+  if (!Array.isArray(matches) || !matches.length) return;
+
+  for (const match of matches) {
+    for (const step of match.trigger.steps || []) {
+      const variables = aliasManager.getScopeSnapshot(scopeKey).variables;
+      const resolved = aliasManager.resolveTemplate(step.template, {
+        args: match.captures,
+        remainder: match.fullMatch,
+        variables,
+      });
+
+      if ((step.type === 'send_command' || step.type === 'set_variable') && resolved.missingVariables.length) {
+        appendSystemMessage(
+          'Trigger: Missing variable'
+          + (resolved.missingVariables.length === 1 ? '' : 's')
+          + ' ' + resolved.missingVariables.map((name) => '$' + name).join(', ')
+          + ' in pattern "' + match.trigger.pattern + '".'
+        );
+        continue;
+      }
+
+      if (step.type === 'set_variable') {
+        aliasManager.setVariable(step.name, resolved.text, scopeKey);
+        continue;
+      }
+
+      if (step.type === 'show_message') {
+        appendSystemMessage(resolved.text);
+        continue;
+      }
+
+      const command = resolved.text.trim();
+      if (!command) continue;
+      if (!sendTriggerCommand(command)) {
+        appendSystemMessage('Trigger: Unable to send "' + command + '" because you are not connected.');
+      }
+    }
+  }
+}
+
 export function initOutput() {
   initPane(panes.main, dom.output);
   initPane(panes.history, dom.outputHistory);
@@ -617,7 +677,21 @@ export function scrollActiveOutputByPage(multiplier) {
 
 export function appendOutput(text, cssClass) {
   const fragments = parseAnsi(text);
-  queueLines(highlightManager.applyHighlightsToLines(buildLinesFromFragments(fragments, cssClass)));
+  const lines = buildLinesFromFragments(fragments, cssClass);
+  const scopeKey = triggerManager.getActiveScopeKey();
+  const visibleLines = [];
+
+  for (const line of lines) {
+    const result = triggerManager.evaluateLine(line.text, scopeKey);
+    if (result.matches.length) {
+      executeTriggerMatches(result.matches, scopeKey);
+    }
+    if (!result.gag) {
+      visibleLines.push(line);
+    }
+  }
+
+  queueLines(highlightManager.applyHighlightsToLines(visibleLines));
 }
 
 export function appendSystemMessage(text) {
