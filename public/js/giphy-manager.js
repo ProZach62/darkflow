@@ -2,10 +2,20 @@ import { gmcp } from './gmcp.js';
 
 const PKG_SHOW = 'Darkwind.Giphy.Show';
 const DEFAULT_DURATION_MS = 10000;
+const MAX_RECENT_REPLAYS = 100;
+
+function normalizeReplayKey(channel, talker, phrase) {
+  const safeChannel = typeof channel === 'string' ? channel.trim().toLowerCase() : '';
+  const safeTalker = typeof talker === 'string' ? talker.trim().toLowerCase() : '';
+  const safePhrase = typeof phrase === 'string' ? phrase.trim().toLowerCase() : '';
+  if (!safeChannel || !safeTalker || !safePhrase) return '';
+  return safeChannel + '|' + safeTalker + '|' + safePhrase;
+}
 
 export const giphyManager = {
   els: {
     overlay: null,
+    close: null,
     channel: null,
     talker: null,
     phrase: null,
@@ -14,6 +24,7 @@ export const giphyManager = {
 
   hideTimer: null,
   renderToken: 0,
+  recentReplays: new Map(),
 
   init() {
     this.mount();
@@ -28,6 +39,13 @@ export const giphyManager = {
 
     const card = document.createElement('div');
     card.className = 'giphy-card';
+
+    const close = document.createElement('button');
+    close.className = 'giphy-close';
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close GIF');
+    close.textContent = '×';
+    close.addEventListener('click', () => this.hide());
 
     const meta = document.createElement('div');
     meta.className = 'giphy-meta';
@@ -51,6 +69,7 @@ export const giphyManager = {
     image.decoding = 'async';
 
     imageWrap.appendChild(image);
+    card.appendChild(close);
     meta.appendChild(channel);
     meta.appendChild(talker);
     meta.appendChild(phrase);
@@ -61,6 +80,7 @@ export const giphyManager = {
 
     this.els = {
       overlay,
+      close,
       channel,
       talker,
       phrase,
@@ -72,6 +92,51 @@ export const giphyManager = {
     if (!this.hideTimer) return;
     clearTimeout(this.hideTimer);
     this.hideTimer = null;
+  },
+
+  rememberReplay(data) {
+    const key = normalizeReplayKey(
+      data && data.caption ? data.caption : data && data.channel,
+      data && data.talker,
+      data && data.phrase
+    );
+    if (!key) return;
+
+    if (this.recentReplays.has(key)) {
+      this.recentReplays.delete(key);
+    }
+
+    this.recentReplays.set(key, {
+      channel: data && data.channel ? data.channel : '',
+      caption: data && data.caption ? data.caption : '',
+      talker: data && data.talker ? data.talker : '',
+      phrase: data && data.phrase ? data.phrase : '',
+      gifUrl: data && data.gifUrl ? data.gifUrl : '',
+      durationMs: Math.max(1000, Number(data && data.durationMs) || DEFAULT_DURATION_MS),
+    });
+
+    while (this.recentReplays.size > MAX_RECENT_REPLAYS) {
+      const oldestKey = this.recentReplays.keys().next().value;
+      if (!oldestKey) break;
+      this.recentReplays.delete(oldestKey);
+    }
+  },
+
+  findReplayForLine(text) {
+    if (typeof text !== 'string' || !text.length) return null;
+
+    const match = text.match(/^\[([^\]]+)\] (.+) shared a GIF for "([^"]+)"\.$/);
+    if (!match) return null;
+
+    const [, channel, talker, phrase] = match;
+    const key = normalizeReplayKey(channel, talker, phrase);
+    if (!key || !this.recentReplays.has(key)) return null;
+    return this.recentReplays.get(key);
+  },
+
+  replay(data) {
+    if (!data || !data.gifUrl) return;
+    this.show(data);
   },
 
   hide() {
@@ -91,6 +156,8 @@ export const giphyManager = {
       this.hide();
       return;
     }
+
+    this.rememberReplay(data);
 
     const durationMs = Math.max(
       1000,

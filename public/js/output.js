@@ -3,6 +3,7 @@ import { parseAnsi, styleToElement } from './ansi.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { aliasManager } from './alias-manager.js';
+import { giphyManager } from './giphy-manager.js';
 import { sendSocketPayload } from './connection.js';
 import { trackCommand } from './map-data.js';
 import {
@@ -220,6 +221,20 @@ function buildSingleTextLine(text, cssClass) {
   return createLine(text, cssClass, [{ text, style: {} }]);
 }
 
+function createReplayLink(text, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'output-inline-link giphy-replay-link';
+  button.textContent = text;
+  button.title = 'Replay this GIF';
+  button.addEventListener('click', function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
 function createLineElement(line) {
   const div = document.createElement('div');
   div.className = 'output-line' + (line.cssClass ? ' ' + line.cssClass : '');
@@ -230,12 +245,45 @@ function createLineElement(line) {
     return div;
   }
 
+  if (line.giphyReplay) {
+    const { prefix, phrase, suffix, replay } = line.giphyReplay;
+    if (prefix) div.appendChild(document.createTextNode(prefix));
+    div.appendChild(createReplayLink(phrase, () => giphyManager.replay(replay)));
+    if (suffix) div.appendChild(document.createTextNode(suffix));
+    return div;
+  }
+
   for (const frag of line.fragments) {
     const el = styleToElement(frag.text, frag.style);
     if (el) div.appendChild(el);
   }
 
   return div;
+}
+
+function attachGiphyReplay(line) {
+  let replay;
+  let marker;
+  let phraseStart;
+  let phraseEnd;
+
+  if (!line || line.fragments.length !== 1) return line;
+
+  replay = giphyManager.findReplayForLine(line.text);
+  if (!replay) return line;
+
+  marker = '"' + replay.phrase + '"';
+  phraseStart = line.text.indexOf(marker);
+  if (phraseStart < 0) return line;
+
+  phraseEnd = phraseStart + marker.length;
+  line.giphyReplay = {
+    prefix: line.text.slice(0, phraseStart),
+    phrase: marker,
+    suffix: line.text.slice(phraseEnd),
+    replay,
+  };
+  return line;
 }
 
 function scheduleFrame() {
@@ -682,6 +730,7 @@ export function appendOutput(text, cssClass) {
   const visibleLines = [];
 
   for (const line of lines) {
+    attachGiphyReplay(line);
     const result = triggerManager.evaluateLine(line.text, scopeKey);
     if (result.matches.length) {
       executeTriggerMatches(result.matches, scopeKey);
