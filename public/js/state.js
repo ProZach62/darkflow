@@ -73,6 +73,7 @@ export const dom = {
   gmcpToggle: null,
   notificationsBtn: null,
   mailBtn: null,
+  announcementsBtn: null,
   mobilePanelsBtn: null,
 };
 
@@ -105,5 +106,6 @@ export function initDom() {
   dom.gmcpToggle = document.getElementById('gmcp-toggle');
   dom.notificationsBtn = document.getElementById('notifications-btn');
   dom.mailBtn = document.getElementById('mail-btn');
+  dom.announcementsBtn = dom.mailBtn;
   dom.mobilePanelsBtn = document.getElementById('mobile-panels-btn');
 }

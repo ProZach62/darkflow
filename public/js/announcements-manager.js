@@ -64,15 +64,15 @@ export const announcementsManager = {
   },
 
   mount() {
-    if (this.els.overlay || !dom.notificationsBtn) return;
+    if (this.els.overlay || !dom.announcementsBtn) return;
 
-    dom.notificationsBtn.title = 'Announcements';
-    dom.notificationsBtn.classList.remove('disabled');
+    dom.announcementsBtn.title = 'Announcements';
+    dom.announcementsBtn.classList.remove('disabled');
 
     const buttonWrap = document.createElement('span');
     buttonWrap.className = 'toolbar-btn-wrap';
-    dom.notificationsBtn.parentNode.insertBefore(buttonWrap, dom.notificationsBtn);
-    buttonWrap.appendChild(dom.notificationsBtn);
+    dom.announcementsBtn.parentNode.insertBefore(buttonWrap, dom.announcementsBtn);
+    buttonWrap.appendChild(dom.announcementsBtn);
 
     const badge = document.createElement('span');
     badge.className = 'toolbar-count-badge';
@@ -173,8 +173,8 @@ export const announcementsManager = {
   },
 
   bindButton() {
-    if (!dom.notificationsBtn) return;
-    dom.notificationsBtn.addEventListener('click', () => this.open());
+    if (!dom.announcementsBtn) return;
+    dom.announcementsBtn.addEventListener('click', () => this.open());
   },
 
   currentItems() {
@@ -271,10 +271,10 @@ export const announcementsManager = {
   },
 
   renderBadge() {
-    if (!dom.notificationsBtn || !this.els.badge) return;
+    if (!dom.announcementsBtn || !this.els.badge) return;
 
     const count = this.state.unreadCount;
-    dom.notificationsBtn.classList.toggle('has-alert', count > 0);
+    dom.announcementsBtn.classList.toggle('has-alert', count > 0);
     this.els.badge.style.display = count > 0 ? 'block' : 'none';
     this.els.badge.textContent = count > 99 ? '99+' : String(count);
   },
