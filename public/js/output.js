@@ -200,7 +200,7 @@ function buildLinesFromFragments(fragments, cssClass) {
   const lines = [[]];
 
   for (const frag of fragments) {
-    const parts = frag.text.split('\n');
+    const parts = String(frag.text || '').replace(/\r/g, '').split('\n');
     for (let i = 0; i < parts.length; i++) {
       if (i > 0) lines.push([]);
       if (parts[i]) {
