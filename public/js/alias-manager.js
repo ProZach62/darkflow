@@ -156,6 +156,29 @@ function compareAliasPriority(a, b) {
   return b.trigger.length - a.trigger.length;
 }
 
+function resolveTemplateToken(token, context, missingVariables) {
+  const value = String(token || '');
+
+  if (/^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
+    const variableName = value.slice(1);
+    if (!Object.prototype.hasOwnProperty.call(context.variables, variableName)) {
+      missingVariables.add(variableName);
+      return '';
+    }
+    return String(context.variables[variableName] ?? '');
+  }
+
+  if (/^%[0-9]$/.test(value)) {
+    if (value === '%0') return context.remainder || '';
+
+    const index = Number(value.slice(1)) - 1;
+    if (index < 0 || index >= context.args.length) return '';
+    return context.args[index];
+  }
+
+  return value;
+}
+
 export const aliasManager = {
   _data: { scopes: {} },
 
@@ -347,21 +370,18 @@ export const aliasManager = {
 
   resolveTemplate(template, context) {
     const missingVariables = new Set();
-    const text = String(template || '').replace(/\$([A-Za-z_][A-Za-z0-9_]*)|%([0-9])/g, (match, variableName, argIndex) => {
-      if (variableName) {
-        if (!Object.prototype.hasOwnProperty.call(context.variables, variableName)) {
-          missingVariables.add(variableName);
-          return '';
-        }
-        return String(context.variables[variableName] ?? '');
-      }
-
-      if (argIndex === '0') return context.remainder || '';
-
-      const index = Number(argIndex) - 1;
-      if (index < 0 || index >= context.args.length) return '';
-      return context.args[index];
-    });
+    const normalizedContext = {
+      args: Array.isArray(context && context.args) ? context.args : [],
+      remainder: context && typeof context.remainder === 'string' ? context.remainder : '',
+      variables: context && context.variables && typeof context.variables === 'object' ? context.variables : {},
+    };
+    const text = String(template || '')
+      .replace(/\$\{lower:([^}]+)\}/g, (match, token) => (
+        resolveTemplateToken(String(token || '').trim(), normalizedContext, missingVariables).toLowerCase()
+      ))
+      .replace(/\$([A-Za-z_][A-Za-z0-9_]*)|%([0-9])/g, (match, variableName, argIndex) => (
+        resolveTemplateToken(variableName ? '$' + variableName : '%' + argIndex, normalizedContext, missingVariables)
+      ));
 
     return {
       text,

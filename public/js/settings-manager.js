@@ -1306,7 +1306,7 @@ export const settingsManager = {
 
         const helper = document.createElement('div');
         helper.className = 'settings-helper-text';
-        helper.textContent = 'Templates support %0 for the full remainder, %1-%9 for arguments, and $name for variables.';
+        helper.textContent = 'Templates support %0 for the full remainder, %1-%9 for arguments, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -1789,7 +1789,7 @@ export const settingsManager = {
 
         const helper = document.createElement('div');
         helper.className = 'settings-helper-text';
-        helper.textContent = 'Templates support %0 for the full matched line, %1-%9 for wildcard captures, and $name for variables.';
+        helper.textContent = 'Templates support %0 for the full matched line, %1-%9 for wildcard captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
