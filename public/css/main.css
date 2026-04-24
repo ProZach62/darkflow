@@ -881,14 +881,15 @@ body {
 }
 
 .giphy-replay-link {
-  color: #79c0ff;
+  color: inherit;
+  background: transparent;
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .giphy-replay-link:hover {
-  color: #a5d6ff;
+  filter: brightness(1.15);
 }
 
 .giphy-replay-link:focus-visible {

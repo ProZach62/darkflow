@@ -246,6 +246,21 @@ function createReplayLink(text, onClick) {
   return button;
 }
 
+function appendStyledText(container, text, style) {
+  if (!text) return;
+  const el = styleToElement(text, style || {});
+  if (el) container.appendChild(el);
+}
+
+function applyStyleToReplayLink(button, style) {
+  const nextStyle = style || {};
+  if (nextStyle.fg) button.style.color = nextStyle.fg;
+  if (nextStyle.bg) button.style.backgroundColor = nextStyle.bg;
+  if (nextStyle.bold) button.style.fontWeight = '700';
+  if (nextStyle.italic) button.style.fontStyle = 'italic';
+  if (nextStyle.underline) button.style.textDecoration = 'underline';
+}
+
 function createLineElement(line) {
   const div = document.createElement('div');
   div.className = 'output-line' + (line.cssClass ? ' ' + line.cssClass : '');
@@ -257,10 +272,16 @@ function createLineElement(line) {
   }
 
   if (line.giphyReplay) {
-    const { prefix, phrase, suffix, replay } = line.giphyReplay;
-    if (prefix) div.appendChild(document.createTextNode(prefix));
-    div.appendChild(createReplayLink(phrase, () => giphyManager.replay(replay)));
-    if (suffix) div.appendChild(document.createTextNode(suffix));
+    const { parts, replay } = line.giphyReplay;
+    for (const part of parts) {
+      if (part.type === 'link') {
+        const link = createReplayLink(part.text, () => giphyManager.replay(replay));
+        applyStyleToReplayLink(link, part.style);
+        div.appendChild(link);
+        continue;
+      }
+      appendStyledText(div, part.text, part.style);
+    }
     return div;
   }
 
@@ -277,8 +298,10 @@ function attachGiphyReplay(line) {
   let marker;
   let phraseStart;
   let phraseEnd;
+  let offset;
+  let parts;
 
-  if (!line || line.fragments.length !== 1) return line;
+  if (!line || !Array.isArray(line.fragments) || !line.fragments.length) return line;
 
   replay = giphyManager.findReplayForLine(line.text);
   if (!replay) return line;
@@ -288,10 +311,56 @@ function attachGiphyReplay(line) {
   if (phraseStart < 0) return line;
 
   phraseEnd = phraseStart + marker.length;
+  offset = 0;
+  parts = [];
+
+  for (const fragment of line.fragments) {
+    const fragmentText = String(fragment.text || '');
+    const fragmentStart = offset;
+    const fragmentEnd = fragmentStart + fragmentText.length;
+    offset = fragmentEnd;
+
+    if (!fragmentText) continue;
+
+    if (fragmentEnd <= phraseStart || fragmentStart >= phraseEnd) {
+      parts.push({
+        type: 'text',
+        text: fragmentText,
+        style: fragment.style || {},
+      });
+      continue;
+    }
+
+    const localStart = Math.max(0, phraseStart - fragmentStart);
+    const localEnd = Math.min(fragmentText.length, phraseEnd - fragmentStart);
+
+    if (localStart > 0) {
+      parts.push({
+        type: 'text',
+        text: fragmentText.slice(0, localStart),
+        style: fragment.style || {},
+      });
+    }
+
+    if (localEnd > localStart) {
+      parts.push({
+        type: 'link',
+        text: fragmentText.slice(localStart, localEnd),
+        style: fragment.style || {},
+      });
+    }
+
+    if (localEnd < fragmentText.length) {
+      parts.push({
+        type: 'text',
+        text: fragmentText.slice(localEnd),
+        style: fragment.style || {},
+      });
+    }
+  }
+
   line.giphyReplay = {
-    prefix: line.text.slice(0, phraseStart),
-    phrase: marker,
-    suffix: line.text.slice(phraseEnd),
+    parts,
     replay,
   };
   return line;
