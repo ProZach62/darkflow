@@ -14,6 +14,7 @@ Support declaration advertised by the client:
 |---------|-----------|---------|
 | `Darkwind.Announcements.List` | Server -> Client | Replace the client's active and archived announcement inbox data |
 | `Darkwind.Announcements.New` | Server -> Client | Push a newly posted announcement to logged-in players |
+| `Darkwind.Announcements.Update` | Server -> Client | Update one existing announcement and the unread badge without replacing the full inbox |
 | `Darkwind.Announcements.State` | Server -> Client | Update unread badge state without replacing the full inbox |
 | `Darkwind.Announcements.MarkRead` | Client -> Server | Mark one announcement read for the current character |
 
@@ -92,7 +93,7 @@ Replaces the full inbox state for the current character.
 
 - The current web client replaces its cached `active`, `archived`, and `unreadCount` state with this payload.
 - The client keeps its current filter if possible and reselects the first visible item when nothing is selected.
-- The server sends this message during GMCP startup and again after `Darkwind.Announcements.MarkRead`.
+- The server sends this message during GMCP startup and uses it as the canonical full snapshot.
 
 ## Darkwind.Announcements.New
 
@@ -133,6 +134,47 @@ Pushes one newly posted announcement to online GMCP-capable players.
 - If `unreadCount` is absent, the current client increments locally; the current server implementation does send it.
 - The server also sends a plain text alert to all connected players when a new announcement is posted.
 
+## Darkwind.Announcements.Update
+
+Direction: `Server -> Client`
+
+Updates one existing announcement in place and carries the new unread count.
+
+### Schema
+
+```json
+{
+  "item": {
+    "id": 42,
+    "status": "active",
+    "title": "Spring Festival Begins",
+    "summary": "The festival is now live in all major cities.",
+    "author": "Elyndar",
+    "authorRealName": "elyndar",
+    "createdAt": 1776834302,
+    "archivedAt": 0,
+    "markdown": "# Spring Festival Begins\n\nThe festival is now live.",
+    "isRead": 1
+  },
+  "bucket": "active",
+  "unreadCount": 0
+}
+```
+
+### Fields
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `item` | object | Yes | Updated announcement item |
+| `bucket` | string | Yes | Canonical destination list: `active` or `archived` |
+| `unreadCount` | number | Yes | Count of unread active announcements after this change |
+
+### Runtime Behavior
+
+- The current client updates only the referenced announcement instead of replacing the whole inbox.
+- If `bucket` changes, the client moves the item between `active` and `archived`.
+- The mudlib sends this after `MarkRead` and after staff archive/unarchive changes.
+
 ## Darkwind.Announcements.State
 
 Direction: `Server -> Client`
@@ -156,7 +198,7 @@ Updates unread state without replacing the current inbox arrays.
 ### Runtime Behavior
 
 - The current client updates only the bell badge and alert styling from this message.
-- The mudlib sends this during login sync, after new announcement broadcast, and after read-state changes.
+- The mudlib may still use this for unread-count-only refreshes, but the current implementation carries unread count on `New` and `Update`.
 
 ## Darkwind.Announcements.MarkRead
 
@@ -182,7 +224,7 @@ Marks a single announcement read for the current character.
 
 - The current client sends this when the user selects an unread announcement in the detail view.
 - The current client also marks the selected item read locally and decrements the badge optimistically for active announcements before the server responds.
-- The server persists read state per character, then sends `Darkwind.Announcements.List` and `Darkwind.Announcements.State` back to the same client to refresh canonical state.
+- The server persists read state per character, then sends `Darkwind.Announcements.Update` back to the same client to refresh canonical state for that one item.
 
 ## Client Rendering Notes
 

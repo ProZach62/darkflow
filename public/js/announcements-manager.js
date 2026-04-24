@@ -4,6 +4,7 @@ import { renderAnnouncementMarkdown } from './announcement-markdown.js';
 
 const PKG_LIST = 'Darkwind.Announcements.List';
 const PKG_NEW = 'Darkwind.Announcements.New';
+const PKG_UPDATE = 'Darkwind.Announcements.Update';
 const PKG_STATE = 'Darkwind.Announcements.State';
 const PKG_MARK_READ = 'Darkwind.Announcements.MarkRead';
 
@@ -24,6 +25,31 @@ function formatTimestamp(epochSeconds) {
 
 function cloneItems(items) {
   return Array.isArray(items) ? items.map(item => ({ ...item })) : [];
+}
+
+function upsertItem(items, item) {
+  if (!Array.isArray(items)) return item ? [{ ...item }] : [];
+  if (!item || typeof item.id !== 'number') return items.map(entry => ({ ...entry }));
+  const next = [];
+  let found = false;
+  for (const entry of items) {
+    if (!entry || typeof entry.id !== 'number') continue;
+    if (entry.id === item.id) {
+      next.push({ ...item });
+      found = true;
+    } else {
+      next.push({ ...entry });
+    }
+  }
+  if (!found) next.unshift({ ...item });
+  return next;
+}
+
+function removeItem(items, id) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter(item => item && item.id !== id)
+    .map(item => ({ ...item }));
 }
 
 function escapeHtml(value) {
@@ -59,6 +85,7 @@ export const announcementsManager = {
     this.bindButton();
     gmcp.on(PKG_LIST, (data) => this.handleList(data));
     gmcp.on(PKG_NEW, (data) => this.handleNew(data));
+    gmcp.on(PKG_UPDATE, (data) => this.handleUpdate(data));
     gmcp.on(PKG_STATE, (data) => this.handleState(data));
     this.render();
   },
@@ -227,13 +254,41 @@ export const announcementsManager = {
 
   handleNew(data) {
     if (data && data.item) {
-      this.state.active = [{ ...data.item }, ...this.state.active.filter(item => item.id !== data.item.id)];
+      this.state.active = upsertItem(this.state.active, data.item);
+      this.state.archived = removeItem(this.state.archived, data.item.id);
     }
 
     if (data && data.unreadCount !== undefined) {
       this.state.unreadCount = Number(data.unreadCount) || 0;
     } else {
       this.state.unreadCount += 1;
+    }
+
+    this.ensureSelection();
+    this.render();
+  },
+
+  handleUpdate(data) {
+    const item = data && data.item;
+    const bucket = data && data.bucket;
+    if (!item || typeof item.id !== 'number') {
+      if (data && data.unreadCount !== undefined) {
+        this.state.unreadCount = Number(data.unreadCount) || 0;
+        this.renderBadge();
+      }
+      return;
+    }
+
+    if (bucket === 'archived') {
+      this.state.archived = upsertItem(this.state.archived, item);
+      this.state.active = removeItem(this.state.active, item.id);
+    } else {
+      this.state.active = upsertItem(this.state.active, item);
+      this.state.archived = removeItem(this.state.archived, item.id);
+    }
+
+    if (data && data.unreadCount !== undefined) {
+      this.state.unreadCount = Number(data.unreadCount) || 0;
     }
 
     this.ensureSelection();
