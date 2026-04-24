@@ -224,6 +224,9 @@
   color: #8b949e;
   font-size: 12px;
   font-style: italic;
+  text-align: center;
+  white-space: pre-line;
+  line-height: 1.5;
 }
 
 .dw-image.dw-image-loaded .dw-image-loading {
@@ -232,6 +235,19 @@
 
 .dw-image.dw-image-error img {
   display: none;
+}
+
+.dw-image.dw-image-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.dw-image.dw-image-error .dw-image-loading {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
 }
 
 /* ── Login modal (game-launcher style) ─────────────────────────── */

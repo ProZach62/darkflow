@@ -118,7 +118,7 @@ function renderDisplay(schema) {
           el.classList.add('dw-image-error');
           const err = document.createElement('div');
           err.className = 'dw-image-loading';
-          err.textContent = 'Image unavailable';
+          err.textContent = 'No image available.\n(likely we hit our rate limit; try again later!)';
           el.appendChild(err);
         });
         el.appendChild(img);
