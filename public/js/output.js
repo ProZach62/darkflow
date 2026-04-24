@@ -547,6 +547,12 @@ function deactivateSplitView() {
   });
 }
 
+export function exitSplitScrollback() {
+  if (!isSplitActive) return false;
+  deactivateSplitView();
+  return true;
+}
+
 function handleMainScroll() {
   if (panes.main.suppressScrollEvents) return;
   const atBottom = isPaneAtBottom(panes.main);

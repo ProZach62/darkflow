@@ -1,6 +1,6 @@
 import { state, dom } from './state.js';
 import { appendEcho, appendSystemMessage, clearOutput } from './output.js';
-import { MAX_HISTORY, SESSION_KEY } from './constants.js';
+import { MAX_HISTORY, HISTORY_STORAGE_KEY, LEGACY_SESSION_KEY } from './constants.js';
 import { trackCommand } from './map-data.js';
 import { initCompletion, requestCompletion, resetCompletionState } from './completion.js';
 import { settingsManager } from './settings-manager.js';
@@ -10,7 +10,7 @@ import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { gmcp } from './gmcp.js';
 import { panelManager } from './panel-manager.js';
-import { scrollActiveOutputByPage } from './output.js';
+import { exitSplitScrollback, scrollActiveOutputByPage } from './output.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -512,8 +512,16 @@ function handleMappedKey(event) {
 
 export function loadHistory() {
   try {
-    const stored = sessionStorage.getItem(SESSION_KEY);
-    if (stored) commandHistory = JSON.parse(stored);
+    const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (stored) {
+      commandHistory = JSON.parse(stored);
+    } else {
+      const legacy = sessionStorage.getItem(LEGACY_SESSION_KEY);
+      if (legacy) {
+        commandHistory = JSON.parse(legacy);
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(commandHistory));
+      }
+    }
   } catch(e) { /* ignore */ }
   historyIndex = commandHistory.length;
 }
@@ -523,7 +531,7 @@ export function saveHistory() {
   _saveTimer = setTimeout(() => {
     _saveTimer = null;
     try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(commandHistory));
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(commandHistory));
     } catch(e) { /* ignore */ }
   }, 500);
 }
@@ -531,7 +539,7 @@ export function saveHistory() {
 export function saveHistoryNow() {
   if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(commandHistory));
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(commandHistory));
   } catch(e) { /* ignore */ }
 }
 
@@ -602,6 +610,11 @@ export function initInput() {
         panelManager.refreshMediaPanels();
       }
     } else if (e.key === 'Escape') {
+      if (exitSplitScrollback()) {
+        e.preventDefault();
+        dom.commandInput.focus();
+        return;
+      }
       resetCompletionState();
       dom.commandInput.value = '';
       dom.commandInput.focus();

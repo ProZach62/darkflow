@@ -3,7 +3,8 @@ export const PRUNE_BATCH = 500;
 export const MAX_HISTORY = 200;
 export const RECONNECT_BASE_MS = 1000;
 export const RECONNECT_MAX_MS = 30000;
-export const SESSION_KEY = 'darkwind-cmd-history';
+export const HISTORY_STORAGE_KEY = 'darkwind-cmd-history';
+export const LEGACY_SESSION_KEY = 'darkwind-cmd-history';
 export const OUTPUT_SCROLLBACK_PRESETS = {
   low: 5000,
   normal: 10000,
