@@ -4,7 +4,7 @@ import { panelRenderers } from './panel-renderers.js';
 import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorrection, load as loadMapData } from './map-data.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
-const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'inventory', 'map', 'chat', 'quests'];
+const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'inventory', 'map', 'chat', 'quests', 'achievements'];
 
 function cloneState(value) {
   return JSON.parse(JSON.stringify(value));
@@ -46,6 +46,36 @@ export const panelManager = {
     this.registerGmcpHandlers();
     this._attachResizeHandler();
     this._syncResponsiveMode(true);
+  },
+
+  exportState() {
+    return cloneState(this.state);
+  },
+
+  applyImportedState(nextState) {
+    if (!nextState || typeof nextState !== 'object') return;
+
+    try {
+      localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(nextState));
+    } catch (error) {
+      console.warn('Failed to save imported panel state', error);
+    }
+
+    this._resetLivePanels();
+    this.loadState();
+    this.buildPanelsMenu();
+
+    for (const id of Object.keys(PANEL_DEFS)) {
+      if (this.state.panels[id] && this.state.panels[id].visible) {
+        this.createPanel(id);
+      }
+    }
+
+    this._applyDockStateToDom();
+    this._renderMobileSheet();
+    if (!this._mobile.enabled) {
+      this.repositionSnappedPanels();
+    }
   },
 
   loadState() {
@@ -1332,6 +1362,49 @@ export const panelManager = {
       if (!this.gmcpData.quests) this.gmcpData.quests = {};
       this.gmcpData.quests.lastComplete = data;
       this._renderPanel('quests');
+    });
+
+    gmcp.on('Darkwind.Achievements.List', (data) => {
+      this.gmcpData.achievements = data || {};
+      this._renderPanel('achievements');
+    });
+
+    gmcp.on('Darkwind.Achievements.Update', (data) => {
+      let existing;
+      let index;
+      let family;
+
+      if (!this.gmcpData.achievements) this.gmcpData.achievements = { summary: {}, families: [] };
+
+      if (data && data.summary) {
+        this.gmcpData.achievements.summary = data.summary;
+      }
+
+      if (Array.isArray(data && data.families)) {
+        existing = Array.isArray(this.gmcpData.achievements.families)
+          ? this.gmcpData.achievements.families.slice()
+          : [];
+
+        for (family of data.families) {
+          index = existing.findIndex(item => item && item.id === family.id);
+          if (index >= 0) existing[index] = family;
+          else existing.push(family);
+        }
+
+        existing.sort((a, b) => {
+          const aName = a && a.name ? a.name : '';
+          const bName = b && b.name ? b.name : '';
+          return aName.localeCompare(bName);
+        });
+
+        this.gmcpData.achievements.families = existing;
+      }
+
+      if (Array.isArray(data && data.newlyUnlocked)) {
+        this.gmcpData.achievements.newlyUnlocked = data.newlyUnlocked;
+      }
+
+      this._renderPanel('achievements');
     });
   },
 };

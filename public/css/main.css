@@ -406,9 +406,20 @@ body {
 .settings-modal-footer {
   display: flex;
   flex: 0 0 auto;
-  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
   padding-top: 4px;
+}
+
+.settings-footer-status {
+  flex: 1 1 auto;
+  min-height: 20px;
+  color: #8b949e;
+  font-size: 0.92rem;
+}
+
+.settings-footer-status.error {
+  color: #ff7b72;
 }
 
 .settings-mapper-editor {

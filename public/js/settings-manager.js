@@ -5,8 +5,12 @@ import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { styleToElement } from './ansi.js';
+import { panelManager } from './panel-manager.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
+const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
+const HIGHLIGHT_STORAGE_KEY = 'darkwind-client-highlights-v1';
+const TRIGGER_STORAGE_KEY = 'darkwind-client-triggers-v1';
 
 function formatKeyCodeLabel(code) {
   const value = String(code || '').trim();
@@ -62,6 +66,7 @@ export const settingsManager = {
   _escHandler: null,
   _dataSyncHandler: null,
   _refreshEditors: null,
+  _footerStatusEl: null,
 
   init() {
     this._settings = { ...this._defaults };
@@ -164,6 +169,7 @@ export const settingsManager = {
     this._draftTriggerScope = null;
     this._triggerScopeKey = '';
     this._refreshEditors = null;
+    this._footerStatusEl = null;
   },
 
   _save() {
@@ -184,6 +190,119 @@ export const settingsManager = {
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
     this._save();
+  },
+
+  _setFooterStatus(message, isError = false) {
+    if (!this._footerStatusEl) return;
+    this._footerStatusEl.textContent = message || '';
+    this._footerStatusEl.classList.toggle('error', Boolean(message) && isError);
+  },
+
+  _buildSettingsBundle() {
+    const aliasData = JSON.parse(JSON.stringify(aliasManager._data || { scopes: {} }));
+    const highlightData = JSON.parse(JSON.stringify(highlightManager._data || { scopes: {} }));
+    const triggerData = JSON.parse(JSON.stringify(triggerManager._data || { scopes: {} }));
+
+    if (this._aliasScopeKey && this._draftAliasScope) {
+      aliasData.scopes = aliasData.scopes || {};
+      aliasData.scopes[this._aliasScopeKey] = JSON.parse(JSON.stringify(this._draftAliasScope));
+    }
+    if (this._highlightScopeKey && this._draftHighlightScope) {
+      highlightData.scopes = highlightData.scopes || {};
+      highlightData.scopes[this._highlightScopeKey] = JSON.parse(JSON.stringify(this._draftHighlightScope));
+    }
+    if (this._triggerScopeKey && this._draftTriggerScope) {
+      triggerData.scopes = triggerData.scopes || {};
+      triggerData.scopes[this._triggerScopeKey] = JSON.parse(JSON.stringify(this._draftTriggerScope));
+    }
+
+    return {
+      format: 'darkwind-client-settings-export',
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      clientVersion: state.clientVersion || 'unknown',
+      data: {
+        settings: this._normalizeSettings(this._draftSettings || this._settings),
+        aliases: aliasData,
+        highlights: highlightData,
+        triggers: triggerData,
+        panels: panelManager.exportState(),
+      },
+    };
+  },
+
+  _downloadSettingsBundle() {
+    const bundle = this._buildSettingsBundle();
+    const json = JSON.stringify(bundle, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = bundle.exportedAt.slice(0, 19).replace(/[:T]/g, '-');
+    link.href = url;
+    link.download = 'darkwind-client-settings-' + timestamp + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    this._setFooterStatus('Settings exported.');
+  },
+
+  _applyImportedBundle(bundle) {
+    if (!bundle || typeof bundle !== 'object' || bundle.format !== 'darkwind-client-settings-export') {
+      throw new Error('That file is not a Darkwind client settings export.');
+    }
+    if (!bundle.data || typeof bundle.data !== 'object') {
+      throw new Error('That settings export is missing its data payload.');
+    }
+
+    const nextSettings = this._normalizeSettings(bundle.data.settings || this._defaults);
+    this._settings = nextSettings;
+    state.settings = { ...nextSettings };
+    this._save();
+    setOutputScrollbackBehavior(nextSettings.scrollbackBehavior);
+    setOutputSplitRatio(nextSettings.scrollbackSplitRatio);
+    setOutputScrollbackPreset(nextSettings.outputScrollbackPreset);
+
+    try {
+      localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(bundle.data.aliases || { scopes: {} }));
+      localStorage.setItem(HIGHLIGHT_STORAGE_KEY, JSON.stringify(bundle.data.highlights || { scopes: {} }));
+      localStorage.setItem(TRIGGER_STORAGE_KEY, JSON.stringify(bundle.data.triggers || { scopes: {} }));
+    } catch (error) {
+      throw new Error('Unable to write imported client data to local storage.');
+    }
+
+    aliasManager.init();
+    highlightManager.init();
+    triggerManager.init();
+
+    window.dispatchEvent(new CustomEvent('darkwind:alias-data-changed', { detail: {} }));
+    window.dispatchEvent(new CustomEvent('darkwind:highlight-data-changed', { detail: {} }));
+    window.dispatchEvent(new CustomEvent('darkwind:trigger-data-changed', { detail: {} }));
+
+    panelManager.applyImportedState(bundle.data.panels || { docks: { left: false, right: false }, panels: {} });
+
+    this.close();
+    this.open();
+    this._setFooterStatus('Settings imported.');
+  },
+
+  _promptImportSettingsBundle() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        this._applyImportedBundle(parsed);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to import that settings file.';
+        this._setFooterStatus(message, true);
+      }
+    });
+    input.click();
   },
 
   _normalizeSettings(settings) {
@@ -2048,6 +2167,20 @@ export const settingsManager = {
     const footer = document.createElement('div');
     footer.className = 'settings-modal-footer';
 
+    const footerStatus = document.createElement('div');
+    footerStatus.className = 'settings-footer-status';
+    this._footerStatusEl = footerStatus;
+
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'dw-button dw-button-secondary';
+    exportBtn.textContent = 'Export settings';
+    exportBtn.addEventListener('click', () => this._downloadSettingsBundle());
+
+    const importBtn = document.createElement('button');
+    importBtn.className = 'dw-button dw-button-secondary';
+    importBtn.textContent = 'Import settings';
+    importBtn.addEventListener('click', () => this._promptImportSettingsBundle());
+
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'dw-button dw-button-secondary';
     cancelBtn.textContent = 'Cancel';
@@ -2064,6 +2197,9 @@ export const settingsManager = {
       this.close();
     });
 
+    footer.appendChild(footerStatus);
+    footer.appendChild(exportBtn);
+    footer.appendChild(importBtn);
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
     body.appendChild(footer);

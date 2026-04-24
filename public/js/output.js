@@ -17,6 +17,8 @@ const DEFAULT_LINE_HEIGHT_PX = 23;
 const DEFAULT_SPLIT_RATIO = 0.6;
 const MIN_SPLIT_RATIO = 0.2;
 const MAX_SPLIT_RATIO = 0.8;
+const INITIAL_SPLIT_HISTORY_OFFSET_RATIO = 0.18;
+const MIN_INITIAL_SPLIT_HISTORY_LINES = 3;
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 
 let isScrollLocked = false;
@@ -179,6 +181,15 @@ function isPaneAtBottom(pane) {
 
 function getLineHeight(line) {
   return line.height || estimatedLineHeight;
+}
+
+function getTotalContentHeight() {
+  if (!lineStore.length) return 0;
+  let total = 0;
+  for (const line of lineStore) {
+    total += getLineHeight(line);
+  }
+  return total;
 }
 
 function markAllLineHeightsDirty() {
@@ -430,13 +441,27 @@ function applyRemovedHeightAfterPrune(pane, removedHeight) {
   setPaneScrollTop(pane, Math.max(0, pane.scrollEl.scrollTop - removedHeight));
 }
 
+function getInitialSplitHistoryScrollTop() {
+  const totalHeight = getTotalContentHeight();
+  if (totalHeight <= 0 || !panes.history.scrollEl) return 0;
+
+  const viewportHeight = panes.history.scrollEl.clientHeight
+    || Math.max(0, (dom.outputShell ? dom.outputShell.clientHeight * splitRatio : 0) - 5);
+  const initialOffset = Math.max(
+    estimatedLineHeight * MIN_INITIAL_SPLIT_HISTORY_LINES,
+    viewportHeight * INITIAL_SPLIT_HISTORY_OFFSET_RATIO
+  );
+  const liveBottomScrollTop = Math.max(0, totalHeight - viewportHeight);
+  return Math.max(0, liveBottomScrollTop - initialOffset);
+}
+
 function activateSplitView() {
   if (isSplitActive || !isSplitModeEnabled()) return;
   isOutputPaused = false;
   isScrollLocked = false;
   isSplitActive = true;
   syncOutputUi();
-  setPaneScrollTop(panes.history, panes.main.scrollEl ? panes.main.scrollEl.scrollTop : 0);
+  setPaneScrollTop(panes.history, getInitialSplitHistoryScrollTop());
   snapPaneToBottom(panes.live);
   renderInvalidated = true;
   scheduleFrame();
