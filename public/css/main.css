@@ -897,6 +897,24 @@ body {
   outline-offset: 2px;
   border-radius: 2px;
 }
+
+.terminal-url-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.terminal-url-link:hover {
+  filter: brightness(1.15);
+}
+
+.terminal-url-link:focus-visible {
+  outline: 1px solid rgba(121, 192, 255, 0.9);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .output-spacer {
   width: 100%;
   pointer-events: none;

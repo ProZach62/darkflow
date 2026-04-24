@@ -232,18 +232,19 @@ function buildSingleTextLine(text, cssClass) {
   return createLine(text, cssClass, [{ text, style: {} }]);
 }
 
-function createReplayLink(text, onClick) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'output-inline-link giphy-replay-link';
-  button.textContent = text;
-  button.title = 'Replay this GIF';
-  button.addEventListener('click', function(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    onClick();
-  });
-  return button;
+function applyStyledTextAppearance(element, text, style) {
+  const styled = styleToElement(text, style || {});
+  if (!styled) return;
+
+  if (styled.nodeType === Node.TEXT_NODE) {
+    element.textContent = text;
+    return;
+  }
+
+  if (styled.className) element.className = styled.className;
+  const inlineStyle = styled.getAttribute('style');
+  if (inlineStyle) element.setAttribute('style', inlineStyle);
+  element.textContent = text;
 }
 
 function appendStyledText(container, text, style) {
@@ -252,13 +253,73 @@ function appendStyledText(container, text, style) {
   if (el) container.appendChild(el);
 }
 
-function applyStyleToReplayLink(button, style) {
-  const nextStyle = style || {};
-  if (nextStyle.fg) button.style.color = nextStyle.fg;
-  if (nextStyle.bg) button.style.backgroundColor = nextStyle.bg;
-  if (nextStyle.bold) button.style.fontWeight = '700';
-  if (nextStyle.italic) button.style.fontStyle = 'italic';
-  if (nextStyle.underline) button.style.textDecoration = 'underline';
+function createReplayLink(text, style, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'output-inline-link giphy-replay-link';
+  button.title = 'Replay this GIF';
+  applyStyledTextAppearance(button, text, style);
+  button.addEventListener('click', function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
+function createUrlLink(text, style, href) {
+  const link = document.createElement('a');
+  link.className = 'output-inline-link terminal-url-link';
+  link.href = href;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  applyStyledTextAppearance(link, text, style);
+  link.addEventListener('click', function(event) {
+    event.stopPropagation();
+  });
+  return link;
+}
+
+function trimTrailingUrlPunctuation(urlText) {
+  let end = urlText.length;
+  while (end > 0 && /[.,!?;:)\]}>]$/.test(urlText.slice(end - 1, end))) {
+    end--;
+  }
+  return {
+    url: urlText.slice(0, end),
+    trailing: urlText.slice(end),
+  };
+}
+
+function appendFragmentWithLinks(container, text, style) {
+  const value = String(text || '');
+  if (!value) return;
+
+  const urlPattern = /https?:\/\/[^\s<>"']+/gi;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = urlPattern.exec(value)) !== null) {
+    const matched = match[0];
+    const start = match.index;
+    const trimmed = trimTrailingUrlPunctuation(matched);
+
+    if (!trimmed.url) continue;
+    if (start > lastIndex) {
+      appendStyledText(container, value.slice(lastIndex, start), style);
+    }
+
+    container.appendChild(createUrlLink(trimmed.url, style, trimmed.url));
+    if (trimmed.trailing) {
+      appendStyledText(container, trimmed.trailing, style);
+    }
+
+    lastIndex = start + matched.length;
+  }
+
+  if (lastIndex < value.length) {
+    appendStyledText(container, value.slice(lastIndex), style);
+  }
 }
 
 function createLineElement(line) {
@@ -275,19 +336,16 @@ function createLineElement(line) {
     const { parts, replay } = line.giphyReplay;
     for (const part of parts) {
       if (part.type === 'link') {
-        const link = createReplayLink(part.text, () => giphyManager.replay(replay));
-        applyStyleToReplayLink(link, part.style);
-        div.appendChild(link);
+        div.appendChild(createReplayLink(part.text, part.style, () => giphyManager.replay(replay)));
         continue;
       }
-      appendStyledText(div, part.text, part.style);
+      appendFragmentWithLinks(div, part.text, part.style);
     }
     return div;
   }
 
   for (const frag of line.fragments) {
-    const el = styleToElement(frag.text, frag.style);
-    if (el) div.appendChild(el);
+    appendFragmentWithLinks(div, frag.text, frag.style);
   }
 
   return div;
