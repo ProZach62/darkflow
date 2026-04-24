@@ -630,4 +630,80 @@ export const panelRenderers = {
 
     bodyEl.innerHTML = html;
   },
+
+  achievements(bodyEl, data) {
+    var html;
+    var summary;
+    var families;
+    var nextUps;
+
+    if (!data) {
+      bodyEl.innerHTML = '<div class="placeholder">No achievement data</div>';
+      return;
+    }
+
+    summary = data.summary || {};
+    families = Array.isArray(data.families) ? data.families : [];
+    nextUps = families
+      .filter(family => family && family.nextTierThreshold)
+      .map(family => {
+        var currentValue = Number(family.currentValue) || 0;
+        var nextThreshold = Number(family.nextTierThreshold) || 0;
+        var progressPct = nextThreshold > 0 ? Math.round((currentValue / nextThreshold) * 100) : 0;
+        if (progressPct > 100) progressPct = 100;
+        if (progressPct < 0) progressPct = 0;
+        return { family, progressPct, remaining: Math.max(nextThreshold - currentValue, 0) };
+      })
+      .sort((a, b) => {
+        if (b.progressPct !== a.progressPct) return b.progressPct - a.progressPct;
+        return a.remaining - b.remaining;
+      })
+      .slice(0, 3);
+
+    html = '<div class="ach-summary">';
+    html += '<div class="ach-summary-grid">';
+    html += '<div class="ach-summary-item"><span class="ach-summary-label">Unlocked</span><span class="ach-summary-value">'
+      + (summary.unlockedTierCount || 0) + '/' + (summary.totalTierCount || 0) + '</span></div>';
+    html += '<div class="ach-summary-item"><span class="ach-summary-label">Completed</span><span class="ach-summary-value">'
+      + (summary.completedFamilyCount || 0) + '/' + (summary.totalFamilyCount || 0) + '</span></div>';
+    html += '<div class="ach-summary-item"><span class="ach-summary-label">Rank</span><span class="ach-summary-value">'
+      + (summary.leaderboardRank || 'Unranked') + '</span></div>';
+    html += '</div>';
+    html += '<div class="ach-equipped">Equipped: '
+      + escHtml(summary.equippedTitle && summary.equippedTitle.title
+        ? summary.equippedTitle.title
+        : 'None')
+      + '</div>';
+    html += '<div class="ach-panel-note">Use <code>achievements</code> to open the full journal.</div>';
+    html += '</div>';
+
+    if (!nextUps.length) {
+      html += '<div class="placeholder">No achievement milestones in progress.</div>';
+      bodyEl.innerHTML = html;
+      return;
+    }
+
+    html += '<div class="ach-section">';
+    html += '<div class="ach-section-title">Closest Milestones</div>';
+
+    for (var i = 0; i < nextUps.length; i++) {
+      var item = nextUps[i];
+      var fam = item.family;
+      var currentValue = Number(fam.currentValue) || 0;
+      var nextThreshold = Number(fam.nextTierThreshold) || 0;
+
+      html += '<div class="ach-compact-item">';
+      html += '<div class="ach-compact-head">';
+      html += '<div class="ach-family-name">' + escHtml(fam.name) + '</div>';
+      html += '<div class="ach-family-value">' + currentValue.toLocaleString() + '</div>';
+      html += '</div>';
+      html += '<div class="ach-compact-next">Next: ' + escHtml(fam.nextTierKey || '')
+        + ' · ' + currentValue.toLocaleString() + '/' + nextThreshold.toLocaleString() + '</div>';
+      html += '<div class="quest-bar"><div class="quest-bar-fill" style="width:' + item.progressPct + '%"></div></div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    bodyEl.innerHTML = html;
+  },
 };

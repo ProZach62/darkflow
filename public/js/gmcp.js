@@ -62,6 +62,7 @@ export const gmcp = {
       'Darkwind.MapData 1',
       'Darkwind.Completion 1',
       'Darkwind.Quests 1',
+      'Darkwind.Achievements 1',
       'Darkwind.Announcements 1',
       'Darkwind.Giphy 1'
     ]);

@@ -101,26 +101,30 @@
 
 .dw-progress {
   position: relative;
-  height: 14px;
-  background: #21262d;
-  border-radius: 3px;
+  height: 16px;
+  background: linear-gradient(180deg, #0d1117, #161b22);
+  border: 1px solid #30363d;
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .dw-progress-fill {
   height: 100%;
-  border-radius: 3px;
-  background: #3fb950;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2388ff, #6fb6ff);
   transition: width 0.3s ease;
 }
 
 .dw-progress-label {
   position: absolute;
   top: 0;
-  left: 6px;
+  left: 8px;
+  right: 8px;
   font-size: 10px;
-  line-height: 14px;
-  color: #c9d1d9;
+  line-height: 16px;
+  color: #f0f6fc;
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.65);
 }
 
 /* ── Form fields ────────────────────────────────────────────────── */

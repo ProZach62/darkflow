@@ -21,6 +21,7 @@ export const PANEL_DEFS = {
                defaultSnapRight: true, defaultBelowPanel: 'map',
                defaultVisible: true },
   quests:    { title: 'Quests',    defaultDock: 'right', defaultOrder: 3 },
+  achievements: { title: 'Achievements', defaultDock: 'right', defaultOrder: 4 },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';
