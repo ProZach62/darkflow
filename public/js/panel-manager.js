@@ -15,6 +15,7 @@ export const panelManager = {
   panels: {},
   gmcpData: {},
   _saveTimer: null,
+  _subscriptionTimer: null,
   _pendingPanelRenders: new Set(),
   _panelRenderFrame: null,
   _mobile: {
@@ -76,6 +77,28 @@ export const panelManager = {
     if (!this._mobile.enabled) {
       this.repositionSnappedPanels();
     }
+    this.syncGmcpSubscriptions('visibility-sync', true);
+  },
+
+  getSubscriptionPanels() {
+    const panels = {};
+    for (const id of Object.keys(PANEL_DEFS)) {
+      panels[id] = !!(this.state.panels[id] && this.state.panels[id].visible);
+    }
+    return panels;
+  },
+
+  syncGmcpSubscriptions(reason = 'visibility-sync', full = false, extraFeatures = {}) {
+    if (this._subscriptionTimer) clearTimeout(this._subscriptionTimer);
+    this._subscriptionTimer = setTimeout(() => {
+      this._subscriptionTimer = null;
+      gmcp.sendSubscriptions({
+        reason,
+        full,
+        panels: this.getSubscriptionPanels(),
+        features: extraFeatures,
+      });
+    }, 150);
   },
 
   loadState() {
@@ -589,6 +612,7 @@ export const panelManager = {
     }
     this._renderMobileSheet();
     this.saveState();
+    this.syncGmcpSubscriptions('panel-close', false);
   },
 
   openPanel(id) {
@@ -602,6 +626,7 @@ export const panelManager = {
       this._renderMobileSheet();
     }
     this.saveState();
+    this.syncGmcpSubscriptions('panel-open', false);
   },
 
   createDynamicPanel(id, title, dock, order, onClose) {

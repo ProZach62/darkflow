@@ -234,6 +234,11 @@ export const announcementsManager = {
 
   open() {
     if (!this.els.overlay) return;
+    gmcp.sendSubscriptions({
+      reason: 'modal-open',
+      full: false,
+      features: { announcementsList: true },
+    });
     this.ensureSelection();
     this.els.overlay.classList.add('open');
     this.render();

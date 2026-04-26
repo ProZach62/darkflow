@@ -4,12 +4,31 @@ import { sendSocketPayload } from './connection.js';
 
 const GMCP_CLIENT_NAME = 'WebMUD Client';
 const GMCP_MEDIA_REFRESH_PACKAGE = 'Darkwind.Client.RefreshMedia';
+const GMCP_SUBSCRIPTIONS_PACKAGE = 'Darkwind.Client.Subscriptions';
 const gmcpTextEncoder = new TextEncoder();
 export const gmcpTextDecoder = new TextDecoder('utf-8');
+
+function normalizeSubscriptionPayload(payload = {}) {
+  return {
+    reason: payload.reason || 'visibility-sync',
+    full: !!payload.full,
+    panels: payload.panels && typeof payload.panels === 'object' ? { ...payload.panels } : {},
+    features: {
+      announcementsBadge: true,
+      enemyAutoOpen: true,
+      windows: true,
+      ide: true,
+      completion: true,
+      giphy: true,
+      ...(payload.features && typeof payload.features === 'object' ? payload.features : {}),
+    },
+  };
+}
 
 export const gmcp = {
   enabled: false,
   handlers: {},
+  subscriptions: normalizeSubscriptionPayload(),
 
   on(packageName, callback) {
     if (!this.handlers[packageName]) this.handlers[packageName] = [];
@@ -57,6 +76,7 @@ export const gmcp = {
       'Game 1',
       'Darkwind.Char.Avatar 1',
       'Darkwind.Room.Image 1',
+      'Darkwind.Client.Subscriptions 1',
       'Darkwind.Window 1',
       'Darkwind.IDE 1',
       'Darkwind.MapData 1',
@@ -71,6 +91,25 @@ export const gmcp = {
 
   reset() {
     this.enabled = false;
+    this.subscriptions = normalizeSubscriptionPayload();
+  },
+
+  sendSubscriptions(payload = {}) {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+    this.subscriptions = normalizeSubscriptionPayload({
+      ...this.subscriptions,
+      ...payload,
+      panels: payload.panels || this.subscriptions.panels,
+      features: {
+        ...this.subscriptions.features,
+        ...(payload.features || {}),
+      },
+    });
+    this.send(GMCP_SUBSCRIPTIONS_PACKAGE, this.subscriptions);
+    if (payload.features && payload.features.announcementsList) {
+      this.subscriptions.features.announcementsList = false;
+    }
+    return true;
   },
 
   requestMediaRefresh() {
@@ -82,16 +121,30 @@ export const gmcp = {
     return true;
   },
 
-  restartHandshake() {
+  restartHandshake(payload = {}) {
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
       appendSystemMessage('GMCP restart unavailable: not connected.');
       return false;
     }
 
+    const subscriptions = normalizeSubscriptionPayload({
+      ...this.subscriptions,
+      ...payload,
+      panels: payload.panels || this.subscriptions.panels,
+      features: {
+        ...this.subscriptions.features,
+        ...(payload.features || {}),
+      },
+    });
     this.reset();
     this.sendHandshake();
+    this.sendSubscriptions({
+      ...subscriptions,
+      reason: 'ctrl-k',
+      full: true,
+    });
     this.requestMediaRefresh();
-    appendSystemMessage('GMCP handshake re-sent and media refresh requested.');
+    appendSystemMessage('GMCP handshake and full pane sync requested.');
     return true;
   }
 };

@@ -278,6 +278,7 @@ export async function connect() {
 
     ws.onopen = function() {
       if (state.ws !== ws) return;
+      const wasReconnect = state.reconnectAttempts > 0;
       setConnectionState('connected');
       state.connectTime = Date.now();
       state.bytesSent = 0;
@@ -291,8 +292,13 @@ export async function connect() {
       dom.statusConnection.textContent = 'Connected: 0s';
       dom.commandInput.focus();
       startWatchdog();
-      gmcp.sendHandshake();
       panelManager.resetData();
+      gmcp.sendHandshake();
+      gmcp.sendSubscriptions({
+        reason: wasReconnect ? 'reconnect' : 'login',
+        full: true,
+        panels: panelManager.getSubscriptionPanels(),
+      });
     };
 
     ws.onmessage = function(event) {

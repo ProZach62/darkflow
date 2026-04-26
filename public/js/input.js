@@ -606,7 +606,8 @@ export function initInput() {
       clearOutput();
     } else if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
-      if (gmcp.restartHandshake()) {
+      panelManager.resetData();
+      if (gmcp.restartHandshake({ panels: panelManager.getSubscriptionPanels() })) {
         panelManager.refreshMediaPanels();
       }
     } else if (e.key === 'Escape') {
