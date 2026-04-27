@@ -134,6 +134,7 @@ body.mobile-panel-mode #mobile-panels-btn {
   font-size: 13px;
   font-weight: 700;
   color: #e6edf3;
+  text-transform: uppercase;
 }
 
 .mobile-panels-close {
@@ -161,6 +162,7 @@ body.mobile-panel-mode #mobile-panels-btn {
   font-size: 11px;
   font-family: inherit;
   cursor: pointer;
+  text-transform: uppercase;
 }
 
 .mobile-panels-tab.active {
@@ -222,7 +224,10 @@ body.mobile-panel-mode #mobile-panels-btn {
 }
 .panel-header:active { cursor: grabbing; }
 
-.panel-title { flex: 1; }
+.panel-title {
+  flex: 1;
+  text-transform: uppercase;
+}
 
 .panel-controls {
   display: flex;
@@ -851,7 +856,7 @@ body.mobile-panel-mode #mobile-panels-btn {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 3px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--df-font-mono);
   pointer-events: none;
 }
 .map-zlevel-arrow {
