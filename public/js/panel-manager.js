@@ -706,15 +706,26 @@ export const panelManager = {
     this._renderMobileSheet();
   },
 
-  resetData() {
-    this.gmcpData = {};
+  resetData(options = {}) {
+    const preservePanels = new Set(Array.isArray(options.preservePanels) ? options.preservePanels : []);
+    const preservedData = {};
+
+    for (const id of preservePanels) {
+      if (this.gmcpData[id] !== undefined) preservedData[id] = this.gmcpData[id];
+    }
+
+    this.gmcpData = preservedData;
     this._pendingPanelRenders.clear();
     if (this._panelRenderFrame) {
       cancelAnimationFrame(this._panelRenderFrame);
       this._panelRenderFrame = null;
     }
-    for (const p of Object.values(this.panels)) {
-      p.bodyEl.innerHTML = '<div class="placeholder">Waiting for data...</div>';
+    for (const [id, p] of Object.entries(this.panels)) {
+      if (preservePanels.has(id) && this.gmcpData[id] !== undefined) {
+        this._renderPanel(id);
+      } else {
+        p.bodyEl.innerHTML = '<div class="placeholder">Waiting for data...</div>';
+      }
     }
     this._renderPanel('avatar');
   },

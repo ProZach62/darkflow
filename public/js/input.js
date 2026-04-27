@@ -606,7 +606,7 @@ export function initInput() {
       clearOutput();
     } else if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
-      panelManager.resetData();
+      panelManager.resetData({ preservePanels: ['chat'] });
       if (gmcp.restartHandshake({ panels: panelManager.getSubscriptionPanels() })) {
         panelManager.refreshMediaPanels();
       }
