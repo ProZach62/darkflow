@@ -1,38 +1,42 @@
 # Darkflow
 
-Darkflow is the browser-based WebSocket client for Darkwind. It connects directly to the game server, renders ANSI terminal output, and layers Darkwind-specific GMCP panels, mapping, builder tools, announcements, quests, and media on top of the live MUD session.
+Darkflow is the official browser client for Darkwind. It is a fast, terminal-first WebSocket client with Darkwind-specific panels, mapping, media, builder tools, settings, and GMCP integrations layered around the live MUD session.
+
+The app is intentionally lightweight: Express serves static files, the browser connects directly to the MUD over WebSocket, and the frontend is native ES modules with no build step or client-side framework.
+
+## What Darkflow Supports
+
+- **Direct WebSocket play**: browser-native `WebSocket` connects to the game server; the Node server does not proxy MUD traffic.
+- **ANSI terminal rendering**: persistent ANSI parser for SGR colors/styles, split escape sequences, URL links, highlights, Giphy replay controls, scrollback virtualization, pause mode, and split history/live mode.
+- **Connection resilience**: client version fetch before connect, auto-reconnect, stalled-socket watchdog, byte counters, diagnostics via `window.wsDebug`, and Ctrl+K full GMCP/media resync.
+- **Dockable interface**: left/right sidebars, floating panels, drag/drop ordering, snapping, collapse/close controls, mobile panel sheet, and persisted panel layout.
+- **Player panels**: avatar, status, vitals, worth, stats, room, room image, group, inventory, enemy, chat, quests, achievements, and dynamic server-driven panels.
+- **Map system**: local movement tracking plus `Darkwind.MapData` sync, area versions, incremental updates, server coordinate corrections, and tile-based rendering.
+- **Server-driven windows**: `Darkwind.Window` modals/panels for login and in-game UI, including forms, buttons, updates, submits, actions, and close notifications.
+- **Builder IDE**: `Darkwind.IDE` opens files in the browser, supports save/compile feedback, diagnostics, and close notifications.
+- **Command ergonomics**: command history, optional history-based Tab completion, server-authoritative completion, aliases, triggers, custom key mappings, and highlight rules.
+- **Announcements and media**: announcement inbox with unread state, Giphy popups, avatar media, room imagery, and media refresh support.
+- **Portable settings**: settings, aliases, highlights, triggers, and panel layouts can be exported/imported as JSON.
+- **Darkflow branding**: app icon, favicons, manifest, About modal, and hidden brand asset page at `/darkflow-brand.html`.
 
 ## How It Works
 
-The browser's native `WebSocket` API connects directly to the MUD server. Darkflow simply serves the static HTML client; it does **not** proxy WebSocket traffic.
-
 ```
-Browser  --WebSocket-->  MUD server (e.g. port 4242)
-Browser  --HTTP-->       This app (port 3000, serves the client page)
+Browser  --WebSocket-->  Darkwind game server, usually darkwind.ai:4242
+Browser  --HTTP-->       Darkflow static app, usually localhost:3000
 ```
 
-## Features
+Darkflow identifies itself in GMCP as:
 
-- **ANSI color rendering** -- Parses SGR escape sequences (standard 8-color, bright, and 256-color) into styled HTML using xterm standard palette
-- **Partial sequence buffering** -- Handles ANSI escape sequences that span multiple WebSocket messages
-- **Command history** -- Up/down arrow navigation through previous commands, persisted across page refreshes via sessionStorage
-- **Scroll-lock** -- Auto-scrolls to new output unless you've scrolled up to read history
-- **Auto-reconnect** -- Optional exponential backoff reconnection (1s to 30s)
-- **Performance** -- Batches DOM updates via `requestAnimationFrame` with `DocumentFragment`; prunes output at 5000 lines
-- **GMCP over WebSocket** -- Negotiates GMCP (Generic MUD Communication Protocol) via binary WebSocket frames
-- **Dockable panel system** -- Panels dock to left/right sidebars or float freely; drag-and-drop reordering; edge snapping to sidebars/toolbar; state persisted in localStorage
-- **Graphical tile map** -- Collaborative mapping system with 32x32 terrain tiles, built incrementally as players explore; server aggregates data from all players via Darkwind.MapData GMCP extension
-- **Server-driven GUI windows** -- Modal dialogs and panels rendered from server-sent layouts via Darkwind.Window GMCP extension
-- **In-browser IDE** -- Code editor for builders via Darkwind.IDE GMCP extension; syntax highlighting, save/compile feedback with error display
-- **Keyboard shortcuts** -- Enter (send), Up/Down (history), Ctrl+L (clear), Escape (clear input), Page Up/Down (scroll)
-- **Darkflow terminal theme** -- Dense terminal-first layout with polished Darkwind panel chrome, responsive down to 320px
-- **Zero dependencies on the client** -- Native ES modules, no build tools, no frameworks
+```json
+{ "client": "Darkflow", "version": "0.9.26" }
+```
+
+The custom protocol packages remain `Darkwind.*` for compatibility.
 
 ## Quick Start
 
 Requires [Node.js](https://nodejs.org/) 18+.
-
-### Local Development
 
 ```bash
 git clone https://github.com/jasona/play.darkwind.ai.git
@@ -41,99 +45,133 @@ npm install
 npm start
 ```
 
-Open `http://localhost:3000` in your browser. Enter the MUD host and port (defaults to `darkwind.ai:4242` over WSS) and click **Connect**.
+Open `http://localhost:3000`. If no host is configured by the server, enter the MUD host and port manually and click **Connect**.
 
-### Docker
+## Configuration
+
+The Express server serves static files and exposes `/config.json` and `/api/version`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | HTTP port for Darkflow |
+| `MUD_HOST` | empty | Default host shown in the toolbar; if set, the client auto-connects |
+| `MUD_PORT` | `4242` | Default MUD port |
+| `MUD_WSS` | enabled | Set to `0` to default to plain `ws://` |
+| `GAME_NAME` | empty | Optional game name appended to the browser title |
+
+The runtime client version is stored in `public/version.json` and returned by `/api/version` with `Cache-Control: no-store`.
+
+## Docker
 
 ```bash
 docker build -t darkflow-client .
 docker run -p 3000:3000 darkflow-client
 ```
 
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT`   | `3000`  | Port the Express server listens on |
-
-## Deploying on Coolify
-
-1. Create a new service in Coolify and point it to this repository
-2. Select **Dockerfile** as the build method
-3. Coolify will set the `PORT` environment variable automatically
-4. Deploy
-
-## Project Structure
+## Project Layout
 
 ```
 .
-├── server.js                  # Express server (serves static files)
+├── server.js                    # Express static server plus config/version endpoints
 ├── public/
-│   ├── index.html             # HTML shell
-│   ├── version.json           # Client version for update detection
+│   ├── index.html               # Darkflow app shell
+│   ├── darkflow-brand.html      # Hidden brand asset download page
+│   ├── site.webmanifest         # PWA/app metadata
+│   ├── version.json             # Runtime client version
 │   ├── assets/
-│   │   ├── tiles/             # 32x32 terrain tile images (22 terrain + player)
+│   │   ├── brand/               # Darkflow logos, favicons, app icons
+│   │   ├── tiles/               # Terrain and player map tiles
 │   │   └── login-background.jpg
 │   ├── css/
-│   │   ├── main.css           # Core layout, toolbar, ANSI color classes
-│   │   ├── panels.css         # Dock columns, panel widgets, tile map styles
-│   │   ├── windows.css        # Server-driven window/modal styles
-│   │   └── ide.css            # In-browser code editor styles
+│   │   ├── main.css             # App shell, toolbar, settings, terminal chrome
+│   │   ├── panels.css           # Dock columns, panel widgets, map styling
+│   │   ├── windows.css          # Server-driven modal/window styles
+│   │   └── ide.css              # Browser IDE styles
 │   └── js/
-│       ├── app.js             # Entry point, event wiring, init
-│       ├── constants.js       # Color tables, limits, keys
-│       ├── state.js           # Shared mutable state (ws, DOM refs)
-│       ├── gmcp.js            # GMCP event bus, handshake
-│       ├── ansi.js            # ANSI parser state machine
-│       ├── output.js          # Terminal output with RAF batching
-│       ├── connection.js      # WebSocket connect/disconnect/reconnect
-│       ├── input.js           # Command input, history, keyboard shortcuts
-│       ├── panel-defs.js      # Panel definitions and defaults
-│       ├── panel-manager.js   # Panel lifecycle, drag/drop, snapping, GMCP handlers
-│       ├── panel-renderers.js # Panel render functions (vitals, room, inventory, etc.)
-│       ├── map-data.js        # Room graph model, coordinate tracking, server merge
-│       ├── map-renderer.js    # CSS Grid tile map renderer
-│       ├── window-manager.js  # Server-driven window rendering
-│       ├── completion.js      # Tab-completion GMCP handler and state
-│       ├── ide-manager.js     # IDE GMCP handler and lifecycle
-│       └── ide-editor.js      # Code editor UI component
-├── docs/
-│   ├── BLUEPRINT-webclient.md           # Original webclient design spec
-│   ├── PLAN-webclient.md                # Implementation planning notes
-│   ├── gmcp-darkwind-window.md          # Darkwind.Window GMCP protocol spec
-│   ├── gmcp-darkwind-ide.md             # Darkwind.IDE GMCP protocol spec
-│   ├── gmcp-darkwind-mapdata.md         # Darkwind.MapData GMCP protocol spec
-│   └── gmcp-darkwind-completion.md      # Darkwind.Completion GMCP protocol spec
-├── Dockerfile                 # node:22-alpine production image
-├── package.json               # Darkflow package metadata; Express as the only dependency
-└── CLAUDE.md                  # Claude Code project guidance
+│       ├── app.js               # App init, status bar, toolbar wiring
+│       ├── brand.js             # Darkflow product constants
+│       ├── about-modal.js       # Top-left icon About modal
+│       ├── connection.js        # WebSocket lifecycle, watchdog, reconnect
+│       ├── gmcp.js              # GMCP bus, handshake, subscriptions
+│       ├── output.js            # Terminal output, scrollback, replay controls
+│       ├── input.js             # Command input, history, shortcuts
+│       ├── settings-manager.js  # Settings, import/export, aliases/triggers/highlights UI
+│       ├── panel-manager.js     # Panel lifecycle, layout, GMCP panel handlers
+│       ├── panel-renderers.js   # Built-in panel renderers
+│       ├── map-data.js          # Room graph, map sync, map debug tools
+│       ├── map-renderer.js      # Tile map renderer
+│       ├── window-manager.js    # Darkwind.Window renderer
+│       ├── ide-manager.js       # Darkwind.IDE GMCP bridge
+│       ├── ide-editor.js        # Browser code editor
+│       ├── completion.js        # Local/server Tab completion
+│       ├── announcements-manager.js
+│       └── giphy-manager.js
+├── docs/                        # GMCP protocol documentation
+├── Dockerfile
+├── package.json
+└── CLAUDE.md
 ```
 
-## GMCP Extensions
+## GMCP Packages
 
-The client supports four custom GMCP extensions specific to Darkwind MUD:
+Darkflow advertises these standard GMCP packages:
 
-| Extension | Version | Description | Documentation |
-|-----------|---------|-------------|---------------|
-| `Darkwind.Window` | 1 | Server-driven GUI windows (modals, panels, forms) | [docs/gmcp-darkwind-window.md](docs/gmcp-darkwind-window.md) |
-| `Darkwind.IDE` | 1 | In-browser code editor for builders | [docs/gmcp-darkwind-ide.md](docs/gmcp-darkwind-ide.md) |
-| `Darkwind.MapData` | 1 | Collaborative mapping system | [docs/gmcp-darkwind-mapdata.md](docs/gmcp-darkwind-mapdata.md) |
-| `Darkwind.Completion` | 1 | Server-authoritative command and argument tab completion | [docs/gmcp-darkwind-completion.md](docs/gmcp-darkwind-completion.md) |
+| Package | Purpose |
+|---------|---------|
+| `Char 1` | Character identity and profile data |
+| `Char.Vitals 1` | HP/SP and vital state |
+| `Char.Items 1` | Inventory, room, and container item state |
+| `Room 1` | Room info and room player updates |
+| `Comm 1` | Channel/chat messages |
+| `Group 1` | Party/group state |
+| `Game 1` | Game name, version, uptime, reboot state |
 
-In addition to standard GMCP packages: `Char 1`, `Char.Vitals 1`, `Char.Items 1`, `Room 1`, `Comm 1`, `Group 1`, `Game 1`.
+Darkflow also advertises these Darkwind-specific packages:
 
-## Architecture Notes
+| Package | Purpose | Docs |
+|---------|---------|------|
+| `Darkwind.Char.Avatar 1` | Player avatar image data | [index](docs/gmcp-darkwind-index.md) |
+| `Darkwind.Room.Image 1` | Generated room image panel data | [index](docs/gmcp-darkwind-index.md) |
+| `Darkwind.Client.Subscriptions 1` | Client-side panel/feature visibility subscriptions | [index](docs/gmcp-darkwind-index.md) |
+| `Darkwind.Window 1` | Server-driven modals, panels, forms, actions | [window](docs/gmcp-darkwind-window.md) |
+| `Darkwind.IDE 1` | Builder file editor open/save/result/close | [ide](docs/gmcp-darkwind-ide.md) |
+| `Darkwind.MapData 1` | Collaborative map sync and coordinate correction | [mapdata](docs/gmcp-darkwind-mapdata.md) |
+| `Darkwind.Completion 1` | Server-authoritative command/argument completion | [completion](docs/gmcp-darkwind-completion.md) |
+| `Darkwind.Quests 1` | Quest list, active quest, objective updates, completion | [quests](docs/gmcp-darkwind-quests.md) |
+| `Darkwind.Achievements 1` | Achievement panel and update data | [index](docs/gmcp-darkwind-index.md) |
+| `Darkwind.Announcements 1` | Announcement inbox and read-state updates | [announcements](docs/gmcp-darkwind-announcements.md) |
+| `Darkwind.Giphy 1` | In-client animated GIF reactions | [index](docs/gmcp-darkwind-index.md) |
 
-- Darkflow uses **native ES modules** with no build step, no frontend framework, and no client-side dependencies.
-- The Express server exists solely to serve the static files. It has no API routes and does not handle WebSocket connections.
-- The ANSI parser is a **persistent state machine** that tracks bold, underline, inverse, foreground, and background state across messages. This handles ANSI escape sequences that may be split across multiple WebSocket frames.
-- Output display uses a **requestAnimationFrame batching** strategy: incoming messages are queued and flushed to the DOM in a single operation per frame, preventing layout thrashing during rapid output.
-- The **mapping system** is collaborative: every player's movement contributes room traversal data to a server-side daemon (`map_d.c`) which resolves coordinates via BFS and pushes complete area maps to all clients. New players get the full explored map immediately on login.
-- **Panel snapping** detects proximity to sidebar edges, toolbar, and input bar. Snapped panels reposition automatically when sidebars are toggled or the browser is resized.
+Client-originated helper packages include `Darkwind.Client.RefreshMedia` and `Darkwind.Client.Subscriptions`.
+
+## Brand Assets
+
+The current Darkflow logo/icon exports live under `public/assets/brand/`.
+
+Open `/darkflow-brand.html` in a running local or deployed client to view and download:
+
+- horizontal logo
+- compact logo
+- standalone mark
+- wordmark
+- app icon
+- favicon source
+- 512/256/192/180/128/64/32/16 icon exports
+
+The generated source sheet is stored as `Gemini_Generated_Image_itemzcitemzcitem.jpeg`.
+
+## Development Notes
+
+- No frontend build step is required; edit files in `public/` directly.
+- Keep `/api/version` backed by `public/version.json`; the client uses it for update detection and GMCP `Core.Hello`.
+- Keep the visible product name as **Darkflow**, but do not rename existing `Darkwind.*` GMCP packages without a coordinated server compatibility plan.
+- The settings export format remains `darkwind-client-settings-export` for backward compatibility, even though download filenames now use `darkflow-settings-...json`.
+- Use `window.wsDebug.snapshot()` and `window.wsDebug.exportAll()` for connection diagnostics.
+- Use `window.mapDebug.summary()`, `window.mapDebug.exportAll()`, and `window.mapDebug.clearData()` for map diagnostics.
 
 ## Browser Support
 
-Chrome 90+, Firefox 90+, Safari 15+, Edge 90+ -- all with native WebSocket API support.
+Chrome 90+, Firefox 90+, Safari 15+, Edge 90+ with native WebSocket support.
 
 ## License
 
