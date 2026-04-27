@@ -1,12 +1,23 @@
 *, *::before, *::after { box-sizing: border-box; }
 
+:root {
+  --df-bg: #0d1117;
+  --df-panel: #161b22;
+  --df-border: #30363d;
+  --df-text: #c9d1d9;
+  --df-muted: #8b949e;
+  --df-accent: #42d6c9;
+  --df-accent-strong: #7ee7df;
+  --df-accent-blue: #58a6ff;
+}
+
 html, body {
   margin: 0;
   padding: 0;
   height: 100dvh;
   overflow: hidden;
-  background: #0d1117;
-  color: #c9d1d9;
+  background: var(--df-bg);
+  color: var(--df-text);
   font-family: "Cascadia Code", "Fira Code", "Source Code Pro", "Consolas", monospace;
   font-size: 14px;
 }
@@ -20,10 +31,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 36px;
+  height: 42px;
   padding: 0 10px;
-  border-bottom: 1px solid #30363d;
-  background: #161b22;
+  border-bottom: 1px solid var(--df-border);
+  background:
+    linear-gradient(90deg, rgba(66, 214, 201, 0.08), transparent 34%),
+    var(--df-panel);
 }
 
 .toolbar-left {
@@ -39,10 +52,36 @@ body {
 }
 
 .toolbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 13px;
-  font-weight: 600;
-  color: #c9d1d9;
-  margin-right: 4px;
+  font-weight: 800;
+  color: var(--df-text);
+  letter-spacing: 0;
+  margin-right: 6px;
+  text-transform: uppercase;
+}
+
+.toolbar-brand img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 6px rgba(66, 214, 201, 0.35));
+  cursor: pointer;
+}
+
+.toolbar-brand span {
+  background: linear-gradient(90deg, var(--df-accent-strong), #f0f6fc 78%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.toolbar-brand img:focus-visible {
+  outline: 1px solid var(--df-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 /* Connection fields (shown when disconnected) */
@@ -401,6 +440,110 @@ body {
 
 .settings-disconnect-btn:hover {
   background: #f85149;
+}
+
+.settings-about {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-about-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(66, 214, 201, 0.1), transparent 55%),
+    #0d1117;
+}
+
+.settings-about-mark {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  object-fit: cover;
+  box-shadow: 0 0 22px rgba(66, 214, 201, 0.2);
+}
+
+.settings-about-title {
+  color: #d9fffb;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.settings-about-tagline {
+  margin-top: 6px;
+  color: #8b949e;
+  font-size: 13px;
+}
+
+.settings-about-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.settings-about-link {
+  color: #d9fffb;
+  text-decoration: none;
+}
+
+.darkflow-about-modal {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.darkflow-about-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(66, 214, 201, 0.12), transparent 52%),
+    #161b22;
+}
+
+.darkflow-about-logo {
+  width: min(620px, 100%);
+  height: auto;
+  display: block;
+}
+
+.darkflow-about-tagline {
+  color: #8b949e;
+  font-size: 13px;
+  text-align: center;
+}
+
+.darkflow-about-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.darkflow-about-info {
+  padding: 12px;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.72);
+}
+
+.darkflow-about-info-label {
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.darkflow-about-info-value {
+  margin-top: 6px;
+  color: #d9fffb;
+  font-size: 13px;
 }
 
 .settings-modal-footer {

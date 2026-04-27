@@ -5,6 +5,7 @@ import { panelManager } from './panel-manager.js';
 import { windowManager } from './window-manager.js';
 import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
 import { settingsManager } from './settings-manager.js';
+import { PRODUCT_NAME } from './brand.js';
 
 const WS_DIAG_LIMIT = 100;
 const WS_HEALTH_INTERVAL_MS = 5000;
@@ -68,8 +69,13 @@ function finalizeDisconnect() {
   panelManager.resetData();
   windowManager.resetAll();
   setConnectionState('disconnected');
-  dom.toolbarBrand.textContent = 'MUD Client';
-  document.title = 'MUD Client';
+  const brandText = dom.toolbarBrand ? dom.toolbarBrand.querySelector('span') : null;
+  if (brandText) {
+    brandText.textContent = PRODUCT_NAME;
+  } else if (dom.toolbarBrand) {
+    dom.toolbarBrand.textContent = PRODUCT_NAME;
+  }
+  document.title = PRODUCT_NAME;
   dom.statusConnection.textContent = 'Not connected';
   dom.statusConnection.title = '';
   dom.statusUptime.textContent = '';

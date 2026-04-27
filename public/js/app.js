@@ -14,6 +14,8 @@ import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { sendAutomaticCommand } from './input.js';
+import { PRODUCT_NAME, gameTitle } from './brand.js';
+import { openAboutModal } from './about-modal.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -214,8 +216,9 @@ gmcp.on('Game', function(data) {
 });
 
 function updateBranding(name) {
-  dom.toolbarBrand.textContent = name;
-  document.title = name;
+  const brandText = dom.toolbarBrand.querySelector('span');
+  if (brandText) brandText.textContent = PRODUCT_NAME;
+  document.title = gameTitle(name);
 }
 
 // ── Connect Button ──────────────────────────────────────────────────
@@ -227,6 +230,20 @@ dom.connectBtn.addEventListener('click', function() {
 document.getElementById('gear-btn').addEventListener('click', function() {
   settingsManager.open();
 });
+
+const toolbarBrandIcon = dom.toolbarBrand ? dom.toolbarBrand.querySelector('img') : null;
+if (toolbarBrandIcon) {
+  toolbarBrandIcon.setAttribute('role', 'button');
+  toolbarBrandIcon.setAttribute('tabindex', '0');
+  toolbarBrandIcon.setAttribute('title', 'About ' + PRODUCT_NAME);
+  toolbarBrandIcon.addEventListener('click', openAboutModal);
+  toolbarBrandIcon.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openAboutModal();
+    }
+  });
+}
 
 // ── Sidebar Toggles ─────────────────────────────────────────────────
 document.getElementById('left-dock-toggle').addEventListener('click', function() {

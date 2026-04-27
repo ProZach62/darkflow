@@ -1,7 +1,7 @@
 {
-  "name": "darkwind-webclient",
-  "version": "0.9.24",
-  "description": "WebSocket MUD client for play.darkwind.ai",
+  "name": "darkflow-client",
+  "version": "0.9.25",
+  "description": "Darkflow WebSocket client for Darkwind",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

@@ -1,8 +1,9 @@
 import { state } from './state.js';
 import { appendSystemMessage } from './output.js';
 import { sendSocketPayload } from './connection.js';
+import { PRODUCT_NAME } from './brand.js';
 
-const GMCP_CLIENT_NAME = 'WebMUD Client';
+const GMCP_CLIENT_NAME = PRODUCT_NAME;
 const GMCP_MEDIA_REFRESH_PACKAGE = 'Darkwind.Client.RefreshMedia';
 const GMCP_SUBSCRIPTIONS_PACKAGE = 'Darkwind.Client.Subscriptions';
 const gmcpTextEncoder = new TextEncoder();

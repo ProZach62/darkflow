@@ -1,10 +1,10 @@
-# Darkwind MUD Web Client
+# Darkflow
 
-A browser-based WebSocket client for connecting to MUD game servers. Works with any server that accepts WebSocket connections and communicates via text frames (with optional GMCP over binary frames).
+Darkflow is the browser-based WebSocket client for Darkwind. It connects directly to the game server, renders ANSI terminal output, and layers Darkwind-specific GMCP panels, mapping, builder tools, announcements, quests, and media on top of the live MUD session.
 
 ## How It Works
 
-The browser's native `WebSocket` API connects directly to the MUD server. This web app simply serves the static HTML client; it does **not** proxy WebSocket traffic.
+The browser's native `WebSocket` API connects directly to the MUD server. Darkflow simply serves the static HTML client; it does **not** proxy WebSocket traffic.
 
 ```
 Browser  --WebSocket-->  MUD server (e.g. port 4242)
@@ -25,7 +25,7 @@ Browser  --HTTP-->       This app (port 3000, serves the client page)
 - **Server-driven GUI windows** -- Modal dialogs and panels rendered from server-sent layouts via Darkwind.Window GMCP extension
 - **In-browser IDE** -- Code editor for builders via Darkwind.IDE GMCP extension; syntax highlighting, save/compile feedback with error display
 - **Keyboard shortcuts** -- Enter (send), Up/Down (history), Ctrl+L (clear), Escape (clear input), Page Up/Down (scroll)
-- **Dark terminal theme** -- Monospace font, true black background, responsive down to 320px
+- **Darkflow terminal theme** -- Dense terminal-first layout with polished Darkwind panel chrome, responsive down to 320px
 - **Zero dependencies on the client** -- Native ES modules, no build tools, no frameworks
 
 ## Quick Start
@@ -46,8 +46,8 @@ Open `http://localhost:3000` in your browser. Enter the MUD host and port (defau
 ### Docker
 
 ```bash
-docker build -t darkwind-webclient .
-docker run -p 3000:3000 darkwind-webclient
+docker build -t darkflow-client .
+docker run -p 3000:3000 darkflow-client
 ```
 
 ### Environment Variables
@@ -105,7 +105,7 @@ docker run -p 3000:3000 darkwind-webclient
 │   ├── gmcp-darkwind-mapdata.md         # Darkwind.MapData GMCP protocol spec
 │   └── gmcp-darkwind-completion.md      # Darkwind.Completion GMCP protocol spec
 ├── Dockerfile                 # node:22-alpine production image
-├── package.json               # Express as the only dependency
+├── package.json               # Darkflow package metadata; Express as the only dependency
 └── CLAUDE.md                  # Claude Code project guidance
 ```
 
@@ -124,7 +124,7 @@ In addition to standard GMCP packages: `Char 1`, `Char.Vitals 1`, `Char.Items 1`
 
 ## Architecture Notes
 
-- The webclient uses **native ES modules** with no build step, no frontend framework, and no client-side dependencies.
+- Darkflow uses **native ES modules** with no build step, no frontend framework, and no client-side dependencies.
 - The Express server exists solely to serve the static files. It has no API routes and does not handle WebSocket connections.
 - The ANSI parser is a **persistent state machine** that tracks bold, underline, inverse, foreground, and background state across messages. This handles ANSI escape sequences that may be split across multiple WebSocket frames.
 - Output display uses a **requestAnimationFrame batching** strategy: incoming messages are queued and flushed to the DOM in a single operation per frame, preventing layout thrashing during rapid output.

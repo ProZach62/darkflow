@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Web-based WebSocket client for an LDMud MUD game server (play.darkwind.ai). The client connects to the MUD via WebSocket using the browser-native `WebSocket` API. It supports GMCP over binary WebSocket frames for structured data (panels, mapping, IDE, server-driven windows).
+Darkflow, the web-based WebSocket client for the Darkwind LDMud game server (play.darkwind.ai). The client connects to the MUD via WebSocket using the browser-native `WebSocket` API. It supports GMCP over binary WebSocket frames for structured data (panels, mapping, IDE, server-driven windows).
 
 ## Architecture
 
 - **Modular vanilla JS** -- native ES modules, no build tools, no frameworks, no client-side dependencies
+- **Product identity** -- visible client branding and `Core.Hello.client` identify the app as Darkflow; existing `Darkwind.*` GMCP package names remain protocol-stable
 - Express server serves static files from `public/`; does not proxy WebSocket traffic
 - The LDMud driver auto-detects WebSocket connections on the same port as telnet (no separate WS port)
 - Text frames carry commands (client->server) and game output (server->client) as plain UTF-8 strings

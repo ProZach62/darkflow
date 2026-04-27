@@ -1,6 +1,6 @@
 # Darkwind GMCP Package Index
 
-This index lists every custom `Darkwind.*` package currently advertised by the web client handshake in [`public/js/gmcp.js`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/public/js/gmcp.js).
+This index lists every custom `Darkwind.*` package currently advertised by the Darkflow client handshake in [`public/js/gmcp.js`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/public/js/gmcp.js). Darkflow identifies itself as the `Core.Hello.client`; the custom protocol package names remain `Darkwind.*`.
 
 ## Advertised Packages
 

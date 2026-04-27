@@ -6,6 +6,7 @@ import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { styleToElement } from './ansi.js';
 import { panelManager } from './panel-manager.js';
+import { PRODUCT_NAME, PRODUCT_TAGLINE } from './brand.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
@@ -239,7 +240,7 @@ export const settingsManager = {
     const link = document.createElement('a');
     const timestamp = bundle.exportedAt.slice(0, 19).replace(/[:T]/g, '-');
     link.href = url;
-    link.download = 'darkwind-client-settings-' + timestamp + '.json';
+    link.download = 'darkflow-settings-' + timestamp + '.json';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -249,7 +250,7 @@ export const settingsManager = {
 
   _applyImportedBundle(bundle) {
     if (!bundle || typeof bundle !== 'object' || bundle.format !== 'darkwind-client-settings-export') {
-      throw new Error('That file is not a Darkwind client settings export.');
+      throw new Error('That file is not a Darkflow settings export.');
     }
     if (!bundle.data || typeof bundle.data !== 'object') {
       throw new Error('That settings export is missing its data payload.');
@@ -1934,6 +1935,91 @@ export const settingsManager = {
     return wrapper;
   },
 
+  _createAboutPanel() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'settings-about';
+
+    const hero = document.createElement('div');
+    hero.className = 'settings-about-hero';
+
+    const mark = document.createElement('img');
+    mark.className = 'settings-about-mark';
+    mark.src = 'assets/brand/darkflow-app-icon.png';
+    mark.alt = PRODUCT_NAME + ' app icon';
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+
+    const name = document.createElement('div');
+    name.className = 'settings-about-title';
+    name.textContent = PRODUCT_NAME;
+
+    const tagline = document.createElement('div');
+    tagline.className = 'settings-about-tagline';
+    tagline.textContent = PRODUCT_TAGLINE;
+
+    copy.appendChild(name);
+    copy.appendChild(tagline);
+    hero.appendChild(mark);
+    hero.appendChild(copy);
+    wrapper.appendChild(hero);
+
+    const infoGrid = document.createElement('div');
+    infoGrid.className = 'settings-about-grid';
+
+    const addInfo = (label, value) => {
+      const card = document.createElement('div');
+      card.className = 'settings-connection-card';
+
+      const labelEl = document.createElement('div');
+      labelEl.className = 'settings-label';
+      labelEl.textContent = label;
+
+      const valueEl = document.createElement('div');
+      valueEl.className = 'settings-connection-value';
+      valueEl.textContent = value;
+
+      card.appendChild(labelEl);
+      card.appendChild(valueEl);
+      infoGrid.appendChild(card);
+    };
+
+    addInfo('Client version', state.clientVersion || 'unknown');
+    addInfo('Protocol identity', PRODUCT_NAME + ' via Core.Hello');
+    addInfo('GMCP packages', 'Darkwind.* package names remain protocol-stable');
+
+    wrapper.appendChild(infoGrid);
+
+    const assetsCard = document.createElement('div');
+    assetsCard.className = 'settings-connection-card';
+
+    const assetsLabel = document.createElement('div');
+    assetsLabel.className = 'settings-label';
+    assetsLabel.textContent = 'Brand assets';
+
+    const assetsCopy = document.createElement('p');
+    assetsCopy.className = 'dw-paragraph';
+    assetsCopy.textContent = 'Open the hidden brand asset page to view and download current Darkflow logos and icons.';
+
+    const assetsActions = document.createElement('div');
+    assetsActions.className = 'settings-inline-actions';
+
+    const openAssets = document.createElement('a');
+    openAssets.className = 'dw-button dw-button-secondary settings-about-link';
+    openAssets.href = 'darkflow-brand.html';
+    openAssets.target = '_blank';
+    openAssets.rel = 'noopener';
+    openAssets.textContent = 'Open brand assets';
+
+    assetsActions.appendChild(openAssets);
+    assetsCard.appendChild(assetsLabel);
+    assetsCard.appendChild(assetsCopy);
+    assetsCard.appendChild(assetsActions);
+    wrapper.appendChild(assetsCard);
+
+    return wrapper;
+  },
+
   _buildModal() {
     const overlay = document.createElement('div');
     overlay.className = 'dw-modal-overlay';
@@ -2003,6 +2089,7 @@ export const settingsManager = {
     const triggersSection = createTab('triggers', 'Triggers');
     const highlightsSection = createTab('highlights', 'Highlights');
     const aliasesSection = createTab('aliases', 'Aliases');
+    const aboutSection = createTab('about', 'About');
 
     const sectionTitle = document.createElement('h3');
     sectionTitle.className = 'dw-heading';
@@ -2143,6 +2230,12 @@ export const settingsManager = {
     aliasesTitle.textContent = 'Aliases';
     aliasesSection.appendChild(aliasesTitle);
     aliasesSection.appendChild(this._createAliasEditor());
+
+    const aboutTitle = document.createElement('h3');
+    aboutTitle.className = 'dw-heading';
+    aboutTitle.textContent = 'About';
+    aboutSection.appendChild(aboutTitle);
+    aboutSection.appendChild(this._createAboutPanel());
 
     this._refreshEditors = () => {
       triggersSection.textContent = '';
