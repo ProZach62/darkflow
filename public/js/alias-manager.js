@@ -111,6 +111,7 @@ function normalizeAlias(alias) {
     enabled: alias.enabled !== false,
     trigger,
     description: String(alias.description || ''),
+    group: normalizeWhitespace(alias.group),
     steps: steps.length ? steps : [{ type: 'send_command', template: '' }],
   };
 }
@@ -248,6 +249,7 @@ export const aliasManager = {
       enabled: true,
       trigger: '',
       description: '',
+      group: '',
       steps: [{ type: 'send_command', template: '' }],
     };
   },

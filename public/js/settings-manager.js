@@ -130,14 +130,20 @@ export const settingsManager = {
     document.addEventListener('keydown', escHandler);
     const dataSyncHandler = (event) => {
       const detail = event && event.detail ? event.detail : {};
+      let refreshed = false;
+      const isHighlightEvent = event && event.type === 'darkwind:highlight-data-changed';
+      const isTriggerEvent = event && event.type === 'darkwind:trigger-data-changed';
+
       if (!this._overlay || !this._refreshEditors) return;
-      if (!detail.scopeKey || detail.scopeKey === this._highlightScopeKey) {
+      if (isHighlightEvent && (!detail.scopeKey || detail.scopeKey === this._highlightScopeKey)) {
         this._draftHighlightScope = highlightManager.getScopeSnapshot(this._highlightScopeKey);
+        refreshed = true;
       }
-      if (!detail.scopeKey || detail.scopeKey === this._triggerScopeKey) {
+      if (isTriggerEvent && (!detail.scopeKey || detail.scopeKey === this._triggerScopeKey)) {
         this._draftTriggerScope = triggerManager.getScopeSnapshot(this._triggerScopeKey);
+        refreshed = true;
       }
-      this._refreshEditors();
+      if (refreshed) this._refreshEditors();
     };
     window.addEventListener('darkwind:highlight-data-changed', dataSyncHandler);
     window.addEventListener('darkwind:trigger-data-changed', dataSyncHandler);
@@ -742,6 +748,8 @@ export const settingsManager = {
     };
 
     const renderHighlightList = () => {
+      const previousList = sidebar.querySelector('.settings-alias-list');
+      const previousScrollTop = previousList ? previousList.scrollTop : 0;
       sidebar.textContent = '';
 
       const title = document.createElement('div');
@@ -873,6 +881,7 @@ export const settingsManager = {
       sidebar.appendChild(search);
       sidebar.appendChild(list);
       sidebar.appendChild(actions);
+      list.scrollTop = previousScrollTop;
     };
 
     const render = () => {
@@ -1190,6 +1199,21 @@ export const settingsManager = {
       descriptionField.appendChild(descriptionInput);
       editor.appendChild(descriptionField);
 
+      const groupField = document.createElement('label');
+      groupField.className = 'dw-field';
+      groupField.appendChild(createFieldLabel('Group / folder'));
+      const groupInput = document.createElement('input');
+      groupInput.type = 'text';
+      groupInput.className = 'dw-input';
+      groupInput.placeholder = 'Travel, Combat, Utility';
+      groupInput.value = alias.group || '';
+      groupInput.addEventListener('input', () => {
+        alias.group = groupInput.value;
+        renderAliasList();
+      });
+      groupField.appendChild(groupInput);
+      editor.appendChild(groupField);
+
       const enabledRow = this._createCheckboxRow(
         'Alias enabled',
         'Disabled aliases stay saved but never match or expand.',
@@ -1334,6 +1358,8 @@ export const settingsManager = {
     };
 
     const renderAliasList = () => {
+      const previousList = sidebar.querySelector('.settings-alias-list');
+      const previousScrollTop = previousList ? previousList.scrollTop : 0;
       sidebar.textContent = '';
 
       const title = document.createElement('div');
@@ -1353,12 +1379,32 @@ export const settingsManager = {
       const list = document.createElement('div');
       list.className = 'settings-alias-list';
 
-      const filteredAliases = this._draftAliasScope.aliases.filter((alias) => {
-        const haystack = (alias.trigger + ' ' + alias.description).toLowerCase();
-        return haystack.includes(searchTerm.trim().toLowerCase());
-      });
+      const filteredAliases = this._draftAliasScope.aliases
+        .map((alias, index) => ({ alias, index }))
+        .filter((entry) => {
+          const alias = entry.alias;
+          const haystack = (alias.trigger + ' ' + alias.description + ' ' + (alias.group || '')).toLowerCase();
+          return haystack.includes(searchTerm.trim().toLowerCase());
+        })
+        .sort((a, b) => {
+          const groupA = (a.alias.group || '').trim() || 'Ungrouped';
+          const groupB = (b.alias.group || '').trim() || 'Ungrouped';
+          if (groupA !== groupB) return groupA.localeCompare(groupB);
+          return a.index - b.index;
+        })
+        .map((entry) => entry.alias);
 
+      let lastGroup = null;
       filteredAliases.forEach((alias) => {
+        const group = (alias.group || '').trim() || 'Ungrouped';
+        if (group !== lastGroup) {
+          const groupHeader = document.createElement('div');
+          groupHeader.className = 'settings-alias-group-header';
+          groupHeader.textContent = group;
+          list.appendChild(groupHeader);
+          lastGroup = group;
+        }
+
         const row = document.createElement('button');
         row.type = 'button';
         row.className = 'settings-alias-list-item' + (alias.id === selectedAliasId ? ' active' : '');
@@ -1434,6 +1480,7 @@ export const settingsManager = {
       sidebar.appendChild(search);
       sidebar.appendChild(list);
       sidebar.appendChild(actions);
+      list.scrollTop = previousScrollTop;
     };
 
     const render = () => {
@@ -1664,6 +1711,21 @@ export const settingsManager = {
       descriptionField.appendChild(descriptionInput);
       editor.appendChild(descriptionField);
 
+      const groupField = document.createElement('label');
+      groupField.className = 'dw-field';
+      groupField.appendChild(createFieldLabel('Group / folder'));
+      const groupInput = document.createElement('input');
+      groupInput.type = 'text';
+      groupInput.className = 'dw-input';
+      groupInput.placeholder = 'Loot, Combat, Alerts';
+      groupInput.value = trigger.group || '';
+      groupInput.addEventListener('input', () => {
+        trigger.group = groupInput.value;
+        renderTriggerList();
+      });
+      groupField.appendChild(groupInput);
+      editor.appendChild(groupField);
+
       editor.appendChild(this._createCheckboxRow(
         'Trigger enabled',
         'Disabled triggers stay saved but never match incoming output.',
@@ -1790,7 +1852,7 @@ export const settingsManager = {
 
         const helper = document.createElement('div');
         helper.className = 'settings-helper-text';
-        helper.textContent = 'Templates support %0 for the full matched line, %1-%9 for wildcard captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
+        helper.textContent = 'Patterns support * or %1-%9 as captures. Step templates support %0 for the full matched line, %1-%9 for captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -1817,6 +1879,8 @@ export const settingsManager = {
     };
 
     const renderTriggerList = () => {
+      const previousList = sidebar.querySelector('.settings-alias-list');
+      const previousScrollTop = previousList ? previousList.scrollTop : 0;
       sidebar.textContent = '';
 
       const title = document.createElement('div');
@@ -1836,12 +1900,32 @@ export const settingsManager = {
       const list = document.createElement('div');
       list.className = 'settings-alias-list';
 
-      const filteredTriggers = this._draftTriggerScope.triggers.filter((trigger) => {
-        const haystack = (trigger.pattern + ' ' + trigger.description).toLowerCase();
-        return haystack.includes(searchTerm.trim().toLowerCase());
-      });
+      const filteredTriggers = this._draftTriggerScope.triggers
+        .map((trigger, index) => ({ trigger, index }))
+        .filter((entry) => {
+          const trigger = entry.trigger;
+          const haystack = (trigger.pattern + ' ' + trigger.description + ' ' + (trigger.group || '')).toLowerCase();
+          return haystack.includes(searchTerm.trim().toLowerCase());
+        })
+        .sort((a, b) => {
+          const groupA = (a.trigger.group || '').trim() || 'Ungrouped';
+          const groupB = (b.trigger.group || '').trim() || 'Ungrouped';
+          if (groupA !== groupB) return groupA.localeCompare(groupB);
+          return a.index - b.index;
+        })
+        .map((entry) => entry.trigger);
 
+      let lastGroup = null;
       filteredTriggers.forEach((trigger) => {
+        const group = (trigger.group || '').trim() || 'Ungrouped';
+        if (group !== lastGroup) {
+          const groupHeader = document.createElement('div');
+          groupHeader.className = 'settings-alias-group-header';
+          groupHeader.textContent = group;
+          list.appendChild(groupHeader);
+          lastGroup = group;
+        }
+
         const row = document.createElement('button');
         row.type = 'button';
         row.className = 'settings-alias-list-item' + (trigger.id === selectedTriggerId ? ' active' : '');
@@ -1917,6 +2001,7 @@ export const settingsManager = {
       sidebar.appendChild(search);
       sidebar.appendChild(list);
       sidebar.appendChild(actions);
+      list.scrollTop = previousScrollTop;
     };
 
     const render = () => {

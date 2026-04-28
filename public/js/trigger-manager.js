@@ -49,6 +49,7 @@ function normalizeTrigger(trigger) {
     enabled: trigger.enabled !== false,
     pattern,
     description: String(trigger.description || ''),
+    group: normalizeWhitespace(trigger.group),
     gag: Boolean(trigger.gag),
     steps: steps.length ? steps : [{ type: 'send_command', template: '' }],
   };
@@ -80,8 +81,30 @@ function compilePattern(pattern) {
   const source = String(pattern || '').trim();
   if (!source) return { regex: null, error: 'Trigger pattern is required.' };
 
-  const segments = source.split('*');
-  const compiled = '^' + segments.map(escapeRegex).join('(.*?)') + '$';
+  let compiled = '^';
+  let index = 0;
+  while (index < source.length) {
+    const ch = source[index];
+    if (ch === '*') {
+      compiled += '(.*?)';
+      index++;
+      continue;
+    }
+    if (ch === '%' && /[1-9]/.test(source[index + 1] || '')) {
+      compiled += '(.*?)';
+      index += 2;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      while (index < source.length && /\s/.test(source[index])) index++;
+      compiled += '\\s+';
+      continue;
+    }
+    compiled += escapeRegex(ch);
+    index++;
+  }
+  compiled += '$';
+
   try {
     return {
       regex: new RegExp(compiled),
@@ -159,6 +182,7 @@ export const triggerManager = {
       enabled: true,
       pattern: '',
       description: '',
+      group: '',
       gag: false,
       steps: [{ type: 'send_command', template: '' }],
     };
