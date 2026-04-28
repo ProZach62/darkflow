@@ -68,6 +68,7 @@ export const announcementsManager = {
     unreadCount: 0,
     selectedId: null,
     filter: 'active',
+    pendingReadIds: new Set(),
   },
 
   els: {
@@ -210,6 +211,20 @@ export const announcementsManager = {
       : this.state.active;
   },
 
+  applyPendingReads() {
+    if (!this.state.pendingReadIds.size) return;
+
+    const applyTo = (item) => {
+      if (item && this.state.pendingReadIds.has(item.id)) {
+        item.isRead = true;
+      }
+    };
+
+    this.state.active.forEach(applyTo);
+    this.state.archived.forEach(applyTo);
+    this.state.unreadCount = this.state.active.filter(item => item && !item.isRead).length;
+  },
+
   setFilter(filter) {
     this.state.filter = filter === 'archived' ? 'archived' : 'active';
     this.ensureSelection();
@@ -253,6 +268,7 @@ export const announcementsManager = {
     this.state.active = cloneItems(data && data.active);
     this.state.archived = cloneItems(data && data.archived);
     this.state.unreadCount = Number(data && data.unreadCount) || 0;
+    this.applyPendingReads();
     this.ensureSelection();
     this.render();
   },
@@ -295,6 +311,10 @@ export const announcementsManager = {
     if (data && data.unreadCount !== undefined) {
       this.state.unreadCount = Number(data.unreadCount) || 0;
     }
+    if (item.isRead) {
+      this.state.pendingReadIds.delete(item.id);
+    }
+    this.applyPendingReads();
 
     this.ensureSelection();
     this.render();
@@ -316,6 +336,7 @@ export const announcementsManager = {
     if (!item || item.isRead) return;
 
     item.isRead = true;
+    this.state.pendingReadIds.add(item.id);
     if (item.status !== 'archived' && this.state.unreadCount > 0) {
       this.state.unreadCount -= 1;
     }

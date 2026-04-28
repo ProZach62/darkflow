@@ -10,6 +10,12 @@ export function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function formatStatusTitle(title, name) {
+  if (!title) return title;
+  const displayName = name || '';
+  return String(title).replace(/\$N/g, displayName).replace(/\s+/g, ' ').trim();
+}
+
 export function channelColor(channel) {
   let hash = 0;
   for (let i = 0; i < channel.length; i++) hash = ((hash << 5) - hash + channel.charCodeAt(i)) | 0;
@@ -180,20 +186,21 @@ export const panelRenderers = {
 
   status(bodyEl, data) {
     if (!data) return;
+    const displayName = data.fullname || data.name;
     const fields = [
-      ['Name', data.fullname || data.name],
+      ['Name', displayName],
       ['Race', data.race],
       ['Class', data.class],
       ['Level', data.level],
       ['XP', data.xp],
       ['Align', data.align],
-      ['Title', data.title],
+      ['Title', formatStatusTitle(data.title, displayName)],
       ['Gender', data.gender],
     ];
     let html = '';
     for (const [k, v] of fields) {
       if (v !== undefined && v !== null && v !== '' && v !== 'None') {
-        html += '<div class="status-row"><span class="status-key">' + k + '</span><span>' + v + '</span></div>';
+        html += '<div class="status-row"><span class="status-key">' + escHtml(k) + '</span><span>' + escHtml(v) + '</span></div>';
       }
     }
     const badges = [];

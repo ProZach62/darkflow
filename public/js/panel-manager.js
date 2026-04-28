@@ -1294,30 +1294,11 @@ export const panelManager = {
       if (!data || !data.url) return;
 
       this.gmcpData.avatar = {
-        url: this.gmcpData.avatar ? this.gmcpData.avatar.url : null,
-        name: data.name || (this.gmcpData.avatar ? this.gmcpData.avatar.name : 'Avatar'),
-        loading: true,
+        url: data.url,
+        name: data.name || 'Avatar',
+        loading: false,
       };
       this._renderPanel('avatar');
-
-      const probe = new Image();
-      probe.onload = () => {
-        this.gmcpData.avatar = {
-          url: data.url,
-          name: data.name || 'Avatar',
-          loading: false,
-        };
-        this._renderPanel('avatar');
-      };
-      probe.onerror = () => {
-        this.gmcpData.avatar = {
-          url: this.gmcpData.avatar && this.gmcpData.avatar.url ? this.gmcpData.avatar.url : null,
-          name: data.name || 'Avatar',
-          loading: false,
-        };
-        this._renderPanel('avatar');
-      };
-      probe.src = data.url;
     });
 
     gmcp.on('Darkwind.Room.Image', (data) => {

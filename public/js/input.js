@@ -17,18 +17,39 @@ let historyIndex = 0;
 let currentInput = '';
 let _saveTimer = null;
 
+const DIRECTION_ALIASES = {
+  n: 'north',
+  s: 'south',
+  e: 'east',
+  w: 'west',
+  u: 'up',
+  d: 'down',
+  ne: 'northeast',
+  nw: 'northwest',
+  se: 'southeast',
+  sw: 'southwest',
+};
+
+function normalizeOutboundCommand(text) {
+  const command = String(text || '');
+  const trimmed = command.trim().toLowerCase();
+  return DIRECTION_ALIASES[trimmed] || command;
+}
+
 function sendRawCommand(text) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
 
-  trackCommand(text);
-  if (!sendSocketPayload(text, {
+  const command = normalizeOutboundCommand(text);
+
+  trackCommand(command);
+  if (!sendSocketPayload(command, {
     kind: 'command',
-    size: text.length,
-    preview: text.slice(0, 80),
+    size: command.length,
+    preview: command.slice(0, 80),
   })) {
     return false;
   }
-  state.bytesSent += text.length;
+  state.bytesSent += command.length;
   return true;
 }
 
