@@ -85,6 +85,7 @@ export const panelManager = {
     for (const id of Object.keys(PANEL_DEFS)) {
       panels[id] = !!(this.state.panels[id] && this.state.panels[id].visible);
     }
+    panels.vitals = true;
     return panels;
   },
 
@@ -728,6 +729,51 @@ export const panelManager = {
       }
     }
     this._renderPanel('avatar');
+    this._hideAvatarMeter();
+  },
+
+  _hideAvatarMeter() {
+    const meter = document.getElementById('avatar-meter');
+    if (!meter) return;
+    meter.classList.remove('visible', 'full', 'active');
+    meter.removeAttribute('data-avatar-meter-present');
+  },
+
+  _updateAvatarMeter(data) {
+    const meter = document.getElementById('avatar-meter');
+    if (!meter || !data || typeof data !== 'object') return;
+
+    const hasCharge = Object.prototype.hasOwnProperty.call(data, 'avatar_charge_pct');
+    if (!hasCharge) {
+      const looksFullRefresh = ['hp', 'maxhp', 'sp', 'maxsp', 'string']
+        .every(key => Object.prototype.hasOwnProperty.call(data, key));
+      if (looksFullRefresh) {
+        this._hideAvatarMeter();
+      }
+      return;
+    }
+
+    const pct = Math.max(0, Math.min(100, Number(data.avatar_charge_pct) || 0));
+    const activeRemaining = Number(data.avatar_active_remaining) || 0;
+    const active = activeRemaining > 0;
+    const fill = meter.querySelector('.avatar-meter-fill');
+    const label = meter.querySelector('.avatar-meter-label');
+
+    meter.setAttribute('data-avatar-meter-present', '1');
+    meter.classList.add('visible');
+    meter.classList.toggle('full', pct >= 100 && !active);
+    meter.classList.toggle('active', active);
+
+    if (fill) fill.style.width = (active ? 100 : pct) + '%';
+    if (label) {
+      if (active) {
+        const minutes = Math.floor(activeRemaining / 60);
+        const seconds = activeRemaining % 60;
+        label.textContent = 'Wrathful Avatar ACTIVE ' + minutes + ':' + String(seconds).padStart(2, '0');
+      } else {
+        label.textContent = 'Wrathful Avatar ' + pct + '%';
+      }
+    }
   },
 
   refreshMediaPanels() {
@@ -1170,7 +1216,10 @@ export const panelManager = {
 
   registerGmcpHandlers() {
     gmcp.on('Char.Vitals', (data) => {
-      this.gmcpData.vitals = data;
+      const fullVitals = data && ['hp', 'maxhp', 'sp', 'maxsp', 'string']
+        .every(key => Object.prototype.hasOwnProperty.call(data, key));
+      this.gmcpData.vitals = fullVitals ? data : Object.assign({}, this.gmcpData.vitals || {}, data || {});
+      this._updateAvatarMeter(data);
       this._renderPanel('vitals');
     });
 

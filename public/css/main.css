@@ -817,6 +817,8 @@ body {
 }
 
 #output-shell {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 0;
   position: relative;
   min-height: 0;
@@ -829,7 +831,6 @@ body {
 #output,
 #output-history,
 #output-live {
-  height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   overflow-anchor: none;
@@ -844,11 +845,17 @@ body {
   font-family: var(--df-font-mono);
 }
 
+#output {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 #output-split {
   display: none;
   flex-direction: column;
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
+  height: auto;
 }
 
 #output-shell.split-active #output {
@@ -857,6 +864,69 @@ body {
 
 #output-shell.split-active #output-split {
   display: flex;
+}
+
+#avatar-meter {
+  position: relative;
+  display: none;
+  flex: 0 0 24px;
+  width: 100%;
+  min-height: 24px;
+  overflow: hidden;
+  border-top: 1px solid #5a1e24;
+  background:
+    linear-gradient(180deg, rgba(248, 81, 73, 0.12), rgba(13, 17, 23, 0.2)),
+    #12080a;
+  font-family: var(--df-font-mono);
+}
+
+#avatar-meter.visible {
+  display: block;
+}
+
+.avatar-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(90deg, #7a1822, #f85149);
+  box-shadow: 0 0 12px rgba(248, 81, 73, 0.4);
+  transition: width 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+#avatar-meter.full .avatar-meter-fill {
+  background: linear-gradient(90deg, #b62335, #ff7b72);
+  box-shadow: 0 0 18px rgba(255, 123, 114, 0.68);
+}
+
+#avatar-meter.active {
+  border-top-color: #ff7b72;
+}
+
+#avatar-meter.active .avatar-meter-fill {
+  width: 100%;
+  background: linear-gradient(90deg, #f85149, #ffb3ad, #f85149);
+  background-size: 200% 100%;
+  animation: avatar-meter-flame 1.6s linear infinite;
+  box-shadow: 0 0 20px rgba(255, 123, 114, 0.8);
+}
+
+.avatar-meter-label {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px;
+  color: #ffe2de;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+}
+
+@keyframes avatar-meter-flame {
+  from { background-position: 0% 0; }
+  to { background-position: 200% 0; }
 }
 
 #output-history {
