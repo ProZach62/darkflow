@@ -525,6 +525,48 @@ body.mobile-panel-mode #mobile-panels-btn {
 .badge-sitting { background: #484f5833; color: #8b949e; }
 .badge-viking { background: #bc8cff33; color: #bc8cff; }
 
+/* ── Buffs panel ────────────────────────────────────────────────────── */
+.buff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.buff-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
+  padding: 3px 6px;
+  border: 1px solid #30363d;
+  border-left: 3px solid #58a6ff;
+  border-radius: 4px;
+  background: #161b22;
+  color: #c9d1d9;
+  font-size: 11px;
+}
+
+.buff-entry-debuff {
+  border-color: #6e2f2b;
+  border-left-color: #f85149;
+  background: #1f1517;
+  color: #ffb4ad;
+}
+
+.buff-entry-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.buff-entry-kind {
+  flex: 0 0 auto;
+  color: #f85149;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 /* ── Exit compass ───────────────────────────────────────────────────── */
 .room-name { font-weight: 600; color: #c9d1d9; margin-bottom: 2px; }
 .room-area { font-size: 11px; color: #8b949e; margin-bottom: 6px; }

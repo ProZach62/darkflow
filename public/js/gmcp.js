@@ -71,6 +71,7 @@ export const gmcp = {
       'Char 1',
       'Char.Vitals 1',
       'Char.Items 1',
+      'Char.Defences 1',
       'Room 1',
       'Comm 1',
       'Group 1',

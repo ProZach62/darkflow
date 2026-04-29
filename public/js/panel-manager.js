@@ -4,10 +4,31 @@ import { panelRenderers } from './panel-renderers.js';
 import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorrection, load as loadMapData } from './map-data.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
-const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'inventory', 'map', 'chat', 'quests', 'achievements'];
+const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
 
 function cloneState(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeDefenceKind(kind) {
+  return kind === 'debuff' ? 'debuff' : (kind === 'unknown' ? 'unknown' : 'buff');
+}
+
+function normalizeDefenceEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const name = entry.name !== undefined && entry.name !== null ? String(entry.name) : '';
+  if (!name) return null;
+  return {
+    name,
+    desc: entry.desc !== undefined && entry.desc !== null ? String(entry.desc) : '',
+    kind: normalizeDefenceKind(entry.kind),
+  };
+}
+
+function findDefenceIndex(entries, entry) {
+  return entries.findIndex((current) =>
+    current.name === entry.name || (!!entry.desc && current.desc === entry.desc)
+  );
 }
 
 export const panelManager = {
@@ -86,6 +107,7 @@ export const panelManager = {
       panels[id] = !!(this.state.panels[id] && this.state.panels[id].visible);
     }
     panels.vitals = true;
+    if (panels.buffs) panels.status = true;
     return panels;
   },
 
@@ -1242,6 +1264,33 @@ export const panelManager = {
         this.gmcpData.worth = { gold: data.gold, bank: data.bank };
         this._renderPanel('worth');
       }
+    });
+
+    gmcp.on('Char.Defences.List', (data) => {
+      this.gmcpData.buffs = Array.isArray(data)
+        ? data.map(normalizeDefenceEntry).filter(Boolean)
+        : [];
+      this._renderPanel('buffs');
+    });
+
+    gmcp.on('Char.Defences.Add', (data) => {
+      const entry = normalizeDefenceEntry(data);
+      if (!entry) return;
+      if (!Array.isArray(this.gmcpData.buffs)) this.gmcpData.buffs = [];
+      const idx = findDefenceIndex(this.gmcpData.buffs, entry);
+      if (idx >= 0) this.gmcpData.buffs[idx] = entry;
+      else this.gmcpData.buffs.push(entry);
+      this._renderPanel('buffs');
+    });
+
+    gmcp.on('Char.Defences.Remove', (data) => {
+      const name = data && typeof data === 'object' ? data.name : data;
+      if (!name || !Array.isArray(this.gmcpData.buffs)) return;
+      const key = String(name);
+      this.gmcpData.buffs = this.gmcpData.buffs.filter((entry) =>
+        entry.name !== key && entry.desc !== key
+      );
+      this._renderPanel('buffs');
     });
 
     gmcp.on('Char.Worth', (data) => {

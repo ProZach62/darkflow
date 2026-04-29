@@ -7,7 +7,12 @@ let roomImageModalKeyHandler = null;
 
 export function escHtml(str) {
   if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
 }
 
 function formatStatusTitle(title, name) {
@@ -221,6 +226,27 @@ export const panelRenderers = {
     bodyEl.innerHTML =
       '<div class="status-row"><span class="status-key">Gold</span><span>' + gold + '</span></div>' +
       '<div class="status-row"><span class="status-key">Bank</span><span>' + bank + '</span></div>';
+  },
+
+  buffs(bodyEl, data) {
+    if (!Array.isArray(data) || data.length === 0) {
+      bodyEl.innerHTML = '<div class="placeholder">No active buffs</div>';
+      return;
+    }
+
+    let html = '<div class="buff-list">';
+    for (const item of data) {
+      const kind = item.kind === 'debuff' ? 'debuff' : (item.kind === 'unknown' ? 'unknown' : 'buff');
+      const desc = item.desc ? ' title="' + escHtml(item.desc) + '"' : '';
+      html += '<div class="buff-entry buff-entry-' + kind + '"' + desc + '>';
+      html += '<span class="buff-entry-name">' + escHtml(item.name) + '</span>';
+      if (kind === 'debuff') {
+        html += '<span class="buff-entry-kind">Debuff</span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    bodyEl.innerHTML = html;
   },
 
   room(bodyEl, data) {
