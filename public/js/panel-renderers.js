@@ -224,7 +224,6 @@ export const panelRenderers = {
     const badges = [];
     if (data.dead === 'Yes') badges.push('<span class="status-badge badge-dead">Dead</span>');
     if (data.drunk && data.drunk !== 'Sober' && data.drunk !== 'None') badges.push('<span class="status-badge badge-drunk">Drunk</span>');
-    if (data.hunger && data.hunger !== 'Satiated' && data.hunger !== 'Not hungry' && data.hunger !== 'None') badges.push('<span class="status-badge badge-hungry">Hungry</span>');
     if (data.invis === 'Yes') badges.push('<span class="status-badge badge-invis">Invis</span>');
     if (data.sit === 'Yes') badges.push('<span class="status-badge badge-sitting">Sitting</span>');
     if (data.viking === 'Yes') badges.push('<span class="status-badge badge-viking">Viking</span>');
