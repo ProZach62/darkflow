@@ -34,6 +34,10 @@ function formatStatusTitle(title, name) {
   return String(title).replace(/\$N/g, displayName).replace(/\s+/g, ' ').trim();
 }
 
+function formatInt(n) {
+  return typeof n === 'number' ? n.toLocaleString('en-US') : n;
+}
+
 export function channelColor(channel) {
   let hash = 0;
   for (let i = 0; i < channel.length; i++) hash = ((hash << 5) - hash + channel.charCodeAt(i)) | 0;
@@ -210,7 +214,11 @@ export const panelRenderers = {
       ['Race', data.race],
       ['Class', data.class],
       ['Level', data.level],
-      ['XP', data.xp],
+      ['XP', typeof data.xp === 'number'
+        ? formatInt(data.xp) + (typeof data.nl === 'number' && data.nl > 0
+          ? ' (' + formatInt(data.nl) + ' to next)'
+          : '')
+        : data.xp],
       ['Align', data.align],
       ['Title', formatStatusTitle(data.title, displayName)],
       ['Gender', data.gender],
@@ -233,8 +241,8 @@ export const panelRenderers = {
 
   worth(bodyEl, data) {
     if (!data) return;
-    const gold = (data.gold || 0).toLocaleString();
-    const bank = (data.bank || 0).toLocaleString();
+    const gold = formatInt(data.gold || 0);
+    const bank = formatInt(data.bank || 0);
     bodyEl.innerHTML =
       '<div class="status-row"><span class="status-key">Gold</span><span>' + gold + '</span></div>' +
       '<div class="status-row"><span class="status-key">Bank</span><span>' + bank + '</span></div>';
