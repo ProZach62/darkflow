@@ -5,6 +5,7 @@ import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorre
 
 const MOBILE_BREAKPOINT_PX = 700;
 const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
+const AVATAR_CHARGE_TICK_MS = 2000;
 
 function cloneState(value) {
   return JSON.parse(JSON.stringify(value));
@@ -47,6 +48,7 @@ export const panelManager = {
   _avatarActiveEndAt: 0,
   // Server-provided full active duration, with old-server fallback in _updateAvatarMeter.
   _avatarActiveMaxSec: 0,
+  _avatarChargeSync: null,
   _pendingPanelRenders: new Set(),
   _panelRenderFrame: null,
   _mobile: {
@@ -774,6 +776,7 @@ export const panelManager = {
     this._stopAvatarMeterTicker();
     this._avatarActiveEndAt = 0;
     this._avatarActiveMaxSec = 0;
+    this._avatarChargeSync = null;
   },
 
   _startAvatarMeterTicker() {
@@ -790,22 +793,30 @@ export const panelManager = {
 
   _tickAvatarMeter() {
     const meter = document.getElementById('avatar-meter');
-    if (!meter || !this._avatarActiveEndAt) {
+    if (!meter) {
       this._stopAvatarMeterTicker();
       return;
     }
-    const remaining = Math.max(0, Math.ceil((this._avatarActiveEndAt - Date.now()) / 1000));
-    if (remaining <= 0) {
-      this._stopAvatarMeterTicker();
-      this._avatarActiveEndAt = 0;
-      meter.classList.remove('active');
-      const fill = meter.querySelector('.avatar-meter-fill');
-      const label = meter.querySelector('.avatar-meter-label');
-      if (fill) fill.style.width = '0%';
-      if (label) label.textContent = 'Wrathful Avatar 0:00';
+
+    if (this._avatarActiveEndAt) {
+      const remaining = Math.max(0, Math.ceil((this._avatarActiveEndAt - Date.now()) / 1000));
+      if (remaining <= 0) {
+        this._avatarActiveEndAt = 0;
+        meter.classList.remove('active');
+        this._renderAvatarCharge();
+        if (!this._avatarChargeSync) this._stopAvatarMeterTicker();
+        return;
+      }
+      this._renderAvatarActive(remaining);
       return;
     }
-    this._renderAvatarActive(remaining);
+
+    if (this._avatarChargeSync) {
+      this._renderAvatarCharge();
+      return;
+    }
+
+    this._stopAvatarMeterTicker();
   },
 
   _renderAvatarActive(remaining) {
@@ -823,11 +834,42 @@ export const panelManager = {
     }
   },
 
+  _predictAvatarCharge() {
+    if (!this._avatarChargeSync) return null;
+
+    const sync = this._avatarChargeSync;
+    const elapsedMs = Math.max(0, Date.now() - sync.syncedAt);
+    const gained = (elapsedMs / AVATAR_CHARGE_TICK_MS) * (sync.ratePct / 100);
+    return Math.max(0, Math.min(sync.max, sync.charge + gained));
+  },
+
+  _renderAvatarCharge() {
+    const meter = document.getElementById('avatar-meter');
+    const charge = this._predictAvatarCharge();
+    if (!meter || charge === null || !this._avatarChargeSync) return;
+
+    const fill = meter.querySelector('.avatar-meter-fill');
+    const label = meter.querySelector('.avatar-meter-label');
+    const max = this._avatarChargeSync.max;
+    const pct = Math.max(0, Math.min(100, (charge / max) * 100));
+    const displayPct = Math.floor(pct);
+
+    meter.classList.add('visible');
+    meter.classList.toggle('full', displayPct >= 100);
+    meter.classList.remove('active');
+    if (fill) fill.style.width = pct + '%';
+    if (label) label.textContent = 'Wrathful Avatar ' + displayPct + '%';
+
+    if (displayPct >= 100) this._stopAvatarMeterTicker();
+  },
+
   _updateAvatarMeter(data) {
     const meter = document.getElementById('avatar-meter');
     if (!meter || !data || typeof data !== 'object') return;
 
-    const hasCharge = Object.prototype.hasOwnProperty.call(data, 'avatar_charge_pct');
+    const hasCharge = ['avatar_charge', 'avatar_charge_max', 'avatar_charge_display',
+      'avatar_charge_pct', 'avatar_active_remaining', 'avatar_active_max']
+      .some(key => Object.prototype.hasOwnProperty.call(data, key));
     if (!hasCharge) {
       const looksFullRefresh = ['hp', 'maxhp', 'sp', 'maxsp', 'string']
         .every(key => Object.prototype.hasOwnProperty.call(data, key));
@@ -837,13 +879,16 @@ export const panelManager = {
       return;
     }
 
-    const pct = Math.max(0, Math.min(100, Number(data.avatar_charge_pct) || 0));
+    const rawCharge = Number(data.avatar_charge);
+    const rawMax = Number(data.avatar_charge_max);
+    const hasRawCharge = Number.isFinite(rawCharge) && Number.isFinite(rawMax) && rawMax > 0;
+    const pct = hasRawCharge
+      ? Math.max(0, Math.min(100, (rawCharge / rawMax) * 100))
+      : Math.max(0, Math.min(100, Number(data.avatar_charge_pct) || 0));
     const activeRemaining = Number(data.avatar_active_remaining) || 0;
     const active = activeRemaining > 0;
     const hasActiveMax = Object.prototype.hasOwnProperty.call(data, 'avatar_active_max');
     const activeMax = Number(data.avatar_active_max) || 0;
-    const fill = meter.querySelector('.avatar-meter-fill');
-    const label = meter.querySelector('.avatar-meter-label');
 
     meter.setAttribute('data-avatar-meter-present', '1');
     meter.classList.add('visible');
@@ -851,6 +896,7 @@ export const panelManager = {
     meter.classList.toggle('active', active);
 
     if (active) {
+      this._avatarChargeSync = null;
       this._avatarActiveEndAt = Date.now() + activeRemaining * 1000;
       if (hasActiveMax && activeMax > 0) {
         this._avatarActiveMaxSec = activeMax;
@@ -860,11 +906,26 @@ export const panelManager = {
       this._renderAvatarActive(activeRemaining);
       this._startAvatarMeterTicker();
     } else {
-      this._stopAvatarMeterTicker();
       this._avatarActiveEndAt = 0;
       this._avatarActiveMaxSec = 0;
-      if (fill) fill.style.width = pct + '%';
-      if (label) label.textContent = 'Wrathful Avatar ' + pct + '%';
+      if (hasRawCharge) {
+        const ratePct = Number(data.avatar_charge_rate_pct);
+        this._avatarChargeSync = {
+          charge: Math.max(0, Math.min(rawMax, rawCharge)),
+          max: rawMax,
+          ratePct: Number.isFinite(ratePct) ? ratePct : 100,
+          syncedAt: Date.now(),
+        };
+        this._renderAvatarCharge();
+        if (rawCharge < rawMax) this._startAvatarMeterTicker();
+        else this._stopAvatarMeterTicker();
+      } else {
+        this._avatarChargeSync = null;
+        const fill = meter.querySelector('.avatar-meter-fill');
+        const label = meter.querySelector('.avatar-meter-label');
+        if (fill) fill.style.width = pct + '%';
+        if (label) label.textContent = 'Wrathful Avatar ' + Math.floor(pct) + '%';
+      }
     }
   },
 
@@ -1334,7 +1395,7 @@ export const panelManager = {
       const fullVitals = data && ['hp', 'maxhp', 'sp', 'maxsp', 'string']
         .every(key => Object.prototype.hasOwnProperty.call(data, key));
       this.gmcpData.vitals = fullVitals ? data : Object.assign({}, this.gmcpData.vitals || {}, data || {});
-      this._updateAvatarMeter(data);
+      this._updateAvatarMeter(this.gmcpData.vitals);
       this._renderPanel('vitals');
     });
 
