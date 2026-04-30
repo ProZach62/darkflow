@@ -45,6 +45,7 @@ export const panelManager = {
   _buffTimer: null,
   _avatarMeterTicker: null,
   _avatarActiveEndAt: 0,
+  // Server-provided full active duration, with old-server fallback in _updateAvatarMeter.
   _avatarActiveMaxSec: 0,
   _pendingPanelRenders: new Set(),
   _panelRenderFrame: null,
@@ -839,6 +840,8 @@ export const panelManager = {
     const pct = Math.max(0, Math.min(100, Number(data.avatar_charge_pct) || 0));
     const activeRemaining = Number(data.avatar_active_remaining) || 0;
     const active = activeRemaining > 0;
+    const hasActiveMax = Object.prototype.hasOwnProperty.call(data, 'avatar_active_max');
+    const activeMax = Number(data.avatar_active_max) || 0;
     const fill = meter.querySelector('.avatar-meter-fill');
     const label = meter.querySelector('.avatar-meter-label');
 
@@ -849,7 +852,9 @@ export const panelManager = {
 
     if (active) {
       this._avatarActiveEndAt = Date.now() + activeRemaining * 1000;
-      if (activeRemaining > this._avatarActiveMaxSec) {
+      if (hasActiveMax && activeMax > 0) {
+        this._avatarActiveMaxSec = activeMax;
+      } else if (!this._avatarActiveMaxSec) {
         this._avatarActiveMaxSec = activeRemaining;
       }
       this._renderAvatarActive(activeRemaining);
