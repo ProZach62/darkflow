@@ -14,6 +14,7 @@ export const windowManager = {
     gmcp.on(DW_WINDOW_OPEN, (data) => this.openWindow(data));
     gmcp.on(DW_WINDOW_UPDATE, (data) => this.updateWindow(data));
     gmcp.on(DW_WINDOW_CLOSE, (data) => this.closeWindow(data.id));
+    document.addEventListener('dw:avatarZoom', (event) => this._openAvatarZoom(event.detail));
   },
 
   openWindow(data) {
@@ -221,6 +222,56 @@ export const windowManager = {
     } else {
       gmcp.send(DW_WINDOW_ACTION, { id: windowId, button: buttonId });
     }
+  },
+
+  _openAvatarZoom(detail) {
+    if (!detail || !detail.src) return;
+
+    const existing = document.querySelector('.dw-avatar-lightbox-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'dw-avatar-lightbox-overlay';
+
+    const frame = document.createElement('div');
+    frame.className = 'dw-avatar-lightbox-frame';
+    frame.setAttribute('role', 'dialog');
+    frame.setAttribute('aria-modal', 'true');
+    frame.setAttribute('aria-label', detail.name ? detail.name + ' avatar' : 'Player avatar');
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'dw-avatar-lightbox-close';
+    closeBtn.innerHTML = '&#x2715;';
+
+    const img = document.createElement('img');
+    img.className = 'dw-avatar-lightbox-image';
+    img.src = detail.src;
+    img.alt = detail.alt || '';
+    img.draggable = false;
+    img.addEventListener('error', () => {
+      if (detail.fallback && img.src !== detail.fallback) img.src = detail.fallback;
+    });
+
+    const close = () => {
+      document.removeEventListener('keydown', keyHandler);
+      overlay.remove();
+    };
+    const keyHandler = (event) => {
+      if (event.key === 'Escape') close();
+    };
+
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) close();
+    });
+    document.addEventListener('keydown', keyHandler);
+
+    frame.appendChild(closeBtn);
+    frame.appendChild(img);
+    overlay.appendChild(frame);
+    document.body.appendChild(overlay);
+    closeBtn.focus();
   },
 
   resetAll() {

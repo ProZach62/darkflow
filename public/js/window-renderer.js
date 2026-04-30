@@ -59,6 +59,8 @@ function renderContainer(schema, buttonHandler) {
 // ── Display elements ────────────────────────────────────────────────
 function renderDisplay(schema) {
   switch (schema.type) {
+    case 'player_row':
+      return renderPlayerRow(schema);
     case 'heading': {
       const el = document.createElement('h3');
       el.className = 'dw-heading';
@@ -137,6 +139,102 @@ function renderDisplay(schema) {
       return el;
     }
   }
+}
+
+function renderPlayerRow(schema) {
+  const fallbackAvatar = schema.fallback_avatar || '/assets/avatar-ghost.svg';
+  const el = document.createElement('div');
+  el.className = 'dw-player-row';
+  setAttr(el, schema);
+
+  const avatarButton = document.createElement('button');
+  avatarButton.type = 'button';
+  avatarButton.className = 'dw-player-row-avatar-button';
+  avatarButton.title = 'View avatar';
+  avatarButton.setAttribute('aria-label', 'View avatar for ' + (schema.name || 'player'));
+
+  const img = document.createElement('img');
+  img.className = 'dw-player-row-avatar';
+  img.src = schema.avatar || fallbackAvatar;
+  img.alt = schema.name ? schema.name + ' avatar' : 'Player avatar';
+  img.draggable = false;
+  img.addEventListener('error', () => {
+    if (img.src !== fallbackAvatar) img.src = fallbackAvatar;
+  });
+  avatarButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    document.dispatchEvent(new CustomEvent('dw:avatarZoom', {
+      detail: {
+        src: img.currentSrc || img.src || fallbackAvatar,
+        fallback: fallbackAvatar,
+        alt: img.alt,
+        name: schema.name || 'Player'
+      }
+    }));
+  });
+  avatarButton.appendChild(img);
+
+  const body = document.createElement('div');
+  body.className = 'dw-player-row-body';
+
+  const line1 = document.createElement('div');
+  line1.className = 'dw-player-row-line dw-player-row-line1';
+
+  const level = document.createElement('span');
+  level.className = 'dw-player-row-level';
+  level.textContent = schema.level || '?';
+  if (schema.race_color) level.style.borderColor = schema.race_color;
+  line1.appendChild(level);
+
+  const name = document.createElement('span');
+  name.className = 'dw-player-row-name';
+  name.textContent = schema.name || 'A hidden player';
+  line1.appendChild(name);
+
+  if (schema.achievement_title) {
+    const achievement = document.createElement('span');
+    achievement.className = 'dw-player-row-achievement';
+    achievement.textContent = schema.achievement_title;
+    line1.appendChild(achievement);
+  }
+
+  const line2 = document.createElement('div');
+  line2.className = 'dw-player-row-line dw-player-row-line2';
+
+  const title = document.createElement('span');
+  title.className = 'dw-player-row-title';
+  title.textContent = schema.title || '';
+  line2.appendChild(title);
+
+  if (schema.designation) {
+    const designation = document.createElement('span');
+    designation.className = 'dw-player-row-designation';
+    designation.textContent = schema.designation;
+    line2.appendChild(designation);
+  }
+
+  const flags = []
+    .concat(Array.isArray(schema.badges) ? schema.badges : [])
+    .concat(Array.isArray(schema.staff_notes) ? schema.staff_notes : []);
+  if (flags.length) {
+    const flagWrap = document.createElement('div');
+    flagWrap.className = 'dw-player-row-flags';
+    for (const flagText of flags) {
+      if (!flagText) continue;
+      const flag = document.createElement('span');
+      flag.className = 'dw-player-row-flag';
+      flag.textContent = String(flagText);
+      flagWrap.appendChild(flag);
+    }
+    line2.appendChild(flagWrap);
+  }
+
+  body.appendChild(line1);
+  body.appendChild(line2);
+  el.appendChild(avatarButton);
+  el.appendChild(body);
+  return el;
 }
 
 // ── Input elements ──────────────────────────────────────────────────
