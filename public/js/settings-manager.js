@@ -67,6 +67,8 @@ export const settingsManager = {
   _escHandler: null,
   _dataSyncHandler: null,
   _refreshEditors: null,
+  _activateTab: null,
+  _pendingAliasSelection: null,
   _footerStatusEl: null,
 
   init() {
@@ -176,6 +178,8 @@ export const settingsManager = {
     this._draftTriggerScope = null;
     this._triggerScopeKey = '';
     this._refreshEditors = null;
+    this._activateTab = null;
+    this._pendingAliasSelection = null;
     this._footerStatusEl = null;
   },
 
@@ -205,7 +209,28 @@ export const settingsManager = {
     this._footerStatusEl.classList.toggle('error', Boolean(message) && isError);
   },
 
+  _syncDraftVariablesFromSteps() {
+    if (!this._draftAliasScope || !this._draftAliasScope.variables) return;
+    const stepLists = [];
+    if (Array.isArray(this._draftAliasScope.aliases)) {
+      stepLists.push(...this._draftAliasScope.aliases.map((alias) => alias.steps || []));
+    }
+    if (this._draftTriggerScope && Array.isArray(this._draftTriggerScope.triggers)) {
+      stepLists.push(...this._draftTriggerScope.triggers.map((trigger) => trigger.steps || []));
+    }
+
+    stepLists.forEach((steps) => {
+      steps.forEach((step) => {
+        const name = String(step && step.type === 'set_variable' ? step.name || '' : '').trim();
+        if (name && !Object.prototype.hasOwnProperty.call(this._draftAliasScope.variables, name)) {
+          this._draftAliasScope.variables[name] = '';
+        }
+      });
+    });
+  },
+
   _buildSettingsBundle() {
+    this._syncDraftVariablesFromSteps();
     const aliasData = JSON.parse(JSON.stringify(aliasManager._data || { scopes: {} }));
     const highlightData = JSON.parse(JSON.stringify(highlightManager._data || { scopes: {} }));
     const triggerData = JSON.parse(JSON.stringify(triggerManager._data || { scopes: {} }));
@@ -816,6 +841,9 @@ export const settingsManager = {
         list.appendChild(empty);
       }
 
+      const addActions = document.createElement('div');
+      addActions.className = 'settings-inline-actions';
+
       const actions = document.createElement('div');
       actions.className = 'settings-inline-actions';
 
@@ -872,13 +900,14 @@ export const settingsManager = {
         render();
       });
 
-      actions.appendChild(addBtn);
+      addActions.appendChild(addBtn);
       actions.appendChild(upBtn);
       actions.appendChild(downBtn);
       actions.appendChild(removeBtn);
 
       sidebar.appendChild(title);
       sidebar.appendChild(search);
+      sidebar.appendChild(addActions);
       sidebar.appendChild(list);
       sidebar.appendChild(actions);
       list.scrollTop = previousScrollTop;
@@ -895,6 +924,188 @@ export const settingsManager = {
     layout.appendChild(editor);
     wrapper.appendChild(layout);
     wrapper.appendChild(previewCard);
+
+    render();
+    return wrapper;
+  },
+
+  _createVariablesEditor() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'settings-aliases-editor';
+
+    const scopeCard = document.createElement('div');
+    scopeCard.className = 'settings-connection-card';
+
+    const scopeLabel = document.createElement('div');
+    scopeLabel.className = 'settings-label';
+    scopeLabel.textContent = 'Active alias scope';
+
+    const scopeValue = document.createElement('div');
+    scopeValue.className = 'settings-connection-value';
+    scopeValue.textContent = this._aliasScopeKey;
+
+    const scopeHelp = document.createElement('p');
+    scopeHelp.className = 'dw-paragraph';
+    scopeHelp.textContent = 'Variables are saved with aliases for each server connection target.';
+
+    scopeCard.appendChild(scopeLabel);
+    scopeCard.appendChild(scopeValue);
+    scopeCard.appendChild(scopeHelp);
+    wrapper.appendChild(scopeCard);
+
+    const variableCard = document.createElement('div');
+    variableCard.className = 'settings-mapper-editor settings-alias-variable-card';
+    wrapper.appendChild(variableCard);
+
+    const render = () => {
+      this._syncDraftVariablesFromSteps();
+      variableCard.textContent = '';
+
+      const title = document.createElement('div');
+      title.className = 'settings-label';
+      title.textContent = 'Variables';
+
+      const help = document.createElement('p');
+      help.className = 'dw-paragraph settings-helper-text';
+      help.textContent = 'Persistent variables back aliases like $pack. Aliases can also write to them with Set variable steps.';
+
+      variableCard.appendChild(title);
+      variableCard.appendChild(help);
+
+      const usageDetails = aliasManager.collectAliasUsageDetails(this._draftAliasScope);
+      const entries = Object.entries(this._draftAliasScope.variables).sort((a, b) => a[0].localeCompare(b[0]));
+
+      const actions = document.createElement('div');
+      actions.className = 'settings-inline-actions';
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'dw-button dw-button-secondary';
+      addBtn.textContent = 'Add variable';
+      addBtn.addEventListener('click', () => {
+        let index = 1;
+        let nextName = 'var' + index;
+        while (Object.prototype.hasOwnProperty.call(this._draftAliasScope.variables, nextName)) {
+          index++;
+          nextName = 'var' + index;
+        }
+        this._draftAliasScope.variables[nextName] = '';
+        render();
+      });
+
+      actions.appendChild(addBtn);
+      variableCard.appendChild(actions);
+
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'settings-alias-empty settings-alias-variable-empty';
+
+        const emptyText = document.createElement('div');
+        emptyText.textContent = 'No variables yet. Add one here, or open Aliases and write a Set variable step.';
+
+        const openAliasesBtn = document.createElement('button');
+        openAliasesBtn.type = 'button';
+        openAliasesBtn.className = 'dw-button dw-button-secondary';
+        openAliasesBtn.textContent = 'Open Aliases';
+        openAliasesBtn.addEventListener('click', () => {
+          if (this._activateTab) this._activateTab('aliases');
+        });
+
+        empty.appendChild(emptyText);
+        empty.appendChild(openAliasesBtn);
+        variableCard.appendChild(empty);
+        return;
+      }
+
+      const list = document.createElement('div');
+      list.className = 'settings-alias-variable-list';
+
+      const addVariableRow = (name, value) => {
+        let currentName = name;
+        let expanded = false;
+        const rowWrap = document.createElement('div');
+        rowWrap.className = 'settings-alias-variable-row-wrap';
+
+        const row = document.createElement('div');
+        row.className = 'settings-alias-variable-row';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'dw-input';
+        nameInput.placeholder = 'pack';
+        nameInput.value = name;
+
+        const valueInput = document.createElement('input');
+        valueInput.type = 'text';
+        valueInput.className = 'dw-input';
+        valueInput.placeholder = 'mule';
+        valueInput.value = value;
+
+        const usageButton = document.createElement('button');
+        usageButton.type = 'button';
+        usageButton.className = 'dw-button dw-button-secondary settings-alias-usage-btn';
+        const references = usageDetails.get(name) || [];
+        usageButton.textContent = references.length + ' reference' + (references.length === 1 ? '' : 's');
+        usageButton.disabled = !references.length;
+
+        const usageList = document.createElement('div');
+        usageList.className = 'settings-alias-usage-list';
+
+        const renderUsageList = () => {
+          usageList.textContent = '';
+          if (!expanded || !references.length) return;
+          references.forEach((alias) => {
+            const aliasBtn = document.createElement('button');
+            aliasBtn.type = 'button';
+            aliasBtn.className = 'settings-alias-usage-item';
+            aliasBtn.textContent = alias.trigger + (alias.description ? ' - ' + alias.description : '');
+            aliasBtn.addEventListener('click', () => {
+              this._pendingAliasSelection = alias.id;
+              if (this._activateTab) this._activateTab('aliases');
+            });
+            usageList.appendChild(aliasBtn);
+          });
+        };
+
+        usageButton.addEventListener('click', () => {
+          expanded = !expanded;
+          renderUsageList();
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
+          delete this._draftAliasScope.variables[currentName];
+          render();
+        });
+
+        const sync = () => {
+          const normalizedName = nameInput.value.trim();
+          if (normalizedName !== currentName) {
+            delete this._draftAliasScope.variables[currentName];
+            currentName = normalizedName;
+          }
+          if (!normalizedName) return;
+          this._draftAliasScope.variables[normalizedName] = valueInput.value;
+        };
+
+        nameInput.addEventListener('input', sync);
+        valueInput.addEventListener('input', sync);
+
+        row.appendChild(nameInput);
+        row.appendChild(valueInput);
+        row.appendChild(usageButton);
+        row.appendChild(removeBtn);
+        rowWrap.appendChild(row);
+        rowWrap.appendChild(usageList);
+        list.appendChild(rowWrap);
+      };
+
+      entries.forEach(([name, value]) => addVariableRow(name, value));
+      variableCard.appendChild(list);
+    };
 
     render();
     return wrapper;
@@ -933,13 +1144,11 @@ export const settingsManager = {
     const editor = document.createElement('div');
     editor.className = 'settings-alias-detail';
 
-    const variableCard = document.createElement('div');
-    variableCard.className = 'settings-mapper-editor settings-alias-variable-card';
-
     const previewCard = document.createElement('div');
     previewCard.className = 'settings-mapper-editor settings-alias-preview-card';
 
-    let selectedAliasId = this._draftAliasScope.aliases[0] ? this._draftAliasScope.aliases[0].id : null;
+    let selectedAliasId = this._pendingAliasSelection || (this._draftAliasScope.aliases[0] ? this._draftAliasScope.aliases[0].id : null);
+    this._pendingAliasSelection = null;
     let searchTerm = '';
     let sampleInput = '';
 
@@ -1041,100 +1250,6 @@ export const settingsManager = {
       previewCard.appendChild(sampleInputEl);
       previewCard.appendChild(aliasPreviewBody);
       renderPreviewBody();
-    };
-
-    const renderVariables = () => {
-      variableCard.textContent = '';
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Variables';
-
-      const help = document.createElement('p');
-      help.className = 'dw-paragraph settings-helper-text';
-      help.textContent = 'Persistent variables back aliases like $pack. They can be edited here or written by alias steps.';
-
-      variableCard.appendChild(title);
-      variableCard.appendChild(help);
-
-      const usage = aliasManager.collectAliasUsage(this._draftAliasScope);
-      const list = document.createElement('div');
-      list.className = 'settings-alias-variable-list';
-      const entries = Object.entries(this._draftAliasScope.variables).sort((a, b) => a[0].localeCompare(b[0]));
-
-      const addVariableRow = (name, value) => {
-        let currentName = name;
-        const row = document.createElement('div');
-        row.className = 'settings-alias-variable-row';
-
-        const nameInput = document.createElement('input');
-        nameInput.type = 'text';
-        nameInput.className = 'dw-input';
-        nameInput.placeholder = 'pack';
-        nameInput.value = name;
-
-        const valueInput = document.createElement('input');
-        valueInput.type = 'text';
-        valueInput.className = 'dw-input';
-        valueInput.placeholder = 'mule';
-        valueInput.value = value;
-
-        const usageBadge = document.createElement('div');
-        usageBadge.className = 'settings-alias-usage';
-        usageBadge.textContent = (usage.get(name) || 0) + ' reference' + ((usage.get(name) || 0) === 1 ? '' : 's');
-
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
-        removeBtn.textContent = 'Remove';
-        removeBtn.addEventListener('click', () => {
-          delete this._draftAliasScope.variables[currentName];
-          render();
-        });
-
-        const sync = () => {
-          const normalizedName = nameInput.value.trim();
-          if (normalizedName !== currentName) {
-            delete this._draftAliasScope.variables[currentName];
-            currentName = normalizedName;
-          }
-          if (!normalizedName) return;
-          this._draftAliasScope.variables[normalizedName] = valueInput.value;
-        };
-
-        nameInput.addEventListener('input', sync);
-        valueInput.addEventListener('input', sync);
-
-        row.appendChild(nameInput);
-        row.appendChild(valueInput);
-        row.appendChild(usageBadge);
-        row.appendChild(removeBtn);
-        list.appendChild(row);
-      };
-
-      entries.forEach(([name, value]) => addVariableRow(name, value));
-      variableCard.appendChild(list);
-
-      const actions = document.createElement('div');
-      actions.className = 'settings-inline-actions';
-
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'dw-button dw-button-secondary';
-      addBtn.textContent = 'Add variable';
-      addBtn.addEventListener('click', () => {
-        let index = 1;
-        let nextName = 'var' + index;
-        while (Object.prototype.hasOwnProperty.call(this._draftAliasScope.variables, nextName)) {
-          index++;
-          nextName = 'var' + index;
-        }
-        this._draftAliasScope.variables[nextName] = '';
-        render();
-      });
-
-      actions.appendChild(addBtn);
-      variableCard.appendChild(actions);
     };
 
     const renderAliasDetail = () => {
@@ -1447,6 +1562,9 @@ export const settingsManager = {
         list.appendChild(empty);
       }
 
+      const addActions = document.createElement('div');
+      addActions.className = 'settings-inline-actions';
+
       const actions = document.createElement('div');
       actions.className = 'settings-inline-actions';
 
@@ -1474,10 +1592,11 @@ export const settingsManager = {
         render();
       });
 
-      actions.appendChild(addBtn);
+      addActions.appendChild(addBtn);
       actions.appendChild(removeBtn);
       sidebar.appendChild(title);
       sidebar.appendChild(search);
+      sidebar.appendChild(addActions);
       sidebar.appendChild(list);
       sidebar.appendChild(actions);
       list.scrollTop = previousScrollTop;
@@ -1487,14 +1606,12 @@ export const settingsManager = {
       ensureSelectedAlias();
       renderAliasList();
       renderAliasDetail();
-      renderVariables();
       renderPreview();
     };
 
     layout.appendChild(sidebar);
     layout.appendChild(editor);
     wrapper.appendChild(layout);
-    wrapper.appendChild(variableCard);
     wrapper.appendChild(previewCard);
 
     render();
@@ -1968,6 +2085,9 @@ export const settingsManager = {
         list.appendChild(empty);
       }
 
+      const addActions = document.createElement('div');
+      addActions.className = 'settings-inline-actions';
+
       const actions = document.createElement('div');
       actions.className = 'settings-inline-actions';
 
@@ -1995,10 +2115,11 @@ export const settingsManager = {
         render();
       });
 
-      actions.appendChild(addBtn);
+      addActions.appendChild(addBtn);
       actions.appendChild(removeBtn);
       sidebar.appendChild(title);
       sidebar.appendChild(search);
+      sidebar.appendChild(addActions);
       sidebar.appendChild(list);
       sidebar.appendChild(actions);
       list.scrollTop = previousScrollTop;
@@ -2143,7 +2264,11 @@ export const settingsManager = {
 
     const tabButtons = new Map();
     const tabContents = new Map();
+    let renderAliasesSection = null;
+    let renderVariablesSection = null;
     const activateTab = (key) => {
+      if (key === 'aliases' && renderAliasesSection) renderAliasesSection();
+      if (key === 'variables' && renderVariablesSection) renderVariablesSection();
       for (const [tabKey, btn] of tabButtons) {
         btn.classList.toggle('active', tabKey === key);
       }
@@ -2151,6 +2276,7 @@ export const settingsManager = {
         panel.style.display = tabKey === key ? 'flex' : 'none';
       }
     };
+    this._activateTab = activateTab;
     const createTab = (key, label) => {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -2174,6 +2300,7 @@ export const settingsManager = {
     const triggersSection = createTab('triggers', 'Triggers');
     const highlightsSection = createTab('highlights', 'Highlights');
     const aliasesSection = createTab('aliases', 'Aliases');
+    const variablesSection = createTab('variables', 'Variables');
     const aboutSection = createTab('about', 'About');
 
     const sectionTitle = document.createElement('h3');
@@ -2310,11 +2437,25 @@ export const settingsManager = {
     highlightsSection.appendChild(highlightsTitle);
     highlightsSection.appendChild(this._createHighlightEditor());
 
-    const aliasesTitle = document.createElement('h3');
-    aliasesTitle.className = 'dw-heading';
-    aliasesTitle.textContent = 'Aliases';
-    aliasesSection.appendChild(aliasesTitle);
-    aliasesSection.appendChild(this._createAliasEditor());
+    renderAliasesSection = () => {
+      aliasesSection.textContent = '';
+      const aliasesTitle = document.createElement('h3');
+      aliasesTitle.className = 'dw-heading';
+      aliasesTitle.textContent = 'Aliases';
+      aliasesSection.appendChild(aliasesTitle);
+      aliasesSection.appendChild(this._createAliasEditor());
+    };
+    renderAliasesSection();
+
+    renderVariablesSection = () => {
+      variablesSection.textContent = '';
+      const variablesTitle = document.createElement('h3');
+      variablesTitle.className = 'dw-heading';
+      variablesTitle.textContent = 'Variables';
+      variablesSection.appendChild(variablesTitle);
+      variablesSection.appendChild(this._createVariablesEditor());
+    };
+    renderVariablesSection();
 
     const aboutTitle = document.createElement('h3');
     aboutTitle.className = 'dw-heading';
@@ -2336,6 +2477,9 @@ export const settingsManager = {
       nextHighlightsTitle.textContent = 'Highlights';
       highlightsSection.appendChild(nextHighlightsTitle);
       highlightsSection.appendChild(this._createHighlightEditor());
+
+      if (renderAliasesSection) renderAliasesSection();
+      if (renderVariablesSection) renderVariablesSection();
     };
 
     activateTab('connection');
@@ -2369,6 +2513,7 @@ export const settingsManager = {
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', () => {
       this._applySettings(this._draftSettings);
+      this._syncDraftVariablesFromSteps();
       triggerManager.saveScope(this._triggerScopeKey, this._draftTriggerScope);
       highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
       aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);

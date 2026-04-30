@@ -446,6 +446,33 @@ export const aliasManager = {
 
     return usage;
   },
+
+  collectAliasUsageDetails(scope) {
+    const usage = new Map();
+    const aliases = Array.isArray(scope && scope.aliases) ? scope.aliases : [];
+
+    for (const alias of aliases) {
+      const names = new Set();
+      for (const step of alias.steps || []) {
+        const template = String(step.template || '');
+        const matches = template.match(/\$([A-Za-z_][A-Za-z0-9_]*)/g) || [];
+        for (const match of matches) {
+          names.add(match.slice(1));
+        }
+      }
+
+      for (const name of names) {
+        if (!usage.has(name)) usage.set(name, []);
+        usage.get(name).push({
+          id: alias.id,
+          trigger: alias.trigger || '(untitled)',
+          description: alias.description || '',
+        });
+      }
+    }
+
+    return usage;
+  },
 };
 
 export { tokenizeInput };
