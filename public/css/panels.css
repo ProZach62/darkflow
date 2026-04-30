@@ -533,6 +533,7 @@ body.mobile-panel-mode #mobile-panels-btn {
 }
 
 .buff-entry {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -545,6 +546,7 @@ body.mobile-panel-mode #mobile-panels-btn {
   background: #161b22;
   color: #c9d1d9;
   font-size: 11px;
+  overflow: hidden;
 }
 
 .buff-entry-debuff {
@@ -554,12 +556,37 @@ body.mobile-panel-mode #mobile-panels-btn {
   color: #ffb4ad;
 }
 
+.buff-entry-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--buff-pct, 100%);
+  background: rgba(88, 166, 255, 0.18);
+  pointer-events: none;
+}
+
+.buff-entry-debuff .buff-entry-fill {
+  background: rgba(248, 81, 73, 0.2);
+}
+
 .buff-entry-name {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
+.buff-entry-time {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  color: #8b949e;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
 .buff-entry-kind {
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
   color: #f85149;
   font-size: 10px;

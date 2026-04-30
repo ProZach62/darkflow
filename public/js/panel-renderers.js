@@ -15,6 +15,19 @@ export function escHtml(str) {
     .replace(/'/g,'&#39;');
 }
 
+function formatDuration(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(total / 60);
+  const secs = total % 60;
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const remMinutes = minutes % 60;
+    return hours + 'h ' + remMinutes + 'm';
+  }
+  if (minutes > 0) return minutes + 'm ' + secs + 's';
+  return secs + 's';
+}
+
 function formatStatusTitle(title, name) {
   if (!title) return title;
   const displayName = name || '';
@@ -237,9 +250,24 @@ export const panelRenderers = {
     let html = '<div class="buff-list">';
     for (const item of data) {
       const kind = item.kind === 'debuff' ? 'debuff' : (item.kind === 'unknown' ? 'unknown' : 'buff');
-      const desc = item.desc ? ' title="' + escHtml(item.desc) + '"' : '';
-      html += '<div class="buff-entry buff-entry-' + kind + '"' + desc + '>';
+      const duration = Number(item.duration) || 0;
+      const expiresAt = Number(item.expiresAt) || 0;
+      const remaining = duration > 0 && expiresAt > 0
+        ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
+        : (Number(item.remaining) || 0);
+      const pct = duration > 0
+        ? Math.max(0, Math.min(100, Math.round((remaining / duration) * 100)))
+        : 100;
+      const titleParts = [];
+      if (item.desc) titleParts.push(item.desc);
+      if (duration > 0) titleParts.push(formatDuration(remaining) + ' remaining');
+      const desc = titleParts.length ? ' title="' + escHtml(titleParts.join(' - ')) + '"' : '';
+      html += '<div class="buff-entry buff-entry-' + kind + '" style="--buff-pct:' + pct + '%"' + desc + '>';
+      html += '<span class="buff-entry-fill"></span>';
       html += '<span class="buff-entry-name">' + escHtml(item.name) + '</span>';
+      if (duration > 0) {
+        html += '<span class="buff-entry-time">' + escHtml(formatDuration(remaining)) + '</span>';
+      }
       if (kind === 'debuff') {
         html += '<span class="buff-entry-kind">Debuff</span>';
       }

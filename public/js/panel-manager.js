@@ -18,10 +18,15 @@ function normalizeDefenceEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const name = entry.name !== undefined && entry.name !== null ? String(entry.name) : '';
   if (!name) return null;
+  const duration = Number(entry.duration) || 0;
+  const remaining = Number(entry.remaining) || 0;
   return {
     name,
     desc: entry.desc !== undefined && entry.desc !== null ? String(entry.desc) : '',
     kind: normalizeDefenceKind(entry.kind),
+    duration,
+    remaining,
+    expiresAt: remaining > 0 ? Date.now() + (remaining * 1000) : 0,
   };
 }
 
@@ -37,6 +42,7 @@ export const panelManager = {
   gmcpData: {},
   _saveTimer: null,
   _subscriptionTimer: null,
+  _buffTimer: null,
   _pendingPanelRenders: new Set(),
   _panelRenderFrame: null,
   _mobile: {
@@ -634,6 +640,7 @@ export const panelManager = {
       this._mobile.activePanelId = this._getDefaultMobileActivePanelId();
     }
     this._renderMobileSheet();
+    if (id === 'buffs') this._syncBuffTimer();
     this.saveState();
     this.syncGmcpSubscriptions('panel-close', false);
   },
@@ -648,6 +655,7 @@ export const panelManager = {
       this._mobile.activePanelId = id;
       this._renderMobileSheet();
     }
+    if (id === 'buffs') this._syncBuffTimer();
     this.saveState();
     this.syncGmcpSubscriptions('panel-open', false);
   },
@@ -843,6 +851,29 @@ export const panelManager = {
     if (!p) return;
     const renderer = panelRenderers[id];
     if (renderer) renderer(p.bodyEl, this.gmcpData[id]);
+  },
+
+  _syncBuffTimer() {
+    const visible = !!(this.state.panels.buffs && this.state.panels.buffs.visible && this.panels.buffs);
+    const hasTimedBuffs = Array.isArray(this.gmcpData.buffs) &&
+      this.gmcpData.buffs.some((entry) => entry.duration > 0 && entry.expiresAt > 0);
+
+    if (!visible || !hasTimedBuffs) {
+      if (this._buffTimer) {
+        clearInterval(this._buffTimer);
+        this._buffTimer = null;
+      }
+      return;
+    }
+
+    if (this._buffTimer) return;
+    this._buffTimer = setInterval(() => {
+      if (!this.state.panels.buffs || !this.state.panels.buffs.visible || !this.panels.buffs) {
+        this._syncBuffTimer();
+        return;
+      }
+      this._renderPanel('buffs');
+    }, 1000);
   },
 
   _queuePanelRender(id) {
@@ -1271,6 +1302,7 @@ export const panelManager = {
         ? data.map(normalizeDefenceEntry).filter(Boolean)
         : [];
       this._renderPanel('buffs');
+      this._syncBuffTimer();
     });
 
     gmcp.on('Char.Defences.Add', (data) => {
@@ -1281,6 +1313,7 @@ export const panelManager = {
       if (idx >= 0) this.gmcpData.buffs[idx] = entry;
       else this.gmcpData.buffs.push(entry);
       this._renderPanel('buffs');
+      this._syncBuffTimer();
     });
 
     gmcp.on('Char.Defences.Remove', (data) => {
@@ -1291,6 +1324,7 @@ export const panelManager = {
         entry.name !== key && entry.desc !== key
       );
       this._renderPanel('buffs');
+      this._syncBuffTimer();
     });
 
     gmcp.on('Char.Worth', (data) => {
