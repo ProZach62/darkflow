@@ -57,6 +57,65 @@ app.use(express.static(path.join(__dirname, 'public')));
 // v1: open relay with logging. Future: allowlist (see docs).
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Telnet IAC parser. Strips IAC sequences from upstream bytes, replies
+// DONT/WONT to all WILL/DO so MUDs don't hang waiting for negotiation, and
+// handles partial IAC sequences across chunk boundaries via a per-connection
+// pending buffer. SB ... SE subnegotiations are discarded entirely. Returns
+// { text: Buffer, reply: Buffer|null }.
+const IAC = 0xFF, DONT = 0xFE, DO = 0xFD, WONT = 0xFC, WILL = 0xFB;
+const SB = 0xFA, SE = 0xF0;
+
+function makeTelnetParser() {
+  let pending = Buffer.alloc(0);
+  return function parse(chunk) {
+    const buf = pending.length ? Buffer.concat([pending, chunk]) : chunk;
+    pending = Buffer.alloc(0);
+    const out = [];
+    const reply = [];
+    let i = 0;
+    while (i < buf.length) {
+      const b = buf[i];
+      if (b !== IAC) {
+        out.push(b);
+        i++;
+        continue;
+      }
+      if (i + 1 >= buf.length) { pending = buf.slice(i); break; }
+      const cmd = buf[i + 1];
+      if (cmd === IAC) {
+        out.push(IAC);
+        i += 2;
+        continue;
+      }
+      if (cmd === WILL || cmd === WONT || cmd === DO || cmd === DONT) {
+        if (i + 2 >= buf.length) { pending = buf.slice(i); break; }
+        const opt = buf[i + 2];
+        if (cmd === WILL) reply.push(IAC, DONT, opt);
+        else if (cmd === DO) reply.push(IAC, WONT, opt);
+        i += 3;
+        continue;
+      }
+      if (cmd === SB) {
+        let j = i + 2;
+        let end = -1;
+        while (j < buf.length - 1) {
+          if (buf[j] === IAC && buf[j + 1] === SE) { end = j + 2; break; }
+          j++;
+        }
+        if (end < 0) { pending = buf.slice(i); break; }
+        i = end;
+        continue;
+      }
+      // Other 2-byte commands (NOP, GA, etc.): consume both.
+      i += 2;
+    }
+    return {
+      text: Buffer.from(out),
+      reply: reply.length ? Buffer.from(reply) : null,
+    };
+  };
+}
+
 const LOG_DIR = path.join(__dirname, 'log');
 const PROXY_LOG = path.join(LOG_DIR, 'proxy.log');
 try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch(e) { /* ignore */ }
@@ -88,6 +147,7 @@ wss.on('connection', (ws, req) => {
 
   logProxy({ event: 'connect', sourceIp, host, port, tls: useTls });
 
+  const telnetParser = makeTelnetParser();
   let bytesUp = 0, bytesDown = 0;
   let upstream;
   try {
@@ -109,8 +169,16 @@ wss.on('connection', (ws, req) => {
   });
   upstream.on('data', (chunk) => {
     bytesDown += chunk.length;
-    if (ws.readyState === ws.OPEN) {
-      try { ws.send(chunk); }
+    const { text, reply } = telnetParser(chunk);
+    // Politely decline any IAC negotiation the MUD asked for.
+    if (reply && !upstream.destroyed) {
+      try { upstream.write(reply); } catch(e) {}
+    }
+    // Forward game text as a UTF-8 text frame so Darkflow's onmessage routes
+    // it to appendOutput() rather than the GMCP dispatcher (which would
+    // happen for a binary frame).
+    if (text.length && ws.readyState === ws.OPEN) {
+      try { ws.send(text.toString('utf-8')); }
       catch (err) {
         logProxy({ event: 'ws-send-error', sourceIp, host, port, error: err.message });
       }
