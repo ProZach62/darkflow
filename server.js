@@ -196,8 +196,19 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('message', (data, isBinary) => {
-    // ws gives us a Buffer for binary, string for text. Coerce to Buffer for net.
-    const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    // Drop binary frames - those are Darkflow's GMCP handshake/subscriptions
+    // and have no meaning to a non-Darkwind MUD; forwarding them would inject
+    // random bytes into the telnet stream.
+    if (isBinary) return;
+
+    // Text frame: a user command. The browser doesn't add a terminator
+    // (Darkwind treats the WS frame boundary as the line break) but raw
+    // telnet MUDs read from a TCP stream and wait for CRLF. Normalize all
+    // line endings to \r\n and ensure a trailing one.
+    const raw = Buffer.isBuffer(data) ? data.toString('utf-8') : String(data);
+    const normalized = raw.replace(/\r\n|\r|\n/g, '\r\n');
+    const out = normalized.endsWith('\r\n') ? normalized : normalized + '\r\n';
+    const buf = Buffer.from(out, 'utf-8');
     bytesUp += buf.length;
     if (!upstream.destroyed) {
       try { upstream.write(buf); }
