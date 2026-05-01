@@ -60,6 +60,10 @@ function isReadOnlyValue(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
 
+function isEditableValue(value) {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
 export const ideEditor = {
   view: null,
   overlay: null,
@@ -88,7 +92,7 @@ export const ideEditor = {
     this.callbacks = callbacks;
     this.currentPath = data.path || '';
     this.originalContent = data.content || '';
-    this.readOnly = isReadOnlyValue(data.readOnly);
+    this.readOnly = isEditableValue(data.editable) ? false : isReadOnlyValue(data.readOnly);
     this.saveBtn = null;
     this.closeBtn = null;
 
