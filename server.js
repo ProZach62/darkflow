@@ -57,21 +57,30 @@ app.use(express.static(path.join(__dirname, 'public')));
 // v1: open relay with logging. Future: allowlist (see docs).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Telnet IAC parser. Strips IAC sequences from upstream bytes, replies
-// DONT/WONT to all WILL/DO so MUDs don't hang waiting for negotiation, and
-// handles partial IAC sequences across chunk boundaries via a per-connection
-// pending buffer. SB ... SE subnegotiations are discarded entirely. Returns
-// { text: Buffer, reply: Buffer|null }.
+// Telnet IAC parser with GMCP bridging.
+// - Strips IAC sequences from upstream bytes so they don't pollute output.
+// - Accepts GMCP (option 201): WILL/DO GMCP gets reciprocated, all other
+//   WILL/DO get replies DONT/WONT so MUDs don't stall waiting.
+// - Extracts IAC SB 201 <payload> IAC SE blocks as separate gmcpFrames so
+//   the proxy can ship them to the browser as binary WS frames.
+// - Discards every other SB block (MCCP, MSDP, MSSP, ...) silently.
+// - Buffers partial IAC sequences across chunk boundaries.
+// Construct with onGmcpAgreed() callback to be notified when GMCP
+// negotiation completes (so buffered browser->MUD GMCP can be flushed).
 const IAC = 0xFF, DONT = 0xFE, DO = 0xFD, WONT = 0xFC, WILL = 0xFB;
 const SB = 0xFA, SE = 0xF0;
+const TELOPT_GMCP = 0xC9; // 201
 
-function makeTelnetParser() {
+function makeTelnetParser({ onGmcpAgreed } = {}) {
   let pending = Buffer.alloc(0);
-  return function parse(chunk) {
+  let gmcpAgreed = false;
+
+  function parse(chunk) {
     const buf = pending.length ? Buffer.concat([pending, chunk]) : chunk;
     pending = Buffer.alloc(0);
     const out = [];
     const reply = [];
+    const gmcpFrames = [];
     let i = 0;
     while (i < buf.length) {
       const b = buf[i];
@@ -90,19 +99,45 @@ function makeTelnetParser() {
       if (cmd === WILL || cmd === WONT || cmd === DO || cmd === DONT) {
         if (i + 2 >= buf.length) { pending = buf.slice(i); break; }
         const opt = buf[i + 2];
-        if (cmd === WILL) reply.push(IAC, DONT, opt);
-        else if (cmd === DO) reply.push(IAC, WONT, opt);
+        if (opt === TELOPT_GMCP) {
+          if (cmd === WILL) {
+            reply.push(IAC, DO, opt);
+            if (!gmcpAgreed) {
+              gmcpAgreed = true;
+              if (typeof onGmcpAgreed === 'function') onGmcpAgreed();
+            }
+          } else if (cmd === DO) {
+            reply.push(IAC, WILL, opt);
+          }
+          // WONT/DONT GMCP: nothing to reply; gmcpAgreed stays false.
+        } else {
+          if (cmd === WILL) reply.push(IAC, DONT, opt);
+          else if (cmd === DO) reply.push(IAC, WONT, opt);
+        }
         i += 3;
         continue;
       }
       if (cmd === SB) {
+        // Find matching IAC SE; inside SB, IAC IAC is an escaped 0xFF byte.
         let j = i + 2;
         let end = -1;
         while (j < buf.length - 1) {
-          if (buf[j] === IAC && buf[j + 1] === SE) { end = j + 2; break; }
+          if (buf[j] === IAC) {
+            if (buf[j + 1] === IAC) { j += 2; continue; }
+            if (buf[j + 1] === SE) { end = j + 2; break; }
+          }
           j++;
         }
         if (end < 0) { pending = buf.slice(i); break; }
+        // Extract GMCP payload if this was an SB GMCP block.
+        if (i + 2 < buf.length && buf[i + 2] === TELOPT_GMCP) {
+          const payload = [];
+          for (let k = i + 3; k < end - 2; k++) {
+            if (buf[k] === IAC && buf[k + 1] === IAC) { payload.push(IAC); k++; }
+            else payload.push(buf[k]);
+          }
+          gmcpFrames.push(Buffer.from(payload));
+        }
         i = end;
         continue;
       }
@@ -112,9 +147,31 @@ function makeTelnetParser() {
     return {
       text: Buffer.from(out),
       reply: reply.length ? Buffer.from(reply) : null,
+      gmcpFrames,
     };
-  };
+  }
+
+  return { parse, isGmcpAgreed: () => gmcpAgreed };
 }
+
+// Wrap a GMCP payload as an IAC SB 201 ... IAC SE block.
+// Any 0xFF byte in the payload is escaped as IAC IAC.
+function wrapGmcp(payload) {
+  const escaped = [];
+  for (let i = 0; i < payload.length; i++) {
+    if (payload[i] === IAC) escaped.push(IAC, IAC);
+    else escaped.push(payload[i]);
+  }
+  return Buffer.concat([
+    Buffer.from([IAC, SB, TELOPT_GMCP]),
+    Buffer.from(escaped),
+    Buffer.from([IAC, SE]),
+  ]);
+}
+
+// Cap on the pending GMCP buffer (browser->MUD) before negotiation completes,
+// to bound memory if a non-GMCP MUD is connected.
+const MAX_PENDING_GMCP_BYTES = 64 * 1024;
 
 const LOG_DIR = path.join(__dirname, 'log');
 const PROXY_LOG = path.join(LOG_DIR, 'proxy.log');
@@ -147,7 +204,27 @@ wss.on('connection', (ws, req) => {
 
   logProxy({ event: 'connect', sourceIp, host, port, tls: useTls });
 
-  const telnetParser = makeTelnetParser();
+  // Pending browser->MUD GMCP frames, held until the MUD agrees to GMCP.
+  const pendingGmcp = [];
+  let pendingGmcpBytes = 0;
+
+  function flushPendingGmcp() {
+    while (pendingGmcp.length && !upstream.destroyed) {
+      const frame = pendingGmcp.shift();
+      pendingGmcpBytes -= frame.length;
+      try { upstream.write(wrapGmcp(frame)); }
+      catch (err) {
+        logProxy({ event: 'gmcp-flush-error', sourceIp, host, port, error: err.message });
+      }
+    }
+  }
+
+  const telnet = makeTelnetParser({
+    onGmcpAgreed: () => {
+      logProxy({ event: 'gmcp-agreed', sourceIp, host, port, pending: pendingGmcp.length });
+      flushPendingGmcp();
+    }
+  });
   let bytesUp = 0, bytesDown = 0;
   let upstream;
   try {
@@ -162,6 +239,11 @@ wss.on('connection', (ws, req) => {
 
   upstream.on('connect', () => {
     logProxy({ event: 'upstream-open', sourceIp, host, port, tls: useTls });
+    // Proactively invite GMCP from the MUD. MUDs that don't support it will
+    // reply WONT and we proceed text-only; MUDs that do will start emitting
+    // SB 201 ... IAC SE blocks. This shaves a round-trip for MUDs that
+    // wait for the client to indicate support first.
+    try { upstream.write(Buffer.from([IAC, DO, TELOPT_GMCP])); } catch(e) {}
   });
   // tls.connect emits 'secureConnect' once TLS handshake completes
   upstream.on('secureConnect', () => {
@@ -169,18 +251,27 @@ wss.on('connection', (ws, req) => {
   });
   upstream.on('data', (chunk) => {
     bytesDown += chunk.length;
-    const { text, reply } = telnetParser(chunk);
-    // Politely decline any IAC negotiation the MUD asked for.
+    const { text, reply, gmcpFrames } = telnet.parse(chunk);
+    // Reply to IAC negotiation (DO/WILL GMCP, DONT/WONT for everything else).
     if (reply && !upstream.destroyed) {
       try { upstream.write(reply); } catch(e) {}
     }
     // Forward game text as a UTF-8 text frame so Darkflow's onmessage routes
-    // it to appendOutput() rather than the GMCP dispatcher (which would
-    // happen for a binary frame).
+    // it to appendOutput() rather than the GMCP dispatcher.
     if (text.length && ws.readyState === ws.OPEN) {
       try { ws.send(text.toString('utf-8')); }
       catch (err) {
         logProxy({ event: 'ws-send-error', sourceIp, host, port, error: err.message });
+      }
+    }
+    // Forward extracted GMCP frames as binary so the browser's GMCP dispatcher
+    // handles them just like Darkwind's WS-native GMCP.
+    for (const frame of gmcpFrames) {
+      if (ws.readyState === ws.OPEN) {
+        try { ws.send(frame); }
+        catch (err) {
+          logProxy({ event: 'ws-gmcp-send-error', sourceIp, host, port, error: err.message });
+        }
       }
     }
   });
@@ -196,10 +287,33 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('message', (data, isBinary) => {
-    // Drop binary frames - those are Darkflow's GMCP handshake/subscriptions
-    // and have no meaning to a non-Darkwind MUD; forwarding them would inject
-    // random bytes into the telnet stream.
-    if (isBinary) return;
+    if (isBinary) {
+      // Darkflow GMCP frame. Wrap as IAC SB 201 ... IAC SE for the MUD.
+      // If GMCP hasn't been negotiated yet, queue (the MUD might still WILL
+      // GMCP shortly after connect). If the MUD never agrees, the queue is
+      // capped and frames are dropped silently.
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+      if (telnet.isGmcpAgreed()) {
+        bytesUp += buf.length;
+        if (!upstream.destroyed) {
+          try { upstream.write(wrapGmcp(buf)); }
+          catch (err) {
+            logProxy({ event: 'upstream-write-error', sourceIp, host, port, error: err.message });
+          }
+        }
+        return;
+      }
+      // Drop oldest pending frames if cap exceeded.
+      while (pendingGmcp.length && pendingGmcpBytes + buf.length > MAX_PENDING_GMCP_BYTES) {
+        pendingGmcpBytes -= pendingGmcp[0].length;
+        pendingGmcp.shift();
+      }
+      // If a single frame is bigger than the cap, drop it.
+      if (buf.length > MAX_PENDING_GMCP_BYTES) return;
+      pendingGmcp.push(buf);
+      pendingGmcpBytes += buf.length;
+      return;
+    }
 
     // Text frame: a user command. The browser doesn't add a terminator
     // (Darkwind treats the WS frame boundary as the line break) but raw
