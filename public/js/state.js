@@ -47,7 +47,7 @@ export const state = {
 export const dom = {
   host: null,
   port: null,
-  wssToggle: null,
+  protocolSelect: null,
   connectBtn: null,
   connectionState: null,
   connectionDot: null,
@@ -80,7 +80,7 @@ export const dom = {
 export function initDom() {
   dom.host = document.getElementById('host');
   dom.port = document.getElementById('port');
-  dom.wssToggle = document.getElementById('wss-toggle');
+  dom.protocolSelect = document.getElementById('protocol-select');
   dom.connectBtn = document.getElementById('connect-btn');
   dom.connectionState = document.getElementById('connection-state');
   dom.connectionDot = document.getElementById('connection-dot');

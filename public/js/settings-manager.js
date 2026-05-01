@@ -2325,7 +2325,7 @@ export const settingsManager = {
       detailsLabel.className = 'settings-label';
       detailsLabel.textContent = 'Current connection';
 
-      const proto = dom.wssToggle.checked ? 'wss' : 'ws';
+      const proto = dom.protocolSelect ? dom.protocolSelect.value : 'wss';
       const detailsValue = document.createElement('div');
       detailsValue.className = 'settings-connection-value';
       detailsValue.textContent = proto + '://' + (dom.host.value || 'localhost') + ':' + (dom.port.value || '4242');

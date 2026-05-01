@@ -287,8 +287,17 @@ fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
   const urlParams = new URLSearchParams(window.location.search);
   dom.host.value = urlParams.get('host') || config.host || '';
   dom.port.value = urlParams.get('port') || config.port || '4242';
-  dom.wssToggle.checked = urlParams.has('wss') ? urlParams.get('wss') !== '0'
-    : config.wss !== undefined ? config.wss : true;
+
+  // Protocol selector. Precedence: ?type= > ?wss= (back-compat) > localStorage > config.wss > 'wss'.
+  let proto = urlParams.get('type');
+  if (!proto && urlParams.has('wss')) {
+    proto = urlParams.get('wss') !== '0' ? 'wss' : 'ws';
+  }
+  if (!proto) proto = localStorage.getItem('darkflow-protocol');
+  if (!proto) proto = (config.wss !== undefined && !config.wss) ? 'ws' : 'wss';
+  if (!['ws', 'wss', 'telnet', 'telnets'].includes(proto)) proto = 'wss';
+  dom.protocolSelect.value = proto;
+
   if (config.gameName) {
     updateBranding(config.gameName);
   }
@@ -297,6 +306,15 @@ fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
     connect();
   }
 });
+
+// Persist last-used protocol so users don't have to re-pick on every visit.
+if (dom.protocolSelect) {
+  dom.protocolSelect.addEventListener('change', () => {
+    try {
+      localStorage.setItem('darkflow-protocol', dom.protocolSelect.value);
+    } catch (e) { /* private mode / quota — ignore */ }
+  });
+}
 loadHistory();
 panelManager.init();
 windowManager.init();

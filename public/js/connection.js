@@ -266,10 +266,23 @@ export async function connect() {
     if (state.ws) return;
 
     state.userDisconnected = false;
-    const protocol = dom.wssToggle.checked ? 'wss' : 'ws';
+    const sel = dom.protocolSelect.value || 'wss';
     const host = dom.host.value || 'localhost';
     const port = dom.port.value || '4242';
-    const url = protocol + '://' + host + ':' + port + '/';
+
+    let url;
+    if (sel === 'ws' || sel === 'wss') {
+      // Direct connection: the target itself speaks WebSocket (e.g. Darkwind).
+      url = sel + '://' + host + ':' + port + '/';
+    } else {
+      // Bridge through our own server's /proxy endpoint to a raw telnet/telnets MUD.
+      const proxyScheme = location.protocol === 'https:' ? 'wss' : 'ws';
+      const tls = sel === 'telnets' ? '1' : '0';
+      url = proxyScheme + '://' + location.host + '/proxy' +
+        '?host=' + encodeURIComponent(host) +
+        '&port=' + encodeURIComponent(port) +
+        '&tls=' + tls;
+    }
     const health = getHealth();
 
     setConnectionState('connecting');

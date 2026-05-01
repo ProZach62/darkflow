@@ -25,7 +25,12 @@
       <input type="text" id="host" placeholder="Host">
       <span style="color:#484f58">:</span>
       <input type="number" id="port" value="4242" min="1" max="65535">
-      <label class="toolbar-label"><input type="checkbox" id="wss-toggle"> WSS</label>
+      <select id="protocol-select" class="toolbar-select" title="Connection protocol">
+        <option value="wss">wss</option>
+        <option value="ws">ws</option>
+        <option value="telnets">telnets</option>
+        <option value="telnet">telnet</option>
+      </select>
       <button id="connect-btn">Connect</button>
     </span>
     <span id="toolbar-status" class="toolbar-status" style="display:none">
