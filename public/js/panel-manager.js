@@ -45,6 +45,7 @@ export const panelManager = {
   _hadSavedEntry: new Set(),
   _saveTimer: null,
   _subscriptionTimer: null,
+  _characterSubscriptionSyncSent: false,
   _buffTimer: null,
   _avatarMeterTicker: null,
   _avatarActiveEndAt: 0,
@@ -768,6 +769,7 @@ export const panelManager = {
     }
 
     this.gmcpData = preservedData;
+    this._characterSubscriptionSyncSent = false;
     this._pendingPanelRenders.clear();
     if (this._panelRenderFrame) {
       cancelAnimationFrame(this._panelRenderFrame);
@@ -793,6 +795,16 @@ export const panelManager = {
     this._avatarActiveEndAt = 0;
     this._avatarActiveMaxSec = 0;
     this._avatarChargeSync = null;
+  },
+
+  _syncSubscriptionsAfterCharacterData() {
+    if (this._characterSubscriptionSyncSent) return;
+    this._characterSubscriptionSyncSent = true;
+    gmcp.sendSubscriptions({
+      reason: 'character-login',
+      full: true,
+      panels: this.getSubscriptionPanels(),
+    });
   },
 
   _setAvatarMeterPatron(patron) {
@@ -1422,6 +1434,7 @@ export const panelManager = {
 
   registerGmcpHandlers() {
     gmcp.on('Char.Vitals', (data) => {
+      this._syncSubscriptionsAfterCharacterData();
       const fullVitals = data && ['hp', 'maxhp', 'sp', 'maxsp', 'string']
         .every(key => Object.prototype.hasOwnProperty.call(data, key));
       this.gmcpData.vitals = fullVitals ? data : Object.assign({}, this.gmcpData.vitals || {}, data || {});
@@ -1453,6 +1466,7 @@ export const panelManager = {
     });
 
     gmcp.on('Char.Status', (data) => {
+      this._syncSubscriptionsAfterCharacterData();
       this.gmcpData.status = data;
       this._renderPanel('status');
       if (!this.gmcpData.worth || !this.gmcpData.worth._dedicated) {
