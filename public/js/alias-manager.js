@@ -216,7 +216,9 @@ export const aliasManager = {
   getActiveScopeKey() {
     const host = normalizeWhitespace(dom.host && dom.host.value ? dom.host.value : '').toLowerCase() || 'default';
     const port = normalizeWhitespace(dom.port && dom.port.value ? dom.port.value : '') || '4242';
-    const protocol = dom.wssToggle && dom.wssToggle.checked ? 'wss' : 'ws';
+    // Preserve existing scope keys: secure (wss/telnets) → 'wss', plain → 'ws'.
+    const sel = dom.protocolSelect && dom.protocolSelect.value;
+    const protocol = (sel === 'wss' || sel === 'telnets') ? 'wss' : 'ws';
     return protocol + '://' + host + ':' + port;
   },
 
