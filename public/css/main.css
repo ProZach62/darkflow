@@ -448,6 +448,95 @@ body {
   object-fit: cover;
 }
 
+.broadcast-overlay {
+  position: fixed;
+  left: 50%;
+  bottom: 82px;
+  z-index: 1810;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.broadcast-overlay.open {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.broadcast-card {
+  position: relative;
+  width: min(560px, calc(100vw - 28px));
+  min-height: 132px;
+  border: 1px solid rgba(88, 166, 255, 0.42);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(22, 27, 34, 0.98), rgba(9, 12, 18, 0.98));
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.broadcast-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.broadcast-close:hover {
+  background: rgba(30, 41, 59, 0.94);
+  transform: scale(1.04);
+}
+
+.broadcast-close:focus-visible {
+  outline: 2px solid rgba(88, 166, 255, 0.95);
+  outline-offset: 2px;
+}
+
+.broadcast-header {
+  padding: 14px 54px 12px 18px;
+  background:
+    linear-gradient(135deg, rgba(88, 166, 255, 0.18), rgba(240, 180, 41, 0.08));
+  border-bottom: 1px solid rgba(88, 166, 255, 0.2);
+}
+
+.broadcast-title {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  color: #58a6ff;
+}
+
+.broadcast-sender {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.broadcast-message {
+  padding: 18px;
+  color: #e5edf7;
+  font-size: 18px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 700px) {
   .giphy-overlay {
     left: 50%;
@@ -461,6 +550,18 @@ body {
 
   .giphy-image {
     max-height: 34vh;
+  }
+
+  .broadcast-overlay {
+    bottom: 78px;
+  }
+
+  .broadcast-card {
+    width: min(520px, calc(100vw - 20px));
+  }
+
+  .broadcast-message {
+    font-size: 16px;
   }
 }
 

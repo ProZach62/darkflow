@@ -21,6 +21,7 @@ function normalizeSubscriptionPayload(payload = {}) {
       ide: true,
       completion: true,
       giphy: true,
+      broadcast: true,
       ...(payload.features && typeof payload.features === 'object' ? payload.features : {}),
     },
   };
@@ -87,7 +88,8 @@ export const gmcp = {
       'Darkwind.Quests 1',
       'Darkwind.Achievements 1',
       'Darkwind.Announcements 1',
-      'Darkwind.Giphy 1'
+      'Darkwind.Giphy 1',
+      'Darkwind.Broadcast 1'
     ]);
     this.enabled = true;
   },

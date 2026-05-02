@@ -8,6 +8,7 @@ import { windowManager } from './window-manager.js';
 import { ideManager } from './ide-manager.js';
 import { announcementsManager } from './announcements-manager.js';
 import { giphyManager } from './giphy-manager.js';
+import { broadcastManager } from './broadcast-manager.js';
 import { settingsManager } from './settings-manager.js';
 import { flushPendingMapSave } from './map-data.js';
 import { aliasManager } from './alias-manager.js';
@@ -324,6 +325,7 @@ windowManager.init();
 ideManager.init();
 announcementsManager.init();
 giphyManager.init();
+broadcastManager.init();
 initInput();
 dom.commandInput.focus();
 
