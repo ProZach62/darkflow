@@ -936,6 +936,24 @@ body.mobile-panel-mode #mobile-panels-btn {
 }
 
 /* ── Chat panel ─────────────────────────────────────────────────────── */
+.chat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.chat-chip {
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #8b949e;
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 1px 5px;
+}
+.chat-chip-active {
+  border-color: #3fb950;
+  color: #c9d1d9;
+}
 .chat-log { max-height: 250px; overflow-y: auto; }
 .chat-entry { font-size: 11px; padding: 1px 0; word-wrap: break-word; }
 .chat-channel { font-weight: 600; }

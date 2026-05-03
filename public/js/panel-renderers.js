@@ -670,22 +670,62 @@ export const panelRenderers = {
   },
 
   chat(bodyEl, data) {
-    if (!data || !Array.isArray(data) || data.length === 0) {
+    const messages = Array.isArray(data)
+      ? data
+      : (data && Array.isArray(data.messages) ? data.messages : []);
+    const channels = data && !Array.isArray(data) && Array.isArray(data.channels) ? data.channels : [];
+    const players = data && !Array.isArray(data) && Array.isArray(data.players) ? data.players : [];
+    const activeChannels = data && !Array.isArray(data) && Array.isArray(data.activeChannels)
+      ? data.activeChannels
+      : [];
+
+    if (!data || (messages.length === 0 && channels.length === 0 && players.length === 0 && activeChannels.length === 0)) {
       bodyEl.innerHTML = '<div class="placeholder">No messages</div>';
       return;
     }
+
+    const placeholder = bodyEl.querySelector('.placeholder');
+    if (placeholder) placeholder.remove();
+
+    let meta = bodyEl.querySelector('.chat-meta');
+    if (channels.length || players.length || activeChannels.length) {
+      if (!meta) {
+        meta = document.createElement('div');
+        meta.className = 'chat-meta';
+        bodyEl.insertBefore(meta, bodyEl.firstChild);
+      }
+      const channelChips = channels.slice(0, 12).map((channel) => {
+        const name = channel.caption || channel.name || channel.command || '';
+        if (!name) return '';
+        return '<span class="chat-chip">' + escHtml(name) + '</span>';
+      }).filter(Boolean).join('');
+      const activeChips = activeChannels.map((channel) =>
+        '<span class="chat-chip chat-chip-active">' + escHtml(channel) + '</span>'
+      ).join('');
+      const playerCount = players.length
+        ? '<span class="chat-chip">' + players.length + ' online</span>'
+        : '';
+      meta.innerHTML = channelChips + activeChips + playerCount;
+    } else if (meta) {
+      meta.remove();
+    }
+
     let log = bodyEl.querySelector('.chat-log');
     const wasAtBottom = log ? (log.scrollHeight - log.scrollTop - log.clientHeight) < 5 : true;
 
     if (!log) {
       log = document.createElement('div');
       log.className = 'chat-log';
-      bodyEl.innerHTML = '';
+      if (!meta) bodyEl.innerHTML = '';
       bodyEl.appendChild(log);
     }
 
+    if (messages.length >= 200 && log.childNodes.length >= messages.length) {
+      log.innerHTML = '';
+    }
+
     const existing = log.childNodes.length;
-    const toRender = data.slice(existing);
+    const toRender = messages.slice(existing);
 
     for (const msg of toRender) {
       const entry = document.createElement('div');
@@ -707,6 +747,7 @@ export const panelRenderers = {
       log.appendChild(entry);
     }
 
+    while (log.childNodes.length > messages.length) log.removeChild(log.lastChild);
     while (log.childNodes.length > 200) log.removeChild(log.firstChild);
 
     if (wasAtBottom) log.scrollTop = log.scrollHeight;

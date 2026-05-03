@@ -84,7 +84,7 @@ The current server recognizes the following panel keys. Unknown keys are stored 
 | `group` | Driven by `Group` |
 | `inventory` | Driven by `Char.Items.*` |
 | `enemy` | Driven by `Char.Enemy` and gated together with `enemyAutoOpen` |
-| `chat` | Driven by `Comm.Channel.Text` |
+| `chat` | Driven by standard `Comm.Channel.*` messages (`List`, `Players`, `Start`, `End`, and `Text`) |
 | `map` | Drives `Room.Info` push gate |
 | `roomImage` | Drives `Darkwind.Room.Image` and `Room.Info` push gates |
 | `omens` | Drives `Darkwind.Divine` |
@@ -109,6 +109,8 @@ The `windows`, `ide`, `completion`, and `giphy` feature flags are advertised as 
 
 - The client coalesces panel-visibility changes through a 150 ms debounce timer in `panelManager.syncGmcpSubscriptions` to avoid bursts of subscription messages.
 - The client always sends `vitals: true`. When the `buffs` panel is open, the client also forces `status: true`.
+- `Char.Status` is treated as sticky state: after the initial full status payload, subsequent delta payloads are merged into the cached status object instead of replacing it.
+- The client advertises standard `Comm.Channel 1`, stores `Comm.Channel.List` / `Comm.Channel.Players`, tracks `Comm.Channel.Start` / `Comm.Channel.End` scopes, renders `Comm.Channel.Text`, requests `Comm.Channel.Players` once character data confirms login, and exposes `Comm.Channel.Enable` through the GMCP helper.
 - Sent automatically on:
   - WebSocket open (`reason: "login"` or `"reconnect"`, `full: true`)
   - Initial panel hydration (`reason: "visibility-sync"`, `full: true`)

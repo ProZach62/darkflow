@@ -37,6 +37,15 @@ function findDefenceIndex(entries, entry) {
   );
 }
 
+function normalizeChannelName(data) {
+  if (typeof data === 'string') return data.trim();
+  if (data && typeof data === 'object') {
+    if (typeof data.channel === 'string') return data.channel.trim();
+    if (typeof data.name === 'string') return data.name.trim();
+  }
+  return '';
+}
+
 export const panelManager = {
   state: { docks: { left: false, right: false }, panels: {} },
   panels: {},
@@ -46,6 +55,7 @@ export const panelManager = {
   _saveTimer: null,
   _subscriptionTimer: null,
   _characterSubscriptionSyncSent: false,
+  _commChannelPlayersRequested: false,
   _buffTimer: null,
   _avatarMeterTicker: null,
   _avatarActiveEndAt: 0,
@@ -770,6 +780,7 @@ export const panelManager = {
 
     this.gmcpData = preservedData;
     this._characterSubscriptionSyncSent = false;
+    this._commChannelPlayersRequested = false;
     this._pendingPanelRenders.clear();
     if (this._panelRenderFrame) {
       cancelAnimationFrame(this._panelRenderFrame);
@@ -805,6 +816,30 @@ export const panelManager = {
       full: true,
       panels: this.getSubscriptionPanels(),
     });
+    this._requestCommChannelPlayers();
+  },
+
+  _requestCommChannelPlayers() {
+    if (this._commChannelPlayersRequested) return;
+    this._commChannelPlayersRequested = true;
+    gmcp.requestChannelPlayers();
+  },
+
+  _ensureChatData() {
+    if (!this.gmcpData.chat || Array.isArray(this.gmcpData.chat)) {
+      this.gmcpData.chat = {
+        messages: Array.isArray(this.gmcpData.chat) ? this.gmcpData.chat : [],
+        channels: [],
+        players: [],
+        activeChannels: [],
+      };
+    } else {
+      if (!Array.isArray(this.gmcpData.chat.messages)) this.gmcpData.chat.messages = [];
+      if (!Array.isArray(this.gmcpData.chat.channels)) this.gmcpData.chat.channels = [];
+      if (!Array.isArray(this.gmcpData.chat.players)) this.gmcpData.chat.players = [];
+      if (!Array.isArray(this.gmcpData.chat.activeChannels)) this.gmcpData.chat.activeChannels = [];
+    }
+    return this.gmcpData.chat;
   },
 
   _setAvatarMeterPatron(patron) {
@@ -1465,12 +1500,20 @@ export const panelManager = {
       this._renderPanel('stats');
     });
 
+    gmcp.on('Char.StatusVars', (data) => {
+      this.gmcpData.statusVars = data && typeof data === 'object' ? { ...data } : {};
+      this._renderPanel('status');
+    });
+
     gmcp.on('Char.Status', (data) => {
       this._syncSubscriptionsAfterCharacterData();
-      this.gmcpData.status = data;
+      this.gmcpData.status = Object.assign({}, this.gmcpData.status || {}, data || {});
       this._renderPanel('status');
       if (!this.gmcpData.worth || !this.gmcpData.worth._dedicated) {
-        this.gmcpData.worth = { gold: data.gold, bank: data.bank };
+        this.gmcpData.worth = {
+          gold: this.gmcpData.status.gold,
+          bank: this.gmcpData.status.bank,
+        };
         this._renderPanel('worth');
       }
     });
@@ -1650,10 +1693,42 @@ export const panelManager = {
       this._renderPanel('group');
     });
 
+    gmcp.on('Comm.Channel.List', (data) => {
+      const chat = this._ensureChatData();
+      chat.channels = Array.isArray(data)
+        ? data.filter((entry) => entry && typeof entry === 'object')
+        : [];
+      this._renderPanel('chat');
+    });
+
+    gmcp.on('Comm.Channel.Players', (data) => {
+      const chat = this._ensureChatData();
+      chat.players = Array.isArray(data)
+        ? data.filter((entry) => entry && typeof entry === 'object')
+        : [];
+      this._renderPanel('chat');
+    });
+
+    gmcp.on('Comm.Channel.Start', (data) => {
+      const channel = normalizeChannelName(data);
+      if (!channel) return;
+      const chat = this._ensureChatData();
+      if (!chat.activeChannels.includes(channel)) chat.activeChannels.push(channel);
+      this._renderPanel('chat');
+    });
+
+    gmcp.on('Comm.Channel.End', (data) => {
+      const channel = normalizeChannelName(data);
+      if (!channel) return;
+      const chat = this._ensureChatData();
+      chat.activeChannels = chat.activeChannels.filter((entry) => entry !== channel);
+      this._renderPanel('chat');
+    });
+
     gmcp.on('Comm.Channel.Text', (data) => {
-      if (!this.gmcpData.chat) this.gmcpData.chat = [];
-      this.gmcpData.chat.push(data);
-      if (this.gmcpData.chat.length > 200) this.gmcpData.chat.shift();
+      const chat = this._ensureChatData();
+      chat.messages.push(data && typeof data === 'object' ? data : { text: String(data || '') });
+      if (chat.messages.length > 200) chat.messages.shift();
       this._renderPanel('chat');
     });
 

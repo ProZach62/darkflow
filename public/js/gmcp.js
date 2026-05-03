@@ -71,10 +71,13 @@ export const gmcp = {
     this.send('Core.Supports.Set', [
       'Char 1',
       'Char.Vitals 1',
+      'Char.Status 1',
+      'Char.StatusVars 1',
       'Char.Items 1',
       'Char.Defences 1',
       'Room 1',
       'Comm 1',
+      'Comm.Channel 1',
       'Group 1',
       'Game 1',
       'Darkwind.Char.Avatar 1',
@@ -123,6 +126,25 @@ export const gmcp = {
     }
 
     this.send(GMCP_MEDIA_REFRESH_PACKAGE);
+    return true;
+  },
+
+  requestChannelPlayers() {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    this.send('Comm.Channel.Players');
+    return true;
+  },
+
+  enableChannel(channel) {
+    const name = typeof channel === 'string' ? channel.trim() : '';
+    if (!name || !state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    this.send('Comm.Channel.Enable', name);
     return true;
   },
 
