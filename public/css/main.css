@@ -607,6 +607,11 @@ body {
   border-color: #484f58;
 }
 
+.settings-tab-btn:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: 2px;
+}
+
 .settings-tab-btn.active {
   background: #1f2937;
   color: #fff;
@@ -937,7 +942,7 @@ body {
 
 .settings-alias-list-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: start;
   text-align: left;
@@ -947,6 +952,24 @@ body {
   padding: 10px;
   cursor: pointer;
   color: inherit;
+}
+
+.settings-alias-list-select {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.settings-alias-list-toggle {
+  margin-top: 3px;
 }
 
 .settings-alias-group-header {
@@ -967,8 +990,10 @@ body {
   background: #111827;
 }
 
-.settings-alias-list-item input[type="checkbox"] {
-  margin-top: 3px;
+.settings-alias-list-select:focus-visible,
+.settings-alias-list-toggle:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: 2px;
 }
 
 .settings-alias-list-meta {
@@ -1086,6 +1111,16 @@ body {
 
 .settings-alias-usage-item:hover {
   border-color: #484f58;
+}
+
+.settings-inline-actions .dw-button:focus-visible,
+.settings-row-remove:focus-visible,
+.settings-add-mapping:focus-visible,
+.settings-alias-usage-btn:focus-visible,
+.settings-alias-usage-item:focus-visible,
+.settings-disconnect-btn:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: 2px;
 }
 
 .settings-alias-variable-empty {

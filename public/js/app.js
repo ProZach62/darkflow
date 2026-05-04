@@ -16,7 +16,6 @@ import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { sendAutomaticCommand } from './input.js';
 import { PRODUCT_NAME, gameTitle } from './brand.js';
-import { openAboutModal } from './about-modal.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -234,14 +233,17 @@ document.getElementById('gear-btn').addEventListener('click', function() {
 
 const toolbarBrandIcon = dom.toolbarBrand ? dom.toolbarBrand.querySelector('img') : null;
 if (toolbarBrandIcon) {
+  const openDarkflowSite = () => {
+    window.open('https://darkflow.darkwind.ai', '_blank', 'noopener');
+  };
   toolbarBrandIcon.setAttribute('role', 'button');
   toolbarBrandIcon.setAttribute('tabindex', '0');
-  toolbarBrandIcon.setAttribute('title', 'About ' + PRODUCT_NAME);
-  toolbarBrandIcon.addEventListener('click', openAboutModal);
+  toolbarBrandIcon.setAttribute('title', 'Open ' + PRODUCT_NAME + ' site');
+  toolbarBrandIcon.addEventListener('click', openDarkflowSite);
   toolbarBrandIcon.addEventListener('keydown', function(event) {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      openAboutModal();
+      openDarkflowSite();
     }
   });
 }

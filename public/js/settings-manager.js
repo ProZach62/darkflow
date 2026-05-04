@@ -70,6 +70,8 @@ export const settingsManager = {
   _activateTab: null,
   _pendingAliasSelection: null,
   _footerStatusEl: null,
+  _previousFocusEl: null,
+  _modalKeyHandler: null,
 
   init() {
     this._settings = { ...this._defaults };
@@ -106,6 +108,9 @@ export const settingsManager = {
 
   open() {
     this.close();
+    this._previousFocusEl = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     this._draftSettings = {
       ...this._settings,
       keyMappings: this._settings.keyMappings.map((mapping) => ({
@@ -123,13 +128,9 @@ export const settingsManager = {
     this._draftTriggerScope = triggerManager.getScopeSnapshot(this._triggerScopeKey);
 
     const overlay = this._buildModal();
-    const escHandler = (event) => {
-      if (event.key === 'Escape') {
-        this.close();
-      }
-    };
+    const modalKeyHandler = (event) => this._handleModalKeydown(event);
 
-    document.addEventListener('keydown', escHandler);
+    document.addEventListener('keydown', modalKeyHandler, true);
     const dataSyncHandler = (event) => {
       const detail = event && event.detail ? event.detail : {};
       let refreshed = false;
@@ -152,13 +153,15 @@ export const settingsManager = {
     document.body.appendChild(overlay);
 
     this._overlay = overlay;
-    this._escHandler = escHandler;
+    this._escHandler = modalKeyHandler;
+    this._modalKeyHandler = modalKeyHandler;
     this._dataSyncHandler = dataSyncHandler;
+    this._focusSettingsControl('settings-tab-connection');
   },
 
   close() {
     if (this._escHandler) {
-      document.removeEventListener('keydown', this._escHandler);
+      document.removeEventListener('keydown', this._escHandler, true);
       this._escHandler = null;
     }
     if (this._overlay) {
@@ -181,6 +184,12 @@ export const settingsManager = {
     this._activateTab = null;
     this._pendingAliasSelection = null;
     this._footerStatusEl = null;
+    this._modalKeyHandler = null;
+    const previous = this._previousFocusEl;
+    this._previousFocusEl = null;
+    if (previous && document.contains(previous)) {
+      previous.focus();
+    }
   },
 
   _save() {
@@ -207,6 +216,88 @@ export const settingsManager = {
     if (!this._footerStatusEl) return;
     this._footerStatusEl.textContent = message || '';
     this._footerStatusEl.classList.toggle('error', Boolean(message) && isError);
+  },
+
+  _getFocusableSettingsControls() {
+    if (!this._overlay) return [];
+    const selector = [
+      'a[href]',
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+    return Array.from(this._overlay.querySelectorAll(selector))
+      .filter((el) => el instanceof HTMLElement)
+      .filter((el) => {
+        if (el.hidden) return false;
+        if (el.tabIndex < 0) return false;
+        if (el.getAttribute('aria-hidden') === 'true') return false;
+        if (el.offsetParent === null && el !== document.activeElement) return false;
+        return true;
+      });
+  },
+
+  _focusSettingsControl(key) {
+    if (!key) return;
+    requestAnimationFrame(() => {
+      if (!this._overlay) return;
+      const escaped = window.CSS && typeof window.CSS.escape === 'function'
+        ? window.CSS.escape(key)
+        : String(key).replace(/"/g, '\\"');
+      const target = this._overlay.querySelector('[data-focus-key="' + escaped + '"]');
+      if (target && target instanceof HTMLElement) {
+        target.focus();
+      }
+    });
+  },
+
+  _focusSettingsTextControl(key, selectionStart, selectionEnd) {
+    if (!key) return;
+    requestAnimationFrame(() => {
+      if (!this._overlay) return;
+      const escaped = window.CSS && typeof window.CSS.escape === 'function'
+        ? window.CSS.escape(key)
+        : String(key).replace(/"/g, '\\"');
+      const target = this._overlay.querySelector('[data-focus-key="' + escaped + '"]');
+      if (target && target instanceof HTMLElement) {
+        target.focus();
+        if (typeof target.setSelectionRange === 'function' &&
+          typeof selectionStart === 'number') {
+          target.setSelectionRange(selectionStart, selectionEnd || selectionStart);
+        }
+      }
+    });
+  },
+
+  _handleModalKeydown(event) {
+    if (!this._overlay) return;
+    if (!this._overlay.contains(event.target)) return;
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.close();
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+
+    const focusables = this._getFocusableSettingsControls();
+    if (!focusables.length) {
+      event.preventDefault();
+      return;
+    }
+
+    const current = document.activeElement;
+    let index = focusables.indexOf(current);
+    if (index < 0) index = event.shiftKey ? 0 : -1;
+    const nextIndex = event.shiftKey
+      ? (index <= 0 ? focusables.length - 1 : index - 1)
+      : (index >= focusables.length - 1 ? 0 : index + 1);
+
+    event.preventDefault();
+    focusables[nextIndex].focus();
   },
 
   _syncDraftVariablesFromSteps() {
@@ -470,7 +561,7 @@ export const settingsManager = {
       return this._draftSettings.keyMappings;
     };
 
-    const addRow = (mapping) => {
+    const addRow = (mapping, focusNew) => {
       const mappings = ensureMappings();
       mappings.push(mapping);
 
@@ -522,12 +613,14 @@ export const settingsManager = {
         const index = mappings.indexOf(mapping);
         if (index !== -1) mappings.splice(index, 1);
         row.remove();
+        addBtn.focus();
       });
 
       row.appendChild(keyInput);
       row.appendChild(commandInput);
       row.appendChild(removeBtn);
       list.appendChild(row);
+      if (focusNew) requestAnimationFrame(() => keyInput.focus());
     };
 
     const savedMappings = ensureMappings().map((mapping) => ({
@@ -544,8 +637,10 @@ export const settingsManager = {
 
     const addBtn = document.createElement('button');
     addBtn.className = 'dw-button dw-button-secondary settings-add-mapping';
+    addBtn.type = 'button';
+    addBtn.dataset.focusKey = 'key-mapping-add';
     addBtn.textContent = 'Add mapping';
-    addBtn.addEventListener('click', () => addRow({ code: '', label: '', legacyKey: '', command: '' }));
+    addBtn.addEventListener('click', () => addRow({ code: '', label: '', legacyKey: '', command: '' }, true));
 
     actions.appendChild(addBtn);
     wrapper.appendChild(helpText);
@@ -707,6 +802,7 @@ export const settingsManager = {
       const patternInput = document.createElement('input');
       patternInput.type = 'text';
       patternInput.className = 'dw-input';
+      patternInput.dataset.focusKey = 'highlight-pattern';
       patternInput.placeholder = 'You have emptied the keg!';
       patternInput.value = rule.patternSource;
       patternInput.addEventListener('input', () => {
@@ -784,11 +880,15 @@ export const settingsManager = {
       const search = document.createElement('input');
       search.type = 'text';
       search.className = 'dw-input';
+      search.dataset.focusKey = 'highlight-search';
       search.placeholder = 'Search highlights';
       search.value = searchTerm;
       search.addEventListener('input', () => {
+        const selectionStart = search.selectionStart;
+        const selectionEnd = search.selectionEnd;
         searchTerm = search.value;
         render();
+        this._focusSettingsTextControl('highlight-search', selectionStart, selectionEnd);
       });
 
       const list = document.createElement('div');
@@ -798,22 +898,57 @@ export const settingsManager = {
         rule.patternSource.toLowerCase().includes(searchTerm.trim().toLowerCase())
       ));
 
-      filteredRules.forEach((rule) => {
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'settings-alias-list-item' + (rule.id === selectedRuleId ? ' active' : '');
-        row.addEventListener('click', () => {
+      const focusRuleByOffset = (index, offset) => {
+        if (!filteredRules.length) return;
+        const nextIndex = Math.max(0, Math.min(filteredRules.length - 1, index + offset));
+        selectedRuleId = filteredRules[nextIndex].id;
+        render();
+        this._focusSettingsControl('highlight-row-' + selectedRuleId);
+      };
+
+      filteredRules.forEach((rule, index) => {
+        const selected = rule.id === selectedRuleId;
+        const row = document.createElement('div');
+        row.className = 'settings-alias-list-item' + (selected ? ' active' : '');
+
+        const rowBtn = document.createElement('button');
+        rowBtn.type = 'button';
+        rowBtn.className = 'settings-alias-list-select';
+        rowBtn.dataset.focusKey = 'highlight-row-' + rule.id;
+        rowBtn.tabIndex = selected ? 0 : -1;
+        rowBtn.addEventListener('click', () => {
           selectedRuleId = rule.id;
           render();
+        });
+        rowBtn.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusRuleByOffset(index, 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusRuleByOffset(index, -1);
+          }
         });
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = rule.enabled !== false;
-        checkbox.addEventListener('click', (event) => event.stopPropagation());
+        checkbox.className = 'settings-alias-list-toggle';
+        checkbox.dataset.focusKey = 'highlight-toggle-' + rule.id;
+        checkbox.tabIndex = selected ? 0 : -1;
         checkbox.addEventListener('change', () => {
           rule.enabled = checkbox.checked;
           render();
+          this._focusSettingsControl('highlight-toggle-' + rule.id);
+        });
+        checkbox.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusRuleByOffset(index, 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusRuleByOffset(index, -1);
+          }
         });
 
         const copy = document.createElement('div');
@@ -829,8 +964,9 @@ export const settingsManager = {
 
         copy.appendChild(pattern);
         copy.appendChild(detail);
+        rowBtn.appendChild(copy);
+        row.appendChild(rowBtn);
         row.appendChild(checkbox);
-        row.appendChild(copy);
         list.appendChild(row);
       });
 
@@ -856,6 +992,7 @@ export const settingsManager = {
         this._draftHighlightScope.rules.push(rule);
         selectedRuleId = rule.id;
         render();
+        this._focusSettingsControl('highlight-pattern');
       });
 
       const upBtn = document.createElement('button');
@@ -870,6 +1007,7 @@ export const settingsManager = {
         this._draftHighlightScope.rules[index - 1] = this._draftHighlightScope.rules[index];
         this._draftHighlightScope.rules[index] = previous;
         render();
+        this._focusSettingsControl('highlight-row-' + selectedRuleId);
       });
 
       const downBtn = document.createElement('button');
@@ -885,6 +1023,7 @@ export const settingsManager = {
         this._draftHighlightScope.rules[index + 1] = this._draftHighlightScope.rules[index];
         this._draftHighlightScope.rules[index] = next;
         render();
+        this._focusSettingsControl('highlight-row-' + selectedRuleId);
       });
 
       const removeBtn = document.createElement('button');
@@ -898,8 +1037,10 @@ export const settingsManager = {
         this._draftHighlightScope.rules = this._draftHighlightScope.rules.filter((item) => item.id !== rule.id);
         selectedRuleId = this._draftHighlightScope.rules[0] ? this._draftHighlightScope.rules[0].id : null;
         render();
+        this._focusSettingsControl(selectedRuleId ? 'highlight-row-' + selectedRuleId : 'highlight-add');
       });
 
+      addBtn.dataset.focusKey = 'highlight-add';
       addActions.appendChild(addBtn);
       actions.appendChild(upBtn);
       actions.appendChild(downBtn);
@@ -981,6 +1122,7 @@ export const settingsManager = {
       const addBtn = document.createElement('button');
       addBtn.type = 'button';
       addBtn.className = 'dw-button dw-button-secondary';
+      addBtn.dataset.focusKey = 'variable-add';
       addBtn.textContent = 'Add variable';
       addBtn.addEventListener('click', () => {
         let index = 1;
@@ -991,6 +1133,7 @@ export const settingsManager = {
         }
         this._draftAliasScope.variables[nextName] = '';
         render();
+        this._focusSettingsControl('variable-name-' + nextName);
       });
 
       actions.appendChild(addBtn);
@@ -1009,6 +1152,7 @@ export const settingsManager = {
         openAliasesBtn.textContent = 'Open Aliases';
         openAliasesBtn.addEventListener('click', () => {
           if (this._activateTab) this._activateTab('aliases');
+          this._focusSettingsControl('alias-search');
         });
 
         empty.appendChild(emptyText);
@@ -1032,6 +1176,7 @@ export const settingsManager = {
         const nameInput = document.createElement('input');
         nameInput.type = 'text';
         nameInput.className = 'dw-input';
+        nameInput.dataset.focusKey = 'variable-name-' + name;
         nameInput.placeholder = 'pack';
         nameInput.value = name;
 
@@ -1062,6 +1207,7 @@ export const settingsManager = {
             aliasBtn.addEventListener('click', () => {
               this._pendingAliasSelection = alias.id;
               if (this._activateTab) this._activateTab('aliases');
+              this._focusSettingsControl('alias-row-' + alias.id);
             });
             usageList.appendChild(aliasBtn);
           });
@@ -1079,6 +1225,7 @@ export const settingsManager = {
         removeBtn.addEventListener('click', () => {
           delete this._draftAliasScope.variables[currentName];
           render();
+          this._focusSettingsControl('variable-add');
         });
 
         const sync = () => {
@@ -1286,6 +1433,7 @@ export const settingsManager = {
       const triggerInput = document.createElement('input');
       triggerInput.type = 'text';
       triggerInput.className = 'dw-input';
+      triggerInput.dataset.focusKey = 'alias-trigger';
       triggerInput.placeholder = 'gi';
       triggerInput.value = alias.trigger;
       triggerInput.addEventListener('input', () => {
@@ -1361,6 +1509,7 @@ export const settingsManager = {
 
         const stepSelect = document.createElement('select');
         stepSelect.className = 'dw-select';
+        stepSelect.dataset.focusKey = 'alias-step-' + index + '-type';
         stepTypeOptions.forEach((option) => {
           const el = document.createElement('option');
           el.value = option.value;
@@ -1466,6 +1615,7 @@ export const settingsManager = {
           if (option.value === 'set_variable') step.name = '';
           alias.steps.push(step);
           render();
+          this._focusSettingsControl('alias-step-' + (alias.steps.length - 1) + '-type');
         });
         stepAddActions.appendChild(btn);
       });
@@ -1484,11 +1634,15 @@ export const settingsManager = {
       const search = document.createElement('input');
       search.type = 'text';
       search.className = 'dw-input';
+      search.dataset.focusKey = 'alias-search';
       search.placeholder = 'Search aliases';
       search.value = searchTerm;
       search.addEventListener('input', () => {
+        const selectionStart = search.selectionStart;
+        const selectionEnd = search.selectionEnd;
         searchTerm = search.value;
         render();
+        this._focusSettingsTextControl('alias-search', selectionStart, selectionEnd);
       });
 
       const list = document.createElement('div');
@@ -1510,7 +1664,15 @@ export const settingsManager = {
         .map((entry) => entry.alias);
 
       let lastGroup = null;
-      filteredAliases.forEach((alias) => {
+      const focusAliasByOffset = (index, offset) => {
+        if (!filteredAliases.length) return;
+        const nextIndex = Math.max(0, Math.min(filteredAliases.length - 1, index + offset));
+        selectedAliasId = filteredAliases[nextIndex].id;
+        render();
+        this._focusSettingsControl('alias-row-' + selectedAliasId);
+      };
+
+      filteredAliases.forEach((alias, index) => {
         const group = (alias.group || '').trim() || 'Ungrouped';
         if (group !== lastGroup) {
           const groupHeader = document.createElement('div');
@@ -1520,21 +1682,48 @@ export const settingsManager = {
           lastGroup = group;
         }
 
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'settings-alias-list-item' + (alias.id === selectedAliasId ? ' active' : '');
-        row.addEventListener('click', () => {
+        const selected = alias.id === selectedAliasId;
+        const row = document.createElement('div');
+        row.className = 'settings-alias-list-item' + (selected ? ' active' : '');
+
+        const rowBtn = document.createElement('button');
+        rowBtn.type = 'button';
+        rowBtn.className = 'settings-alias-list-select';
+        rowBtn.dataset.focusKey = 'alias-row-' + alias.id;
+        rowBtn.tabIndex = selected ? 0 : -1;
+        rowBtn.addEventListener('click', () => {
           selectedAliasId = alias.id;
           render();
+        });
+        rowBtn.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusAliasByOffset(index, 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusAliasByOffset(index, -1);
+          }
         });
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = alias.enabled !== false;
-        checkbox.addEventListener('click', (event) => event.stopPropagation());
+        checkbox.className = 'settings-alias-list-toggle';
+        checkbox.dataset.focusKey = 'alias-toggle-' + alias.id;
+        checkbox.tabIndex = selected ? 0 : -1;
         checkbox.addEventListener('change', () => {
           alias.enabled = checkbox.checked;
           render();
+          this._focusSettingsControl('alias-toggle-' + alias.id);
+        });
+        checkbox.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusAliasByOffset(index, 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusAliasByOffset(index, -1);
+          }
         });
 
         const copy = document.createElement('div');
@@ -1550,8 +1739,9 @@ export const settingsManager = {
 
         copy.appendChild(trigger);
         copy.appendChild(description);
+        rowBtn.appendChild(copy);
+        row.appendChild(rowBtn);
         row.appendChild(checkbox);
-        row.appendChild(copy);
         list.appendChild(row);
       });
 
@@ -1577,6 +1767,7 @@ export const settingsManager = {
         this._draftAliasScope.aliases.push(alias);
         selectedAliasId = alias.id;
         render();
+        this._focusSettingsControl('alias-trigger');
       });
 
       const removeBtn = document.createElement('button');
@@ -1590,8 +1781,10 @@ export const settingsManager = {
         this._draftAliasScope.aliases = this._draftAliasScope.aliases.filter((item) => item.id !== alias.id);
         selectedAliasId = this._draftAliasScope.aliases[0] ? this._draftAliasScope.aliases[0].id : null;
         render();
+        this._focusSettingsControl(selectedAliasId ? 'alias-row-' + selectedAliasId : 'alias-add');
       });
 
+      addBtn.dataset.focusKey = 'alias-add';
       addActions.appendChild(addBtn);
       actions.appendChild(removeBtn);
       sidebar.appendChild(title);
@@ -1800,6 +1993,7 @@ export const settingsManager = {
       const patternInput = document.createElement('input');
       patternInput.type = 'text';
       patternInput.className = 'dw-input';
+      patternInput.dataset.focusKey = 'trigger-pattern';
       patternInput.placeholder = 'You are attacked by *';
       patternInput.value = trigger.pattern;
       patternInput.addEventListener('input', () => {
@@ -1884,6 +2078,7 @@ export const settingsManager = {
 
         const stepSelect = document.createElement('select');
         stepSelect.className = 'dw-select';
+        stepSelect.dataset.focusKey = 'trigger-step-' + index + '-type';
         stepTypeOptions.forEach((option) => {
           const el = document.createElement('option');
           el.value = option.value;
@@ -1989,6 +2184,7 @@ export const settingsManager = {
           if (option.value === 'set_variable') step.name = '';
           trigger.steps.push(step);
           render();
+          this._focusSettingsControl('trigger-step-' + (trigger.steps.length - 1) + '-type');
         });
         stepAddActions.appendChild(btn);
       });
@@ -2007,11 +2203,15 @@ export const settingsManager = {
       const search = document.createElement('input');
       search.type = 'text';
       search.className = 'dw-input';
+      search.dataset.focusKey = 'trigger-search';
       search.placeholder = 'Search triggers';
       search.value = searchTerm;
       search.addEventListener('input', () => {
+        const selectionStart = search.selectionStart;
+        const selectionEnd = search.selectionEnd;
         searchTerm = search.value;
         render();
+        this._focusSettingsTextControl('trigger-search', selectionStart, selectionEnd);
       });
 
       const list = document.createElement('div');
@@ -2033,7 +2233,15 @@ export const settingsManager = {
         .map((entry) => entry.trigger);
 
       let lastGroup = null;
-      filteredTriggers.forEach((trigger) => {
+      const focusTriggerByOffset = (index, offset) => {
+        if (!filteredTriggers.length) return;
+        const nextIndex = Math.max(0, Math.min(filteredTriggers.length - 1, index + offset));
+        selectedTriggerId = filteredTriggers[nextIndex].id;
+        render();
+        this._focusSettingsControl('trigger-row-' + selectedTriggerId);
+      };
+
+      filteredTriggers.forEach((trigger, index) => {
         const group = (trigger.group || '').trim() || 'Ungrouped';
         if (group !== lastGroup) {
           const groupHeader = document.createElement('div');
@@ -2043,21 +2251,48 @@ export const settingsManager = {
           lastGroup = group;
         }
 
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'settings-alias-list-item' + (trigger.id === selectedTriggerId ? ' active' : '');
-        row.addEventListener('click', () => {
+        const selected = trigger.id === selectedTriggerId;
+        const row = document.createElement('div');
+        row.className = 'settings-alias-list-item' + (selected ? ' active' : '');
+
+        const rowBtn = document.createElement('button');
+        rowBtn.type = 'button';
+        rowBtn.className = 'settings-alias-list-select';
+        rowBtn.dataset.focusKey = 'trigger-row-' + trigger.id;
+        rowBtn.tabIndex = selected ? 0 : -1;
+        rowBtn.addEventListener('click', () => {
           selectedTriggerId = trigger.id;
           render();
+        });
+        rowBtn.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusTriggerByOffset(index, 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusTriggerByOffset(index, -1);
+          }
         });
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = trigger.enabled !== false;
-        checkbox.addEventListener('click', (event) => event.stopPropagation());
+        checkbox.className = 'settings-alias-list-toggle';
+        checkbox.dataset.focusKey = 'trigger-toggle-' + trigger.id;
+        checkbox.tabIndex = selected ? 0 : -1;
         checkbox.addEventListener('change', () => {
           trigger.enabled = checkbox.checked;
           render();
+          this._focusSettingsControl('trigger-toggle-' + trigger.id);
+        });
+        checkbox.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusTriggerByOffset(index, 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusTriggerByOffset(index, -1);
+          }
         });
 
         const copy = document.createElement('div');
@@ -2073,8 +2308,9 @@ export const settingsManager = {
 
         copy.appendChild(pattern);
         copy.appendChild(description);
+        rowBtn.appendChild(copy);
+        row.appendChild(rowBtn);
         row.appendChild(checkbox);
-        row.appendChild(copy);
         list.appendChild(row);
       });
 
@@ -2100,6 +2336,7 @@ export const settingsManager = {
         this._draftTriggerScope.triggers.push(trigger);
         selectedTriggerId = trigger.id;
         render();
+        this._focusSettingsControl('trigger-pattern');
       });
 
       const removeBtn = document.createElement('button');
@@ -2113,8 +2350,10 @@ export const settingsManager = {
         this._draftTriggerScope.triggers = this._draftTriggerScope.triggers.filter((item) => item.id !== trigger.id);
         selectedTriggerId = this._draftTriggerScope.triggers[0] ? this._draftTriggerScope.triggers[0].id : null;
         render();
+        this._focusSettingsControl(selectedTriggerId ? 'trigger-row-' + selectedTriggerId : 'trigger-add');
       });
 
+      addBtn.dataset.focusKey = 'trigger-add';
       addActions.appendChild(addBtn);
       actions.appendChild(removeBtn);
       sidebar.appendChild(title);
@@ -2249,16 +2488,22 @@ export const settingsManager = {
 
     const modal = document.createElement('div');
     modal.className = 'dw-modal settings-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'settings-modal-title');
 
     const header = document.createElement('div');
     header.className = 'dw-modal-header';
 
     const title = document.createElement('span');
     title.className = 'dw-modal-title';
+    title.id = 'settings-modal-title';
     title.textContent = 'Settings';
 
     const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
     closeBtn.className = 'dw-modal-close';
+    closeBtn.setAttribute('aria-label', 'Close settings');
     closeBtn.innerHTML = '&#x2715;';
     closeBtn.addEventListener('click', () => this.close());
 
@@ -2270,12 +2515,15 @@ export const settingsManager = {
 
     const tabs = document.createElement('div');
     tabs.className = 'settings-tabs';
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Settings sections');
 
     const tabPanels = document.createElement('div');
     tabPanels.className = 'settings-tab-panels';
 
     const tabButtons = new Map();
     const tabContents = new Map();
+    const tabOrder = [];
     let renderAliasesSection = null;
     let renderVariablesSection = null;
     const activateTab = (key) => {
@@ -2283,8 +2531,11 @@ export const settingsManager = {
       if (key === 'variables' && renderVariablesSection) renderVariablesSection();
       for (const [tabKey, btn] of tabButtons) {
         btn.classList.toggle('active', tabKey === key);
+        btn.setAttribute('aria-selected', tabKey === key ? 'true' : 'false');
+        btn.tabIndex = tabKey === key ? 0 : -1;
       }
       for (const [tabKey, panel] of tabContents) {
+        panel.hidden = tabKey !== key;
         panel.style.display = tabKey === key ? 'flex' : 'none';
       }
     };
@@ -2293,13 +2544,47 @@ export const settingsManager = {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'settings-tab-btn';
+      btn.id = 'settings-tab-' + key;
+      btn.dataset.focusKey = 'settings-tab-' + key;
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-controls', 'settings-panel-' + key);
+      btn.setAttribute('aria-selected', 'false');
+      btn.tabIndex = -1;
       btn.textContent = label;
       btn.addEventListener('click', () => activateTab(key));
+      btn.addEventListener('keydown', (event) => {
+        const index = tabOrder.indexOf(key);
+        let nextIndex = -1;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+          nextIndex = (index + 1) % tabOrder.length;
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+          nextIndex = (index - 1 + tabOrder.length) % tabOrder.length;
+        } else if (event.key === 'Home') {
+          nextIndex = 0;
+        } else if (event.key === 'End') {
+          nextIndex = tabOrder.length - 1;
+        } else if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          activateTab(key);
+          return;
+        }
+        if (nextIndex < 0) return;
+        event.preventDefault();
+        const nextKey = tabOrder[nextIndex];
+        activateTab(nextKey);
+        const nextBtn = tabButtons.get(nextKey);
+        if (nextBtn) nextBtn.focus();
+      });
       tabButtons.set(key, btn);
+      tabOrder.push(key);
       tabs.appendChild(btn);
 
       const panel = document.createElement('section');
+      panel.id = 'settings-panel-' + key;
       panel.className = 'settings-section';
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', 'settings-tab-' + key);
+      panel.hidden = true;
       panel.style.display = 'none';
       tabContents.set(key, panel);
       tabPanels.appendChild(panel);
