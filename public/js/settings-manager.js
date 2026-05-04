@@ -72,6 +72,7 @@ export const settingsManager = {
   _footerStatusEl: null,
   _previousFocusEl: null,
   _modalKeyHandler: null,
+  _activeEditFocusScope: null,
 
   init() {
     this._settings = { ...this._defaults };
@@ -185,6 +186,7 @@ export const settingsManager = {
     this._pendingAliasSelection = null;
     this._footerStatusEl = null;
     this._modalKeyHandler = null;
+    this._activeEditFocusScope = null;
     const previous = this._previousFocusEl;
     this._previousFocusEl = null;
     if (previous && document.contains(previous)) {
@@ -283,6 +285,8 @@ export const settingsManager = {
 
     if (event.key !== 'Tab') return;
 
+    if (this._handleEditScopeTab(event)) return;
+
     const focusables = this._getFocusableSettingsControls();
     if (!focusables.length) {
       event.preventDefault();
@@ -298,6 +302,71 @@ export const settingsManager = {
 
     event.preventDefault();
     focusables[nextIndex].focus();
+  },
+
+  _getEditScopeName(target) {
+    if (!(target instanceof HTMLElement)) return '';
+    const scopeRoot = target.closest('[data-edit-focus-scope]');
+    if (scopeRoot && scopeRoot instanceof HTMLElement) {
+      return scopeRoot.dataset.editFocusScope || '';
+    }
+    if (target.dataset.focusKey === 'settings-save') {
+      return this._activeEditFocusScope || '';
+    }
+    return '';
+  },
+
+  _getEditScopeControls(scopeName) {
+    if (!this._overlay || !scopeName) return [];
+    const escaped = window.CSS && typeof window.CSS.escape === 'function'
+      ? window.CSS.escape(scopeName)
+      : String(scopeName).replace(/"/g, '\\"');
+    const scopedRoots = Array.from(this._overlay.querySelectorAll('[data-edit-focus-scope="' + escaped + '"]'))
+      .filter((el) => el instanceof HTMLElement);
+    const scopedControls = [];
+
+    scopedRoots.forEach((root) => {
+      scopedControls.push(...Array.from(root.querySelectorAll([
+        'button:not([disabled])',
+        'input:not([disabled])',
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        'a[href]',
+      ].join(','))));
+    });
+
+    const save = this._overlay.querySelector('[data-focus-key="settings-save"]');
+    if (save) scopedControls.push(save);
+
+    return scopedControls
+      .filter((el) => el instanceof HTMLElement)
+      .filter((el) => {
+        if (el.hidden) return false;
+        if (el.tabIndex < 0) return false;
+        if (el.getAttribute('aria-hidden') === 'true') return false;
+        if (el.offsetParent === null && el !== document.activeElement) return false;
+        return true;
+      });
+  },
+
+  _handleEditScopeTab(event) {
+    const scopeName = this._getEditScopeName(event.target);
+    if (!scopeName) return false;
+
+    const controls = this._getEditScopeControls(scopeName);
+    if (!controls.length) return false;
+
+    this._activeEditFocusScope = scopeName;
+    const current = document.activeElement;
+    let index = controls.indexOf(current);
+    if (index < 0) index = event.shiftKey ? 0 : -1;
+    const nextIndex = event.shiftKey
+      ? (index <= 0 ? controls.length - 1 : index - 1)
+      : (index >= controls.length - 1 ? 0 : index + 1);
+
+    event.preventDefault();
+    controls[nextIndex].focus();
+    return true;
   },
 
   _syncDraftVariablesFromSteps() {
@@ -546,6 +615,7 @@ export const settingsManager = {
   _createKeyMappingsEditor() {
     const wrapper = document.createElement('div');
     wrapper.className = 'settings-mapper-editor';
+    wrapper.dataset.editFocusScope = 'key-mapping-editor';
 
     const helpText = document.createElement('p');
     helpText.className = 'dw-paragraph settings-helper-text';
@@ -696,9 +766,11 @@ export const settingsManager = {
 
     const editor = document.createElement('div');
     editor.className = 'settings-alias-detail';
+    editor.dataset.editFocusScope = 'highlight-editor';
 
     const previewCard = document.createElement('div');
     previewCard.className = 'settings-mapper-editor settings-alias-preview-card';
+    previewCard.dataset.editFocusScope = 'highlight-editor';
 
     let searchTerm = '';
     let sampleInput = 'You have emptied the keg!';
@@ -1096,6 +1168,7 @@ export const settingsManager = {
 
     const variableCard = document.createElement('div');
     variableCard.className = 'settings-mapper-editor settings-alias-variable-card';
+    variableCard.dataset.editFocusScope = 'variables-editor';
     wrapper.appendChild(variableCard);
 
     const render = () => {
@@ -1137,7 +1210,6 @@ export const settingsManager = {
       });
 
       actions.appendChild(addBtn);
-      variableCard.appendChild(actions);
 
       if (!entries.length) {
         const empty = document.createElement('div');
@@ -1158,6 +1230,7 @@ export const settingsManager = {
         empty.appendChild(emptyText);
         empty.appendChild(openAliasesBtn);
         variableCard.appendChild(empty);
+        variableCard.appendChild(actions);
         return;
       }
 
@@ -1252,6 +1325,7 @@ export const settingsManager = {
 
       entries.forEach(([name, value]) => addVariableRow(name, value));
       variableCard.appendChild(list);
+      variableCard.appendChild(actions);
     };
 
     render();
@@ -1290,9 +1364,11 @@ export const settingsManager = {
 
     const editor = document.createElement('div');
     editor.className = 'settings-alias-detail';
+    editor.dataset.editFocusScope = 'alias-editor';
 
     const previewCard = document.createElement('div');
     previewCard.className = 'settings-mapper-editor settings-alias-preview-card';
+    previewCard.dataset.editFocusScope = 'alias-editor';
 
     let selectedAliasId = this._pendingAliasSelection || (this._draftAliasScope.aliases[0] ? this._draftAliasScope.aliases[0].id : null);
     this._pendingAliasSelection = null;
@@ -1537,6 +1613,7 @@ export const settingsManager = {
           alias.steps[index - 1] = step;
           alias.steps[index] = previous;
           render();
+          this._focusSettingsControl('alias-step-' + (index - 1) + '-type');
         });
 
         const downBtn = document.createElement('button');
@@ -1549,6 +1626,7 @@ export const settingsManager = {
           alias.steps[index + 1] = step;
           alias.steps[index] = next;
           render();
+          this._focusSettingsControl('alias-step-' + (index + 1) + '-type');
         });
 
         const removeBtn = document.createElement('button');
@@ -1559,13 +1637,10 @@ export const settingsManager = {
           alias.steps.splice(index, 1);
           if (!alias.steps.length) alias.steps.push({ type: 'send_command', template: '' });
           render();
+          this._focusSettingsControl('alias-step-' + Math.min(index, alias.steps.length - 1) + '-type');
         });
 
-        controls.appendChild(upBtn);
-        controls.appendChild(downBtn);
-        controls.appendChild(removeBtn);
         stepHeader.appendChild(stepSelect);
-        stepHeader.appendChild(controls);
         stepCard.appendChild(stepHeader);
 
         if (step.type === 'set_variable') {
@@ -1592,6 +1667,10 @@ export const settingsManager = {
           step.template = templateInput.value;
         });
         stepCard.appendChild(templateInput);
+        controls.appendChild(upBtn);
+        controls.appendChild(downBtn);
+        controls.appendChild(removeBtn);
+        stepCard.appendChild(controls);
 
         const helper = document.createElement('div');
         helper.className = 'settings-helper-text';
@@ -1609,6 +1688,7 @@ export const settingsManager = {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'dw-button dw-button-secondary';
+        btn.dataset.focusKey = 'alias-step-add-' + option.value;
         btn.textContent = option.label;
         btn.addEventListener('click', () => {
           const step = { type: option.value, template: '' };
@@ -1843,9 +1923,11 @@ export const settingsManager = {
 
     const editor = document.createElement('div');
     editor.className = 'settings-alias-detail';
+    editor.dataset.editFocusScope = 'trigger-editor';
 
     const previewCard = document.createElement('div');
     previewCard.className = 'settings-mapper-editor settings-alias-preview-card';
+    previewCard.dataset.editFocusScope = 'trigger-editor';
 
     let selectedTriggerId = this._draftTriggerScope.triggers[0] ? this._draftTriggerScope.triggers[0].id : null;
     let searchTerm = '';
@@ -2106,6 +2188,7 @@ export const settingsManager = {
           trigger.steps[index - 1] = step;
           trigger.steps[index] = previous;
           render();
+          this._focusSettingsControl('trigger-step-' + (index - 1) + '-type');
         });
 
         const downBtn = document.createElement('button');
@@ -2118,6 +2201,7 @@ export const settingsManager = {
           trigger.steps[index + 1] = step;
           trigger.steps[index] = next;
           render();
+          this._focusSettingsControl('trigger-step-' + (index + 1) + '-type');
         });
 
         const removeBtn = document.createElement('button');
@@ -2128,13 +2212,10 @@ export const settingsManager = {
           trigger.steps.splice(index, 1);
           if (!trigger.steps.length) trigger.steps.push({ type: 'send_command', template: '' });
           render();
+          this._focusSettingsControl('trigger-step-' + Math.min(index, trigger.steps.length - 1) + '-type');
         });
 
-        controls.appendChild(upBtn);
-        controls.appendChild(downBtn);
-        controls.appendChild(removeBtn);
         stepHeader.appendChild(stepSelect);
-        stepHeader.appendChild(controls);
         stepCard.appendChild(stepHeader);
 
         if (step.type === 'set_variable') {
@@ -2161,6 +2242,10 @@ export const settingsManager = {
           step.template = templateInput.value;
         });
         stepCard.appendChild(templateInput);
+        controls.appendChild(upBtn);
+        controls.appendChild(downBtn);
+        controls.appendChild(removeBtn);
+        stepCard.appendChild(controls);
 
         const helper = document.createElement('div');
         helper.className = 'settings-helper-text';
@@ -2178,6 +2263,7 @@ export const settingsManager = {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'dw-button dw-button-secondary';
+        btn.dataset.focusKey = 'trigger-step-add-' + option.value;
         btn.textContent = option.label;
         btn.addEventListener('click', () => {
           const step = { type: option.value, template: '' };
@@ -2483,6 +2569,17 @@ export const settingsManager = {
     overlay.addEventListener('click', (event) => {
       if (event.target === overlay) {
         this.close();
+      }
+    });
+    overlay.addEventListener('focusin', (event) => {
+      const scopeRoot = event.target instanceof HTMLElement
+        ? event.target.closest('[data-edit-focus-scope]')
+        : null;
+      if (scopeRoot && scopeRoot instanceof HTMLElement) {
+        this._activeEditFocusScope = scopeRoot.dataset.editFocusScope || null;
+      } else if (!(event.target instanceof HTMLElement) ||
+        event.target.dataset.focusKey !== 'settings-save') {
+        this._activeEditFocusScope = null;
       }
     });
 
@@ -2807,6 +2904,7 @@ export const settingsManager = {
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'dw-button dw-button-primary';
+    saveBtn.dataset.focusKey = 'settings-save';
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', () => {
       this._applySettings(this._draftSettings);
