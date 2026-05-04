@@ -9,6 +9,22 @@ const GMCP_SUBSCRIPTIONS_PACKAGE = 'Darkwind.Client.Subscriptions';
 const gmcpTextEncoder = new TextEncoder();
 export const gmcpTextDecoder = new TextDecoder('utf-8');
 
+function normalizeSupports(payload) {
+  const supports = {};
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      if (typeof item !== 'string') continue;
+      const parts = item.trim().split(/\s+/);
+      if (parts[0]) supports[parts[0]] = parts[1] || '1';
+    }
+  } else if (payload && typeof payload === 'object') {
+    for (const [name, version] of Object.entries(payload)) {
+      supports[name] = version || '1';
+    }
+  }
+  return supports;
+}
+
 function normalizeSubscriptionPayload(payload = {}) {
   return {
     reason: payload.reason || 'visibility-sync',
@@ -31,6 +47,7 @@ export const gmcp = {
   enabled: false,
   handlers: {},
   subscriptions: normalizeSubscriptionPayload(),
+  serverSupports: {},
 
   on(packageName, callback) {
     if (!this.handlers[packageName]) this.handlers[packageName] = [];
@@ -43,12 +60,28 @@ export const gmcp = {
   },
 
   dispatch(packageName, data) {
+    if (packageName === 'Core.Supports.Set') {
+      this.serverSupports = normalizeSupports(data);
+    } else if (packageName === 'Core.Supports.Add') {
+      this.serverSupports = {
+        ...this.serverSupports,
+        ...normalizeSupports(data),
+      };
+    } else if (packageName === 'Core.Supports.Remove') {
+      const removed = normalizeSupports(data);
+      for (const name of Object.keys(removed)) delete this.serverSupports[name];
+    }
+
     if (this.handlers['*']) {
       this.handlers['*'].forEach(cb => cb(packageName, data));
     }
     if (this.handlers[packageName]) {
       this.handlers[packageName].forEach(cb => cb(data, packageName));
     }
+  },
+
+  serverSupportsPackage(packageName) {
+    return !!this.serverSupports[packageName];
   },
 
   send(packageName, data) {
@@ -92,6 +125,7 @@ export const gmcp = {
       'Darkwind.Achievements 1',
       'Darkwind.Announcements 1',
       'Darkwind.Giphy 1',
+      'Darkwind.Sound 1',
       'Darkwind.Broadcast 1'
     ]);
     this.enabled = true;
@@ -99,7 +133,11 @@ export const gmcp = {
 
   reset() {
     this.enabled = false;
+    this.serverSupports = {};
     this.subscriptions = normalizeSubscriptionPayload();
+    if (this.handlers['Core.Supports.Set']) {
+      this.handlers['Core.Supports.Set'].forEach(cb => cb({}, 'Core.Supports.Set'));
+    }
   },
 
   sendSubscriptions(payload = {}) {

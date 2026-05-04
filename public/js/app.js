@@ -9,6 +9,8 @@ import { ideManager } from './ide-manager.js';
 import { announcementsManager } from './announcements-manager.js';
 import { giphyManager } from './giphy-manager.js';
 import { broadcastManager } from './broadcast-manager.js';
+import { soundPanel } from './sound-panel.js';
+import { soundManager } from './sound-manager.js';
 import { settingsManager } from './settings-manager.js';
 import { flushPendingMapSave } from './map-data.js';
 import { aliasManager } from './alias-manager.js';
@@ -328,6 +330,16 @@ ideManager.init();
 announcementsManager.init();
 giphyManager.init();
 broadcastManager.init();
+soundPanel.init();
+
+window.soundDebug = {
+  settings: () => soundManager.getDebugSnapshot(),
+  resolve: (category = 'quest', sound = 'complete') => soundManager.resolveDebugPath(category, sound),
+  unlock: () => soundManager.unlockFromUserGesture(),
+  play: (category = 'quest', sound = 'complete', volume) => soundManager.play(category, sound, volume),
+  setVolume: (volume = 0.7) => soundManager.setVolume(volume),
+  reset: () => soundManager.resetSettings(),
+};
 initInput();
 dom.commandInput.focus();
 

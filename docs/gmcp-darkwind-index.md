@@ -18,6 +18,7 @@ This index lists every custom `Darkwind.*` package currently advertised by the D
 | `Darkwind.Achievements` | `Darkwind.Achievements 1` | `List`, `Update` | Server -> Client | [`docs/gmcp-darkwind-achievements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-achievements.md) | `Update` merges per-family entries by `id` and replaces `summary` wholesale. |
 | `Darkwind.Announcements` | `Darkwind.Announcements 1` | `List`, `New`, `Update`, `State`, `MarkRead` | Mixed | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) | `List` is the login snapshot; read/archive changes now use targeted `Update` payloads. |
 | `Darkwind.Giphy` | `Darkwind.Giphy 1` | `Show` | Server -> Client | [`docs/gmcp-darkwind-giphy.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-giphy.md) | Transient overlay; gated by the `giphy` feature flag in `Darkwind.Client.Subscriptions`. |
+| `Darkwind.Sound` | `Darkwind.Sound 1` | (root) | Server -> Client | [`docs/gmcp-darkwind-sound.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-sound.md) | Toolbar audio widget; player-controlled volume, mute, category filtering, and loop stop handling. |
 
 ## Message Catalog
 
@@ -57,3 +58,4 @@ This index lists every custom `Darkwind.*` package currently advertised by the D
 | `Darkwind.Announcements.State` | Server -> Client | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
 | `Darkwind.Announcements.MarkRead` | Client -> Server | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
 | `Darkwind.Giphy.Show` | Server -> Client | [`docs/gmcp-darkwind-giphy.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-giphy.md) |
+| `Darkwind.Sound` | Server -> Client | [`docs/gmcp-darkwind-sound.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-sound.md) |

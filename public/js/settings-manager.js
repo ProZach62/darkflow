@@ -7,6 +7,7 @@ import { triggerManager } from './trigger-manager.js';
 import { styleToElement } from './ansi.js';
 import { panelManager } from './panel-manager.js';
 import { PRODUCT_NAME } from './brand.js';
+import { soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
@@ -419,6 +420,7 @@ export const settingsManager = {
         highlights: highlightData,
         triggers: triggerData,
         panels: panelManager.exportState(),
+        sound: soundManager.getSettings(),
       },
     };
   },
@@ -459,6 +461,7 @@ export const settingsManager = {
       localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(bundle.data.aliases || { scopes: {} }));
       localStorage.setItem(HIGHLIGHT_STORAGE_KEY, JSON.stringify(bundle.data.highlights || { scopes: {} }));
       localStorage.setItem(TRIGGER_STORAGE_KEY, JSON.stringify(bundle.data.triggers || { scopes: {} }));
+      soundManager.importSettings(bundle.data.sound || {});
     } catch (error) {
       throw new Error('Unable to write imported client data to local storage.');
     }
@@ -610,6 +613,77 @@ export const settingsManager = {
     row.appendChild(copy);
 
     return row;
+  },
+
+  _createAudioSettingsPanel() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'settings-mapper-editor';
+    const settings = soundManager.getSettings();
+
+    wrapper.appendChild(this._createCheckboxRow(
+      'Enable audio',
+      'Allow game-triggered sound effects in this browser.',
+      !!settings.enabled,
+      (checked) => soundManager.setEnabled(checked)
+    ));
+
+    const volumeRow = document.createElement('div');
+    volumeRow.className = 'settings-select-row';
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+    const label = document.createElement('div');
+    label.className = 'settings-label';
+    label.textContent = 'Master volume';
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = 'Controls the overall level for every audio category.';
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.value = String(Math.round(settings.volume * 100));
+    slider.className = 'sound-settings-volume';
+    slider.setAttribute('data-1p-ignore', 'true');
+    slider.setAttribute('data-op-ignore', 'true');
+    const value = document.createElement('span');
+    value.className = 'settings-connection-value';
+    value.textContent = slider.value + '%';
+    slider.addEventListener('input', () => {
+      value.textContent = slider.value + '%';
+      soundManager.setVolume(Number(slider.value) / 100);
+    });
+    copy.appendChild(label);
+    copy.appendChild(description);
+    volumeRow.appendChild(copy);
+    volumeRow.appendChild(slider);
+    volumeRow.appendChild(value);
+    wrapper.appendChild(volumeRow);
+
+    const categories = document.createElement('div');
+    categories.className = 'settings-sound-categories';
+    for (const category of SOUND_CATEGORIES) {
+      const info = SOUND_CATEGORY_INFO[category];
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sound-widget-category';
+      button.dataset.category = category;
+      button.setAttribute('aria-pressed', settings.categoryEnabled[category] ? 'true' : 'false');
+      button.classList.toggle('enabled', !!settings.categoryEnabled[category]);
+      button.classList.toggle('disabled', !settings.categoryEnabled[category]);
+      button.innerHTML = '<span class="sound-widget-category-icon">' + info.icon + '</span>' +
+        '<span class="sound-widget-category-label">' + info.label + '</span>';
+      button.addEventListener('click', () => {
+        soundManager.toggleCategory(category);
+        const next = soundManager.getSettings().categoryEnabled[category];
+        button.classList.toggle('enabled', !!next);
+        button.classList.toggle('disabled', !next);
+        button.setAttribute('aria-pressed', next ? 'true' : 'false');
+      });
+      categories.appendChild(button);
+    }
+    wrapper.appendChild(categories);
+
+    return wrapper;
   },
 
   _createKeyMappingsEditor() {
@@ -2690,6 +2764,7 @@ export const settingsManager = {
 
     const connectionSection = createTab('connection', 'Connection');
     const terminalSection = createTab('terminal', 'Terminal');
+    const audioSection = createTab('audio', 'Audio');
     const controlsSection = createTab('controls', 'Controls');
     const triggersSection = createTab('triggers', 'Triggers');
     const highlightsSection = createTab('highlights', 'Highlights');
@@ -2775,6 +2850,12 @@ export const settingsManager = {
         this._draftSettings.scrollbackBehavior = value;
       }
     ));
+    const audioTitle = document.createElement('h3');
+    audioTitle.className = 'dw-heading';
+    audioTitle.textContent = 'Audio';
+    audioSection.appendChild(audioTitle);
+    audioSection.appendChild(this._createAudioSettingsPanel());
+
     const controlsTitle = document.createElement('h3');
     controlsTitle.className = 'dw-heading';
     controlsTitle.textContent = 'Controls';
