@@ -67,6 +67,18 @@ function divineModifierLabel(value) {
   return 'No charge modifier';
 }
 
+function divinePressureLabel(god, pct, leader) {
+  const normalizedGod = String(god || '').toLowerCase();
+  const normalizedLeader = String(leader || '').toLowerCase();
+
+  if (pct <= 0) return 'silent';
+  if (normalizedGod && normalizedGod === normalizedLeader) return 'ascendant';
+  if (pct >= 85) return 'dominant';
+  if (pct >= 60) return 'surging';
+  if (pct >= 35) return 'rising';
+  return 'stirring';
+}
+
 function closeRoomImageModal() {
   if (!roomImageModal) return;
   if (roomImageModalKeyHandler) {
@@ -235,8 +247,9 @@ export const panelRenderers = {
     html += '<div class="omens-pressure">';
     for (const god of gods) {
       const pct = Math.max(0, Math.min(100, Number(scale[god]) || 0));
+      const pressureLabel = divinePressureLabel(god, pct, data.leader);
       html += '<div class="omens-pressure-row omens-god-' + god + '">' +
-        '<div class="omens-pressure-label"><span>' + divineGodLabel(god) + '</span><span>' + (pct > 0 ? 'stirring' : 'silent') + '</span></div>' +
+        '<div class="omens-pressure-label"><span>' + divineGodLabel(god) + '</span><span>' + pressureLabel + '</span></div>' +
         '<div class="omens-pressure-bar"><div style="width:' + pct + '%"></div></div>' +
         '</div>';
     }
