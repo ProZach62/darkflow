@@ -61,6 +61,8 @@ function renderDisplay(schema) {
   switch (schema.type) {
     case 'player_row':
       return renderPlayerRow(schema);
+    case 'finger_profile':
+      return renderFingerProfile(schema);
     case 'heading': {
       const el = document.createElement('h3');
       el.className = 'dw-heading';
@@ -139,6 +141,99 @@ function renderDisplay(schema) {
       return el;
     }
   }
+}
+
+function renderFingerProfile(schema) {
+  const fallbackAvatar = schema.fallback_avatar || '/assets/avatar-ghost.svg';
+  const el = document.createElement('div');
+  el.className = 'dw-finger-profile';
+  setAttr(el, schema);
+
+  const avatarButton = document.createElement('button');
+  avatarButton.type = 'button';
+  avatarButton.className = 'dw-finger-avatar-button';
+  avatarButton.title = 'View avatar';
+  avatarButton.setAttribute('aria-label', 'View avatar for ' + (schema.name || 'player'));
+
+  const img = document.createElement('img');
+  img.className = 'dw-finger-avatar';
+  img.src = schema.avatar || fallbackAvatar;
+  img.alt = schema.name ? schema.name + ' avatar' : 'Player avatar';
+  img.draggable = false;
+  img.addEventListener('error', () => {
+    if (img.src !== fallbackAvatar) img.src = fallbackAvatar;
+  });
+  avatarButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    document.dispatchEvent(new CustomEvent('dw:avatarZoom', {
+      detail: {
+        src: img.currentSrc || img.src || fallbackAvatar,
+        fallback: fallbackAvatar,
+        alt: img.alt,
+        name: schema.name || 'Player'
+      }
+    }));
+  });
+  avatarButton.appendChild(img);
+
+  const details = document.createElement('div');
+  details.className = 'dw-finger-details';
+
+  const tagline = document.createElement('div');
+  tagline.className = 'dw-finger-tagline';
+  tagline.textContent = schema.tagline || '';
+  details.appendChild(tagline);
+
+  const badges = Array.isArray(schema.badges) ? schema.badges.filter(Boolean) : [];
+  if (badges.length) {
+    const badgeWrap = document.createElement('div');
+    badgeWrap.className = 'dw-finger-badges';
+    for (const badgeText of badges) {
+      const badge = document.createElement('span');
+      const badgeSlug = String(badgeText).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      badge.className = 'dw-finger-badge' + (badgeSlug ? ' dw-finger-badge-' + badgeSlug : '');
+      badge.textContent = String(badgeText);
+      badgeWrap.appendChild(badge);
+    }
+    details.appendChild(badgeWrap);
+  }
+
+  const lines = Array.isArray(schema.lines) ? schema.lines : [];
+  for (const lineText of lines) {
+    const line = document.createElement('div');
+    if (!lineText) {
+      line.className = 'dw-finger-line dw-finger-line-spacer';
+      details.appendChild(line);
+      continue;
+    }
+
+    const text = String(lineText);
+    const colonIndex = text.indexOf(':');
+    const isStatus = text.startsWith('Account ') || text.startsWith('[...');
+    line.className = isStatus ? 'dw-finger-line dw-finger-line-status' : 'dw-finger-line';
+
+    if (colonIndex > 0 && colonIndex <= 24) {
+      const label = document.createElement('span');
+      label.className = 'dw-finger-label';
+      label.textContent = text.slice(0, colonIndex);
+      const value = document.createElement('span');
+      value.className = 'dw-finger-value';
+      value.textContent = text.slice(colonIndex + 1).trim();
+      line.appendChild(label);
+      line.appendChild(value);
+    } else {
+      const value = document.createElement('span');
+      value.className = 'dw-finger-value dw-finger-value-full';
+      value.textContent = text;
+      line.appendChild(value);
+    }
+    details.appendChild(line);
+  }
+
+  el.appendChild(avatarButton);
+  el.appendChild(details);
+  return el;
 }
 
 function renderPlayerRow(schema) {

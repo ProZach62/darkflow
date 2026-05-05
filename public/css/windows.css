@@ -275,6 +275,156 @@
 }
 
 /* ── Rich player rows ────────────────────────────────────────────── */
+.dw-finger-profile {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+  padding: 2px;
+}
+
+.dw-finger-avatar-button {
+  flex: 0 0 auto;
+  width: 156px;
+  height: 156px;
+  padding: 0;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0d1117;
+  cursor: zoom-in;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.dw-finger-avatar-button:hover,
+.dw-finger-avatar-button:focus-visible {
+  border-color: #f2cc60;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+}
+
+.dw-finger-avatar-button:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: 2px;
+}
+
+.dw-finger-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.dw-finger-details {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: #c9d1d9;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.dw-finger-tagline {
+  margin-bottom: 8px;
+  color: #f0f6fc;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.dw-finger-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(139, 148, 158, 0.18);
+}
+
+.dw-finger-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid rgba(88, 166, 255, 0.34);
+  border-radius: 999px;
+  background: rgba(88, 166, 255, 0.1);
+  color: #79c0ff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.dw-finger-badge-legend {
+  border-color: rgba(242, 204, 96, 0.42);
+  background: rgba(242, 204, 96, 0.12);
+  color: #f2cc60;
+}
+
+.dw-finger-line {
+  display: grid;
+  grid-template-columns: minmax(92px, max-content) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  min-height: 23px;
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.dw-finger-label {
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.dw-finger-value {
+  min-width: 0;
+  color: #dbe3ec;
+  font-weight: 500;
+}
+
+.dw-finger-value-full {
+  grid-column: 1 / -1;
+  color: #9fb3c8;
+  font-size: 13px;
+}
+
+.dw-finger-line-status .dw-finger-value-full {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid rgba(242, 204, 96, 0.3);
+  border-radius: 999px;
+  background: rgba(242, 204, 96, 0.08);
+  color: #f2cc60;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dw-finger-line-spacer {
+  display: block;
+  min-height: 12px;
+  padding: 0;
+}
+
+@media (max-width: 560px) {
+  .dw-finger-profile {
+    flex-direction: column;
+  }
+
+  .dw-finger-line {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 .dw-player-row {
   position: relative;
   display: flex;
