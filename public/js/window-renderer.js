@@ -232,8 +232,55 @@ function renderPlayerRow(schema) {
 
   body.appendChild(line1);
   body.appendChild(line2);
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'dw-player-row-tooltip';
+  tooltip.setAttribute('role', 'tooltip');
+
+  const tooltipName = document.createElement('div');
+  tooltipName.className = 'dw-player-tooltip-name';
+  tooltipName.textContent = schema.name || 'A hidden player';
+  tooltip.appendChild(tooltipName);
+
+  const detailRows = [
+    ['Level', schema.level || '?'],
+    ['Race', schema.race || 'unknown'],
+    ['Title', schema.title || ''],
+    ['Type', schema.designation || '']
+  ];
+  if (schema.achievement_title) detailRows.push(['Achievement', schema.achievement_title]);
+
+  for (const [labelText, valueText] of detailRows) {
+    if (!valueText) continue;
+    const detail = document.createElement('div');
+    detail.className = 'dw-player-tooltip-detail';
+    const label = document.createElement('span');
+    label.className = 'dw-player-tooltip-label';
+    label.textContent = labelText;
+    const value = document.createElement('span');
+    value.className = 'dw-player-tooltip-value';
+    value.textContent = String(valueText);
+    detail.appendChild(label);
+    detail.appendChild(value);
+    tooltip.appendChild(detail);
+  }
+
+  if (flags.length) {
+    const flagWrap = document.createElement('div');
+    flagWrap.className = 'dw-player-tooltip-flags';
+    for (const flagText of flags) {
+      if (!flagText) continue;
+      const flag = document.createElement('span');
+      flag.className = 'dw-player-row-flag';
+      flag.textContent = String(flagText);
+      flagWrap.appendChild(flag);
+    }
+    tooltip.appendChild(flagWrap);
+  }
+
   el.appendChild(avatarButton);
   el.appendChild(body);
+  el.appendChild(tooltip);
   return el;
 }
 

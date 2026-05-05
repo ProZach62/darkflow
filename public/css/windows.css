@@ -252,31 +252,43 @@
 
 /* ── Rich player rows ────────────────────────────────────────────── */
 .dw-player-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid #30363d;
+  justify-content: flex-start;
+  justify-self: start;
+  width: 156px;
+  min-height: 156px;
+  padding: 0;
+  border: 0;
   border-radius: 8px;
-  background: linear-gradient(180deg, rgba(22, 27, 34, 0.98), rgba(13, 17, 23, 0.98));
-  min-height: 72px;
+  background: transparent;
+  overflow: visible;
 }
 
 .dw-player-row:hover {
-  border-color: #3d4a58;
-  background: linear-gradient(180deg, rgba(25, 32, 41, 0.98), rgba(13, 17, 23, 0.98));
+  z-index: 20;
 }
 
 .dw-player-row-avatar-button {
   flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
+  width: 156px;
+  height: 156px;
   padding: 0;
   border: 1px solid #30363d;
   border-radius: 8px;
   overflow: hidden;
   background: #0d1117;
   cursor: zoom-in;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.dw-player-row-avatar-button:hover,
+.dw-player-row-avatar-button:focus-visible {
+  border-color: #58a6ff;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
 }
 
 .dw-player-row-avatar-button:focus-visible {
@@ -292,11 +304,72 @@
 }
 
 .dw-player-row-body {
+  display: none;
   min-width: 0;
-  display: flex;
   flex: 1;
   flex-direction: column;
   gap: 5px;
+}
+
+.dw-player-row-tooltip {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  z-index: 40;
+  width: min(260px, 88vw);
+  padding: 10px 12px;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.98);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.46);
+  color: #c9d1d9;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.dw-player-row:hover .dw-player-row-tooltip,
+.dw-player-row-avatar-button:focus-visible + .dw-player-row-body + .dw-player-row-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.dw-player-tooltip-name {
+  color: #f0f6fc;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-bottom: 7px;
+  overflow-wrap: anywhere;
+}
+
+.dw-player-tooltip-detail {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.dw-player-tooltip-label {
+  color: #8b949e;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.dw-player-tooltip-value {
+  color: #c9d1d9;
+  overflow-wrap: anywhere;
+}
+
+.dw-player-tooltip-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
 }
 
 .dw-player-row-line {
