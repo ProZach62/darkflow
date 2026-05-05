@@ -52,6 +52,28 @@
   padding: 12px;
   overflow-y: auto;
   flex: 1;
+  scrollbar-color: #30363d #0d1117;
+  scrollbar-width: thin;
+}
+
+.dw-modal-body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.dw-modal-body::-webkit-scrollbar-track {
+  background: #0d1117;
+  border-left: 1px solid #21262d;
+}
+
+.dw-modal-body::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border: 2px solid #0d1117;
+  border-radius: 999px;
+}
+
+.dw-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
 }
 
 /* ── Layout containers ──────────────────────────────────────────── */
@@ -71,6 +93,8 @@
 .dw-layout-grid {
   display: grid;
   gap: 8px;
+  max-width: 100%;
+  overflow: visible;
 }
 
 /* ── Display elements ───────────────────────────────────────────── */
@@ -313,7 +337,7 @@
 
 .dw-player-row-tooltip {
   position: absolute;
-  left: 50%;
+  left: var(--dw-player-tooltip-left, 0px);
   top: calc(100% + 10px);
   z-index: 40;
   width: min(260px, 88vw);
@@ -325,14 +349,14 @@
   color: #c9d1d9;
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, -4px);
+  transform: translateY(-4px);
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
 .dw-player-row:hover .dw-player-row-tooltip,
 .dw-player-row-avatar-button:focus-visible + .dw-player-row-body + .dw-player-row-tooltip {
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translateY(0);
 }
 
 .dw-player-tooltip-name {
@@ -370,6 +394,12 @@
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
+}
+
+@media (max-width: 780px) {
+  .dw-layout-grid {
+    grid-template-columns: repeat(auto-fit, minmax(156px, 156px)) !important;
+  }
 }
 
 .dw-player-row-line {

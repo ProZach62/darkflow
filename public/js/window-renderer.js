@@ -278,10 +278,35 @@ function renderPlayerRow(schema) {
     tooltip.appendChild(flagWrap);
   }
 
+  const positionTooltip = () => positionPlayerTooltip(el, tooltip);
+  el.addEventListener('mouseenter', positionTooltip);
+  avatarButton.addEventListener('focus', positionTooltip);
+
   el.appendChild(avatarButton);
   el.appendChild(body);
   el.appendChild(tooltip);
   return el;
+}
+
+function positionPlayerTooltip(row, tooltip) {
+  if (!row || !tooltip) return;
+
+  const boundary = row.closest('.dw-modal-body') || row.closest('.dw-modal') || document.documentElement;
+  const boundaryRect = boundary.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  const margin = 8;
+  const tooltipWidth = tooltip.offsetWidth || 260;
+  let left = rowRect.left + (rowRect.width / 2) - (tooltipWidth / 2);
+  const minLeft = boundaryRect.left + margin;
+  const maxLeft = boundaryRect.right - tooltipWidth - margin;
+
+  if (maxLeft >= minLeft) {
+    left = Math.max(minLeft, Math.min(left, maxLeft));
+  } else {
+    left = minLeft;
+  }
+
+  tooltip.style.setProperty('--dw-player-tooltip-left', (left - rowRect.left) + 'px');
 }
 
 // ── Input elements ──────────────────────────────────────────────────
