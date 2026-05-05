@@ -28,7 +28,7 @@ const wsDebugEnabled = startupUrlParams.get('debugWs') === '1';
 const gmcpDebugEnabled = startupUrlParams.get('debugGmcp') === '1';
 const ZORK_ONLY_HOST = 'darkwind.ai';
 const ZORK_ONLY_PORT = '4244';
-const ZORK_ONLY_PROTOCOL = 'ws';
+const ZORK_ONLY_PROTOCOL = 'telnet';
 
 function isTruthyUrlValue(value) {
   if (value === null) return false;
