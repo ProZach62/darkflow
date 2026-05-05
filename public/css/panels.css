@@ -68,6 +68,22 @@ body.mobile-panel-mode #mobile-panels-btn {
   display: flex;
 }
 
+body.zork-only-mode #left-dock,
+body.zork-only-mode #right-dock {
+  width: 0;
+  overflow: hidden;
+  border: none;
+  padding: 0;
+}
+
+body.zork-only-mode #left-dock-toggle,
+body.zork-only-mode #right-dock-toggle,
+body.zork-only-mode #mobile-panels-btn,
+body.zork-only-mode #panels-menu-btn,
+body.zork-only-mode #panels-menu {
+  display: none !important;
+}
+
 /* ── Panels menu dropdown ───────────────────────────────────────────── */
 .panels-menu-wrap { position: relative; }
 .panels-menu {

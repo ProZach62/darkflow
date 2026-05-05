@@ -27,6 +27,25 @@ const startupUrlParams = new URLSearchParams(window.location.search);
 const wsDebugEnabled = startupUrlParams.get('debugWs') === '1';
 const gmcpDebugEnabled = startupUrlParams.get('debugGmcp') === '1';
 
+function isTruthyUrlValue(value) {
+  if (value === null) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === '' || normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
+function isZorkOnlyLaunch(params) {
+  const mode = (params.get('mode') || params.get('game') || '').trim().toLowerCase();
+  return mode === 'zork'
+    || isTruthyUrlValue(params.get('zork'))
+    || isTruthyUrlValue(params.get('zorkOnly'))
+    || isTruthyUrlValue(params.get('zorkOnlyMode'))
+    || isTruthyUrlValue(params.get('ZorkOnlyMode'))
+    || window.location.href.toLowerCase().includes('zork');
+}
+
+state.zorkOnlyMode = isZorkOnlyLaunch(startupUrlParams);
+document.body.classList.toggle('zork-only-mode', state.zorkOnlyMode);
+
 // ── Status Bar ──────────────────────────────────────────────────────
 function formatDuration(ms) {
   const s = Math.floor(ms / 1000) % 60;

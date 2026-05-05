@@ -7,6 +7,7 @@ export const state = {
   reconnectAttempts: 0,
   reconnectTimer: null,
   userDisconnected: false,
+  zorkOnlyMode: false,
   wsHealth: {
     currentUrl: null,
     lastOpenAt: null,

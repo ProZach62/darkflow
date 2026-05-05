@@ -1,4 +1,5 @@
 import { gmcp } from './gmcp.js';
+import { state } from './state.js';
 import { panelManager } from './panel-manager.js';
 import { renderLayout, collectFormData, updateElements } from './window-renderer.js';
 import {
@@ -19,6 +20,7 @@ export const windowManager = {
 
   openWindow(data) {
     if (!data || !data.id || !data.layout) return;
+    if (state.zorkOnlyMode && this._isZorkOnlySuppressedWindow(data.id)) return;
 
     // Close existing window with same id
     if (this.windows[data.id]) {
@@ -36,6 +38,10 @@ export const windowManager = {
     } else {
       this._openModal(data, content);
     }
+  },
+
+  _isZorkOnlySuppressedWindow(id) {
+    return id === 'login' || id === 'newchar' || id === 'charselect';
   },
 
   _openModal(data, content) {

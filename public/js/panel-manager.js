@@ -1,4 +1,5 @@
 import { gmcp } from './gmcp.js';
+import { state as appState } from './state.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { panelRenderers } from './panel-renderers.js';
 import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorrection, load as loadMapData } from './map-data.js';
@@ -77,6 +78,13 @@ export const panelManager = {
   },
 
   init() {
+    if (appState.zorkOnlyMode) {
+      this.disableForZorkOnlyMode();
+      loadMapData();
+      this.registerGmcpHandlers();
+      return;
+    }
+
     this.loadState();
     this.buildPanelsMenu();
     this._ensureMobileSheet();
@@ -96,6 +104,7 @@ export const panelManager = {
   },
 
   setHiddenByDefault(ids) {
+    if (appState.zorkOnlyMode) return;
     this._hiddenByDefault = new Set(Array.isArray(ids) ? ids : []);
     for (const id of this._hiddenByDefault) {
       if (!PANEL_DEFS[id]) continue;
@@ -110,6 +119,7 @@ export const panelManager = {
   },
 
   applyImportedState(nextState) {
+    if (appState.zorkOnlyMode) return;
     if (!nextState || typeof nextState !== 'object') return;
 
     try {
@@ -137,6 +147,7 @@ export const panelManager = {
   },
 
   getSubscriptionPanels() {
+    if (appState.zorkOnlyMode) return {};
     const panels = {};
     for (const id of Object.keys(PANEL_DEFS)) {
       panels[id] = !!(this.state.panels[id] && this.state.panels[id].visible);
@@ -147,6 +158,7 @@ export const panelManager = {
   },
 
   syncGmcpSubscriptions(reason = 'visibility-sync', full = false, extraFeatures = {}) {
+    if (appState.zorkOnlyMode) return;
     if (this._subscriptionTimer) clearTimeout(this._subscriptionTimer);
     this._subscriptionTimer = setTimeout(() => {
       this._subscriptionTimer = null;
@@ -234,9 +246,23 @@ export const panelManager = {
     }, 500);
   },
 
+  disableForZorkOnlyMode() {
+    this._resetLivePanels();
+    this.panels = {};
+    this.state = { docks: { left: true, right: true }, panels: {} };
+    this.gmcpData = {};
+    this._characterSubscriptionSyncSent = false;
+    this._commChannelPlayersRequested = false;
+    this.buildPanelsMenu();
+    this.closeMobileSheet();
+    this._applyDockStateToDom();
+  },
+
   buildPanelsMenu() {
     const menu = document.getElementById('panels-menu');
+    if (!menu) return;
     menu.innerHTML = '';
+    if (appState.zorkOnlyMode) return;
     for (const [id, def] of Object.entries(PANEL_DEFS)) {
       const label = document.createElement('label');
       const cb = document.createElement('input');
@@ -254,6 +280,7 @@ export const panelManager = {
   },
 
   setDockCollapsed(side, collapsed) {
+    if (appState.zorkOnlyMode) return;
     if (this._mobile.enabled) return;
     this.state.docks[side] = collapsed;
     this._applyDockStateToDom();
@@ -261,12 +288,14 @@ export const panelManager = {
   },
 
   toggleMobileSheet() {
+    if (appState.zorkOnlyMode) return;
     if (!this._mobile.enabled) return;
     if (this._mobile.sheetOpen) this.closeMobileSheet();
     else this.openMobileSheet();
   },
 
   openMobileSheet() {
+    if (appState.zorkOnlyMode) return;
     if (!this._mobile.enabled || !this._mobile.overlayEl) return;
     this._mobile.sheetOpen = true;
     this._mobile.overlayEl.classList.add('open');
@@ -280,6 +309,7 @@ export const panelManager = {
   },
 
   createPanel(id) {
+    if (appState.zorkOnlyMode) return;
     if (this.panels[id]) return;
 
     const def = PANEL_DEFS[id];
@@ -565,17 +595,21 @@ export const panelManager = {
   _applyDockStateToDom() {
     const leftDock = document.getElementById('left-dock');
     const rightDock = document.getElementById('right-dock');
-    const leftCollapsed = this._mobile.enabled ? true : !!this.state.docks.left;
-    const rightCollapsed = this._mobile.enabled ? true : !!this.state.docks.right;
+    if (!leftDock || !rightDock) return;
+    const leftCollapsed = appState.zorkOnlyMode || this._mobile.enabled ? true : !!this.state.docks.left;
+    const rightCollapsed = appState.zorkOnlyMode || this._mobile.enabled ? true : !!this.state.docks.right;
 
     leftDock.classList.toggle('collapsed', leftCollapsed);
     rightDock.classList.toggle('collapsed', rightCollapsed);
 
-    document.getElementById('left-dock-toggle').classList.toggle('active', !leftCollapsed);
-    document.getElementById('right-dock-toggle').classList.toggle('active', !rightCollapsed);
+    const leftToggle = document.getElementById('left-dock-toggle');
+    const rightToggle = document.getElementById('right-dock-toggle');
+    if (leftToggle) leftToggle.classList.toggle('active', !leftCollapsed);
+    if (rightToggle) rightToggle.classList.toggle('active', !rightCollapsed);
   },
 
   dockPanel(id, side, order) {
+    if (appState.zorkOnlyMode) return;
     const st = this.state.panels[id];
     const p = this.panels[id];
     if (!p) return;
@@ -612,6 +646,7 @@ export const panelManager = {
   },
 
   floatPanel(id, x, y) {
+    if (appState.zorkOnlyMode) return;
     const st = this.state.panels[id];
     const p = this.panels[id];
     if (!p) return;
@@ -648,6 +683,7 @@ export const panelManager = {
   },
 
   collapsePanel(id, collapsed) {
+    if (appState.zorkOnlyMode) return;
     const st = this.state.panels[id];
     const p = this.panels[id];
     if (!p) return;
@@ -660,6 +696,7 @@ export const panelManager = {
   },
 
   closePanel(id) {
+    if (appState.zorkOnlyMode) return;
     const st = this.state.panels[id];
     st.visible = false;
     const p = this.panels[id];
@@ -679,6 +716,7 @@ export const panelManager = {
   },
 
   openPanel(id) {
+    if (appState.zorkOnlyMode) return;
     const st = this.state.panels[id];
     st.visible = true;
     this.createPanel(id);
@@ -694,6 +732,7 @@ export const panelManager = {
   },
 
   createDynamicPanel(id, title, dock, order, onClose) {
+    if (appState.zorkOnlyMode) return null;
     if (this.panels[id]) return this.panels[id].bodyEl;
 
     const el = document.createElement('div');
