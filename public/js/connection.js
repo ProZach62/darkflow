@@ -221,11 +221,12 @@ export function getWsDebugSnapshot() {
 export function setConnectionState(connState) {
   dom.connectionState.textContent = connState.charAt(0).toUpperCase() + connState.slice(1);
   dom.connectionDot.className = 'conn-dot dot-' + connState;
+  const showConnectFields = !state.zorkOnlyMode && connState !== 'connected';
 
   if (connState === 'connecting') {
     dom.connectBtn.textContent = 'Connecting...';
     dom.connectBtn.disabled = true;
-    dom.connectFields.style.display = 'flex';
+    dom.connectFields.style.display = showConnectFields ? 'flex' : 'none';
     dom.toolbarStatus.style.display = 'none';
   } else if (connState === 'connected') {
     dom.connectFields.style.display = 'none';
@@ -236,7 +237,7 @@ export function setConnectionState(connState) {
     // Disconnected
     dom.connectBtn.textContent = 'Connect';
     dom.connectBtn.disabled = false;
-    dom.connectFields.style.display = 'flex';
+    dom.connectFields.style.display = showConnectFields ? 'flex' : 'none';
     dom.toolbarStatus.style.display = 'none';
     dom.commandInput.disabled = false;
     dom.sendBtn.disabled = false;
@@ -284,9 +285,10 @@ export async function connect() {
         '&tls=' + tls;
     }
     const health = getHealth();
+    const connectionLabel = state.zorkOnlyMode ? 'Darkwind' : url;
 
     setConnectionState('connecting');
-    appendSystemMessage('Connecting to ' + url + '...');
+    appendSystemMessage('Connecting to ' + connectionLabel + '...');
 
     const ws = new WebSocket(url);
     state.ws = ws;
@@ -307,7 +309,7 @@ export async function connect() {
       health.stalledAt = null;
       recordBufferedAmount();
       pushWsEvent('open', { url });
-      appendSystemMessage('Connected to ' + url);
+      appendSystemMessage('Connected to ' + connectionLabel);
       dom.statusConnection.textContent = 'Connected: 0s';
       dom.commandInput.focus();
       startWatchdog();

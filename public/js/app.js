@@ -26,6 +26,9 @@ initOutput();
 const startupUrlParams = new URLSearchParams(window.location.search);
 const wsDebugEnabled = startupUrlParams.get('debugWs') === '1';
 const gmcpDebugEnabled = startupUrlParams.get('debugGmcp') === '1';
+const ZORK_ONLY_HOST = 'darkwind.ai';
+const ZORK_ONLY_PORT = '4244';
+const ZORK_ONLY_PROTOCOL = 'ws';
 
 function isTruthyUrlValue(value) {
   if (value === null) return false;
@@ -45,6 +48,14 @@ function isZorkOnlyLaunch(params) {
 
 state.zorkOnlyMode = isZorkOnlyLaunch(startupUrlParams);
 document.body.classList.toggle('zork-only-mode', state.zorkOnlyMode);
+
+function applyZorkOnlyConnectionTarget() {
+  if (!state.zorkOnlyMode) return;
+  dom.host.value = ZORK_ONLY_HOST;
+  dom.port.value = ZORK_ONLY_PORT;
+  dom.protocolSelect.value = ZORK_ONLY_PROTOCOL;
+  if (dom.connectFields) dom.connectFields.style.display = 'none';
+}
 
 // ── Status Bar ──────────────────────────────────────────────────────
 function formatDuration(ms) {
@@ -321,6 +332,8 @@ fetch('/config.json').then(r => r.json()).catch(() => ({})).then(config => {
   if (!proto) proto = (config.wss !== undefined && !config.wss) ? 'ws' : 'wss';
   if (!['ws', 'wss', 'telnet', 'telnets'].includes(proto)) proto = 'wss';
   dom.protocolSelect.value = proto;
+
+  applyZorkOnlyConnectionTarget();
 
   if (config.gameName) {
     updateBranding(config.gameName);
