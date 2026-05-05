@@ -1,5 +1,12 @@
 import { state, dom } from './state.js';
-import { appendEcho, appendSystemMessage, clearOutput } from './output.js';
+import {
+  appendEcho,
+  appendSystemMessage,
+  clearOutput,
+  exitSplitScrollback,
+  resumeOutputForManualCommand,
+  scrollActiveOutputByPage,
+} from './output.js';
 import { MAX_HISTORY, HISTORY_STORAGE_KEY, LEGACY_SESSION_KEY } from './constants.js';
 import { trackCommand } from './map-data.js';
 import { initCompletion, requestCompletion, resetCompletionState } from './completion.js';
@@ -10,7 +17,6 @@ import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { gmcp } from './gmcp.js';
 import { panelManager } from './panel-manager.js';
-import { exitSplitScrollback, scrollActiveOutputByPage } from './output.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -486,6 +492,7 @@ export function sendCommandText(text) {
 
   if (!aliasResult.handled && !aliasResult.sent) return false;
 
+  resumeOutputForManualCommand();
   pushHistory(trimmed);
   appendEcho(trimmed);
   finishSubmittedInput(trimmed);

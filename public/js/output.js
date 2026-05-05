@@ -19,6 +19,7 @@ const MIN_SPLIT_RATIO = 0.2;
 const MAX_SPLIT_RATIO = 0.8;
 const INITIAL_SPLIT_HISTORY_OFFSET_RATIO = 0.18;
 const MIN_INITIAL_SPLIT_HISTORY_LINES = 3;
+const USER_SCROLL_INTENT_MS = 900;
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 
 let isScrollLocked = false;
@@ -35,6 +36,7 @@ let resizeObserver = null;
 let suppressAutoPause = false;
 let splitRatio = DEFAULT_SPLIT_RATIO;
 let activeDividerPointerId = null;
+let userScrollIntentUntil = 0;
 
 const panes = {
   main: createPaneState(),
@@ -49,6 +51,7 @@ function createPaneState() {
     viewportEl: null,
     bottomSpacer: null,
     suppressScrollEvents: false,
+    scrollSuppressionToken: 0,
   };
 }
 
@@ -110,8 +113,14 @@ function initPane(pane, scrollEl) {
 function setPaneScrollTop(pane, value) {
   if (!pane.scrollEl) return;
   pane.suppressScrollEvents = true;
+  pane.scrollSuppressionToken++;
+  const token = pane.scrollSuppressionToken;
   pane.scrollEl.scrollTop = value;
-  pane.suppressScrollEvents = false;
+  requestAnimationFrame(() => {
+    if (pane.scrollSuppressionToken === token) {
+      pane.suppressScrollEvents = false;
+    }
+  });
 }
 
 function snapPaneToBottom(pane) {
@@ -128,6 +137,27 @@ function releaseAutoPauseSuppression() {
 function getActivePageScrollPane() {
   if (isSplitActive) return panes.history;
   return panes.main;
+}
+
+function markUserScrollIntent() {
+  userScrollIntentUntil = Date.now() + USER_SCROLL_INTENT_MS;
+}
+
+function markScrollbarPointerIntent(event) {
+  if (!(event instanceof PointerEvent) || !(event.currentTarget instanceof HTMLElement)) return;
+
+  const target = event.currentTarget;
+  const rect = target.getBoundingClientRect();
+  const scrollbarWidth = Math.max(0, target.offsetWidth - target.clientWidth);
+  const scrollEdgeWidth = Math.max(16, scrollbarWidth + 4);
+
+  if (event.clientX >= rect.right - scrollEdgeWidth) {
+    markUserScrollIntent();
+  }
+}
+
+function hasUserScrollIntent() {
+  return Date.now() <= userScrollIntentUntil;
 }
 
 function resumeOutputLive() {
@@ -611,13 +641,20 @@ export function exitSplitScrollback() {
   return true;
 }
 
+export function resumeOutputForManualCommand() {
+  if (isOutputPaused && !isSplitActive) {
+    setOutputPaused(false);
+  }
+}
+
 function handleMainScroll() {
   if (panes.main.suppressScrollEvents) return;
   const atBottom = isPaneAtBottom(panes.main);
   isScrollLocked = !atBottom;
+  const userScrollIntent = hasUserScrollIntent();
 
   if (isSplitModeEnabled()) {
-    if (!atBottom && !suppressAutoPause) {
+    if (!atBottom && !suppressAutoPause && userScrollIntent) {
       activateSplitView();
     } else {
       invalidateRender();
@@ -629,7 +666,7 @@ function handleMainScroll() {
     setOutputPaused(false);
     return;
   }
-  if (!atBottom && !suppressAutoPause) {
+  if (!atBottom && !suppressAutoPause && userScrollIntent) {
     setOutputPaused(true);
   }
   invalidateRender();
@@ -796,6 +833,13 @@ export function initOutput() {
   syncOutputUi();
   measureEstimatedLineHeight();
 
+  dom.output.addEventListener('wheel', markUserScrollIntent, { passive: true });
+  dom.output.addEventListener('touchstart', markUserScrollIntent, { passive: true });
+  dom.output.addEventListener('pointerdown', markScrollbarPointerIntent);
+  dom.outputHistory.addEventListener('wheel', markUserScrollIntent, { passive: true });
+  dom.outputHistory.addEventListener('touchstart', markUserScrollIntent, { passive: true });
+  dom.outputHistory.addEventListener('pointerdown', markScrollbarPointerIntent);
+
   dom.output.addEventListener('scroll', handleMainScroll);
   dom.outputHistory.addEventListener('scroll', handleHistoryScroll);
   dom.outputLive.addEventListener('scroll', handleLiveScroll);
@@ -878,6 +922,7 @@ export function setOutputSplitRatio(value) {
 export function scrollActiveOutputByPage(multiplier) {
   const pane = getActivePageScrollPane();
   if (!pane.scrollEl) return;
+  markUserScrollIntent();
   pane.scrollEl.scrollBy(0, pane.scrollEl.clientHeight * multiplier);
 }
 
