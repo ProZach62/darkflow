@@ -1167,6 +1167,25 @@ body.zork-only-mode #toolbar-connect-fields {
   gap: 10px;
 }
 
+.settings-color-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-color-swatch {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.settings-input-invalid {
+  border-color: #f85149;
+}
+
 @media (max-width: 980px) {
   .settings-alias-layout {
     grid-template-columns: 1fr;

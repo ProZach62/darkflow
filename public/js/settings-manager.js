@@ -1,5 +1,5 @@
 import { state, dom } from './state.js';
-import { DEFAULT_OUTPUT_SCROLLBACK_PRESET, FG_NAMES } from './constants.js';
+import { DEFAULT_OUTPUT_SCROLLBACK_PRESET } from './constants.js';
 import { setOutputScrollbackBehavior, setOutputScrollbackPreset, setOutputSplitRatio } from './output.js';
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
@@ -795,17 +795,52 @@ export const settingsManager = {
   },
 
   _createColorSelect(value, onChange) {
-    const select = document.createElement('select');
-    select.className = 'dw-select';
-    FG_NAMES.forEach((name) => {
-      const option = document.createElement('option');
-      option.value = name;
-      option.textContent = name.charAt(0).toUpperCase() + name.slice(1);
-      if (name === value) option.selected = true;
-      select.appendChild(option);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'settings-color-input-row';
+    const input = document.createElement('input');
+    const swatch = document.createElement('span');
+    const datalistId = 'highlight-color-suggestions';
+    let datalist = document.getElementById(datalistId);
+
+    if (!datalist) {
+      datalist = document.createElement('datalist');
+      datalist.id = datalistId;
+      highlightManager.getColorSuggestions().forEach((name) => {
+        const option = document.createElement('option');
+        option.value = name;
+        datalist.appendChild(option);
+      });
+      document.body.appendChild(datalist);
+    }
+
+    const sync = () => {
+      const normalized = highlightManager.normalizeColorToken(input.value);
+      const cssColor = highlightManager.colorTokenToCss(input.value);
+      input.classList.toggle('settings-input-invalid', Boolean(input.value.trim()) && !normalized);
+      swatch.style.backgroundColor = cssColor || 'transparent';
+      swatch.title = normalized || 'Invalid color';
+      onChange(normalized || input.value.trim().toLowerCase());
+    };
+
+    input.type = 'text';
+    input.className = 'dw-input';
+    input.value = value || '';
+    input.placeholder = 'yellow, bright-red, ansi-196, #ff8800';
+    input.setAttribute('list', datalistId);
+    input.addEventListener('input', sync);
+    input.addEventListener('blur', () => {
+      const normalized = highlightManager.normalizeColorToken(input.value);
+      if (normalized && input.value !== normalized) {
+        input.value = normalized;
+      }
+      sync();
     });
-    select.addEventListener('change', () => onChange(select.value));
-    return select;
+
+    swatch.className = 'settings-color-swatch';
+    wrapper.appendChild(input);
+    wrapper.appendChild(swatch);
+    sync();
+    return wrapper;
   },
 
   _createHighlightEditor() {

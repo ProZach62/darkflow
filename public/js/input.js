@@ -268,7 +268,7 @@ function handleAliasSlashCommand(text) {
     const scope = highlightManager.getScopeSnapshot(scopeKey);
     const args = parseBraceArguments(trimmed, 'highlight');
     if (args === null) {
-      appendHighlightWarning('Usage: /highlight {pattern} {foreground [b] background}');
+      appendHighlightWarning('Usage: /highlight {pattern} {foreground [b] background}; colors support red, bright-red, ansi-196, or #ff8800.');
       return { handled: true, localOnly: true };
     }
 

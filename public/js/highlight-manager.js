@@ -1,11 +1,24 @@
 import { dom } from './state.js';
-import { FG_NAMES } from './constants.js';
+import { FG_NAMES, BRIGHT_FG_NAMES, COLOR_256 } from './constants.js';
 
 const HIGHLIGHT_STORAGE_KEY = 'darkwind-client-highlights-v1';
 const COLOR_INDEX_BY_NAME = FG_NAMES.reduce((map, name, index) => {
   map[name] = index;
   return map;
 }, {});
+const BRIGHT_COLOR_INDEX_BY_NAME = BRIGHT_FG_NAMES.reduce((map, name, index) => {
+  map[name] = index;
+  return map;
+}, {});
+const COLOR_SUGGESTIONS = FG_NAMES.concat(BRIGHT_FG_NAMES, [
+  'ansi-196',
+  'ansi-202',
+  'ansi-226',
+  'ansi-46',
+  'ansi-51',
+  'ansi-93',
+  '#ff8800',
+]);
 
 function createId() {
   return 'highlight-' + Math.random().toString(36).slice(2, 10);
@@ -27,12 +40,8 @@ function normalizeStyle(style) {
     return { fg: 'yellow', bg: 'black', bold: false };
   }
 
-  const fg = typeof style.fg === 'string' && COLOR_INDEX_BY_NAME[style.fg] !== undefined
-    ? style.fg
-    : 'yellow';
-  const bg = typeof style.bg === 'string' && COLOR_INDEX_BY_NAME[style.bg] !== undefined
-    ? style.bg
-    : 'black';
+  const fg = normalizeColorToken(style.fg) || 'yellow';
+  const bg = normalizeColorToken(style.bg) || 'black';
 
   return {
     fg,
@@ -98,9 +107,12 @@ function cloneStyle(style) {
 }
 
 function buildAnsiColor(name) {
-  const index = COLOR_INDEX_BY_NAME[name];
-  if (index === undefined) return null;
-  return { type: 'standard', index };
+  const color = parseColorToken(name);
+  if (!color) return null;
+  if (color.type === 'standard' || color.type === 'bright' || color.type === '256') {
+    return color;
+  }
+  return { type: 'rgb', r: color.r, g: color.g, b: color.b };
 }
 
 function mergeHighlightStyle(baseStyle, highlightStyle) {
@@ -207,10 +219,11 @@ function parseTintinStyle(styleText) {
       bold = true;
       continue;
     }
-    if (COLOR_INDEX_BY_NAME[normalized] === undefined) {
+    const color = normalizeColorToken(normalized);
+    if (!color) {
       return { style: null, error: 'Unknown color "' + token + '".' };
     }
-    colors.push(normalized);
+    colors.push(color);
   }
 
   if (colors.length === 0) {
@@ -235,6 +248,55 @@ function formatTintinStyle(style) {
   if (style.bold) tokens.push('b');
   if (style.bg) tokens.push(style.bg);
   return tokens.join(' ');
+}
+
+function normalizeColorToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return '';
+  if (parseColorToken(token)) return token;
+  return '';
+}
+
+function parseColorToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  let match;
+
+  if (COLOR_INDEX_BY_NAME[token] !== undefined) {
+    return { type: 'standard', index: COLOR_INDEX_BY_NAME[token] };
+  }
+  if (BRIGHT_COLOR_INDEX_BY_NAME[token] !== undefined) {
+    return { type: 'bright', index: BRIGHT_COLOR_INDEX_BY_NAME[token] };
+  }
+  match = token.match(/^(?:ansi|xterm)-([0-9]{1,3})$/);
+  if (match) {
+    const index = Number(match[1]);
+    if (Number.isInteger(index) && index >= 0 && index <= 255) {
+      return { type: '256', index };
+    }
+    return null;
+  }
+  match = token.match(/^#([0-9a-f]{6})$/);
+  if (match) {
+    return {
+      type: 'rgb',
+      r: parseInt(match[1].slice(0, 2), 16),
+      g: parseInt(match[1].slice(2, 4), 16),
+      b: parseInt(match[1].slice(4, 6), 16),
+    };
+  }
+  return null;
+}
+
+function colorTokenToCss(value) {
+  const color = parseColorToken(value);
+  if (!color) return '';
+  if (color.type === 'standard') return COLOR_256[color.index] || '';
+  if (color.type === 'bright') return COLOR_256[color.index + 8] || '';
+  if (color.type === '256') return COLOR_256[color.index] || '';
+  if (color.type === 'rgb') {
+    return '#' + [color.r, color.g, color.b].map((part) => part.toString(16).padStart(2, '0')).join('');
+  }
+  return '';
 }
 
 export const highlightManager = {
@@ -387,6 +449,12 @@ export const highlightManager = {
     if (compiled.error) {
       diagnostics.push(compiled.error);
     }
+    if (!normalizeColorToken(rule.style && rule.style.fg)) {
+      diagnostics.push('Foreground color is invalid.');
+    }
+    if (!normalizeColorToken(rule.style && rule.style.bg)) {
+      diagnostics.push('Background color is invalid.');
+    }
 
     return diagnostics;
   },
@@ -444,6 +512,18 @@ export const highlightManager = {
     };
 
     return applyRulesToLine(line, compiledRules).fragments;
+  },
+
+  normalizeColorToken,
+
+  isValidColorToken(value) {
+    return Boolean(normalizeColorToken(value));
+  },
+
+  colorTokenToCss,
+
+  getColorSuggestions() {
+    return COLOR_SUGGESTIONS.slice();
   },
 };
 

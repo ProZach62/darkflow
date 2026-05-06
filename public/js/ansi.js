@@ -79,11 +79,19 @@ export function parseAnsi(text) {
               ansi.fg = { type: '256', index: params[p+2] };
               p += 2;
             }
+            else if (code === 38 && params[p+1] === 2 && p + 4 < params.length && isRgb(params[p+2], params[p+3], params[p+4])) {
+              ansi.fg = { type: 'rgb', r: params[p+2], g: params[p+3], b: params[p+4] };
+              p += 4;
+            }
             else if (code === 39) { ansi.fg = null; }
             else if (code >= 40 && code <= 47) { ansi.bg = { type: 'standard', index: code - 40 }; }
             else if (code === 48 && params[p+1] === 5 && p + 2 < params.length) {
               ansi.bg = { type: '256', index: params[p+2] };
               p += 2;
+            }
+            else if (code === 48 && params[p+1] === 2 && p + 4 < params.length && isRgb(params[p+2], params[p+3], params[p+4])) {
+              ansi.bg = { type: 'rgb', r: params[p+2], g: params[p+3], b: params[p+4] };
+              p += 4;
             }
             else if (code === 49) { ansi.bg = null; }
             else if (code >= 90 && code <= 97) { ansi.fg = { type: 'bright', index: code - 90 }; }
@@ -134,9 +142,18 @@ export function parseAnsi(text) {
   return fragments;
 }
 
+function isRgb(r, g, b) {
+  return [r, g, b].every((value) => Number.isInteger(value) && value >= 0 && value <= 255);
+}
+
+function rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('');
+}
+
 function resolveColor(color, isBackground) {
   if (!color) return isBackground ? DEFAULT_BG : DEFAULT_FG;
   if (color.type === '256') return COLOR_256[color.index] || (isBackground ? DEFAULT_BG : DEFAULT_FG);
+  if (color.type === 'rgb') return rgbToHex(color.r, color.g, color.b);
   if (color.type === 'standard') return COLOR_256[color.index];
   if (color.type === 'bright') return COLOR_256[color.index + 8];
   return isBackground ? DEFAULT_BG : DEFAULT_FG;
@@ -162,6 +179,8 @@ export function styleToElement(text, style) {
     if (style.fg) {
       if (style.fg.type === '256') {
         inlineFg = COLOR_256[style.fg.index];
+      } else if (style.fg.type === 'rgb') {
+        inlineFg = rgbToHex(style.fg.r, style.fg.g, style.fg.b);
       } else if (style.fg.type === 'standard') {
         classes.push('ansi-fg-' + FG_NAMES[style.fg.index]);
       } else if (style.fg.type === 'bright') {
@@ -171,6 +190,8 @@ export function styleToElement(text, style) {
     if (style.bg) {
       if (style.bg.type === '256') {
         inlineBg = COLOR_256[style.bg.index];
+      } else if (style.bg.type === 'rgb') {
+        inlineBg = rgbToHex(style.bg.r, style.bg.g, style.bg.b);
       } else if (style.bg.type === 'standard') {
         classes.push('ansi-bg-' + FG_NAMES[style.bg.index]);
       } else if (style.bg.type === 'bright') {
