@@ -46,16 +46,17 @@ function sendRawCommand(text) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
 
   const command = normalizeOutboundCommand(text);
+  const payload = command === '' ? '\n' : command;
 
   trackCommand(command);
-  if (!sendSocketPayload(command, {
+  if (!sendSocketPayload(payload, {
     kind: 'command',
-    size: command.length,
+    size: payload.length,
     preview: command.slice(0, 80),
   })) {
     return false;
   }
-  state.bytesSent += command.length;
+  state.bytesSent += payload.length;
   return true;
 }
 
@@ -494,7 +495,7 @@ export function sendCommandText(text) {
 
   resumeOutputForManualCommand();
   pushHistory(trimmed);
-  appendEcho(trimmed);
+  if (trimmed !== '') appendEcho(trimmed);
   finishSubmittedInput(trimmed);
   return aliasResult.sent || aliasResult.localOnly || aliasResult.handled;
 }

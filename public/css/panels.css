@@ -1015,6 +1015,7 @@ body.zork-only-mode #panels-menu {
 }
 
 .map-tile {
+  position: relative;
   width: 32px;
   height: 32px;
   background-color: #000;
@@ -1022,8 +1023,20 @@ body.zork-only-mode #panels-menu {
   background-repeat: no-repeat;
 }
 
+.map-tile-conflict::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 2;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f2cc60;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
+}
+
 .map-tile-player {
-  position: relative;
   box-shadow: 0 0 4px 1px #fff;
 }
 .map-tile-player::after {

@@ -1,7 +1,7 @@
 import { gmcp } from './gmcp.js';
 import { appendSystemMessage } from './output.js';
 
-const STORAGE_KEY = 'darkwind-map-data';
+const STORAGE_KEY = 'darkwind-map-data-v3';
 const MOVEMENT_INTENT_TTL_MS = 2500;
 const MAX_MOVEMENT_INTENTS = 25;
 const RESYNC_COOLDOWN_MS = 2000;
@@ -250,12 +250,14 @@ export function processRoomInfo(data) {
   debugLog.push(entry);
   if (debugLog.length > 500) debugLog.shift();
 
-  // Send traversal data to server for collaborative mapping
-  if (roomChanged && fromRoomId && pendingDirectionUsed) {
+  // Send authoritative room exits to the server for collaborative mapping.
+  // The movement fields are only a fallback when the room's own exits are not
+  // enough to connect it yet.
+  if (roomChanged) {
     const fromRoom = rooms.get(fromRoomId);
     const offset = DIR_OFFSETS[pendingDirectionUsed];
     if (
-      fromRoom && offset
+      pendingDirectionUsed && fromRoom && offset
       && fromRoom.x !== null && room.x !== null
       && room.coordSource === 'server'
       && !isSameCoords(room, fromRoom.x + offset.dx, fromRoom.y + offset.dy, fromRoom.z + offset.dz)
@@ -271,6 +273,7 @@ export function processRoomInfo(data) {
       name: room.name,
       area: room.area,
       environment: room.environment,
+      exits: room.exits,
     });
   }
 
@@ -293,6 +296,14 @@ function rebuildCoordIndex() {
       coordIndex.set(room.area + ':' + room.x + ',' + room.y + ',' + room.z, room.id);
     }
   }
+}
+
+function removeAreaRooms(area) {
+  for (const [id, room] of rooms) {
+    if (id === currentRoomId) continue;
+    if (room.area === area) rooms.delete(id);
+  }
+  rebuildCoordIndex();
 }
 
 function save() {
@@ -361,6 +372,10 @@ export function load() {
 export function mergeServerAreaData(data) {
   if (!data || !data.area || !Array.isArray(data.rooms)) return;
 
+  if (data.replace) {
+    removeAreaRooms(data.area);
+  }
+
   let merged = 0;
   let correctedCurrentRoom = false;
   for (const serverRoom of data.rooms) {
@@ -406,7 +421,11 @@ export function mergeServerAreaData(data) {
     }
   }
 
-  if (merged > 0) save();
+  if (data.version !== undefined) {
+    areaVersions.set(data.area, data.version);
+  }
+
+  if (merged > 0 || data.replace || data.version !== undefined) save();
   if (correctedCurrentRoom) {
     movementIntents = [];
   }
@@ -534,6 +553,32 @@ function debugDumpCoordIndex() {
   return out;
 }
 
+function debugDumpDuplicateCoords() {
+  const buckets = new Map();
+  const duplicates = [];
+
+  for (const room of rooms.values()) {
+    if (room.x === null) continue;
+    const key = room.area + ':' + room.x + ',' + room.y + ',' + room.z;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(room);
+  }
+
+  for (const [key, bucket] of buckets) {
+    if (bucket.length < 2) continue;
+    duplicates.push({
+      coord: key,
+      rooms: bucket.map((room) => ({
+        id: room.id.slice(0, 8),
+        name: room.name,
+        area: room.area,
+      })),
+    });
+  }
+
+  return duplicates;
+}
+
 function debugSummary() {
   const total = rooms.size;
   let positioned = 0;
@@ -560,6 +605,7 @@ function debugSummary() {
       ageMs: Date.now() - intent.ts,
     })),
     roomsByArea: areas,
+    duplicateCoordBuckets: debugDumpDuplicateCoords().length,
     recentLog: debugLog.slice(-10),
   };
 }
@@ -569,6 +615,7 @@ function debugExportAll() {
     summary: debugSummary(),
     rooms: debugDumpRooms(),
     unpositioned: debugDumpConflicts(),
+    duplicateCoords: debugDumpDuplicateCoords(),
     coordIndex: debugDumpCoordIndex(),
     log: debugDumpLog(),
   }, null, 2);
@@ -581,6 +628,7 @@ if (typeof window !== 'undefined') {
     rooms: debugDumpRooms,
     log: debugDumpLog,
     conflicts: debugDumpConflicts,
+    duplicates: debugDumpDuplicateCoords,
     coordIndex: debugDumpCoordIndex,
     exportAll: debugExportAll,
     clearData: clearMapData,

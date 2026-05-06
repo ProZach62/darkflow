@@ -173,28 +173,31 @@ function applyRulesToLine(line, compiledRules) {
 
     let segmentText = '';
     let segmentStyle = null;
+    let segmentHref = null;
 
     for (const ch of text) {
       const ownerIndex = owners[textIndex];
       const nextStyle = ownerIndex === -1
         ? cloneStyle(fragment.style || {})
         : mergeHighlightStyle(fragment.style || {}, compiledRules[ownerIndex].style);
+      const nextHref = fragment.href || null;
 
-      if (segmentText && stylesEqual(segmentStyle, nextStyle)) {
+      if (segmentText && stylesEqual(segmentStyle, nextStyle) && segmentHref === nextHref) {
         segmentText += ch;
       } else {
         if (segmentText) {
-          nextFragments.push({ text: segmentText, style: segmentStyle });
+          nextFragments.push({ text: segmentText, style: segmentStyle, href: segmentHref });
         }
         segmentText = ch;
         segmentStyle = nextStyle;
+        segmentHref = nextHref;
       }
 
       textIndex++;
     }
 
     if (segmentText) {
-      nextFragments.push({ text: segmentText, style: segmentStyle });
+      nextFragments.push({ text: segmentText, style: segmentStyle, href: segmentHref });
     }
   }
 

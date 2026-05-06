@@ -175,4 +175,13 @@ Chrome 90+, Firefox 90+, Safari 15+, Edge 90+ with native WebSocket support.
 
 ## License
 
-[Unlicense](https://unlicense.org/) -- public domain.
+`darkflow-client` is released under the [Unknown](LICENSE).
+
+This package includes or depends on third-party components under their own
+licenses:
+
+| Dependency | License |
+| --- | --- |
+| [express](https://github.com/expressjs/express) | MIT |
+| [ws](https://github.com/websockets/ws) | MIT |
+
