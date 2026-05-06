@@ -46,17 +46,16 @@ function sendRawCommand(text) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
 
   const command = normalizeOutboundCommand(text);
-  const payload = command === '' ? '\n' : command;
 
   trackCommand(command);
-  if (!sendSocketPayload(payload, {
+  if (!sendSocketPayload(command, {
     kind: 'command',
-    size: payload.length,
+    size: command.length,
     preview: command.slice(0, 80),
   })) {
     return false;
   }
-  state.bytesSent += payload.length;
+  state.bytesSent += command.length;
   return true;
 }
 
