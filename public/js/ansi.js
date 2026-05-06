@@ -5,6 +5,7 @@ const ansi = {
   bold: false,
   underline: false,
   inverse: false,
+  blink: false,
   fg: null,
   bg: null,
   href: null,
@@ -13,13 +14,14 @@ const ansi = {
     this.bold = false;
     this.underline = false;
     this.inverse = false;
+    this.blink = false;
     this.fg = null;
     this.bg = null;
   },
 
   snapshot() {
     return { bold: this.bold, underline: this.underline, inverse: this.inverse,
-             fg: this.fg, bg: this.bg };
+             blink: this.blink, fg: this.fg, bg: this.bg };
   }
 };
 
@@ -70,9 +72,11 @@ export function parseAnsi(text) {
             if (code === 0) { ansi.reset(); }
             else if (code === 1) { ansi.bold = true; }
             else if (code === 4) { ansi.underline = true; }
+            else if (code === 5) { ansi.blink = true; }
             else if (code === 7) { ansi.inverse = true; }
             else if (code === 22) { ansi.bold = false; }
             else if (code === 24) { ansi.underline = false; }
+            else if (code === 25) { ansi.blink = false; }
             else if (code === 27) { ansi.inverse = false; }
             else if (code >= 30 && code <= 37) { ansi.fg = { type: 'standard', index: code - 30 }; }
             else if (code === 38 && params[p+1] === 5 && p + 2 < params.length) {
@@ -162,7 +166,7 @@ function resolveColor(color, isBackground) {
 export function styleToElement(text, style) {
   if (!text) return null;
 
-  const needsStyling = style.bold || style.underline || style.inverse || style.fg || style.bg;
+  const needsStyling = style.bold || style.underline || style.inverse || style.blink || style.fg || style.bg;
   if (!needsStyling) {
     return document.createTextNode(text);
   }
@@ -202,6 +206,7 @@ export function styleToElement(text, style) {
 
   if (style.bold) classes.push('ansi-bold');
   if (style.underline) classes.push('ansi-underline');
+  if (style.blink) classes.push('ansi-blink');
 
   if (classes.length) span.className = classes.join(' ');
   let inlineStyle = '';

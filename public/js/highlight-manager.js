@@ -101,6 +101,7 @@ function cloneStyle(style) {
     bold: Boolean(style && style.bold),
     underline: Boolean(style && style.underline),
     inverse: Boolean(style && style.inverse),
+    blink: Boolean(style && style.blink),
     fg: style && style.fg ? { ...style.fg } : null,
     bg: style && style.bg ? { ...style.bg } : null,
   };

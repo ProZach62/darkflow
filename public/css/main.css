@@ -1696,6 +1696,15 @@ body.zork-only-mode #toolbar-connect-fields {
 
 .ansi-bold { font-weight: bold; }
 .ansi-underline { text-decoration: underline; }
+.ansi-blink { animation: ansi-blink 1s steps(2, start) infinite; }
+
+@keyframes ansi-blink {
+  50% { opacity: 0.18; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ansi-blink { animation: none; }
+}
 
 #status-versions { margin-left: auto; }
 
