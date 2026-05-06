@@ -21,6 +21,9 @@ const INITIAL_SPLIT_HISTORY_OFFSET_RATIO = 0.18;
 const MIN_INITIAL_SPLIT_HISTORY_LINES = 3;
 const USER_SCROLL_INTENT_MS = 900;
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
+const URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
+const OSC8_DEBUG_URL = 'https://gist.github.com/jasona/a03aa3851dce07b5c701c70e19db28df';
+const OSC8_DEBUG_PREFIX = 'https://gist.github.com/jasona/a03aa3851dce07b5c701c70e19db';
 
 let isScrollLocked = false;
 let isOutputPaused = false;
@@ -53,6 +56,29 @@ function createPaneState() {
     suppressScrollEvents: false,
     scrollSuppressionToken: 0,
   };
+}
+
+function escapeDebugText(text) {
+  return String(text || '')
+    .replace(/\x1b/g, '<ESC>')
+    .replace(/\x07/g, '<BEL>')
+    .replace(/\r/g, '<CR>')
+    .replace(/\n/g, '<LF>\n')
+    .replace(/\t/g, '<TAB>');
+}
+
+function shouldDebugOsc8(text) {
+  const value = String(text || '');
+  return value.includes(OSC8_DEBUG_URL) || value.includes(OSC8_DEBUG_PREFIX);
+}
+
+function debugOsc8Output(stage, payload) {
+  try {
+    // eslint-disable-next-line no-console
+    console.debug('[osc8-gossip-debug]', stage, payload);
+  } catch (error) {
+    // Ignore console failures in embedded browsers.
+  }
 }
 
 function getScrollbackBehavior() {
@@ -246,7 +272,7 @@ function buildLinesFromFragments(fragments, cssClass) {
     for (let i = 0; i < parts.length; i++) {
       if (i > 0) lines.push([]);
       if (parts[i]) {
-        lines[lines.length - 1].push({ text: parts[i], style: frag.style });
+        lines[lines.length - 1].push({ text: parts[i], style: frag.style, href: frag.href });
       }
     }
   }
@@ -271,7 +297,11 @@ function applyStyledTextAppearance(element, text, style) {
     return;
   }
 
-  if (styled.className) element.className = styled.className;
+  if (styled.className) {
+    element.className = element.className
+      ? element.className + ' ' + styled.className
+      : styled.className;
+  }
   const inlineStyle = styled.getAttribute('style');
   if (inlineStyle) element.setAttribute('style', inlineStyle);
   element.textContent = text;
@@ -325,11 +355,11 @@ function appendFragmentWithLinks(container, text, style) {
   const value = String(text || '');
   if (!value) return;
 
-  const urlPattern = /https?:\/\/[^\s<>"']+/gi;
   let lastIndex = 0;
   let match;
 
-  while ((match = urlPattern.exec(value)) !== null) {
+  URL_PATTERN.lastIndex = 0;
+  while ((match = URL_PATTERN.exec(value)) !== null) {
     const matched = match[0];
     const start = match.index;
     const trimmed = trimTrailingUrlPunctuation(matched);
@@ -369,12 +399,20 @@ function createLineElement(line) {
         div.appendChild(createReplayLink(part.text, part.style, () => giphyManager.replay(replay)));
         continue;
       }
+      if (part.href) {
+        div.appendChild(createUrlLink(part.text, part.style, part.href));
+        continue;
+      }
       appendFragmentWithLinks(div, part.text, part.style);
     }
     return div;
   }
 
   for (const frag of line.fragments) {
+    if (frag.href) {
+      div.appendChild(createUrlLink(frag.text, frag.style, frag.href));
+      continue;
+    }
     appendFragmentWithLinks(div, frag.text, frag.style);
   }
 
@@ -415,6 +453,7 @@ function attachGiphyReplay(line) {
         type: 'text',
         text: fragmentText,
         style: fragment.style || {},
+        href: fragment.href,
       });
       continue;
     }
@@ -427,6 +466,7 @@ function attachGiphyReplay(line) {
         type: 'text',
         text: fragmentText.slice(0, localStart),
         style: fragment.style || {},
+        href: fragment.href,
       });
     }
 
@@ -443,6 +483,7 @@ function attachGiphyReplay(line) {
         type: 'text',
         text: fragmentText.slice(localEnd),
         style: fragment.style || {},
+        href: fragment.href,
       });
     }
   }
@@ -927,8 +968,28 @@ export function scrollActiveOutputByPage(multiplier) {
 }
 
 export function appendOutput(text, cssClass) {
+  if (shouldDebugOsc8(text)) {
+    debugOsc8Output('appendOutput raw', escapeDebugText(text));
+  }
   const fragments = parseAnsi(text);
+  if (shouldDebugOsc8(text)) {
+    debugOsc8Output('parseAnsi fragments', fragments.map((fragment) => ({
+      text: escapeDebugText(fragment.text),
+      href: fragment.href || null,
+      style: fragment.style || {},
+    })));
+  }
   const lines = buildLinesFromFragments(fragments, cssClass);
+  if (shouldDebugOsc8(text)) {
+    debugOsc8Output('buildLinesFromFragments lines', lines.map((line) => ({
+      text: escapeDebugText(line.text),
+      fragments: line.fragments.map((fragment) => ({
+        text: escapeDebugText(fragment.text),
+        href: fragment.href || null,
+        style: fragment.style || {},
+      })),
+    })));
+  }
   const scopeKey = triggerManager.getActiveScopeKey();
   const visibleLines = [];
 

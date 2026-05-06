@@ -7,6 +7,7 @@ const ansi = {
   inverse: false,
   fg: null,
   bg: null,
+  href: null,
 
   reset() {
     this.bold = false;
@@ -29,6 +30,13 @@ export function parseAnsi(text) {
   const fragments = [];
   let plain = '';
   let i = 0;
+  const flushPlain = () => {
+    if (!plain) return;
+    const fragment = { text: plain, style: ansi.snapshot() };
+    if (ansi.href) fragment.href = ansi.href;
+    fragments.push(fragment);
+    plain = '';
+  };
 
   while (i < text.length) {
     if (text.charCodeAt(i) === 0x1b) {
@@ -51,10 +59,7 @@ export function parseAnsi(text) {
           continue;
         }
 
-        if (plain) {
-          fragments.push({ text: plain, style: ansi.snapshot() });
-          plain = '';
-        }
+        flushPlain();
 
         if (text[j] === 'm') {
           const paramStr = text.slice(i + 2, j);
@@ -88,6 +93,33 @@ export function parseAnsi(text) {
         }
 
         i = j + 1;
+      } else if (text[i + 1] === ']') {
+        let j = i + 2;
+        let terminatorLength = 0;
+        while (j < text.length) {
+          if (text.charCodeAt(j) === 0x07) {
+            terminatorLength = 1;
+            break;
+          }
+          if (text.charCodeAt(j) === 0x1b && text[j + 1] === '\\') {
+            terminatorLength = 2;
+            break;
+          }
+          j++;
+        }
+        if (!terminatorLength) {
+          ansi.buffer = text.slice(i);
+          break;
+        }
+
+        flushPlain();
+
+        const osc = text.slice(i + 2, j);
+        if (osc.slice(0, 3) === '8;;') {
+          ansi.href = osc.length > 3 ? osc.slice(3) : null;
+        }
+
+        i = j + terminatorLength;
       } else {
         i += 2;
       }
@@ -97,9 +129,7 @@ export function parseAnsi(text) {
     }
   }
 
-  if (plain) {
-    fragments.push({ text: plain, style: ansi.snapshot() });
-  }
+  flushPlain();
 
   return fragments;
 }
