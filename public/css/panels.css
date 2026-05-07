@@ -461,6 +461,28 @@ body.zork-only-mode #panels-menu {
   box-shadow: 0 0 18px 8px rgba(255, 214, 89, 0.34);
   transition: left 1s linear, top 1s linear;
 }
+.sky-world-body {
+  position: absolute;
+  left: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255,255,255,0.9), transparent 0 2px),
+    radial-gradient(circle at 62% 54%, rgba(88,166,255,0.55), transparent 0 9px),
+    radial-gradient(circle at 40% 62%, rgba(63,185,80,0.46), transparent 0 11px),
+    var(--world-color, #d8dee9);
+  box-shadow: 0 0 22px 7px rgba(210, 220, 235, 0.28);
+  transition: top 1s linear, opacity 0.8s ease;
+}
+.sky-world-body span {
+  position: absolute;
+  inset: 0;
+  display: block;
+  border-radius: 50%;
+  background: linear-gradient(90deg, rgba(13,17,23,0.28), transparent 44%, rgba(255,255,255,0.18));
+}
 .sky-moon {
   position: absolute;
   width: 18px;

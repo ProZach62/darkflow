@@ -103,6 +103,17 @@ function skyMoonColor(moon) {
   return '#c9d1d9';
 }
 
+function skySurfaceBody(data) {
+  const body = data && data.surface_body;
+  if (!body || !body.id) return null;
+  return {
+    id: String(body.id || ''),
+    name: body.name || body.id || 'World',
+    description: body.description || '',
+    color: body.color || '#d8dee9',
+  };
+}
+
 export function channelColor(channel) {
   let hash = 0;
   for (let i = 0; i < channel.length; i++) hash = ((hash << 5) - hash + channel.charCodeAt(i)) | 0;
@@ -244,10 +255,19 @@ export const panelRenderers = {
     const sunX = 8 + sunProgress * 84;
     const sunY = 78 - Math.sin(sunProgress * Math.PI) * 62;
     const moons = Array.isArray(data.moons) ? data.moons.map((moon) => skyRecomputeMoon(moon, sky.daySinceBeginning)) : [];
+    const surfaceBody = skySurfaceBody(data);
     const showMoons = sky.stage === 'night' || sky.stage === 'twilight';
     let html = '<div class="sky-panel sky-stage-' + escHtml(sky.stage) + '">';
     html += '<div class="sky-canvas">';
     html += '<div class="sky-stars"></div>';
+    if (surfaceBody) {
+      const bodyVisible = sky.stage === 'night' || sky.stage === 'twilight';
+      const bodyTop = bodyVisible ? 17 : 28;
+      const bodyOpacity = bodyVisible ? 0.88 : 0.38;
+      const bodyTitle = surfaceBody.name + (surfaceBody.description ? ': ' + surfaceBody.description : '');
+      html += '<div class="sky-world-body" title="' + escHtml(bodyTitle) + '" style="top:' + bodyTop + '%;opacity:' + bodyOpacity + ';--world-color:' + escHtml(surfaceBody.color) + '">' +
+        '<span></span></div>';
+    }
     if (sunVisible) {
       html += '<div class="sky-sun" style="left:' + sunX.toFixed(2) + '%;top:' + sunY.toFixed(2) + '%"></div>';
     }
@@ -266,8 +286,12 @@ export const panelRenderers = {
     }
     html += '</div>';
     html += '<div class="sky-footer"><span>' + escHtml(sky.stage.toUpperCase()) + '</span><span>' + skyClockLabel(sky) + '</span></div>';
-    if (moons.length) {
+    if (surfaceBody || moons.length) {
       html += '<div class="sky-moon-strip">';
+      if (surfaceBody) {
+        html += '<span><i style="background:' + escHtml(surfaceBody.color) + '"></i>' +
+          escHtml(surfaceBody.name) + '</span>';
+      }
       moons.forEach((moon) => {
         html += '<span><i style="background:' + escHtml(skyMoonColor(moon)) + '"></i>' +
           escHtml(moon.name || moon.id || 'Moon') + ' ' + escHtml(moon.phase_name || '') + '</span>';
