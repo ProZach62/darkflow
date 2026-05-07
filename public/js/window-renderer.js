@@ -270,6 +270,21 @@ function renderPlayerRow(schema) {
   });
   avatarButton.appendChild(img);
 
+  const overlay = document.createElement('div');
+  overlay.className = 'dw-player-row-avatar-overlay';
+
+  const overlayName = document.createElement('div');
+  overlayName.className = 'dw-player-row-avatar-name';
+  overlayName.textContent = schema.name || 'A hidden player';
+  overlay.appendChild(overlayName);
+
+  const overlayLevel = document.createElement('div');
+  overlayLevel.className = 'dw-player-row-avatar-level';
+  overlayLevel.textContent = schema.level ? 'Level ' + schema.level : '';
+  overlay.appendChild(overlayLevel);
+
+  avatarButton.appendChild(overlay);
+
   const body = document.createElement('div');
   body.className = 'dw-player-row-body';
 

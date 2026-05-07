@@ -445,6 +445,7 @@
 }
 
 .dw-player-row-avatar-button {
+  position: relative;
   flex: 0 0 auto;
   width: 156px;
   height: 156px;
@@ -475,6 +476,52 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.dw-player-row-avatar-overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-height: 52px;
+  padding: 8px 8px 20px 28px;
+  color: #f0f6fc;
+  text-align: right;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.74) 0%,
+    rgba(0, 0, 0, 0.42) 58%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.dw-player-row-avatar-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dw-player-row-avatar-level {
+  max-width: 100%;
+  overflow: hidden;
+  color: #d8dee9;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .dw-player-row-body {
