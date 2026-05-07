@@ -132,6 +132,7 @@ Darkflow also advertises these Darkwind-specific packages:
 |---------|---------|------|
 | `Darkwind.Char.Avatar 1` | Player avatar image data | [index](docs/gmcp-darkwind-index.md) |
 | `Darkwind.Room.Image 1` | Generated room image panel data | [index](docs/gmcp-darkwind-index.md) |
+| `Darkwind.Sky 1` | Animated sky, time, and lunar sync data | [sky](docs/gmcp-darkwind-sky.md) |
 | `Darkwind.Client.Subscriptions 1` | Client-side panel/feature visibility subscriptions | [index](docs/gmcp-darkwind-index.md) |
 | `Darkwind.Window 1` | Server-driven modals, panels, forms, actions | [window](docs/gmcp-darkwind-window.md) |
 | `Darkwind.IDE 1` | Builder file editor open/save/result/close | [ide](docs/gmcp-darkwind-ide.md) |
@@ -184,4 +185,3 @@ licenses:
 | --- | --- |
 | [express](https://github.com/expressjs/express) | MIT |
 | [ws](https://github.com/websockets/ws) | MIT |
-

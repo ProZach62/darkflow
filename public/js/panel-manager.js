@@ -5,7 +5,7 @@ import { panelRenderers } from './panel-renderers.js';
 import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorrection, load as loadMapData } from './map-data.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
-const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
+const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
 const AVATAR_CHARGE_TICK_MS = 2000;
 
 function cloneState(value) {
@@ -58,6 +58,7 @@ export const panelManager = {
   _characterSubscriptionSyncSent: false,
   _commChannelPlayersRequested: false,
   _buffTimer: null,
+  _skyTimer: null,
   _avatarMeterTicker: null,
   _avatarActiveEndAt: 0,
   // Server-provided full active duration, with old-server fallback in _updateAvatarMeter.
@@ -383,6 +384,7 @@ export const panelManager = {
     if (this.gmcpData[id]) {
       this._renderPanel(id);
     }
+    if (id === 'sky') this._syncSkyTimer();
     this._renderMobileSheet();
   },
 
@@ -711,6 +713,7 @@ export const panelManager = {
     }
     this._renderMobileSheet();
     if (id === 'buffs') this._syncBuffTimer();
+    if (id === 'sky') this._syncSkyTimer();
     this.saveState();
     this.syncGmcpSubscriptions('panel-close', false);
   },
@@ -727,6 +730,7 @@ export const panelManager = {
       this._renderMobileSheet();
     }
     if (id === 'buffs') this._syncBuffTimer();
+    if (id === 'sky') this._syncSkyTimer();
     this.saveState();
     this.syncGmcpSubscriptions('panel-open', false);
   },
@@ -834,6 +838,7 @@ export const panelManager = {
     }
     this._renderPanel('avatar');
     this._hideAvatarMeter();
+    this._syncSkyTimer();
   },
 
   _hideAvatarMeter() {
@@ -1115,6 +1120,28 @@ export const panelManager = {
     }, 1000);
   },
 
+  _syncSkyTimer() {
+    const visible = !!(this.state.panels.sky && this.state.panels.sky.visible && this.panels.sky);
+    const hasData = !!this.gmcpData.sky;
+
+    if (!visible || !hasData) {
+      if (this._skyTimer) {
+        clearInterval(this._skyTimer);
+        this._skyTimer = null;
+      }
+      return;
+    }
+
+    if (this._skyTimer) return;
+    this._skyTimer = setInterval(() => {
+      if (!this.state.panels.sky || !this.state.panels.sky.visible || !this.panels.sky) {
+        this._syncSkyTimer();
+        return;
+      }
+      this._renderPanel('sky');
+    }, 1000);
+  },
+
   _queuePanelRender(id) {
     this._pendingPanelRenders.add(id);
     if (this._panelRenderFrame) return;
@@ -1133,6 +1160,7 @@ export const panelManager = {
       p.el.remove();
     }
     this.panels = {};
+    this._syncSkyTimer();
     if (this._mobile.contentEl) {
       this._mobile.contentEl.textContent = '';
     }
@@ -1525,6 +1553,13 @@ export const panelManager = {
         this._setAvatarMeterPatron(this.gmcpData.omens.patron);
       }
       this._renderPanel('omens');
+    });
+
+    gmcp.on('Darkwind.Sky', (data) => {
+      this.gmcpData.sky = data || {};
+      this.gmcpData.sky._receivedAt = Date.now();
+      this._renderPanel('sky');
+      this._syncSkyTimer();
     });
 
     gmcp.on('Char.Stats', (data) => {

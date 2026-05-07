@@ -38,6 +38,71 @@ function formatInt(n) {
   return typeof n === 'number' ? n.toLocaleString('en-US') : n;
 }
 
+function skyBoundarySeconds(value, scale) {
+  if (Array.isArray(value)) {
+    return (Number(value[0]) || 0) * scale.hour + (Number(value[1]) || 0) * scale.minute;
+  }
+  if (value && typeof value === 'object') {
+    return (Number(value.hour) || 0) * scale.hour + (Number(value.minute) || 0) * scale.minute;
+  }
+  return 0;
+}
+
+function skyStageForSecond(daySecond, almanac, scale) {
+  const sunrise = skyBoundarySeconds(almanac && almanac.sunrise, scale);
+  const morning = skyBoundarySeconds(almanac && almanac.morning, scale);
+  const twilight = skyBoundarySeconds(almanac && almanac.twilight, scale);
+  const sunset = skyBoundarySeconds(almanac && almanac.sunset, scale);
+
+  if (daySecond >= sunrise && daySecond < morning) return 'dawn';
+  if (daySecond >= morning && daySecond < twilight) return 'day';
+  if (daySecond >= twilight && daySecond < sunset) return 'twilight';
+  return 'night';
+}
+
+function skyCurrentState(data) {
+  const scale = {
+    second: Number(data && data.scale && data.scale.second) || 1,
+    minute: Number(data && data.scale && data.scale.minute) || 20,
+    hour: Number(data && data.scale && data.scale.hour) || 1200,
+    day: Number(data && data.scale && data.scale.day) || 24000,
+  };
+  const receivedAt = Number(data && data._receivedAt) || Date.now();
+  const elapsed = Math.max(0, Math.floor((Date.now() - receivedAt) / 1000));
+  const gameNow = Math.max(0, (Number(data && data.game_now) || 0) + elapsed);
+  const daySecond = ((gameNow % scale.day) + scale.day) % scale.day;
+  const hour = Math.floor(daySecond / scale.hour);
+  const minute = Math.floor((daySecond % scale.hour) / scale.minute);
+  const second = Math.floor((daySecond % scale.minute) / scale.second);
+  const stage = skyStageForSecond(daySecond, data && data.almanac, scale);
+  const daySinceBeginning = Math.floor(gameNow / scale.day) + 1;
+
+  return { scale, gameNow, daySecond, hour, minute, second, stage, daySinceBeginning };
+}
+
+function skyClockLabel(sky) {
+  return String(sky.hour).padStart(2, '0') + ':' + String(sky.minute).padStart(2, '0');
+}
+
+function skyRecomputeMoon(moon, daySinceBeginning) {
+  const cycle = Number(moon && moon.cycle_days) || 1;
+  const phase = (Math.trunc(daySinceBeginning / cycle) % 8) + 1;
+  const names = ['new', 'waxing crescent', 'half', 'waxing gibbous', 'full', 'waning gibbous', 'half', 'waning crescent'];
+  return {
+    ...moon,
+    phase,
+    phase_name: names[phase - 1],
+  };
+}
+
+function skyMoonColor(moon) {
+  const id = String(moon && moon.id || '').toLowerCase();
+  if (id === 'dailos') return '#d46cff';
+  if (id === 'markas') return '#ff5f57';
+  if (id === 'tekal') return '#7ee787';
+  return '#c9d1d9';
+}
+
 export function channelColor(channel) {
   let hash = 0;
   for (let i = 0; i < channel.length; i++) hash = ((hash << 5) - hash + channel.charCodeAt(i)) | 0;
@@ -163,6 +228,56 @@ export function renderVitalBar(bodyEl, label, cur, max) {
 }
 
 export const panelRenderers = {
+  sky(bodyEl, data) {
+    if (!data || data.game_now === undefined || data.game_now === null) {
+      bodyEl.innerHTML = '<div class="placeholder">Waiting for sky...</div>';
+      return;
+    }
+
+    const sky = skyCurrentState(data);
+    const almanac = data.almanac || {};
+    const sunrise = skyBoundarySeconds(almanac.sunrise, sky.scale);
+    const sunset = skyBoundarySeconds(almanac.sunset, sky.scale);
+    const daylight = Math.max(1, sunset - sunrise);
+    const sunProgress = Math.max(0, Math.min(1, (sky.daySecond - sunrise) / daylight));
+    const sunVisible = sky.stage !== 'night';
+    const sunX = 8 + sunProgress * 84;
+    const sunY = 78 - Math.sin(sunProgress * Math.PI) * 62;
+    const moons = Array.isArray(data.moons) ? data.moons.map((moon) => skyRecomputeMoon(moon, sky.daySinceBeginning)) : [];
+    const showMoons = sky.stage === 'night' || sky.stage === 'twilight';
+    let html = '<div class="sky-panel sky-stage-' + escHtml(sky.stage) + '">';
+    html += '<div class="sky-canvas">';
+    html += '<div class="sky-stars"></div>';
+    if (sunVisible) {
+      html += '<div class="sky-sun" style="left:' + sunX.toFixed(2) + '%;top:' + sunY.toFixed(2) + '%"></div>';
+    }
+    if (showMoons && moons.length) {
+      html += '<div class="sky-moons">';
+      moons.forEach((moon, index) => {
+        const phase = Math.max(1, Math.min(8, Number(moon.phase) || 1));
+        const color = skyMoonColor(moon);
+        const left = 18 + index * 28;
+        const top = 20 + (index % 2) * 13;
+        const label = (moon.name || moon.id || 'Moon') + ': ' + (moon.phase_name || '');
+        html += '<div class="sky-moon sky-moon-phase-' + phase + '" title="' + escHtml(label) + '" style="left:' + left + '%;top:' + top + '%;--moon-color:' + escHtml(color) + '">' +
+          '<span></span></div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '<div class="sky-footer"><span>' + escHtml(sky.stage.toUpperCase()) + '</span><span>' + skyClockLabel(sky) + '</span></div>';
+    if (moons.length) {
+      html += '<div class="sky-moon-strip">';
+      moons.forEach((moon) => {
+        html += '<span><i style="background:' + escHtml(skyMoonColor(moon)) + '"></i>' +
+          escHtml(moon.name || moon.id || 'Moon') + ' ' + escHtml(moon.phase_name || '') + '</span>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    bodyEl.innerHTML = html;
+  },
+
   avatar(bodyEl, data) {
     const hasAvatar = !!(data && data.url);
     const src = hasAvatar ? data.url : '/assets/avatar-ghost.svg';

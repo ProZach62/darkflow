@@ -407,6 +407,129 @@ body.zork-only-mode #panels-menu {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
 }
 
+/* ── Sky panel ─────────────────────────────────────────────────────── */
+[data-panel-id="sky"] .panel-body {
+  padding: 0;
+  overflow: hidden;
+}
+.sky-panel {
+  min-height: 170px;
+  background: #0d1117;
+}
+.sky-canvas {
+  position: relative;
+  height: 138px;
+  overflow: hidden;
+  border-bottom: 1px solid #21262d;
+  transition: background 0.8s ease;
+}
+.sky-stage-day .sky-canvas {
+  background: linear-gradient(180deg, #265f96 0%, #5fa3cf 67%, #8dd4e6 100%);
+}
+.sky-stage-dawn .sky-canvas {
+  background: linear-gradient(180deg, #1c355f 0%, #7c7fb1 52%, #ffbe79 100%);
+}
+.sky-stage-twilight .sky-canvas {
+  background: linear-gradient(180deg, #151a3f 0%, #594577 58%, #d57a56 100%);
+}
+.sky-stage-night .sky-canvas {
+  background: linear-gradient(180deg, #030711 0%, #0e1831 70%, #1c2742 100%);
+}
+.sky-stars {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-image:
+    radial-gradient(circle at 12% 24%, rgba(255,255,255,0.75) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 28% 44%, rgba(255,255,255,0.5) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 48% 18%, rgba(255,255,255,0.65) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 68% 38%, rgba(255,255,255,0.45) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 86% 22%, rgba(255,255,255,0.7) 0 1px, transparent 1.5px);
+  transition: opacity 0.8s ease;
+}
+.sky-stage-night .sky-stars,
+.sky-stage-twilight .sky-stars {
+  opacity: 1;
+}
+.sky-sun {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: #ffd23f;
+  box-shadow: 0 0 18px 8px rgba(255, 214, 89, 0.34);
+  transition: left 1s linear, top 1s linear;
+}
+.sky-moon {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  background: var(--moon-color, #c9d1d9);
+  box-shadow: 0 0 9px rgba(201, 209, 217, 0.45);
+  overflow: hidden;
+  opacity: 0.92;
+}
+.sky-moon span {
+  position: absolute;
+  inset: 0;
+  display: block;
+  border-radius: 50%;
+}
+.sky-moon-phase-1 {
+  background: rgba(13, 17, 23, 0.82);
+  border: 1px solid #30363d;
+}
+.sky-moon-phase-2 span { background: linear-gradient(90deg, rgba(13,17,23,0.9) 0 68%, transparent 69%); }
+.sky-moon-phase-3 span { background: linear-gradient(90deg, rgba(13,17,23,0.9) 0 50%, transparent 51%); }
+.sky-moon-phase-4 span { background: linear-gradient(90deg, rgba(13,17,23,0.9) 0 25%, transparent 26%); }
+.sky-moon-phase-5 span { background: transparent; }
+.sky-moon-phase-6 span { background: linear-gradient(90deg, transparent 0 74%, rgba(13,17,23,0.9) 75%); }
+.sky-moon-phase-7 span { background: linear-gradient(90deg, transparent 0 49%, rgba(13,17,23,0.9) 50%); }
+.sky-moon-phase-8 span { background: linear-gradient(90deg, transparent 0 31%, rgba(13,17,23,0.9) 32%); }
+.sky-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 16px;
+  border-top: 1px solid rgba(255,255,255,0.03);
+  font-size: 22px;
+  line-height: 1;
+}
+.sky-footer span:first-child {
+  color: #f5e663;
+  font-weight: 700;
+}
+.sky-footer span:last-child {
+  color: #6e7681;
+  font-family: var(--df-font-mono);
+}
+.sky-moon-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 12px 10px;
+  color: #8b949e;
+  font-size: 10px;
+  line-height: 1.2;
+}
+.sky-moon-strip span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.sky-moon-strip i {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 5px currentColor;
+}
+
 .gmcp-panel-widget.mobile-panel {
   display: flex;
   flex: 1 1 auto;

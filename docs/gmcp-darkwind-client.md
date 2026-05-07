@@ -88,6 +88,7 @@ The current server recognizes the following panel keys. Unknown keys are stored 
 | `map` | Drives `Room.Info` push gate |
 | `roomImage` | Drives `Darkwind.Room.Image` and `Room.Info` push gates |
 | `omens` | Drives `Darkwind.Divine` |
+| `sky` | Drives `Darkwind.Sky`; the client animates between occasional syncs |
 | `quests` | Drives `Darkwind.Quests.*` |
 | `achievements` | Drives `Darkwind.Achievements.*` |
 
