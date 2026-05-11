@@ -494,7 +494,12 @@ export function sendCommandText(text) {
 
   resumeOutputForManualCommand();
   pushHistory(trimmed);
-  if (trimmed !== '') appendEcho(trimmed);
+  // Always echo, even for empty Enter. The server's prompt has no
+  // trailing newline (it sits like a shell prompt waiting for input),
+  // and over WebSocket there's no telnet local-echo to advance the
+  // cursor when you press Enter. Without a local line break here,
+  // consecutive prompts pile up side-by-side on a single line.
+  appendEcho(trimmed);
   finishSubmittedInput(trimmed);
   return aliasResult.sent || aliasResult.localOnly || aliasResult.handled;
 }
