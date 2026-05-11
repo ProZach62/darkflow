@@ -1,6 +1,6 @@
 import { state, dom } from './state.js';
 import { gmcp, gmcpTextDecoder } from './gmcp.js';
-import { appendOutput, appendSystemMessage } from './output.js';
+import { appendOutput, appendSystemMessage, closeOpenOutputLine } from './output.js';
 import { panelManager } from './panel-manager.js';
 import { windowManager } from './window-manager.js';
 import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
@@ -179,6 +179,11 @@ export function sendSocketPayload(payload, metadata) {
     noteOutboundActivity(kind, metadata);
     state.ws.send(payload);
     recordBufferedAmount();
+    // The fragmented-output merge logic in output.js keeps a partial
+    // line open across frames. Any send to the server is a barrier:
+    // the previous server prompt is "done" for merge purposes, and a
+    // subsequent response should land on a fresh line.
+    closeOpenOutputLine();
     return true;
   } catch (error) {
     const health = getHealth();

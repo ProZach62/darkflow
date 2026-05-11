@@ -1129,6 +1129,18 @@ export function appendEcho(text) {
   queueLines([buildSingleTextLine('> ' + text, 'echo-line')]);
 }
 
+// Called when the client sends anything to the server. The fragmented-
+// ANSI/UTF-8 merge mechanism in appendOutput keeps a partial line
+// "open" so subsequent frames append to it. That's correct within a
+// server burst, but the server's prompt is always a partial line --
+// without this barrier, repeated empty Enters merge their prompts
+// into one row, and the next command's response sticks onto the stale
+// prompt. Closing on every outbound frame finalizes the prompt at
+// each user submission.
+export function closeOpenOutputLine() {
+  openOutputLine = null;
+}
+
 export function clearOutput() {
   lineStore = [];
   pendingLines = [];
