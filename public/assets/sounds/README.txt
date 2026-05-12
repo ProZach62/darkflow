@@ -47,6 +47,7 @@ Spell Sounds:
   spell-buff.mp3           - Buff spell
 
 Skill Sounds:
+  skill-corpse-burner-burn.mp3 - Corpse burner burn action
   skill-use.mp3            - Generic skill use
   skill-success.mp3        - Skill success
   skill-fail.mp3           - Skill failure
