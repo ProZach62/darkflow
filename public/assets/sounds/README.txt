@@ -91,9 +91,12 @@ Alert Sounds:
   alert-warning.mp3        - General warning
 
 Ambient Sounds:
+  ambient-corpse-burner.mp3 - Corpse burner processing
   ambient-rain.mp3         - Rain loop
   ambient-fire.mp3         - Crackling fire loop
+  ambient-farting.mp3      - Rare corpse burner processing variant
   ambient-wind.mp3         - Wind loop
+  ambient-moan.mp3         - Rare corpse burner processing variant
   ambient-combat-music.mp3 - Combat music loop
 
 UI Sounds:
