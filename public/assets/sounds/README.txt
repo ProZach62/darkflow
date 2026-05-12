@@ -92,6 +92,7 @@ Alert Sounds:
   alert-warning.mp3        - General warning
 
 Ambient Sounds:
+  ambient-big-goomba.mp3  - Big Goomba hourly bell
   ambient-corpse-burner.mp3 - Corpse burner processing
   ambient-rain.mp3         - Rain loop
   ambient-fire.mp3         - Crackling fire loop
