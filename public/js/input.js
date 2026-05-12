@@ -494,12 +494,12 @@ export function sendCommandText(text) {
 
   resumeOutputForManualCommand();
   pushHistory(trimmed);
-  // Always echo, even for empty Enter. The server's prompt has no
-  // trailing newline (it sits like a shell prompt waiting for input),
-  // and over WebSocket there's no telnet local-echo to advance the
-  // cursor when you press Enter. Without a local line break here,
-  // consecutive prompts pile up side-by-side on a single line.
-  appendEcho(trimmed);
+  // Echo non-empty commands only. Empty Enter sends "" to the server
+  // (pager-enter behavior); the cursor-advance "echo" is implicit in
+  // the server's next prompt arriving on a fresh line, which is
+  // guaranteed by closeOpenOutputLine() in sendSocketPayload. Matches
+  // standard telnet/MUD client behavior (RFC 854, PuTTY, Mudlet).
+  if (trimmed !== '') appendEcho(trimmed);
   finishSubmittedInput(trimmed);
   return aliasResult.sent || aliasResult.localOnly || aliasResult.handled;
 }
