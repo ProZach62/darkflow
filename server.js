@@ -62,93 +62,154 @@ app.use(express.static(path.join(__dirname, 'public')));
 // v1: open relay with logging. Future: allowlist (see docs).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Telnet IAC parser with GMCP bridging.
-// - Strips IAC sequences from upstream bytes so they don't pollute output.
-// - Accepts GMCP (option 201): WILL/DO GMCP gets reciprocated, all other
-//   WILL/DO get replies DONT/WONT so MUDs don't stall waiting.
-// - Extracts IAC SB 201 <payload> IAC SE blocks as separate gmcpFrames so
-//   the proxy can ship them to the browser as binary WS frames.
-// - Discards every other SB block (MCCP, MSDP, MSSP, ...) silently.
-// - Buffers partial IAC sequences across chunk boundaries.
-// Construct with onGmcpAgreed() callback to be notified when GMCP
-// negotiation completes (so buffered browser->MUD GMCP can be flushed).
 const IAC = 0xFF, DONT = 0xFE, DO = 0xFD, WONT = 0xFC, WILL = 0xFB;
 const SB = 0xFA, SE = 0xF0;
 const TELOPT_GMCP = 0xC9; // 201
+const MAX_SUBNEG_BYTES = 1024 * 1024;
 
+// Telnet IAC parser with GMCP bridging.
+//
+// This is intentionally a byte-by-byte state machine instead of an
+// index-scanning parser. Telnet and ANSI sequences can split across TCP chunks,
+// and musicmud.org's protocol notes call out that telnet parsing belongs in its
+// own state-machine layer. The shape also follows the chrysalis client parser:
+// persist parser state, subnegotiation mode, and accumulated subnegotiation
+// bytes across parse() calls rather than concatenating and rescanning pending
+// chunks.
+//
+// The parser strips telnet commands from upstream text, negotiates GMCP option
+// 201, extracts IAC SB 201 ... IAC SE payloads as gmcpFrames, unescapes IAC IAC
+// inside subnegotiations, and drops subnegotiation payloads over 1 MiB.
 function makeTelnetParser({ onGmcpAgreed } = {}) {
-  let pending = Buffer.alloc(0);
+  const S_DATA = 0;
+  const S_IAC = 1;
+  const S_OPT = 2;
+  const S_SB_OPT = 3;
+  const S_SB_DATA = 4;
+  const S_SB_IAC = 5;
+  const S_SB_OPT_NEG = 6;
+
+  let state = S_DATA;
+  let negCmd = 0;
+  let subOpt = 0;
+  let subBuf = [];
+  let subOverflowed = false;
   let gmcpAgreed = false;
 
+  function markGmcpAgreed() {
+    if (gmcpAgreed) return;
+    gmcpAgreed = true;
+    if (typeof onGmcpAgreed === 'function') onGmcpAgreed();
+  }
+
+  function appendSub(b) {
+    if (subOverflowed) return;
+    if (subBuf.length >= MAX_SUBNEG_BYTES) {
+      subOverflowed = true;
+      subBuf = [];
+      return;
+    }
+    subBuf.push(b);
+  }
+
+  function negotiateOption(opt, reply) {
+    if (opt === TELOPT_GMCP) {
+      if (negCmd === WILL) {
+        reply.push(IAC, DO, opt);
+        markGmcpAgreed();
+      } else if (negCmd === DO) {
+        reply.push(IAC, WILL, opt);
+        markGmcpAgreed();
+      }
+      return;
+    }
+
+    if (negCmd === WILL) reply.push(IAC, DONT, opt);
+    else if (negCmd === DO) reply.push(IAC, WONT, opt);
+  }
+
   function parse(chunk) {
-    const buf = pending.length ? Buffer.concat([pending, chunk]) : chunk;
-    pending = Buffer.alloc(0);
     const out = [];
     const reply = [];
     const gmcpFrames = [];
-    let i = 0;
-    while (i < buf.length) {
-      const b = buf[i];
-      if (b !== IAC) {
-        out.push(b);
-        i++;
-        continue;
-      }
-      if (i + 1 >= buf.length) { pending = buf.slice(i); break; }
-      const cmd = buf[i + 1];
-      if (cmd === IAC) {
-        out.push(IAC);
-        i += 2;
-        continue;
-      }
-      if (cmd === WILL || cmd === WONT || cmd === DO || cmd === DONT) {
-        if (i + 2 >= buf.length) { pending = buf.slice(i); break; }
-        const opt = buf[i + 2];
-        if (opt === TELOPT_GMCP) {
-          if (cmd === WILL) {
-            reply.push(IAC, DO, opt);
-            if (!gmcpAgreed) {
-              gmcpAgreed = true;
-              if (typeof onGmcpAgreed === 'function') onGmcpAgreed();
+
+    for (let i = 0; i < chunk.length; i++) {
+      const b = chunk[i];
+
+      switch (state) {
+        case S_DATA:
+          if (b === IAC) state = S_IAC;
+          else out.push(b);
+          break;
+
+        case S_IAC:
+          if (b === IAC) {
+            out.push(IAC);
+            state = S_DATA;
+          } else if (b === WILL || b === WONT || b === DO || b === DONT) {
+            negCmd = b;
+            state = S_OPT;
+          } else if (b === SB) {
+            state = S_SB_OPT;
+          } else {
+            // Stray SE, NOP, GA, EOR, and unknown 2-byte commands are eaten.
+            state = S_DATA;
+          }
+          break;
+
+        case S_OPT:
+          negotiateOption(b, reply);
+          negCmd = 0;
+          state = S_DATA;
+          break;
+
+        case S_SB_OPT:
+          subOpt = b;
+          subBuf = [];
+          subOverflowed = false;
+          state = S_SB_DATA;
+          break;
+
+        case S_SB_DATA:
+          if (b === IAC) state = S_SB_IAC;
+          else appendSub(b);
+          break;
+
+        case S_SB_IAC:
+          if (b === IAC) {
+            appendSub(IAC);
+            state = S_SB_DATA;
+          } else if (b === SE) {
+            if (!subOverflowed && subOpt === TELOPT_GMCP) {
+              gmcpFrames.push(Buffer.from(subBuf));
             }
-          } else if (cmd === DO) {
-            reply.push(IAC, WILL, opt);
+            subBuf = [];
+            subOpt = 0;
+            subOverflowed = false;
+            state = S_DATA;
+          } else if (b === WILL || b === WONT || b === DO || b === DONT) {
+            negCmd = b;
+            state = S_SB_OPT_NEG;
+          } else {
+            // Nested telnet command inside SB; eat the command, not payload.
+            state = S_SB_DATA;
           }
-          // WONT/DONT GMCP: nothing to reply; gmcpAgreed stays false.
-        } else {
-          if (cmd === WILL) reply.push(IAC, DONT, opt);
-          else if (cmd === DO) reply.push(IAC, WONT, opt);
+          break;
+
+        case S_SB_OPT_NEG:
+          // Telnet option negotiation can legally appear inside SB. Process it
+          // without letting its command or option bytes leak into subBuf.
+          negotiateOption(b, reply);
+          negCmd = 0;
+          state = S_SB_DATA;
+          break;
+
+        default:
+          state = S_DATA;
+          break;
         }
-        i += 3;
-        continue;
-      }
-      if (cmd === SB) {
-        // Find matching IAC SE; inside SB, IAC IAC is an escaped 0xFF byte.
-        let j = i + 2;
-        let end = -1;
-        while (j < buf.length - 1) {
-          if (buf[j] === IAC) {
-            if (buf[j + 1] === IAC) { j += 2; continue; }
-            if (buf[j + 1] === SE) { end = j + 2; break; }
-          }
-          j++;
-        }
-        if (end < 0) { pending = buf.slice(i); break; }
-        // Extract GMCP payload if this was an SB GMCP block.
-        if (i + 2 < buf.length && buf[i + 2] === TELOPT_GMCP) {
-          const payload = [];
-          for (let k = i + 3; k < end - 2; k++) {
-            if (buf[k] === IAC && buf[k + 1] === IAC) { payload.push(IAC); k++; }
-            else payload.push(buf[k]);
-          }
-          gmcpFrames.push(Buffer.from(payload));
-        }
-        i = end;
-        continue;
-      }
-      // Other 2-byte commands (NOP, GA, etc.): consume both.
-      i += 2;
     }
+
     return {
       text: Buffer.from(out),
       reply: reply.length ? Buffer.from(reply) : null,
@@ -361,7 +422,25 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Darkflow listening on port ${PORT}`);
-  console.log(`Proxy endpoint: ws[s]://<host>:${PORT}/proxy?host=X&port=Y&tls=0|1`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Darkflow listening on port ${PORT}`);
+    console.log(`Proxy endpoint: ws[s]://<host>:${PORT}/proxy?host=X&port=Y&tls=0|1`);
+  });
+}
+
+module.exports = {
+  makeTelnetParser,
+  wrapGmcp,
+  constants: {
+    IAC,
+    DONT,
+    DO,
+    WONT,
+    WILL,
+    SB,
+    SE,
+    TELOPT_GMCP,
+    MAX_SUBNEG_BYTES,
+  },
+};
