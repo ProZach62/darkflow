@@ -241,26 +241,71 @@ function openRoomImageModal(src, altText) {
   roomImageModal = overlay;
 }
 
-export function renderVitalBar(bodyEl, label, cur, max) {
-  let row = bodyEl.querySelector('.vitals-' + label.toLowerCase());
-  const pct = max > 0 ? Math.round((cur / max) * 100) : 0;
+function vitalBarClass(value) {
+  const suffix = String(value || 'bar').toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'bar';
+  return 'vitals-' + suffix;
+}
+
+export function renderVitalBar(bodyEl, label, cur, max, opts = {}) {
+  const rowClass = vitalBarClass(opts.id || label);
+  let row = bodyEl.querySelector('.' + rowClass);
+  const rawPct = max > 0 ? Math.round((cur / max) * 100) : 0;
+  const pct = Math.max(0, Math.min(100, rawPct));
   if (!row) {
     row = document.createElement('div');
-    row.className = 'vitals-row vitals-' + label.toLowerCase();
+    row.className = 'vitals-row ' + rowClass;
     row.innerHTML =
-      '<div class="vitals-label"><span>' + label + '</span><span class="vitals-val"></span></div>' +
+      '<div class="vitals-label"><span class="vitals-label-name"></span><span class="vitals-val"></span></div>' +
       '<div class="vitals-bar"><div class="vitals-bar-fill"></div></div>';
     bodyEl.appendChild(row);
   }
-  row.querySelector('.vitals-val').textContent = cur + ' / ' + max;
+  if (opts.guild) row.classList.add('vitals-guild');
+  Array.from(row.classList).forEach((className) => {
+    if (className.indexOf('vitals-kind-') === 0) row.classList.remove(className);
+  });
+  if (opts.kind) row.classList.add('vitals-kind-' + opts.kind);
+  row.querySelector('.vitals-label-name').textContent = label;
+  row.querySelector('.vitals-val').textContent = opts.display || (cur + ' / ' + max);
+  if (opts.title) row.title = opts.title;
+  else row.removeAttribute('title');
   const fill = row.querySelector('.vitals-bar-fill');
   fill.style.width = pct + '%';
   fill.style.backgroundColor = vitalBarColor(pct);
 }
 
-function removeVitalBar(bodyEl, label) {
-  const row = bodyEl.querySelector('.vitals-' + label.toLowerCase());
+function removeVitalBar(bodyEl, label, opts = {}) {
+  const row = bodyEl.querySelector('.' + vitalBarClass(opts.id || label));
   if (row) row.remove();
+}
+
+function renderGuildVitalBars(bodyEl, bars) {
+  const seen = {};
+  if (Array.isArray(bars)) {
+    bars.forEach((bar) => {
+      if (!bar || !bar.id || !bar.label) return;
+      const cur = Number(bar.cur);
+      const max = Number(bar.max);
+      if (!Number.isFinite(cur) || !Number.isFinite(max) || max <= 0) return;
+      const id = 'guild-' + bar.id;
+      const rowClass = vitalBarClass(id);
+      const guild = bar.guild ? String(bar.guild) : '';
+      const title = guild ? guild + ': ' + bar.label : String(bar.label);
+      renderVitalBar(bodyEl, String(bar.label), cur, max, {
+        id,
+        guild: true,
+        kind: bar.kind ? String(bar.kind) : '',
+        title,
+      });
+      seen[rowClass] = true;
+    });
+  }
+
+  bodyEl.querySelectorAll('.vitals-guild').forEach((row) => {
+    const known = Array.from(row.classList).some((className) => seen[className]);
+    if (!known) row.remove();
+  });
 }
 
 export const panelRenderers = {
@@ -385,6 +430,24 @@ export const panelRenderers = {
       Object.prototype.hasOwnProperty.call(data, 'maxsp');
     if (hasSpellpoints) renderVitalBar(bodyEl, 'SP', data.sp, data.maxsp);
     else removeVitalBar(bodyEl, 'SP');
+    if (Object.prototype.hasOwnProperty.call(data, 'level_pct')) {
+      const pct = Math.max(0, Math.min(100, Number(data.level_pct) || 0));
+      renderVitalBar(bodyEl, 'Level', pct, 100, { display: pct + '%' });
+    } else {
+      removeVitalBar(bodyEl, 'Level');
+    }
+    const hasCarry = Object.prototype.hasOwnProperty.call(data, 'carry') &&
+      Object.prototype.hasOwnProperty.call(data, 'maxcarry');
+    if (hasCarry) {
+      const label = data.encumberance_label ? String(data.encumberance_label) : '';
+      const title = label ? 'Encumberance: ' + label : '';
+      renderVitalBar(bodyEl, 'Carry', data.carry, data.maxcarry, { title });
+    } else {
+      removeVitalBar(bodyEl, 'Carry');
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'guild_bars')) {
+      renderGuildVitalBars(bodyEl, data.guild_bars);
+    }
   },
 
   omens(bodyEl, data) {

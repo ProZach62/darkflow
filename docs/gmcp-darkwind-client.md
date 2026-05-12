@@ -92,6 +92,26 @@ The current server recognizes the following panel keys. Unknown keys are stored 
 | `quests` | Drives `Darkwind.Quests.*` |
 | `achievements` | Drives `Darkwind.Achievements.*` |
 
+### `Char.Vitals`
+
+The Vitals panel consumes the standard HP/SP fields and Darkwind-specific
+progress fields from `Char.Vitals`.
+
+| Field | Notes |
+|-------|-------|
+| `hp`, `maxhp` | Current and maximum hit points |
+| `sp`, `maxsp` | Current and maximum spell points |
+| `level_pct` | Integer percent toward the next player level |
+| `carry`, `maxcarry` | Current carried weight and maximum carry capacity |
+| `encumberance` | Server-side quadratic encumbrance value |
+| `encumberance_pct` | Linear carried-weight percent |
+| `encumberance_label` | Human-readable encumbrance state |
+| `guild_bars` | Optional array of guild-specific Vitals bars |
+
+Each `guild_bars` entry is a mapping with `id`, `guild`, `label`, `cur`, `max`,
+`pct`, and optional `kind`. The browser renders these after the standard Vitals
+bars and removes stale guild rows when the server sends a changed list.
+
 ### Features
 
 | Feature | Notes |
