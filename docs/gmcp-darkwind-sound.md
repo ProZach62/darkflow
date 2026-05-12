@@ -71,6 +71,7 @@ separate riposte file in the imported MudForge sound set.
 
 ```json
 Darkwind.Sound {"type":"play","category":"quest","sound":"accept"}
+Darkwind.Sound {"type":"play","category":"skill","sound":"bard/harp_C4","volume":1.0}
 Darkwind.Sound {"type":"loop","category":"ambient","sound":"rain","id":"room-ambience","volume":0.3}
 Darkwind.Sound {"type":"stop","category":"ambient","sound":"","id":"room-ambience"}
 ```

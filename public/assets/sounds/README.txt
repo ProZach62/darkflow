@@ -50,6 +50,21 @@ Skill Sounds:
   skill-use.mp3            - Generic skill use
   skill-success.mp3        - Skill success
   skill-fail.mp3           - Skill failure
+  bard/harp_C4.mp3         - Bard lute note C4
+  bard/harp_D4.mp3         - Bard lute note D4
+  bard/harp_E4.mp3         - Bard lute note E4
+  bard/harp_F4.mp3         - Bard lute note F4
+  bard/harp_G4.mp3         - Bard lute note G4
+  bard/harp_A4.mp3         - Bard lute note A4
+  bard/harp_B4.mp3         - Bard lute note B4
+  bard/harp_C5.mp3         - Bard lute note C5
+  bard/harp_D5.mp3         - Bard lute note D5
+  bard/harp_E5.mp3         - Bard lute note E5
+  bard/harp_F5.mp3         - Bard lute note F5
+  bard/harp_G5.mp3         - Bard lute note G5
+  bard/harp_A5.mp3         - Bard lute note A5
+  bard/harp_B5.mp3         - Bard lute note B5
+  bard/harp_C6.mp3         - Bard lute note C6
 
 Potion Sounds:
   potion-drink.mp3         - Drinking potion
