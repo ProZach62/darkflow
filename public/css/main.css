@@ -1708,6 +1708,135 @@ body.zork-only-mode #toolbar-connect-fields {
 
 #status-versions { margin-left: auto; }
 
+.rfc2549-debug-panel {
+  position: fixed;
+  right: 14px;
+  bottom: 30px;
+  z-index: 9200;
+  width: min(360px, calc(100vw - 28px));
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+  color: #c9d1d9;
+  box-shadow: 0 16px 32px #0008;
+  overflow: hidden;
+}
+
+.rfc2549-debug-panel[hidden] {
+  display: none;
+}
+
+.rfc2549-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #21262d;
+  background: #161b22;
+}
+
+.rfc2549-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: #8b949e;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rfc2549-header h2 {
+  margin: 0;
+  color: #f0f6fc;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.rfc2549-close {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: #21262d;
+  color: #c9d1d9;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.rfc2549-close:hover {
+  border-color: #58a6ff;
+  color: #f0f6fc;
+}
+
+.rfc2549-body {
+  padding: 10px 12px 12px;
+}
+
+.rfc2549-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid #161b22;
+  font-size: 12px;
+}
+
+.rfc2549-row span {
+  color: #8b949e;
+}
+
+.rfc2549-row strong {
+  color: #f0f6fc;
+  font-weight: 600;
+  text-align: right;
+}
+
+.rfc2549-debug-panel[data-qos="concorde"] .rfc2549-row:first-child strong {
+  color: #3fb950;
+}
+
+.rfc2549-debug-panel[data-qos="first"] .rfc2549-row:first-child strong {
+  color: #58a6ff;
+}
+
+.rfc2549-debug-panel[data-qos="business"] .rfc2549-row:first-child strong {
+  color: #d29922;
+}
+
+.rfc2549-debug-panel[data-qos="coach"] .rfc2549-row:first-child strong {
+  color: #f85149;
+}
+
+.rfc2549-events {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 132px;
+  overflow: auto;
+  font-size: 11px;
+  color: #c9d1d9;
+}
+
+.rfc2549-events li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px solid #161b22;
+}
+
+.rfc2549-events span {
+  flex: 0 0 70px;
+  color: #6e7681;
+}
+
+.rfc2549-footnote {
+  margin-top: 10px;
+  color: #6e7681;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 #update-banner {
   display: none;
   position: fixed;
