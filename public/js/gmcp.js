@@ -119,6 +119,7 @@ export const gmcp = {
       'Darkwind.Sky 1',
       'Darkwind.Client.Subscriptions 1',
       'Darkwind.Window 1',
+      'Darkwind.Snoop 1',
       'Darkwind.IDE 1',
       'Darkwind.MapData 1',
       'Darkwind.Completion 1',
