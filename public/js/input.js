@@ -22,6 +22,11 @@ let commandHistory = [];
 let historyIndex = 0;
 let currentInput = '';
 let _saveTimer = null;
+let batchDrawer = null;
+let batchTextarea = null;
+let batchSubmitButton = null;
+
+const BATCH_COMMAND_DELAY_MS = 75;
 
 const DIRECTION_ALIASES = {
   n: 'north',
@@ -91,6 +96,133 @@ function finishSubmittedInput(text) {
   } else {
     dom.commandInput.value = '';
   }
+}
+
+function extractBatchCommands(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+}
+
+function getPastedInputValue(pastedText) {
+  const input = dom.commandInput;
+  const value = String(input.value || '');
+  const start = input.selectionStart == null ? value.length : input.selectionStart;
+  const end = input.selectionEnd == null ? start : input.selectionEnd;
+  return value.slice(0, start) + pastedText + value.slice(end);
+}
+
+function closeBatchDrawer() {
+  if (batchDrawer) {
+    batchDrawer.remove();
+    batchDrawer = null;
+  }
+  batchTextarea = null;
+  batchSubmitButton = null;
+  dom.commandInput.focus();
+}
+
+function sendBatchCommands(commands, index = 0) {
+  if (index >= commands.length) {
+    return;
+  }
+
+  sendCommandText(commands[index]);
+  if (index + 1 < commands.length) {
+    setTimeout(() => sendBatchCommands(commands, index + 1), BATCH_COMMAND_DELAY_MS);
+  }
+}
+
+function submitBatchDrawer() {
+  if (!batchTextarea) return;
+
+  const commands = extractBatchCommands(batchTextarea.value);
+  if (!commands.length) {
+    closeBatchDrawer();
+    return;
+  }
+
+  if (batchSubmitButton) batchSubmitButton.disabled = true;
+  closeBatchDrawer();
+  sendBatchCommands(commands);
+}
+
+function openBatchDrawer(commands) {
+  const inputBar = document.getElementById('input-bar');
+  const drawer = document.createElement('section');
+  const header = document.createElement('div');
+  const title = document.createElement('div');
+  const hint = document.createElement('div');
+  const textarea = document.createElement('textarea');
+  const actions = document.createElement('div');
+  const cancelButton = document.createElement('button');
+  const submitButton = document.createElement('button');
+
+  if (!inputBar || !inputBar.parentNode) return;
+  if (batchDrawer) closeBatchDrawer();
+
+  drawer.id = 'command-batch-drawer';
+  drawer.setAttribute('aria-label', 'Multiline command input');
+  header.className = 'command-batch-header';
+  title.className = 'command-batch-title';
+  hint.className = 'command-batch-hint';
+  textarea.id = 'command-batch-input';
+  actions.className = 'command-batch-actions';
+  cancelButton.type = 'button';
+  cancelButton.className = 'command-batch-btn command-batch-cancel';
+  submitButton.type = 'button';
+  submitButton.className = 'command-batch-btn command-batch-submit';
+
+  title.textContent = 'Command Batch';
+  hint.textContent = 'One command per line';
+  textarea.value = commands.join('\n');
+  textarea.spellcheck = false;
+  textarea.autocomplete = 'off';
+  cancelButton.textContent = 'Cancel';
+  submitButton.textContent = 'Submit';
+
+  header.appendChild(title);
+  header.appendChild(hint);
+  actions.appendChild(cancelButton);
+  actions.appendChild(submitButton);
+  drawer.appendChild(header);
+  drawer.appendChild(textarea);
+  drawer.appendChild(actions);
+
+  cancelButton.addEventListener('click', closeBatchDrawer);
+  submitButton.addEventListener('click', submitBatchDrawer);
+  textarea.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeBatchDrawer();
+    } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      submitBatchDrawer();
+    }
+  });
+
+  inputBar.parentNode.insertBefore(drawer, inputBar);
+  batchDrawer = drawer;
+  batchTextarea = textarea;
+  batchSubmitButton = submitButton;
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}
+
+function handleCommandPaste(event) {
+  const pastedText = event.clipboardData ? event.clipboardData.getData('text') : '';
+  const nextValue = getPastedInputValue(pastedText);
+  const commands = extractBatchCommands(nextValue);
+
+  if (commands.length < 2) return;
+
+  event.preventDefault();
+  resetCompletionState();
+  dom.commandInput.value = '';
+  openBatchDrawer(commands);
 }
 
 function appendAliasWarning(message) {
@@ -619,6 +751,7 @@ export function initInput() {
       resetCompletionState();
     }
   });
+  dom.commandInput.addEventListener('paste', handleCommandPaste);
 
   dom.sendBtn.addEventListener('click', sendCommand);
 

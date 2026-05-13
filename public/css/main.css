@@ -1633,6 +1633,95 @@ body.zork-only-mode #toolbar-connect-fields {
 
 #command-input:focus { border-color: #58a6ff; }
 
+#command-batch-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #30363d;
+  background: #161b22;
+  box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.command-batch-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.command-batch-title {
+  color: #c9d1d9;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.command-batch-hint {
+  color: #8b949e;
+  font-size: 12px;
+}
+
+#command-batch-input {
+  width: 100%;
+  min-height: 9.5em;
+  max-height: 40vh;
+  box-sizing: border-box;
+  resize: vertical;
+  overflow: auto;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-family: var(--df-font-mono);
+  font-size: 14px;
+  line-height: 1.35;
+  outline: none;
+}
+
+#command-batch-input:focus {
+  border-color: #58a6ff;
+}
+
+.command-batch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.command-batch-btn {
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.command-batch-cancel {
+  background: #21262d;
+}
+
+.command-batch-cancel:hover {
+  background: #30363d;
+}
+
+.command-batch-submit {
+  background: #238636;
+  border-color: #2ea043;
+  color: #fff;
+}
+
+.command-batch-submit:hover {
+  background: #2ea043;
+}
+
+.command-batch-submit:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 #send-btn {
   background: #238636;
   color: #fff;
