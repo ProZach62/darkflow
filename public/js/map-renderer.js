@@ -1,4 +1,5 @@
-import { getRoom, getCurrentRoomId, getRoomsByArea } from './map-data.js';
+import * as mapDataV1 from './map-data.js';
+import * as mapDataV2 from './map-data-v2.js';
 
 const TILE_SIZE = 32;
 const MAP_DIRECTIONS = new Set([
@@ -7,6 +8,34 @@ const MAP_DIRECTIONS = new Set([
   'up', 'down',
 ]);
 let lastRenderDebug = null;
+
+const CARDINAL_DIRS = [
+  ['north', 'n'], ['south', 's'], ['east', 'e'], ['west', 'w'],
+];
+
+// Returns extra CSS classes for a positioned tile: base .map-tile-room plus
+// .map-tile-open-{n|s|e|w} for each cardinal exit that leads to an adjacent
+// positioned room at the expected coordinate. Open sides render as gaps in the
+// tile border so connected rooms visually flow together.
+function activeMapSource() {
+  return mapDataV2.isActive() ? mapDataV2 : mapDataV1;
+}
+
+function buildExitClasses(room, cz, source) {
+  if (!room || !room.exits) return ' map-tile-room';
+  let cls = ' map-tile-room';
+  for (const [dir, abbr] of CARDINAL_DIRS) {
+    const destId = room.exits[dir];
+    if (!destId) continue;
+    const dest = source.getRoom(destId);
+    if (!dest || dest.z !== cz || dest.x === null) continue;
+    const offset = source.DIR_OFFSETS[dir];
+    if (dest.x === room.x + offset.dx && dest.y === room.y + offset.dy) {
+      cls += ' map-tile-open-' + abbr;
+    }
+  }
+  return cls;
+}
 
 // Priority order: more specific terrains first
 const TERRAIN_PRIORITY = [
@@ -26,12 +55,16 @@ function getTerrainName(environment) {
 }
 
 export function renderMap(bodyEl) {
-  const currentId = getCurrentRoomId();
-  const currentRoom = currentId ? getRoom(currentId) : null;
+  const source = activeMapSource();
+  const currentId = source.getCurrentRoomId();
+  const currentRoom = currentId ? source.getRoom(currentId) : null;
 
   if (!currentRoom || currentRoom.x === null) {
+    const message = source === mapDataV2 && mapDataV2.hasCurrentRoom()
+      ? 'Map layout pending.<br>Keep exploring this area.'
+      : 'No map data yet.<br>Explore to build the map.';
     bodyEl.innerHTML = '<div class="map-grid map-empty">'
-      + '<div class="map-empty-msg">No map data yet.<br>Explore to build the map.</div></div>';
+      + '<div class="map-empty-msg">' + message + '</div></div>';
     return;
   }
 
@@ -52,8 +85,8 @@ export function renderMap(bodyEl) {
   const cy = currentRoom.y;
   const cz = currentRoom.z;
 
-  const areaRooms = getRoomsByArea(currentRoom.area);
-  const distances = buildConnectedDistances(currentRoom, Math.max(gridW, gridH) + 8);
+  const areaRooms = source.getRoomsByArea(currentRoom.area);
+  const distances = buildConnectedDistances(currentRoom, Math.max(gridW, gridH) + 8, source);
   const buckets = new Map();
   const visibleBounds = {
     minX: cx - radiusX,
@@ -88,11 +121,13 @@ export function renderMap(bodyEl) {
       } else if (room.id === currentId) {
         const terrain = getTerrainName(room.environment);
         html += '<div class="map-tile map-tile-' + terrain
+          + buildExitClasses(room, cz, source)
           + ' map-tile-player' + conflictClass(bucket)
           + '" title="' + escAttr(tileTitle(room, bucket)) + '"></div>';
       } else {
         const terrain = getTerrainName(room.environment);
         html += '<div class="map-tile map-tile-' + terrain
+          + buildExitClasses(room, cz, source)
           + conflictClass(bucket)
           + '" title="' + escAttr(tileTitle(room, bucket)) + '"></div>';
       }
@@ -112,7 +147,21 @@ export function renderMap(bodyEl) {
     html += '</div>';
   }
 
+  html += '<div class="map-roomname">' + escAttr(currentRoom.name) + '</div>';
+  html += '<div class="map-compass">N&#x2191;</div>';
+  const status = source.getMapStatus();
+  if (status) html += '<div class="map-status">' + escAttr(status) + '</div>';
+  html += '<button class="map-resync-btn" title="Clear and resync map for this area">Resync</button>';
+
   bodyEl.innerHTML = html;
+
+  const resyncBtn = bodyEl.querySelector('.map-resync-btn');
+  if (resyncBtn) {
+    resyncBtn.addEventListener('click', () => {
+      const room = currentId ? source.getRoom(currentId) : null;
+      if (room && room.area) source.clearMapDataForArea(room.area);
+    });
+  }
 
   lastRenderDebug = {
     currentRoom: {
@@ -136,7 +185,7 @@ function escAttr(str) {
     .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function buildConnectedDistances(startRoom, maxDistance) {
+function buildConnectedDistances(startRoom, maxDistance, source) {
   const distances = new Map();
   const queue = [startRoom.id];
   let head = 0;
@@ -145,7 +194,7 @@ function buildConnectedDistances(startRoom, maxDistance) {
 
   while (head < queue.length) {
     const id = queue[head++];
-    const room = getRoom(id);
+    const room = source.getRoom(id);
     const distance = distances.get(id);
 
     if (!room || distance >= maxDistance || !room.exits) continue;
@@ -153,7 +202,7 @@ function buildConnectedDistances(startRoom, maxDistance) {
     for (const [dir, destId] of Object.entries(room.exits)) {
       if (!MAP_DIRECTIONS.has(dir) || !destId || distances.has(destId)) continue;
 
-      const dest = getRoom(destId);
+      const dest = source.getRoom(destId);
       if (!dest || dest.area !== startRoom.area) continue;
 
       distances.set(destId, distance + 1);
