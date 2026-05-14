@@ -589,6 +589,15 @@ function executeAliasLine(text, context = {}) {
       continue;
     }
 
+    if ((step.type === 'send_command' || step.type === 'set_variable') && resolved.errors.length) {
+      appendAliasWarning(
+        'Template error in alias "' + match.alias.trigger + '": '
+        + resolved.errors.join(' ')
+      );
+      localOnly = true;
+      continue;
+    }
+
     if (step.type === 'set_variable') {
       if (aliasManager.setVariable(step.name, resolved.text, scopeKey)) {
         localOnly = true;

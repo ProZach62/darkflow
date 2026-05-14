@@ -933,6 +933,14 @@ function executeTriggerMatches(matches, scopeKey) {
         continue;
       }
 
+      if ((step.type === 'send_command' || step.type === 'set_variable') && resolved.errors.length) {
+        appendSystemMessage(
+          'Trigger: Template error in pattern "' + match.trigger.pattern + '": '
+          + resolved.errors.join(' ')
+        );
+        continue;
+      }
+
       if (step.type === 'set_variable') {
         aliasManager.setVariable(step.name, resolved.text, scopeKey);
         continue;

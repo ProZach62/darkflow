@@ -1,4 +1,8 @@
 import { dom } from './state.js';
+import {
+  evaluateArithmeticExpression,
+  isArithmeticExpressionCandidate,
+} from './alias-expression-core.mjs';
 
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
 const MAX_ALIAS_DEPTH = 10;
@@ -374,6 +378,7 @@ export const aliasManager = {
 
   resolveTemplate(template, context) {
     const missingVariables = new Set();
+    const errors = [];
     const normalizedContext = {
       args: Array.isArray(context && context.args) ? context.args : [],
       remainder: context && typeof context.remainder === 'string' ? context.remainder : '',
@@ -383,6 +388,18 @@ export const aliasManager = {
       .replace(/\$\{lower:([^}]+)\}/g, (match, token) => (
         resolveTemplateToken(String(token || '').trim(), normalizedContext, missingVariables).toLowerCase()
       ))
+      .replace(/\{([^{}]+)\}/g, (match, expression) => {
+        const trimmedExpression = String(expression || '').trim();
+        if (!isArithmeticExpressionCandidate(trimmedExpression)) return match;
+
+        const result = evaluateArithmeticExpression(trimmedExpression, normalizedContext, missingVariables);
+        if (result.errors.length) {
+          errors.push(...result.errors);
+          return '';
+        }
+
+        return result.text;
+      })
       .replace(/\$([A-Za-z_][A-Za-z0-9_]*)|%([0-9])/g, (match, variableName, argIndex) => (
         resolveTemplateToken(variableName ? '$' + variableName : '%' + argIndex, normalizedContext, missingVariables)
       ));
@@ -390,6 +407,7 @@ export const aliasManager = {
     return {
       text,
       missingVariables: Array.from(missingVariables),
+      errors,
     };
   },
 

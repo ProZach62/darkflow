@@ -1556,6 +1556,9 @@ export const settingsManager = {
         if (resolved.missingVariables.length) {
           row.classList.add('warning');
           row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
+        } else if (resolved.errors.length) {
+          row.classList.add('warning');
+          row.textContent += ' (' + resolved.errors.join(' ') + ')';
         } else if (step.type === 'set_variable' && step.name) {
           previewVariables[step.name] = resolved.text;
         }
@@ -2121,6 +2124,9 @@ export const settingsManager = {
           if (resolved.missingVariables.length) {
             row.classList.add('warning');
             row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
+          } else if (resolved.errors.length) {
+            row.classList.add('warning');
+            row.textContent += ' (' + resolved.errors.join(' ') + ')';
           } else if (step.type === 'set_variable' && step.name) {
             previewVariables[step.name] = resolved.text;
           }
