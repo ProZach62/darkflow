@@ -209,7 +209,7 @@ export const gmcp = {
     this.sendHandshake();
     this.sendSubscriptions({
       ...subscriptions,
-      reason: 'ctrl-k',
+      reason: payload.reason || 'ctrl-k',
       full: true,
     });
     this.requestMediaRefresh();
