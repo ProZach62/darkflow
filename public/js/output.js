@@ -269,10 +269,16 @@ function stylesEqual(a, b) {
   const left = a || {};
   const right = b || {};
 
-  return left.bold === right.bold
-    && left.underline === right.underline
-    && left.inverse === right.inverse
-    && left.blink === right.blink
+  return Boolean(left.bold) === Boolean(right.bold)
+    && Boolean(left.italic) === Boolean(right.italic)
+    && Boolean(left.fraktur) === Boolean(right.fraktur)
+    && Boolean(left.underline) === Boolean(right.underline)
+    && Boolean(left.doubleUnderline) === Boolean(right.doubleUnderline)
+    && Boolean(left.strikethrough) === Boolean(right.strikethrough)
+    && Boolean(left.overline) === Boolean(right.overline)
+    && Boolean(left.hidden) === Boolean(right.hidden)
+    && Boolean(left.inverse) === Boolean(right.inverse)
+    && Boolean(left.blink) === Boolean(right.blink)
     && colorsEqual(left.fg, right.fg)
     && colorsEqual(left.bg, right.bg);
 }

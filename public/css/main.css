@@ -1784,7 +1784,11 @@ body.zork-only-mode #toolbar-connect-fields {
 .ansi-bg-bright-white   { background-color: #ffffff; }
 
 .ansi-bold { font-weight: bold; }
-.ansi-underline { text-decoration: underline; }
+.ansi-italic { font-style: italic; }
+.ansi-fraktur {
+  font-family: "UnifrakturMaguntia", "UnifrakturCook", "Old English Text MT", "Lucida Blackletter", Georgia, serif;
+}
+.ansi-hidden { visibility: hidden; }
 .ansi-blink { animation: ansi-blink 1s steps(2, start) infinite; }
 
 @keyframes ansi-blink {

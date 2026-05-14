@@ -4,7 +4,13 @@ function createAnsiState() {
   return {
     buffer: '',
     bold: false,
+    italic: false,
+    fraktur: false,
     underline: false,
+    doubleUnderline: false,
+    strikethrough: false,
+    overline: false,
+    hidden: false,
     inverse: false,
     blink: false,
     fg: null,
@@ -13,7 +19,13 @@ function createAnsiState() {
 
     reset() {
       this.bold = false;
+      this.italic = false;
+      this.fraktur = false;
       this.underline = false;
+      this.doubleUnderline = false;
+      this.strikethrough = false;
+      this.overline = false;
+      this.hidden = false;
       this.inverse = false;
       this.blink = false;
       this.fg = null;
@@ -21,8 +33,11 @@ function createAnsiState() {
     },
 
     snapshot() {
-      return { bold: this.bold, underline: this.underline, inverse: this.inverse,
-               blink: this.blink, fg: this.fg, bg: this.bg };
+      return { bold: this.bold, italic: this.italic, fraktur: this.fraktur,
+               underline: this.underline, doubleUnderline: this.doubleUnderline,
+               strikethrough: this.strikethrough, overline: this.overline,
+               hidden: this.hidden, inverse: this.inverse, blink: this.blink,
+               fg: this.fg, bg: this.bg };
     }
   };
 }
@@ -75,13 +90,23 @@ export function parseAnsi(text, parserState = ansi) {
             const code = params[p];
             if (code === 0) { parserState.reset(); }
             else if (code === 1) { parserState.bold = true; }
-            else if (code === 4) { parserState.underline = true; }
+            else if (code === 3) { parserState.italic = true; }
+            else if (code === 4) { parserState.underline = true; parserState.doubleUnderline = false; }
             else if (code === 5) { parserState.blink = true; }
             else if (code === 7) { parserState.inverse = true; }
+            else if (code === 8) { parserState.hidden = true; }
+            else if (code === 9) { parserState.strikethrough = true; }
+            else if (code === 20) { parserState.fraktur = true; }
+            else if (code === 21) { parserState.underline = true; parserState.doubleUnderline = true; }
             else if (code === 22) { parserState.bold = false; }
-            else if (code === 24) { parserState.underline = false; }
+            else if (code === 23) { parserState.italic = false; parserState.fraktur = false; }
+            else if (code === 24) { parserState.underline = false; parserState.doubleUnderline = false; }
             else if (code === 25) { parserState.blink = false; }
             else if (code === 27) { parserState.inverse = false; }
+            else if (code === 28) { parserState.hidden = false; }
+            else if (code === 29) { parserState.strikethrough = false; }
+            else if (code === 53) { parserState.overline = true; }
+            else if (code === 55) { parserState.overline = false; }
             else if (code >= 30 && code <= 37) { parserState.fg = { type: 'standard', index: code - 30 }; }
             else if (code === 38 && params[p+1] === 5 && p + 2 < params.length) {
               parserState.fg = { type: '256', index: params[p+2] };
@@ -173,8 +198,11 @@ function resolveColor(color, isBackground) {
 
 export function styleToElement(text, style) {
   if (!text) return null;
+  style = style || {};
 
-  const needsStyling = style.bold || style.underline || style.inverse || style.blink || style.fg || style.bg;
+  const needsStyling = style.bold || style.italic || style.fraktur || style.underline
+    || style.doubleUnderline || style.strikethrough || style.overline || style.hidden
+    || style.inverse || style.blink || style.fg || style.bg;
   if (!needsStyling) {
     return document.createTextNode(text);
   }
@@ -213,13 +241,24 @@ export function styleToElement(text, style) {
   }
 
   if (style.bold) classes.push('ansi-bold');
-  if (style.underline) classes.push('ansi-underline');
+  if (style.italic) classes.push('ansi-italic');
+  if (style.fraktur) classes.push('ansi-fraktur');
+  if (style.hidden) classes.push('ansi-hidden');
   if (style.blink) classes.push('ansi-blink');
 
   if (classes.length) span.className = classes.join(' ');
   let inlineStyle = '';
   if (inlineFg) inlineStyle += 'color:' + inlineFg + ';';
   if (inlineBg) inlineStyle += 'background-color:' + inlineBg + ';';
+  const textDecorationLines = [];
+  if (style.underline || style.doubleUnderline) textDecorationLines.push('underline');
+  if (style.strikethrough) textDecorationLines.push('line-through');
+  if (style.overline) textDecorationLines.push('overline');
+  if (textDecorationLines.length) {
+    inlineStyle += 'text-decoration-line:' + textDecorationLines.join(' ') + ';';
+    inlineStyle += 'text-decoration-style:' + (style.doubleUnderline ? 'double' : 'solid') + ';';
+    inlineStyle += 'text-underline-offset:2px;';
+  }
   if (inlineStyle) span.setAttribute('style', inlineStyle);
 
   span.appendChild(document.createTextNode(text));

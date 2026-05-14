@@ -99,7 +99,13 @@ function compileRule(rule) {
 function cloneStyle(style) {
   return {
     bold: Boolean(style && style.bold),
+    italic: Boolean(style && style.italic),
+    fraktur: Boolean(style && style.fraktur),
     underline: Boolean(style && style.underline),
+    doubleUnderline: Boolean(style && style.doubleUnderline),
+    strikethrough: Boolean(style && style.strikethrough),
+    overline: Boolean(style && style.overline),
+    hidden: Boolean(style && style.hidden),
     inverse: Boolean(style && style.inverse),
     blink: Boolean(style && style.blink),
     fg: style && style.fg ? { ...style.fg } : null,
