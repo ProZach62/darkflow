@@ -2,6 +2,7 @@ const SOUND_STORAGE_KEY = 'darkwind-sound-settings';
 const SOUND_ASSET_ROOT = '/assets/sounds/';
 const AUDIO_UNLOCK_FALLBACK_SOUND = '/assets/sounds/quest-accept.mp3';
 const DEFAULT_VOLUME = 0.7;
+const SUPPRESSED_SOUND_CATEGORIES = new Set(['discussion']);
 
 export const SOUND_CATEGORIES = [
   'combat',
@@ -296,6 +297,10 @@ class SoundManager {
     return this.settings.enabled && this.settings.categoryEnabled[category];
   }
 
+  isSuppressed(category) {
+    return SUPPRESSED_SOUND_CATEGORIES.has(category);
+  }
+
   _warnSuppressed(reason, category, sound) {
     const key = reason + ':' + category + '/' + sound;
     if (this.suppressionWarnings.has(key)) return;
@@ -312,6 +317,7 @@ class SoundManager {
       this._warnSuppressed('invalid sound request', category, sound);
       return;
     }
+    if (this.isSuppressed(category)) return;
     if (!this.settings.enabled) {
       this._warnSuppressed('audio disabled', category, sound);
       return;
@@ -384,6 +390,7 @@ class SoundManager {
 
   loop(category, sound, id, volume) {
     if (!this._isCategory(category) || !sound || !id) return;
+    if (this.isSuppressed(category)) return;
     this.loopMetadata.set(id, { category, sound, volume });
     if (!this._shouldPlay(category) || !this.isPageVisible) return;
     if (!this.audioUnlocked) {
@@ -454,10 +461,23 @@ class SoundManager {
   }
 
   handleMessage(message) {
-    if (!message || typeof message !== 'object') return;
-    if (message.type === 'play') this.play(message.category, message.sound, message.volume);
-    else if (message.type === 'loop') this.loop(message.category, message.sound, message.id, message.volume);
-    else if (message.type === 'stop') this.stop(message.category, message.id);
+    if (!message || typeof message !== 'object') return false;
+    if ((message.type === 'play' || message.type === 'loop') && this.isSuppressed(message.category)) {
+      return false;
+    }
+    if (message.type === 'play') {
+      this.play(message.category, message.sound, message.volume);
+      return true;
+    }
+    if (message.type === 'loop') {
+      this.loop(message.category, message.sound, message.id, message.volume);
+      return true;
+    }
+    if (message.type === 'stop') {
+      this.stop(message.category, message.id);
+      return true;
+    }
+    return false;
   }
 
   getSettings() {

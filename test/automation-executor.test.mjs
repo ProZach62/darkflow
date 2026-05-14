@@ -110,6 +110,45 @@ test('alias steps can toggle triggers by pattern', () => {
   assert.deepEqual(io.sent, []);
 });
 
+test('alias toggle trigger preserves trigger capture tokens in target pattern', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-toggle-burn-corpse',
+      enabled: true,
+      trigger: 'togbc',
+      description: '',
+      group: '',
+      steps: [{ type: 'set_trigger_enabled', mode: 'toggle', target: 'You killed %1.' }],
+    }],
+    variables: {},
+  });
+  triggerManager.saveScope(SCOPE_KEY, {
+    triggers: [{
+      id: 'trigger-burn-corpse',
+      enabled: true,
+      pattern: 'You killed %1.',
+      description: '',
+      group: '',
+      gag: false,
+      steps: [{ type: 'send_command', template: 'burn corpse' }],
+    }],
+  });
+
+  const io = messagesAndSends();
+  const result = executeAliasLine('togbc', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.equal(result.localOnly, true);
+  assert.equal(triggerManager.findTriggerByPattern('You killed %1.', SCOPE_KEY).enabled, false);
+  assert.deepEqual(io.messages, []);
+  assert.deepEqual(io.sent, []);
+});
+
 test('trigger steps can disable aliases by trigger text', () => {
   resetManagers();
   aliasManager.saveScope(SCOPE_KEY, {

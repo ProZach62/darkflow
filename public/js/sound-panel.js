@@ -191,7 +191,8 @@ class SoundPanel {
 
   handleSoundMessage(message) {
     if (!message || typeof message !== 'object') return;
-    soundManager.handleMessage(message);
+    const handled = soundManager.handleMessage(message);
+    if (!handled) return;
 
     if (message.type === 'play') {
       this._showActivity(message.category, false);

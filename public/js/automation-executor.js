@@ -11,8 +11,25 @@ function warn(appendMessage, prefix, message) {
   }
 }
 
-function resolveAutomationValue(value, templateContext) {
-  return aliasManager.resolveTemplate(value, templateContext);
+function resolveAutomationValue(value, templateContext, options = {}) {
+  if (!options.preservePositionalTokens) {
+    return aliasManager.resolveTemplate(value, templateContext);
+  }
+
+  const placeholders = [];
+  const protectedValue = String(value || '').replace(/%[0-9]/g, (match) => {
+    const token = '\uE000' + placeholders.length + '\uE001';
+    placeholders.push(match);
+    return token;
+  });
+  const resolved = aliasManager.resolveTemplate(protectedValue, templateContext);
+
+  return {
+    ...resolved,
+    text: resolved.text.replace(/\uE000([0-9]+)\uE001/g, (match, index) => (
+      placeholders[Number(index)] || match
+    )),
+  };
 }
 
 function describeMode(mode) {
@@ -28,7 +45,9 @@ function getRequiredField(step) {
 
 function getStepResult(step, source, templateContext, appendMessage) {
   const field = getRequiredField(step);
-  const resolved = resolveAutomationValue(step[field], templateContext);
+  const resolved = resolveAutomationValue(step[field], templateContext, {
+    preservePositionalTokens: field === 'target',
+  });
   const shouldWarn = step.type !== 'show_message';
 
   if (shouldWarn && resolved.missingVariables.length) {
