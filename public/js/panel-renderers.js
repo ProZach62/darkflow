@@ -147,6 +147,12 @@ export function vitalBarColor(pct) {
   return '#f85149';
 }
 
+function inverseVitalBarColor(pct) {
+  if (pct > 60) return '#f85149';
+  if (pct > 30) return '#d29922';
+  return '#3fb950';
+}
+
 function divineGodLabel(god) {
   switch (String(god || '').toLowerCase()) {
     case 'mitra': return 'Mitra';
@@ -272,7 +278,9 @@ export function renderVitalBar(bodyEl, label, cur, max, opts = {}) {
   else row.removeAttribute('title');
   const fill = row.querySelector('.vitals-bar-fill');
   fill.style.width = pct + '%';
-  fill.style.backgroundColor = vitalBarColor(pct);
+  fill.style.backgroundColor = opts.colorMode === 'inverse'
+    ? inverseVitalBarColor(pct)
+    : vitalBarColor(pct);
 }
 
 function removeVitalBar(bodyEl, label, opts = {}) {
@@ -441,7 +449,10 @@ export const panelRenderers = {
     if (hasCarry) {
       const label = data.encumberance_label ? String(data.encumberance_label) : '';
       const title = label ? 'Encumberance: ' + label : '';
-      renderVitalBar(bodyEl, 'Carry', data.carry, data.maxcarry, { title });
+      renderVitalBar(bodyEl, 'Carry', data.carry, data.maxcarry, {
+        title,
+        colorMode: 'inverse',
+      });
     } else {
       removeVitalBar(bodyEl, 'Carry');
     }
