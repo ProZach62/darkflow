@@ -98,6 +98,11 @@ function normalizeStep(step) {
     return { type, template: String(step.template || '') };
   }
 
+  if (type === 'set_trigger_enabled') {
+    const mode = step.mode === 'enable' || step.mode === 'disable' ? step.mode : 'toggle';
+    return { type, mode, target: String(step.target || '') };
+  }
+
   return { type: 'send_command', template: String(step.template || '') };
 }
 
@@ -182,6 +187,11 @@ function resolveTemplateToken(token, context, missingVariables) {
   }
 
   return value;
+}
+
+function collectVariableNamesFromText(text) {
+  return (String(text || '').match(/\$([A-Za-z_][A-Za-z0-9_]*)/g) || [])
+    .map((match) => match.slice(1));
 }
 
 export const aliasManager = {
@@ -335,6 +345,22 @@ export const aliasManager = {
     return true;
   },
 
+  setEnabledByTarget(trigger, enabled, scopeKey = this.getActiveScopeKey()) {
+    const alias = this.findAliasByTrigger(trigger, scopeKey);
+    if (!alias) return { target: null, enabled: null };
+    alias.enabled = enabled !== false;
+    this._save({ scopeKey });
+    return { target: alias, enabled: alias.enabled };
+  },
+
+  toggleEnabledByTarget(trigger, scopeKey = this.getActiveScopeKey()) {
+    const alias = this.findAliasByTrigger(trigger, scopeKey);
+    if (!alias) return { target: null, enabled: null };
+    alias.enabled = alias.enabled === false;
+    this._save({ scopeKey });
+    return { target: alias, enabled: alias.enabled };
+  },
+
   matchAliasInAliases(rawLine, aliases) {
     const line = String(rawLine || '');
     const inputTokens = tokenizeInput(line);
@@ -443,6 +469,9 @@ export const aliasManager = {
         && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must have content.');
       }
+      if (step.type === 'set_trigger_enabled' && !String(step.target || '').trim()) {
+        diagnostics.push('Step ' + (index + 1) + ' must choose a trigger target.');
+      }
     }
 
     return diagnostics;
@@ -454,10 +483,11 @@ export const aliasManager = {
 
     for (const alias of aliases) {
       for (const step of alias.steps || []) {
-        const template = String(step.template || '');
-        const matches = template.match(/\$([A-Za-z_][A-Za-z0-9_]*)/g) || [];
-        for (const match of matches) {
-          const name = match.slice(1);
+        for (const name of collectVariableNamesFromText(step.template)) {
+          const count = usage.get(name) || 0;
+          usage.set(name, count + 1);
+        }
+        for (const name of collectVariableNamesFromText(step.target)) {
           const count = usage.get(name) || 0;
           usage.set(name, count + 1);
         }
@@ -474,11 +504,8 @@ export const aliasManager = {
     for (const alias of aliases) {
       const names = new Set();
       for (const step of alias.steps || []) {
-        const template = String(step.template || '');
-        const matches = template.match(/\$([A-Za-z_][A-Za-z0-9_]*)/g) || [];
-        for (const match of matches) {
-          names.add(match.slice(1));
-        }
+        collectVariableNamesFromText(step.template).forEach((name) => names.add(name));
+        collectVariableNamesFromText(step.target).forEach((name) => names.add(name));
       }
 
       for (const name of names) {

@@ -32,6 +32,15 @@ function normalizeStep(step) {
     return { type, template: String(step.template || '') };
   }
 
+  if (type === 'set_alias_enabled') {
+    const mode = step.mode === 'enable' || step.mode === 'disable' ? step.mode : 'toggle';
+    return { type, mode, target: String(step.target || '') };
+  }
+
+  if (type === 'run_alias') {
+    return { type, template: String(step.template || '') };
+  }
+
   return { type: 'send_command', template: String(step.template || '') };
 }
 
@@ -246,6 +255,22 @@ export const triggerManager = {
     return true;
   },
 
+  setEnabledByTarget(pattern, enabled, scopeKey = this.getActiveScopeKey()) {
+    const trigger = this.findTriggerByPattern(pattern, scopeKey);
+    if (!trigger) return { target: null, enabled: null };
+    trigger.enabled = enabled !== false;
+    this._save({ scopeKey });
+    return { target: trigger, enabled: trigger.enabled };
+  },
+
+  toggleEnabledByTarget(pattern, scopeKey = this.getActiveScopeKey()) {
+    const trigger = this.findTriggerByPattern(pattern, scopeKey);
+    if (!trigger) return { target: null, enabled: null };
+    trigger.enabled = trigger.enabled === false;
+    this._save({ scopeKey });
+    return { target: trigger, enabled: trigger.enabled };
+  },
+
   getTriggerDiagnostics(scope, triggerId) {
     const triggers = Array.isArray(scope && scope.triggers) ? scope.triggers : [];
     const trigger = triggers.find((item) => item.id === triggerId);
@@ -283,6 +308,12 @@ export const triggerManager = {
       if ((step.type === 'send_command' || step.type === 'show_message' || step.type === 'set_variable')
         && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must have content.');
+      }
+      if (step.type === 'set_alias_enabled' && !String(step.target || '').trim()) {
+        diagnostics.push('Step ' + (index + 1) + ' must choose an alias target.');
+      }
+      if (step.type === 'run_alias' && !String(step.template || '').trim()) {
+        diagnostics.push('Step ' + (index + 1) + ' must choose an alias command.');
       }
     }
 

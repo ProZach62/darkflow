@@ -8,6 +8,7 @@ import { styleToElement } from './ansi.js';
 import { panelManager } from './panel-manager.js';
 import { PRODUCT_NAME } from './brand.js';
 import { soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
+import { getAutomationStepLabel } from './automation-executor.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
@@ -32,6 +33,10 @@ function formatKeyCodeLabel(code) {
   if (/^F[0-9]{1,2}$/.test(value)) return value;
 
   return value.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+}
+
+function normalizeAutomationMode(mode) {
+  return mode === 'enable' || mode === 'disable' ? mode : 'toggle';
 }
 
 function normalizeLegacyKeyToCode(key) {
@@ -1538,15 +1543,41 @@ export const settingsManager = {
       body.appendChild(matchLabel);
 
       const previewVariables = { ...this._draftAliasScope.variables };
+      const previewTriggers = this._draftTriggerScope.triggers.map((trigger) => ({ ...trigger }));
 
       for (const step of match.alias.steps) {
         const row = document.createElement('div');
         row.className = 'settings-alias-preview-step';
-        const resolved = aliasManager.resolveTemplate(step.template, {
-          args: match.args,
-          remainder: match.remainder,
-          variables: previewVariables,
-        });
+        const resolved = aliasManager.resolveTemplate(
+          step.type === 'set_trigger_enabled' ? step.target : step.template,
+          {
+            args: match.args,
+            remainder: match.remainder,
+            variables: previewVariables,
+          }
+        );
+
+        if (step.type === 'set_trigger_enabled') {
+          const target = resolved.text.trim();
+          const mode = normalizeAutomationMode(step.mode);
+          const trigger = previewTriggers.find((item) => item.pattern === target);
+          row.textContent = getAutomationStepLabel(step) + ': ' + target;
+          if (resolved.missingVariables.length) {
+            row.classList.add('warning');
+            row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
+          } else if (resolved.errors.length) {
+            row.classList.add('warning');
+            row.textContent += ' (' + resolved.errors.join(' ') + ')';
+          } else if (!target || !trigger) {
+            row.classList.add('warning');
+            row.textContent += target ? ' (trigger not found)' : ' (empty target)';
+          } else {
+            trigger.enabled = mode === 'toggle' ? trigger.enabled === false : mode === 'enable';
+            row.textContent += ' -> ' + (trigger.enabled === false ? 'disabled' : 'enabled');
+          }
+          body.appendChild(row);
+          continue;
+        }
 
         let prefix = 'Send';
         if (step.type === 'set_variable') prefix = 'Set $' + step.name;
@@ -1683,10 +1714,18 @@ export const settingsManager = {
       stepList.className = 'settings-alias-step-list';
 
       const stepTypeOptions = [
-        { value: 'send_command', label: 'Send command' },
-        { value: 'set_variable', label: 'Set variable' },
-        { value: 'show_message', label: 'Show local message' },
+        { value: 'send_command', type: 'send_command', label: 'Send command' },
+        { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
+        { value: 'show_message', type: 'show_message', label: 'Show local message' },
+        { value: 'set_trigger_enabled:toggle', type: 'set_trigger_enabled', mode: 'toggle', label: 'Toggle trigger' },
+        { value: 'set_trigger_enabled:enable', type: 'set_trigger_enabled', mode: 'enable', label: 'Enable trigger' },
+        { value: 'set_trigger_enabled:disable', type: 'set_trigger_enabled', mode: 'disable', label: 'Disable trigger' },
       ];
+      const getAliasStepOptionValue = (step) => (
+        step.type === 'set_trigger_enabled'
+          ? 'set_trigger_enabled:' + normalizeAutomationMode(step.mode)
+          : step.type
+      );
 
       alias.steps.forEach((step, index) => {
         const stepCard = document.createElement('div');
@@ -1702,12 +1741,17 @@ export const settingsManager = {
           const el = document.createElement('option');
           el.value = option.value;
           el.textContent = option.label;
-          if (step.type === option.value) el.selected = true;
+          if (getAliasStepOptionValue(step) === option.value) el.selected = true;
           stepSelect.appendChild(el);
         });
         stepSelect.addEventListener('change', () => {
-          step.type = stepSelect.value;
+          const selectedOption = stepTypeOptions.find((option) => option.value === stepSelect.value) || stepTypeOptions[0];
+          step.type = selectedOption.type;
+          if (selectedOption.mode) step.mode = selectedOption.mode;
+          else delete step.mode;
           if (step.type !== 'set_variable') delete step.name;
+          if (step.type !== 'set_trigger_enabled') delete step.target;
+          if (step.type === 'set_trigger_enabled' && !step.target) step.target = '';
           if (!step.template) step.template = '';
           render();
         });
@@ -1767,18 +1811,40 @@ export const settingsManager = {
           stepCard.appendChild(nameInput);
         }
 
-        const templateInput = document.createElement('textarea');
-        templateInput.className = 'dw-input settings-alias-template';
-        templateInput.placeholder = step.type === 'show_message'
-          ? 'Pack animal set to: $pack'
-          : step.type === 'set_variable'
-            ? '%0'
-            : 'give %0 to $pack';
-        templateInput.value = step.template || '';
-        templateInput.addEventListener('input', () => {
-          step.template = templateInput.value;
-        });
-        stepCard.appendChild(templateInput);
+        if (step.type === 'set_trigger_enabled') {
+          const targetInput = document.createElement('input');
+          const listId = 'alias-trigger-targets-' + index;
+          const targetList = document.createElement('datalist');
+          targetInput.type = 'text';
+          targetInput.className = 'dw-input';
+          targetInput.placeholder = 'Exact trigger pattern';
+          targetInput.setAttribute('list', listId);
+          targetInput.value = step.target || '';
+          targetList.id = listId;
+          this._draftTriggerScope.triggers.forEach((trigger) => {
+            const option = document.createElement('option');
+            option.value = trigger.pattern;
+            targetList.appendChild(option);
+          });
+          targetInput.addEventListener('input', () => {
+            step.target = targetInput.value;
+          });
+          stepCard.appendChild(targetInput);
+          stepCard.appendChild(targetList);
+        } else {
+          const templateInput = document.createElement('textarea');
+          templateInput.className = 'dw-input settings-alias-template';
+          templateInput.placeholder = step.type === 'show_message'
+            ? 'Pack animal set to: $pack'
+            : step.type === 'set_variable'
+              ? '%0'
+              : 'give %0 to $pack';
+          templateInput.value = step.template || '';
+          templateInput.addEventListener('input', () => {
+            step.template = templateInput.value;
+          });
+          stepCard.appendChild(templateInput);
+        }
         controls.appendChild(upBtn);
         controls.appendChild(downBtn);
         controls.appendChild(removeBtn);
@@ -1786,7 +1852,9 @@ export const settingsManager = {
 
         const helper = document.createElement('div');
         helper.className = 'settings-helper-text';
-        helper.textContent = 'Templates support %0 for the full remainder, %1-%9 for arguments, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
+        helper.textContent = step.type === 'set_trigger_enabled'
+          ? 'Target may be an exact trigger pattern or a template that resolves to one.'
+          : 'Templates support %0 for the full remainder, %1-%9 for arguments, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -1803,8 +1871,10 @@ export const settingsManager = {
         btn.dataset.focusKey = 'alias-step-add-' + option.value;
         btn.textContent = option.label;
         btn.addEventListener('click', () => {
-          const step = { type: option.value, template: '' };
-          if (option.value === 'set_variable') step.name = '';
+          const step = { type: option.type, template: '' };
+          if (option.mode) step.mode = option.mode;
+          if (option.type === 'set_variable') step.name = '';
+          if (option.type === 'set_trigger_enabled') step.target = '';
           alias.steps.push(step);
           render();
           this._focusSettingsControl('alias-step-' + (alias.steps.length - 1) + '-type');
@@ -2093,6 +2163,10 @@ export const settingsManager = {
       }
 
       const previewVariables = { ...this._draftAliasScope.variables };
+      const previewAliases = this._draftAliasScope.aliases.map((alias) => ({
+        ...alias,
+        steps: alias.steps.map((step) => ({ ...step })),
+      }));
 
       result.matches.forEach((match) => {
         const matchLabel = document.createElement('div');
@@ -2110,11 +2184,55 @@ export const settingsManager = {
         for (const step of match.trigger.steps || []) {
           const row = document.createElement('div');
           row.className = 'settings-alias-preview-step';
-          const resolved = aliasManager.resolveTemplate(step.template, {
-            args: match.captures,
-            remainder: match.fullMatch,
-            variables: previewVariables,
-          });
+          const resolved = aliasManager.resolveTemplate(
+            step.type === 'set_alias_enabled' ? step.target : step.template,
+            {
+              args: match.captures,
+              remainder: match.fullMatch,
+              variables: previewVariables,
+            }
+          );
+
+          if (step.type === 'set_alias_enabled') {
+            const target = resolved.text.trim();
+            const mode = normalizeAutomationMode(step.mode);
+            const alias = previewAliases.find((item) => item.trigger.trim().replace(/\s+/g, ' ').toLowerCase() === target.trim().replace(/\s+/g, ' ').toLowerCase());
+            row.textContent = getAutomationStepLabel(step) + ': ' + target;
+            if (resolved.missingVariables.length) {
+              row.classList.add('warning');
+              row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
+            } else if (resolved.errors.length) {
+              row.classList.add('warning');
+              row.textContent += ' (' + resolved.errors.join(' ') + ')';
+            } else if (!target || !alias) {
+              row.classList.add('warning');
+              row.textContent += target ? ' (alias not found)' : ' (empty target)';
+            } else {
+              alias.enabled = mode === 'toggle' ? alias.enabled === false : mode === 'enable';
+              row.textContent += ' -> ' + (alias.enabled === false ? 'disabled' : 'enabled');
+            }
+            body.appendChild(row);
+            continue;
+          }
+
+          if (step.type === 'run_alias') {
+            const aliasMatch = aliasManager.matchAliasInAliases(resolved.text, previewAliases);
+            row.textContent = getAutomationStepLabel(step) + ': ' + resolved.text;
+            if (resolved.missingVariables.length) {
+              row.classList.add('warning');
+              row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
+            } else if (resolved.errors.length) {
+              row.classList.add('warning');
+              row.textContent += ' (' + resolved.errors.join(' ') + ')';
+            } else if (!aliasMatch) {
+              row.classList.add('warning');
+              row.textContent += ' (no enabled alias matches)';
+            } else {
+              row.textContent += ' -> ' + aliasMatch.alias.trigger;
+            }
+            body.appendChild(row);
+            continue;
+          }
 
           let prefix = 'Send';
           if (step.type === 'set_variable') prefix = 'Set $' + step.name;
@@ -2261,10 +2379,19 @@ export const settingsManager = {
       stepList.className = 'settings-alias-step-list';
 
       const stepTypeOptions = [
-        { value: 'send_command', label: 'Send command' },
-        { value: 'set_variable', label: 'Set variable' },
-        { value: 'show_message', label: 'Show local message' },
+        { value: 'send_command', type: 'send_command', label: 'Send command' },
+        { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
+        { value: 'show_message', type: 'show_message', label: 'Show local message' },
+        { value: 'set_alias_enabled:toggle', type: 'set_alias_enabled', mode: 'toggle', label: 'Toggle alias' },
+        { value: 'set_alias_enabled:enable', type: 'set_alias_enabled', mode: 'enable', label: 'Enable alias' },
+        { value: 'set_alias_enabled:disable', type: 'set_alias_enabled', mode: 'disable', label: 'Disable alias' },
+        { value: 'run_alias', type: 'run_alias', label: 'Run alias' },
       ];
+      const getTriggerStepOptionValue = (step) => (
+        step.type === 'set_alias_enabled'
+          ? 'set_alias_enabled:' + normalizeAutomationMode(step.mode)
+          : step.type
+      );
 
       trigger.steps.forEach((step, index) => {
         const stepCard = document.createElement('div');
@@ -2280,12 +2407,17 @@ export const settingsManager = {
           const el = document.createElement('option');
           el.value = option.value;
           el.textContent = option.label;
-          if (step.type === option.value) el.selected = true;
+          if (getTriggerStepOptionValue(step) === option.value) el.selected = true;
           stepSelect.appendChild(el);
         });
         stepSelect.addEventListener('change', () => {
-          step.type = stepSelect.value;
+          const selectedOption = stepTypeOptions.find((option) => option.value === stepSelect.value) || stepTypeOptions[0];
+          step.type = selectedOption.type;
+          if (selectedOption.mode) step.mode = selectedOption.mode;
+          else delete step.mode;
           if (step.type !== 'set_variable') delete step.name;
+          if (step.type !== 'set_alias_enabled') delete step.target;
+          if (step.type === 'set_alias_enabled' && !step.target) step.target = '';
           if (!step.template) step.template = '';
           render();
         });
@@ -2345,18 +2477,42 @@ export const settingsManager = {
           stepCard.appendChild(nameInput);
         }
 
-        const templateInput = document.createElement('textarea');
-        templateInput.className = 'dw-input settings-alias-template';
-        templateInput.placeholder = step.type === 'show_message'
-          ? 'Attacker: %1'
-          : step.type === 'set_variable'
-            ? '%1'
-            : 'kill %1';
-        templateInput.value = step.template || '';
-        templateInput.addEventListener('input', () => {
-          step.template = templateInput.value;
-        });
-        stepCard.appendChild(templateInput);
+        if (step.type === 'set_alias_enabled') {
+          const targetInput = document.createElement('input');
+          const listId = 'trigger-alias-targets-' + index;
+          const targetList = document.createElement('datalist');
+          targetInput.type = 'text';
+          targetInput.className = 'dw-input';
+          targetInput.placeholder = 'Exact alias trigger';
+          targetInput.setAttribute('list', listId);
+          targetInput.value = step.target || '';
+          targetList.id = listId;
+          this._draftAliasScope.aliases.forEach((alias) => {
+            const option = document.createElement('option');
+            option.value = alias.trigger;
+            targetList.appendChild(option);
+          });
+          targetInput.addEventListener('input', () => {
+            step.target = targetInput.value;
+          });
+          stepCard.appendChild(targetInput);
+          stepCard.appendChild(targetList);
+        } else {
+          const templateInput = document.createElement('textarea');
+          templateInput.className = 'dw-input settings-alias-template';
+          templateInput.placeholder = step.type === 'show_message'
+            ? 'Attacker: %1'
+            : step.type === 'set_variable'
+              ? '%1'
+              : step.type === 'run_alias'
+                ? 'assist %1'
+                : 'kill %1';
+          templateInput.value = step.template || '';
+          templateInput.addEventListener('input', () => {
+            step.template = templateInput.value;
+          });
+          stepCard.appendChild(templateInput);
+        }
         controls.appendChild(upBtn);
         controls.appendChild(downBtn);
         controls.appendChild(removeBtn);
@@ -2364,7 +2520,9 @@ export const settingsManager = {
 
         const helper = document.createElement('div');
         helper.className = 'settings-helper-text';
-        helper.textContent = 'Patterns support * or %1-%9 as captures. Step templates support %0 for the full matched line, %1-%9 for captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
+        helper.textContent = step.type === 'set_alias_enabled'
+          ? 'Target may be an exact alias trigger or a template that resolves to one.'
+          : 'Patterns support * or %1-%9 as captures. Step templates support %0 for the full matched line, %1-%9 for captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -2381,8 +2539,10 @@ export const settingsManager = {
         btn.dataset.focusKey = 'trigger-step-add-' + option.value;
         btn.textContent = option.label;
         btn.addEventListener('click', () => {
-          const step = { type: option.value, template: '' };
-          if (option.value === 'set_variable') step.name = '';
+          const step = { type: option.type, template: '' };
+          if (option.mode) step.mode = option.mode;
+          if (option.type === 'set_variable') step.name = '';
+          if (option.type === 'set_alias_enabled') step.target = '';
           trigger.steps.push(step);
           render();
           this._focusSettingsControl('trigger-step-' + (trigger.steps.length - 1) + '-type');

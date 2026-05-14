@@ -17,6 +17,7 @@ import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { gmcp } from './gmcp.js';
 import { panelManager } from './panel-manager.js';
+import { executeAliasLine } from './automation-executor.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -539,97 +540,14 @@ function handleAliasSlashCommand(text) {
   return null;
 }
 
-function executeAliasLine(text, context = {}) {
-  const scopeKey = context.scopeKey || aliasManager.getActiveScopeKey();
-  const depth = context.depth || 0;
-  const trail = Array.isArray(context.trail) ? context.trail : [];
-  const isRoot = context.isRoot === true;
-  const match = aliasManager.matchAlias(text, scopeKey);
-  let sent = false;
-  let localOnly = false;
-  let handled = false;
-
-  if (!match) {
-    if (!sendRawCommand(text)) {
-      if (!isRoot) {
-        appendAliasWarning('Unable to send "' + text + '" because you are not connected.');
-      }
-      return { sent: false, localOnly: false, handled: false };
-    }
-    return { sent: true, localOnly: false, handled: false };
-  }
-
-  handled = true;
-
-  if (depth >= aliasManager.getMaxAliasDepth()) {
-    appendAliasWarning('Alias depth limit reached while expanding "' + match.alias.trigger + '".');
-    return { sent: false, localOnly: true, handled: true };
-  }
-
-  if (trail.includes(match.alias.id)) {
-    appendAliasWarning('Alias recursion detected for "' + match.alias.trigger + '".');
-    return { sent: false, localOnly: true, handled: true };
-  }
-
-  for (const step of match.alias.steps) {
-    const variables = aliasManager.getScopeSnapshot(scopeKey).variables;
-    const resolved = aliasManager.resolveTemplate(step.template, {
-      args: match.args,
-      remainder: match.remainder,
-      variables,
-    });
-
-    if ((step.type === 'send_command' || step.type === 'set_variable') && resolved.missingVariables.length) {
-      appendAliasWarning(
-        'Missing variable' + (resolved.missingVariables.length === 1 ? '' : 's') + ' '
-        + resolved.missingVariables.map((name) => '$' + name).join(', ')
-        + ' in alias "' + match.alias.trigger + '".'
-      );
-      localOnly = true;
-      continue;
-    }
-
-    if ((step.type === 'send_command' || step.type === 'set_variable') && resolved.errors.length) {
-      appendAliasWarning(
-        'Template error in alias "' + match.alias.trigger + '": '
-        + resolved.errors.join(' ')
-      );
-      localOnly = true;
-      continue;
-    }
-
-    if (step.type === 'set_variable') {
-      if (aliasManager.setVariable(step.name, resolved.text, scopeKey)) {
-        localOnly = true;
-      }
-      continue;
-    }
-
-    if (step.type === 'show_message') {
-      appendSystemMessage(resolved.text);
-      localOnly = true;
-      continue;
-    }
-
-    const nextText = resolved.text.trim();
-    if (!nextText) continue;
-    const result = executeAliasLine(nextText, {
-      scopeKey,
-      depth: depth + 1,
-      trail: [...trail, match.alias.id],
-      isRoot: false,
-    });
-    sent = sent || result.sent;
-    localOnly = localOnly || result.localOnly || result.handled;
-  }
-
-  return { sent, localOnly, handled };
-}
-
 export function sendCommandText(text) {
   const trimmed = String(text || '');
   const slashCommandResult = handleAliasSlashCommand(trimmed);
-  const aliasResult = slashCommandResult || executeAliasLine(trimmed, { isRoot: true });
+  const aliasResult = slashCommandResult || executeAliasLine(trimmed, {
+    isRoot: true,
+    appendMessage: appendSystemMessage,
+    sendCommand: sendRawCommand,
+  });
 
   if (!aliasResult.handled && !aliasResult.sent) return false;
 
