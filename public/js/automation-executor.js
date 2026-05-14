@@ -11,6 +11,12 @@ function warn(appendMessage, prefix, message) {
   }
 }
 
+function notify(appendMessage, prefix, message) {
+  if (typeof appendMessage === 'function') {
+    appendMessage(prefix + ': ' + message);
+  }
+}
+
 function resolveAutomationValue(value, templateContext, options = {}) {
   if (!options.preservePositionalTokens) {
     return aliasManager.resolveTemplate(value, templateContext);
@@ -115,6 +121,7 @@ function executeAutomationStep(step, context) {
       warn(appendMessage, source.prefix, 'Trigger "' + target + '" is not defined.');
       return { sent: false, localOnly: true, handled: true };
     }
+    notify(appendMessage, source.prefix, 'Trigger "' + target + '" ' + (result.enabled ? 'enabled' : 'disabled') + '.');
     return { sent: false, localOnly: true, handled: true };
   }
 
@@ -129,6 +136,7 @@ function executeAutomationStep(step, context) {
       warn(appendMessage, source.prefix, 'Alias "' + target + '" is not defined.');
       return { sent: false, localOnly: true, handled: true };
     }
+    notify(appendMessage, source.prefix, 'Alias "' + target + '" ' + (result.enabled ? 'enabled' : 'disabled') + '.');
     return { sent: false, localOnly: true, handled: true };
   }
 

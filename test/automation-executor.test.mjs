@@ -107,6 +107,10 @@ test('alias steps can toggle triggers by pattern', () => {
     isRoot: true,
   });
   assert.equal(triggerManager.findTriggerByPattern('incoming *', SCOPE_KEY).enabled, true);
+  assert.deepEqual(io.messages, [
+    'Alias: Trigger "incoming *" disabled.',
+    'Alias: Trigger "incoming *" enabled.',
+  ]);
   assert.deepEqual(io.sent, []);
 });
 
@@ -145,7 +149,7 @@ test('alias toggle trigger preserves trigger capture tokens in target pattern', 
 
   assert.equal(result.localOnly, true);
   assert.equal(triggerManager.findTriggerByPattern('You killed %1.', SCOPE_KEY).enabled, false);
-  assert.deepEqual(io.messages, []);
+  assert.deepEqual(io.messages, ['Alias: Trigger "You killed %1." disabled.']);
   assert.deepEqual(io.sent, []);
 });
 
@@ -182,6 +186,7 @@ test('trigger steps can disable aliases by trigger text', () => {
   }], SCOPE_KEY, io);
 
   assert.equal(aliasManager.findAliasByTrigger('heal', SCOPE_KEY).enabled, false);
+  assert.deepEqual(io.messages, ['Trigger: Alias "heal" disabled.']);
   assert.deepEqual(io.sent, []);
 });
 
