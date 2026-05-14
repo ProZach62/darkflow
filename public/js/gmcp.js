@@ -117,6 +117,7 @@ export const gmcp = {
       'Darkwind.Room.Image 1',
       'Darkwind.Divine 1',
       'Darkwind.Sky 1',
+      'Darkwind.GuildVitals 1',
       'Darkwind.Client.Subscriptions 1',
       'Darkwind.Window 1',
       'Darkwind.Snoop 1',

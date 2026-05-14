@@ -5,7 +5,7 @@ import { panelRenderers } from './panel-renderers.js';
 import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorrection, load as loadMapData } from './map-data.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
-const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
+const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
 const AVATAR_CHARGE_TICK_MS = 2000;
 
 function cloneState(value) {
@@ -1550,6 +1550,12 @@ export const panelManager = {
       this.gmcpData.vitals = fullVitals ? data : Object.assign({}, this.gmcpData.vitals || {}, data || {});
       this._updateAvatarMeter(this.gmcpData.vitals);
       this._renderPanel('vitals');
+    });
+
+    gmcp.on('Darkwind.GuildVitals', (data) => {
+      this._syncSubscriptionsAfterCharacterData();
+      this.gmcpData.guildVitals = data || {};
+      this._renderPanel('guildVitals');
     });
 
     gmcp.on('Darkwind.Divine', (data) => {

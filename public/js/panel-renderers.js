@@ -445,9 +445,17 @@ export const panelRenderers = {
     } else {
       removeVitalBar(bodyEl, 'Carry');
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'guild_bars')) {
-      renderGuildVitalBars(bodyEl, data.guild_bars);
+    bodyEl.querySelectorAll('.vitals-guild').forEach((row) => row.remove());
+  },
+
+  guildVitals(bodyEl, data) {
+    const bars = data && Array.isArray(data.bars) ? data.bars : [];
+    if (!bars.length) {
+      bodyEl.innerHTML = '<div class="placeholder">No guild vitals</div>';
+      return;
     }
+    if (bodyEl.querySelector('.placeholder')) bodyEl.innerHTML = '';
+    renderGuildVitalBars(bodyEl, bars);
   },
 
   omens(bodyEl, data) {

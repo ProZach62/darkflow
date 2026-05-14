@@ -77,6 +77,7 @@ The current server recognizes the following panel keys. Unknown keys are stored 
 |-------|-------|
 | `avatar` | Drives `Darkwind.Char.Avatar` and is part of the media-subscription gate |
 | `vitals` | Driven by `Char.Vitals`. The client always sends `vitals: true` |
+| `guildVitals` | Driven by `Darkwind.GuildVitals` |
 | `status` | Driven by `Char.Status`. The client forces `status: true` whenever the buffs panel is open |
 | `worth` | Driven by `Char.Worth` |
 | `stats` | Driven by `Char.Stats` and `Char.RealStats` |
@@ -106,11 +107,19 @@ progress fields from `Char.Vitals`.
 | `encumberance` | Server-side quadratic encumbrance value |
 | `encumberance_pct` | Linear carried-weight percent |
 | `encumberance_label` | Human-readable encumbrance state |
-| `guild_bars` | Optional array of guild-specific Vitals bars |
 
-Each `guild_bars` entry is a mapping with `id`, `guild`, `label`, `cur`, `max`,
-`pct`, and optional `kind`. The browser renders these after the standard Vitals
-bars and removes stale guild rows when the server sends a changed list.
+### `Darkwind.GuildVitals`
+
+The Guild Vitals panel consumes guild-specific resource bars from
+`Darkwind.GuildVitals`.
+
+| Field | Notes |
+|-------|-------|
+| `bars` | Array of guild-specific resource bars |
+
+Each `bars` entry is a mapping with `id`, `guild`, `label`, `cur`, `max`,
+`pct`, and optional `kind`. The browser renders these in the Guild Vitals panel
+and removes stale guild rows when the server sends a changed list.
 
 ### Features
 
