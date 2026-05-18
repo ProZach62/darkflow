@@ -7,7 +7,7 @@ import { triggerManager } from './trigger-manager.js';
 import { styleToElement } from './ansi.js';
 import { panelManager } from './panel-manager.js';
 import { PRODUCT_NAME } from './brand.js';
-import { soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
+import { getSoundCatalog, isKnownSound, soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 import { getAutomationStepLabel } from './automation-executor.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
@@ -2135,6 +2135,26 @@ export const settingsManager = {
     };
 
     const previewBody = document.createElement('div');
+    const soundCatalog = getSoundCatalog();
+    const soundCategories = SOUND_CATEGORIES.filter((category) => (
+      soundCatalog.some((sound) => sound.category === category)
+    ));
+    const firstSound = soundCatalog[0] || { category: 'alert', sound: 'warning' };
+    const soundLabel = (category, sound) => {
+      const match = soundCatalog.find((item) => item.category === category && item.sound === sound);
+      if (match) return match.label;
+      return [category, sound].filter(Boolean).join(' / ') || 'No sound selected';
+    };
+    const soundsForCategory = (category) => soundCatalog.filter((item) => item.category === category);
+    const ensureSoundStep = (step) => {
+      if (!step.category || !soundsForCategory(step.category).length) step.category = firstSound.category;
+      if (!step.sound || !isKnownSound(step.category, step.sound)) {
+        const sounds = soundsForCategory(step.category);
+        step.sound = sounds[0] ? sounds[0].sound : firstSound.sound;
+      }
+      if (!Number.isFinite(Number(step.volume))) step.volume = 1;
+      step.volume = Math.max(0, Math.min(1, Number(step.volume)));
+    };
 
     const sampleInputEl = document.createElement('textarea');
     sampleInputEl.className = 'dw-input settings-alias-template';
@@ -2184,6 +2204,17 @@ export const settingsManager = {
         for (const step of match.trigger.steps || []) {
           const row = document.createElement('div');
           row.className = 'settings-alias-preview-step';
+
+          if (step.type === 'play_sound') {
+            row.textContent = getAutomationStepLabel(step) + ': ' + soundLabel(step.category, step.sound);
+            if (!isKnownSound(step.category, step.sound)) {
+              row.classList.add('warning');
+              row.textContent += ' (sound not found)';
+            }
+            body.appendChild(row);
+            continue;
+          }
+
           const resolved = aliasManager.resolveTemplate(
             step.type === 'set_alias_enabled' ? step.target : step.template,
             {
@@ -2386,6 +2417,7 @@ export const settingsManager = {
         { value: 'set_alias_enabled:enable', type: 'set_alias_enabled', mode: 'enable', label: 'Enable alias' },
         { value: 'set_alias_enabled:disable', type: 'set_alias_enabled', mode: 'disable', label: 'Disable alias' },
         { value: 'run_alias', type: 'run_alias', label: 'Run alias' },
+        { value: 'play_sound', type: 'play_sound', label: 'Play sound' },
       ];
       const getTriggerStepOptionValue = (step) => (
         step.type === 'set_alias_enabled'
@@ -2418,7 +2450,15 @@ export const settingsManager = {
           if (step.type !== 'set_variable') delete step.name;
           if (step.type !== 'set_alias_enabled') delete step.target;
           if (step.type === 'set_alias_enabled' && !step.target) step.target = '';
-          if (!step.template) step.template = '';
+          if (step.type === 'play_sound') {
+            delete step.template;
+            ensureSoundStep(step);
+          } else {
+            delete step.category;
+            delete step.sound;
+            delete step.volume;
+            if (!step.template) step.template = '';
+          }
           render();
         });
 
@@ -2477,7 +2517,74 @@ export const settingsManager = {
           stepCard.appendChild(nameInput);
         }
 
-        if (step.type === 'set_alias_enabled') {
+        if (step.type === 'play_sound') {
+          ensureSoundStep(step);
+
+          const categorySelect = document.createElement('select');
+          categorySelect.className = 'dw-select';
+          categorySelect.dataset.focusKey = 'trigger-step-' + index + '-sound-category';
+          soundCategories.forEach((category) => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = SOUND_CATEGORY_INFO[category] ? SOUND_CATEGORY_INFO[category].label : category;
+            if (step.category === category) option.selected = true;
+            categorySelect.appendChild(option);
+          });
+          categorySelect.addEventListener('change', () => {
+            step.category = categorySelect.value;
+            const sounds = soundsForCategory(step.category);
+            step.sound = sounds[0] ? sounds[0].sound : '';
+            render();
+            this._focusSettingsControl('trigger-step-' + index + '-sound-category');
+          });
+          stepCard.appendChild(categorySelect);
+
+          const soundSelect = document.createElement('select');
+          soundSelect.className = 'dw-select';
+          soundSelect.dataset.focusKey = 'trigger-step-' + index + '-sound';
+          soundsForCategory(step.category).forEach((item) => {
+            const option = document.createElement('option');
+            option.value = item.sound;
+            option.textContent = item.label.replace((SOUND_CATEGORY_INFO[item.category] ? SOUND_CATEGORY_INFO[item.category].label : item.category) + ' / ', '');
+            if (step.sound === item.sound) option.selected = true;
+            soundSelect.appendChild(option);
+          });
+          soundSelect.addEventListener('change', () => {
+            step.sound = soundSelect.value;
+            renderPreview();
+          });
+          stepCard.appendChild(soundSelect);
+
+          const volumeField = document.createElement('label');
+          volumeField.className = 'dw-field';
+          volumeField.appendChild(createFieldLabel('Volume'));
+          const volumeInput = document.createElement('input');
+          volumeInput.type = 'range';
+          volumeInput.min = '0';
+          volumeInput.max = '100';
+          volumeInput.value = String(Math.round(step.volume * 100));
+          volumeInput.dataset.focusKey = 'trigger-step-' + index + '-sound-volume';
+          const volumeValue = document.createElement('div');
+          volumeValue.className = 'settings-helper-text';
+          volumeValue.textContent = Math.round(step.volume * 100) + '%';
+          volumeInput.addEventListener('input', () => {
+            step.volume = Number(volumeInput.value) / 100;
+            volumeValue.textContent = volumeInput.value + '%';
+            renderPreview();
+          });
+          volumeField.appendChild(volumeInput);
+          volumeField.appendChild(volumeValue);
+          stepCard.appendChild(volumeField);
+
+          const testBtn = document.createElement('button');
+          testBtn.type = 'button';
+          testBtn.className = 'dw-button dw-button-secondary';
+          testBtn.textContent = 'Test';
+          testBtn.addEventListener('click', () => {
+            soundManager.play(step.category, step.sound, step.volume);
+          });
+          stepCard.appendChild(testBtn);
+        } else if (step.type === 'set_alias_enabled') {
           const targetInput = document.createElement('input');
           const listId = 'trigger-alias-targets-' + index;
           const targetList = document.createElement('datalist');
@@ -2520,9 +2627,11 @@ export const settingsManager = {
 
         const helper = document.createElement('div');
         helper.className = 'settings-helper-text';
-        helper.textContent = step.type === 'set_alias_enabled'
-          ? 'Target may be an exact alias trigger or a template that resolves to one.'
-          : 'Patterns support * or %1-%9 as captures. Step templates support %0 for the full matched line, %1-%9 for captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
+        helper.textContent = step.type === 'play_sound'
+          ? 'Sound actions use Darkflow audio settings, category toggles, and browser audio unlock.'
+          : step.type === 'set_alias_enabled'
+            ? 'Target may be an exact alias trigger or a template that resolves to one.'
+            : 'Patterns support * or %1-%9 as captures. Step templates support %0 for the full matched line, %1-%9 for captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -2543,6 +2652,12 @@ export const settingsManager = {
           if (option.mode) step.mode = option.mode;
           if (option.type === 'set_variable') step.name = '';
           if (option.type === 'set_alias_enabled') step.target = '';
+          if (option.type === 'play_sound') {
+            delete step.template;
+            step.category = firstSound.category;
+            step.sound = firstSound.sound;
+            step.volume = 1;
+          }
           trigger.steps.push(step);
           render();
           this._focusSettingsControl('trigger-step-' + (trigger.steps.length - 1) + '-type');
@@ -2665,7 +2780,11 @@ export const settingsManager = {
 
         const description = document.createElement('div');
         description.className = 'settings-alias-list-meta';
-        description.textContent = trigger.description || (trigger.gag ? 'gag enabled' : trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's'));
+        if (trigger.description) description.textContent = trigger.description;
+        else if (trigger.gag) description.textContent = 'gag enabled';
+        else if (trigger.steps[0] && trigger.steps[0].type === 'play_sound')
+          description.textContent = 'Play sound: ' + soundLabel(trigger.steps[0].category, trigger.steps[0].sound);
+        else description.textContent = trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
 
         copy.appendChild(pattern);
         copy.appendChild(description);

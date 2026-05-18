@@ -1,5 +1,6 @@
 import { aliasManager } from './alias-manager.js';
 import { triggerManager } from './trigger-manager.js';
+import { isKnownSound, soundManager } from './sound-manager.js';
 
 function normalizeMode(mode) {
   return mode === 'enable' || mode === 'disable' ? mode : 'toggle';
@@ -96,6 +97,15 @@ function executeAutomationStep(step, context) {
     aliasContext,
     expandCommandsAsAliases,
   } = context;
+
+  if (step.type === 'play_sound') {
+    if (!isKnownSound(step.category, step.sound)) {
+      warn(appendMessage, source.prefix, 'Sound "' + [step.category, step.sound].filter(Boolean).join('/') + '" is not defined.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    soundManager.play(step.category, step.sound, step.volume);
+    return { sent: false, localOnly: true, handled: true };
+  }
 
   const { resolved, ok } = getStepResult(step, source, templateContext, appendMessage);
   if (!ok) return { sent: false, localOnly: true, handled: true };
@@ -283,5 +293,6 @@ export function getAutomationStepLabel(step) {
   if (step.type === 'set_trigger_enabled') return describeMode(normalizeMode(step.mode)) + ' trigger';
   if (step.type === 'set_alias_enabled') return describeMode(normalizeMode(step.mode)) + ' alias';
   if (step.type === 'run_alias') return 'Run alias';
+  if (step.type === 'play_sound') return 'Play sound';
   return 'Send';
 }

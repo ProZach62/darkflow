@@ -43,7 +43,7 @@ const DEFAULT_CATEGORY_ENABLED = {
   ui: true,
 };
 
-const SOUND_MAP = {
+export const SOUND_MAP = {
   'combat/hit': '/assets/sounds/combat-hit.mp3',
   'combat/miss': '/assets/sounds/combat-miss.mp3',
   'combat/critical': '/assets/sounds/combat-critical.mp3',
@@ -80,6 +80,7 @@ const SOUND_MAP = {
   'discussion/channel': '/assets/sounds/discussion-tell.mp3',
   'alert/low-hp': '/assets/sounds/alert-low-hp.mp3',
   'alert/incoming': '/assets/sounds/alert-incoming.mp3',
+  'alert/ping': '/assets/sounds/alert-ping.mp3',
   'alert/warning': '/assets/sounds/alert-warning.mp3',
   'ambient/rain': '/assets/sounds/ambient-rain.mp3',
   'ambient/fire': '/assets/sounds/ambient-fire.mp3',
@@ -89,6 +90,33 @@ const SOUND_MAP = {
   'ui/open': '/assets/sounds/ui-open.mp3',
   'ui/close': '/assets/sounds/ui-close.mp3',
 };
+
+function formatSoundLabel(sound) {
+  return String(sound || '')
+    .split('/')
+    .map((part) => part.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()))
+    .join(' / ');
+}
+
+export function getSoundCatalog() {
+  return Object.entries(SOUND_MAP).map(([key, path]) => {
+    const slashIndex = key.indexOf('/');
+    const category = slashIndex === -1 ? '' : key.slice(0, slashIndex);
+    const sound = slashIndex === -1 ? key : key.slice(slashIndex + 1);
+    const categoryInfo = SOUND_CATEGORY_INFO[category] || { label: category };
+    return {
+      category,
+      sound,
+      label: categoryInfo.label + ' / ' + formatSoundLabel(sound),
+      path,
+      suppressed: SUPPRESSED_SOUND_CATEGORIES.has(category),
+    };
+  });
+}
+
+export function isKnownSound(category, sound) {
+  return Object.prototype.hasOwnProperty.call(SOUND_MAP, category + '/' + sound);
+}
 
 function clampVolume(value, fallback = 0.7) {
   const number = Number(value);

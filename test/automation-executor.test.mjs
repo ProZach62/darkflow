@@ -29,10 +29,43 @@ function createLocalStorage() {
 globalThis.CustomEvent = CustomEventMock;
 globalThis.window = { dispatchEvent() {} };
 globalThis.localStorage = createLocalStorage();
+globalThis.document = {
+  hidden: false,
+  addEventListener() {},
+  removeEventListener() {},
+};
+globalThis.Audio = class AudioMock {
+  constructor(src = '') {
+    this.src = src;
+    this.currentSrc = src;
+    this.volume = 1;
+    this.preload = '';
+    this.loop = false;
+    this.ended = false;
+  }
+
+  cloneNode() {
+    const clone = new AudioMock(this.src);
+    clone.currentSrc = this.currentSrc;
+    clone.volume = this.volume;
+    clone.preload = this.preload;
+    clone.loop = this.loop;
+    return clone;
+  }
+
+  play() {
+    return Promise.resolve();
+  }
+
+  pause() {}
+
+  addEventListener() {}
+};
 
 const { dom } = await import('../public/js/state.js');
 const { aliasManager } = await import('../public/js/alias-manager.js');
 const { triggerManager } = await import('../public/js/trigger-manager.js');
+const { soundManager } = await import('../public/js/sound-manager.js');
 const {
   executeAliasLine,
   executeTriggerMatches,
@@ -257,6 +290,60 @@ test('trigger run_alias executes an enabled alias instead of raw-sending the inv
 
   assert.deepEqual(io.sent, ['kill orc']);
   assert.deepEqual(io.messages, []);
+});
+
+test('trigger play_sound steps play local audio without sending commands', () => {
+  resetManagers();
+  triggerManager.saveScope(SCOPE_KEY, {
+    triggers: [{
+      id: 'trigger-sound',
+      enabled: true,
+      pattern: 'You are bleeding',
+      description: '',
+      group: '',
+      gag: false,
+      steps: [{ type: 'play_sound', category: 'alert', sound: 'warning', volume: 0.5 }],
+    }],
+  });
+
+  const played = [];
+  const originalPlay = soundManager.play;
+  soundManager.play = (category, sound, volume) => {
+    played.push({ category, sound, volume });
+  };
+
+  try {
+    const io = messagesAndSends();
+    executeTriggerMatches([{
+      trigger: triggerManager.findTriggerByPattern('You are bleeding', SCOPE_KEY),
+      fullMatch: 'You are bleeding',
+      captures: [],
+    }], SCOPE_KEY, io);
+
+    assert.deepEqual(played, [{ category: 'alert', sound: 'warning', volume: 0.5 }]);
+    assert.deepEqual(io.sent, []);
+    assert.deepEqual(io.messages, []);
+  } finally {
+    soundManager.play = originalPlay;
+  }
+});
+
+test('trigger diagnostics require known play_sound selections', () => {
+  resetManagers();
+  const scope = {
+    triggers: [{
+      id: 'trigger-bad-sound',
+      enabled: true,
+      pattern: 'bad sound',
+      description: '',
+      group: '',
+      gag: false,
+      steps: [{ type: 'play_sound', category: 'alert', sound: 'missing', volume: 1 }],
+    }],
+  };
+
+  const diagnostics = triggerManager.getTriggerDiagnostics(scope, 'trigger-bad-sound');
+  assert.deepEqual(diagnostics, ['Step 1 uses a sound Darkflow does not know.']);
 });
 
 test('trigger run_alias warns without raw-sending unmatched alias text', () => {

@@ -1,4 +1,5 @@
 import { dom } from './state.js';
+import { getSoundCatalog, isKnownSound } from './sound-manager.js';
 
 const TRIGGER_STORAGE_KEY = 'darkwind-client-triggers-v1';
 
@@ -8,6 +9,20 @@ function createId() {
 
 function normalizeWhitespace(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeVolume(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 1;
+  return Math.max(0, Math.min(1, number));
+}
+
+function formatSoundStep(step) {
+  const match = getSoundCatalog().find((item) => (
+    item.category === step.category && item.sound === step.sound
+  ));
+  if (match) return match.label;
+  return [step.category, step.sound].filter(Boolean).join(' / ') || 'sound';
 }
 
 function emitTriggerDataChanged(detail) {
@@ -35,6 +50,15 @@ function normalizeStep(step) {
   if (type === 'set_alias_enabled') {
     const mode = step.mode === 'enable' || step.mode === 'disable' ? step.mode : 'toggle';
     return { type, mode, target: String(step.target || '') };
+  }
+
+  if (type === 'play_sound') {
+    return {
+      type,
+      category: normalizeWhitespace(step.category),
+      sound: normalizeWhitespace(step.sound),
+      volume: normalizeVolume(step.volume),
+    };
   }
 
   if (type === 'run_alias') {
@@ -315,6 +339,13 @@ export const triggerManager = {
       if (step.type === 'run_alias' && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must choose an alias command.');
       }
+      if (step.type === 'play_sound') {
+        if (!String(step.category || '').trim() || !String(step.sound || '').trim()) {
+          diagnostics.push('Step ' + (index + 1) + ' must choose a sound.');
+        } else if (!isKnownSound(step.category, step.sound)) {
+          diagnostics.push('Step ' + (index + 1) + ' uses a sound Darkflow does not know.');
+        }
+      }
     }
 
     return diagnostics;
@@ -322,9 +353,10 @@ export const triggerManager = {
 
   describeTrigger(trigger) {
     if (!trigger) return '';
-    const action = trigger.steps && trigger.steps[0] && trigger.steps[0].template
-      ? trigger.steps[0].template
-      : trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
+    const firstStep = trigger.steps && trigger.steps[0];
+    let action = trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
+    if (firstStep && firstStep.template) action = firstStep.template;
+    if (firstStep && firstStep.type === 'play_sound') action = 'Play sound: ' + formatSoundStep(firstStep);
     return '{' + trigger.pattern + '} -> ' + action + (trigger.gag ? ' [gag]' : '');
   },
 
