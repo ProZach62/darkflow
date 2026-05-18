@@ -1,6 +1,6 @@
 {
   "name": "darkflow-client",
-  "version": "0.11.17",
+  "version": "0.12.0",
   "description": "Darkflow WebSocket client for Darkwind",
   "main": "server.js",
   "scripts": {

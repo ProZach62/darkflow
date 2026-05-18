@@ -19,6 +19,8 @@ import { triggerManager } from './trigger-manager.js';
 import { gmcp } from './gmcp.js';
 import { panelManager } from './panel-manager.js';
 import { executeAliasLine } from './automation-executor.js';
+import { replaceEmojiAliases } from './emoji-manager.js';
+import { handleEmojiPickerKeydown, initEmojiPicker } from './emoji-picker.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -542,7 +544,7 @@ function handleAliasSlashCommand(text) {
 }
 
 export function sendCommandText(text) {
-  const trimmed = String(text || '');
+  const trimmed = replaceEmojiAliases(String(text || ''));
   const slashCommandResult = handleAliasSlashCommand(trimmed);
   const aliasResult = slashCommandResult || executeAliasLine(trimmed, {
     isRoot: true,
@@ -643,9 +645,12 @@ export function sendCommand() {
 
 export function initInput() {
   initCompletion();
+  initEmojiPicker(dom.commandInput);
 
   dom.commandInput.addEventListener('keydown', function(e) {
-    if (handleMappedKey(e)) {
+    if (handleEmojiPickerKeydown(e)) {
+      return;
+    } else if (handleMappedKey(e)) {
       return;
     } else if (e.key === 'Enter') {
       e.preventDefault();

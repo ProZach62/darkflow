@@ -1685,6 +1685,61 @@ body.zork-only-mode #toolbar-connect-fields {
 
 #command-input:focus { border-color: #58a6ff; }
 
+#emoji-picker {
+  position: fixed;
+  z-index: 10000;
+  display: grid;
+  gap: 2px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px;
+  box-sizing: border-box;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.46);
+}
+
+#emoji-picker[hidden] {
+  display: none;
+}
+
+.emoji-picker-item {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #c9d1d9;
+  font: 13px var(--df-font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.emoji-picker-item:hover,
+.emoji-picker-item.is-active {
+  background: #1f6feb;
+  color: #ffffff;
+}
+
+.emoji-picker-symbol {
+  font-size: 18px;
+  line-height: 1;
+  text-align: center;
+}
+
+.emoji-picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #command-batch-drawer {
   display: flex;
   flex-direction: column;
