@@ -123,6 +123,7 @@ export const gmcp = {
       'Darkwind.Snoop 1',
       'Darkwind.IDE 1',
       'Darkwind.MapData 1',
+      'Darkwind.MapData2 1',
       'Darkwind.Completion 1',
       'Darkwind.Quests 1',
       'Darkwind.Achievements 1',
@@ -208,7 +209,7 @@ export const gmcp = {
     this.sendHandshake();
     this.sendSubscriptions({
       ...subscriptions,
-      reason: 'ctrl-k',
+      reason: payload.reason || 'ctrl-k',
       full: true,
     });
     this.requestMediaRefresh();

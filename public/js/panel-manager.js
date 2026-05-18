@@ -3,6 +3,13 @@ import { state as appState } from './state.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { panelRenderers } from './panel-renderers.js';
 import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorrection, load as loadMapData } from './map-data.js';
+import {
+  isActive as isMapData2Active,
+  processCurrent as processMapData2Current,
+  mergeServerAreaData as mergeMapData2Area,
+  mergeServerUpdate as mergeMapData2Update,
+  load as loadMapData2,
+} from './map-data-v2.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
 const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
@@ -92,6 +99,7 @@ export const panelManager = {
     if (appState.zorkOnlyMode) {
       this.disableForZorkOnlyMode();
       loadMapData();
+      loadMapData2();
       this.registerGmcpHandlers();
       return;
     }
@@ -108,6 +116,7 @@ export const panelManager = {
 
     this._applyDockStateToDom();
     loadMapData();
+    loadMapData2();
     this.attachDragHandlers();
     this.registerGmcpHandlers();
     this._attachResizeHandler();
@@ -1650,13 +1659,13 @@ export const panelManager = {
         this._renderPanel('roomImage');
       }
       this._renderPanel('room');
-      processRoomInfo(data);
+      if (!isMapData2Active()) processRoomInfo(data);
       this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData.Area', (data) => {
-      const merged = mergeServerAreaData(data);
-      if (merged) this._queuePanelRender('map');
+      mergeServerAreaData(data);
+      this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData.Update', (data) => {
@@ -1667,6 +1676,21 @@ export const panelManager = {
     gmcp.on('Darkwind.MapData.RoomCoords', (data) => {
       const merged = applyRoomCorrection(data);
       if (merged) this._queuePanelRender('map');
+    });
+
+    gmcp.on('Darkwind.MapData2.Current', (data) => {
+      processMapData2Current(data);
+      this._queuePanelRender('map');
+    });
+
+    gmcp.on('Darkwind.MapData2.Area', (data) => {
+      mergeMapData2Area(data);
+      this._queuePanelRender('map');
+    });
+
+    gmcp.on('Darkwind.MapData2.Update', (data) => {
+      mergeMapData2Update(data);
+      this._queuePanelRender('map');
     });
 
     gmcp.on('Room.Players', (data) => {

@@ -14,8 +14,13 @@ const WS_STALL_COMMAND_BURST_MS = 4000;
 const WS_STALL_COMMAND_BURST_COUNT = 3;
 const WS_STALLED_BUFFERED_THRESHOLD = 64 * 1024;
 const WS_FORCE_RECONNECT_DELAY_MS = 250;
+const LOST_TRANSMISSION_PATTERN = /\*\*\* Text lost in transmission \*\*\*/;
+const LOST_TRANSMISSION_RECOVERY_DELAY_MS = 750;
+const LOST_TRANSMISSION_RECOVERY_COOLDOWN_MS = 30000;
 
 let watchdogTimer = null;
+let lostTransmissionRecoveryTimer = null;
+let lastLostTransmissionRecoveryAt = 0;
 
 function getHealth() {
   return state.wsHealth;
@@ -54,6 +59,10 @@ function stopWatchdog() {
 
 function resetSocketState() {
   const health = getHealth();
+  if (lostTransmissionRecoveryTimer) {
+    clearTimeout(lostTransmissionRecoveryTimer);
+    lostTransmissionRecoveryTimer = null;
+  }
   state.ws = null;
   state.connectTime = null;
   health.currentUrl = null;
@@ -147,6 +156,38 @@ function evaluateSocketHealth() {
 function startWatchdog() {
   stopWatchdog();
   watchdogTimer = setInterval(evaluateSocketHealth, WS_HEALTH_INTERVAL_MS);
+}
+
+function scheduleLostTransmissionRecovery(text) {
+  if (!LOST_TRANSMISSION_PATTERN.test(String(text || ''))) return;
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+
+  const now = Date.now();
+  if (lostTransmissionRecoveryTimer ||
+    (now - lastLostTransmissionRecoveryAt) < LOST_TRANSMISSION_RECOVERY_COOLDOWN_MS) {
+    return;
+  }
+
+  appendSystemMessage('Output backlog detected; refreshing GMCP state...');
+  pushWsEvent('lost-transmission-detected', {
+    msSinceLastRecovery: lastLostTransmissionRecoveryAt ?
+      now - lastLostTransmissionRecoveryAt : null,
+  });
+
+  lostTransmissionRecoveryTimer = setTimeout(() => {
+    lostTransmissionRecoveryTimer = null;
+    lastLostTransmissionRecoveryAt = Date.now();
+
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    panelManager.resetData({ preservePanels: ['chat'] });
+    if (gmcp.restartHandshake({
+      reason: 'lost-transmission',
+      panels: panelManager.getSubscriptionPanels(),
+    })) {
+      panelManager.refreshMediaPanels();
+      pushWsEvent('lost-transmission-recovery', {});
+    }
+  }, LOST_TRANSMISSION_RECOVERY_DELAY_MS);
 }
 
 export function noteOutboundActivity(kind, metadata) {
@@ -339,6 +380,7 @@ export async function connect() {
           health.lastInboundTextAt = now;
           state.bytesReceived += event.data.length;
           appendOutput(event.data);
+          scheduleLostTransmissionRecovery(event.data);
         } else {
           const arr = new Uint8Array(event.data);
           health.lastInboundGmcpAt = now;

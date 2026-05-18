@@ -23,6 +23,7 @@ The `gmcp-darkwind-*.md` files describe custom GMCP extensions under the `Darkwi
 | [`gmcp-darkwind-window.md`](gmcp-darkwind-window.md) | Dynamic server-driven UI windows and client responses such as submit, action, and closed events. |
 | [`gmcp-darkwind-ide.md`](gmcp-darkwind-ide.md) | In-browser code editor open, save, save result, and close messages. |
 | [`gmcp-darkwind-mapdata.md`](gmcp-darkwind-mapdata.md) | Map state, movement inference, room coordinates, area data, sync, and correction messages. |
+| [`gmcp-darkwind-mapdata-v2.md`](gmcp-darkwind-mapdata-v2.md) | Server-authoritative map graph, display layout metadata, and V2 sync messages. |
 | [`gmcp-darkwind-completion.md`](gmcp-darkwind-completion.md) | Tab completion request/result flow and client behavior for ambiguous completions. |
 | [`gmcp-darkwind-quests.md`](gmcp-darkwind-quests.md) | Quest list, active quest, progress update, and completion payloads rendered by the client panels. |
 | [`gmcp-darkwind-achievements.md`](gmcp-darkwind-achievements.md) | Achievement snapshots and incremental updates. |

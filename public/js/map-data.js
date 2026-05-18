@@ -1,5 +1,4 @@
 import { gmcp } from './gmcp.js';
-import { appendSystemMessage } from './output.js';
 
 const STORAGE_KEY = 'darkwind-map-data-v3';
 const MOVEMENT_INTENT_TTL_MS = 2500;
@@ -38,6 +37,17 @@ let nextMovementSeq = 1;
 
 // Coordinate occupancy per area: "area:x,y,z" → roomId
 let coordIndex = new Map();
+
+// Status message for the map panel status bar (not game output)
+let mapStatusMessage = '';
+let mapStatusAt = 0;
+const MAP_STATUS_TTL_MS = 6000;
+
+function setMapStatus(msg) { mapStatusMessage = msg; mapStatusAt = Date.now(); }
+export function getMapStatus() {
+  if (!mapStatusMessage || Date.now() - mapStatusAt > MAP_STATUS_TTL_MS) return '';
+  return mapStatusMessage;
+}
 
 // Server area versions for incremental sync
 let areaVersions = new Map();
@@ -110,11 +120,10 @@ function updateRoomCoords(room, x, y, z, source) {
 function maybeNotifyCorrection(room, oldCoords, sourceLabel) {
   if (!room || room.id !== currentRoomId || !oldCoords) return;
   if (oldCoords.x === room.x && oldCoords.y === room.y && oldCoords.z === room.z) return;
-  appendSystemMessage(
-    'Map sync: corrected current room position from '
-    + oldCoords.x + ',' + oldCoords.y + ',' + oldCoords.z
-    + ' to ' + room.x + ',' + room.y + ',' + room.z
-    + ' (' + sourceLabel + ').'
+  setMapStatus(
+    'Corrected: ' + oldCoords.x + ',' + oldCoords.y + ',' + oldCoords.z
+    + ' -> ' + room.x + ',' + room.y + ',' + room.z
+    + ' (' + sourceLabel + ')'
   );
 }
 
@@ -124,7 +133,7 @@ function triggerAreaResync(area, reason) {
   const last = lastResyncByArea.get(area) || 0;
   if ((now - last) < RESYNC_COOLDOWN_MS) return;
   lastResyncByArea.set(area, now);
-  appendSystemMessage('Map sync: resyncing ' + area + ' (' + reason + ').');
+  setMapStatus('Resyncing ' + area + ': ' + reason);
   requestAreaSync(area, true);
 }
 
@@ -164,12 +173,14 @@ export function processRoomInfo(data) {
   };
 
   // Update or create room record
+  const canonicalArea = data.map_area || data.area || '';
+
   let room = rooms.get(roomId);
   if (!room) {
     room = {
       id: roomId,
       name: data.name || '',
-      area: data.area || '',
+      area: canonicalArea,
       environment: data.environment || '',
       exits: {},
       x: null, y: null, z: null,
@@ -179,7 +190,16 @@ export function processRoomInfo(data) {
   } else {
     // Update mutable fields
     room.name = data.name || room.name;
-    room.area = data.area || room.area;
+    // Migrate area if server now sends a canonical key (e.g. "Darkwind" replacing
+    // "in the mainland of Darkwind") so the room moves to the right area bucket.
+    if (canonicalArea && canonicalArea !== room.area) {
+      if (room.x !== null) {
+        const oldKey = room.area + ':' + room.x + ',' + room.y + ',' + room.z;
+        if (coordIndex.get(oldKey) === room.id) coordIndex.delete(oldKey);
+        coordIndex.set(canonicalArea + ':' + room.x + ',' + room.y + ',' + room.z, room.id);
+      }
+      room.area = canonicalArea;
+    }
     room.environment = data.environment || room.environment;
     if (!room.coordSource) room.coordSource = room.x !== null ? 'server' : null;
   }
@@ -294,6 +314,15 @@ export function processRoomInfo(data) {
   }
 
   save();
+
+  // If we ended up in an unpositioned room, give the server 800ms to process
+  // our RoomUpdate and run BFS, then pull an incremental sync to get coords.
+  if (roomChanged && room.x === null && room.area) {
+    setTimeout(() => {
+      if (getCurrentRoomId() === roomId) requestAreaSync(room.area, false);
+    }, 800);
+  }
+
   return room;
 }
 
@@ -387,7 +416,7 @@ export function load() {
 export function mergeServerAreaData(data) {
   if (!data || !data.area || !Array.isArray(data.rooms)) return;
 
-  if (data.replace) {
+  if (data.replace || data.version === undefined) {
     removeAreaRooms(data.area);
   }
 
@@ -517,6 +546,14 @@ export function clearMapData() {
   movementIntents = [];
   lastResyncByArea.clear();
   localStorage.removeItem(STORAGE_KEY);
+}
+
+export function clearMapDataForArea(area) {
+  if (!area) return;
+  removeAreaRooms(area);
+  save();
+  setMapStatus('Cleared ' + area + ', resyncing...');
+  requestAreaSync(area, true);
 }
 
 export { DIR_OFFSETS };
