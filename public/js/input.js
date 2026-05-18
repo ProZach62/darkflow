@@ -4,6 +4,7 @@ import {
   appendSystemMessage,
   clearOutput,
   exitSplitScrollback,
+  returnOutputToLive,
   resumeOutputForManualCommand,
   scrollActiveOutputByPage,
 } from './output.js';
@@ -705,7 +706,7 @@ export function initInput() {
         panelManager.refreshMediaPanels();
       }
     } else if (e.key === 'Escape') {
-      if (exitSplitScrollback()) {
+      if (returnOutputToLive() || exitSplitScrollback()) {
         e.preventDefault();
         dom.commandInput.focus();
         return;

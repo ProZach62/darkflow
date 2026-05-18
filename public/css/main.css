@@ -1475,13 +1475,50 @@ body.zork-only-mode #toolbar-connect-fields {
   transition: opacity 120ms ease, transform 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 
+#output-escape-hint {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #8957e5;
+  border-radius: 999px;
+  background: rgba(33, 38, 45, 0.96);
+  color: #d2a8ff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
 #output-pause-btn::before {
   content: '||';
   font-size: 10px;
   line-height: 1;
 }
 
+#output-escape-hint::before {
+  content: 'Esc';
+  font-size: 10px;
+  line-height: 1;
+}
+
 #output-shell.paused #output-pause-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+#output-shell.escape-return-available:not(.paused):not(.split-active) #output-escape-hint {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
@@ -1501,6 +1538,11 @@ body.zork-only-mode #toolbar-connect-fields {
 #output-live-btn:hover {
   background: rgba(48, 54, 61, 0.98);
   border-color: #58a6ff;
+}
+
+#output-escape-hint:hover {
+  background: rgba(48, 54, 61, 0.98);
+  border-color: #a371f7;
 }
 
 #gmcp-panel {
@@ -1555,6 +1597,15 @@ body.zork-only-mode #toolbar-connect-fields {
 #output-live::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
 .output-line { min-height: 1.4em; }
+.output-line-mention-target {
+  animation: mention-target-flash 2.4s ease-out;
+  border-radius: 3px;
+}
+@keyframes mention-target-flash {
+  0% { background: rgba(240, 180, 41, 0.32); box-shadow: inset 3px 0 0 #f0b429; }
+  70% { background: rgba(240, 180, 41, 0.14); box-shadow: inset 3px 0 0 rgba(240, 180, 41, 0.7); }
+  100% { background: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
 .output-inline-link {
   appearance: none;
   border: 0;
@@ -2137,6 +2188,125 @@ body.zork-only-mode #toolbar-connect-fields {
   min-height: 0;
   overflow-y: auto;
   background: #161b22;
+}
+
+.notification-toolbar-wrap {
+  position: relative;
+}
+
+.notifications-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: none;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(440px, calc(100dvh - 80px));
+  overflow: hidden;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(1, 4, 9, 0.55);
+  z-index: 2600;
+}
+
+.notifications-menu.open {
+  display: flex;
+  flex-direction: column;
+}
+
+.notifications-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #30363d;
+  background: #1f2630;
+}
+
+.notifications-title {
+  color: #f0f6fc;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.notifications-clear {
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: #8b949e;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.notifications-clear:hover {
+  border-color: #484f58;
+  color: #c9d1d9;
+}
+
+.notifications-list {
+  min-height: 0;
+  overflow-y: auto;
+  background: #0d1117;
+}
+
+.notifications-empty {
+  padding: 18px 14px;
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.notification-row {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #21262d;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.notification-row:hover {
+  background: #161b22;
+}
+
+.notification-row.unread {
+  background: #172033;
+}
+
+.notification-row.expired {
+  opacity: 0.76;
+}
+
+.notification-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8b949e;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.notification-meta span:first-child {
+  color: #58a6ff;
+}
+
+.notification-body {
+  color: #c9d1d9;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.notification-expired {
+  color: #f0b429;
+  font-size: 11px;
 }
 
 .announcements-detail {

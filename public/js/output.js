@@ -41,6 +41,10 @@ let suppressAutoPause = false;
 let splitRatio = DEFAULT_SPLIT_RATIO;
 let activeDividerPointerId = null;
 let userScrollIntentUntil = 0;
+let highlightedLineId = null;
+let highlightTimer = null;
+let escapeReturnAvailable = false;
+const lineObservers = new Set();
 
 const panes = {
   main: createPaneState(),
@@ -113,6 +117,7 @@ function syncOutputUi() {
   if (!dom.outputShell || !dom.outputPauseBtn || !dom.outputLiveBtn) return;
   dom.outputShell.classList.toggle('paused', isOutputPaused);
   dom.outputShell.classList.toggle('split-active', isSplitActive);
+  dom.outputShell.classList.toggle('escape-return-available', escapeReturnAvailable);
   dom.outputShell.style.setProperty('--output-split-ratio', String(splitRatio));
   dom.outputPauseBtn.setAttribute('aria-pressed', isOutputPaused ? 'true' : 'false');
   dom.outputPauseBtn.title = isOutputPaused ? 'Resume live terminal' : 'Pause live terminal';
@@ -476,6 +481,9 @@ function appendFragmentWithLinks(container, text, style) {
 function createLineElement(line) {
   const div = document.createElement('div');
   div.className = 'output-line' + (line.cssClass ? ' ' + line.cssClass : '');
+  if (line.id === highlightedLineId) {
+    div.className += ' output-line-mention-target';
+  }
   div.setAttribute('data-line-id', String(line.id));
 
   if (line.fragments.length === 0 || line.text === '') {
@@ -608,6 +616,22 @@ function evictOverflowLines() {
 
   lineStore = lineStore.slice(removeCount);
   return removedHeight;
+}
+
+function notifyLineObservers(line) {
+  if (!line || !lineObservers.size) return;
+  const snapshot = {
+    id: line.id,
+    text: line.text || '',
+    cssClass: line.cssClass || '',
+  };
+  for (const observer of lineObservers) {
+    try {
+      observer(snapshot);
+    } catch (error) {
+      console.warn('Output line observer failed', error);
+    }
+  }
 }
 
 function getPrefixHeights() {
@@ -773,6 +797,37 @@ export function exitSplitScrollback() {
   return true;
 }
 
+export function returnOutputToLive() {
+  if (isSplitActive) {
+    deactivateSplitView();
+    return true;
+  }
+
+  if (isOutputPaused) {
+    setOutputPaused(false);
+    return true;
+  }
+
+  if (!isScrollLocked && isPaneAtBottom(panes.main) && highlightedLineId == null) {
+    return false;
+  }
+
+  highlightedLineId = null;
+  escapeReturnAvailable = false;
+  if (highlightTimer) {
+    clearTimeout(highlightTimer);
+    highlightTimer = null;
+  }
+  isScrollLocked = false;
+  suppressAutoPause = true;
+  syncOutputUi();
+  snapPaneToBottom(panes.main);
+  renderInvalidated = true;
+  scheduleFrame();
+  releaseAutoPauseSuppression();
+  return true;
+}
+
 export function resumeOutputForManualCommand() {
   if (isOutputPaused && !isSplitActive) {
     setOutputPaused(false);
@@ -795,8 +850,13 @@ function handleMainScroll() {
   }
 
   if (atBottom && isOutputPaused) {
+    escapeReturnAvailable = false;
     setOutputPaused(false);
     return;
+  }
+  if (atBottom && escapeReturnAvailable) {
+    escapeReturnAvailable = false;
+    syncOutputUi();
   }
   if (!atBottom && !suppressAutoPause && userScrollIntent) {
     setOutputPaused(true);
@@ -955,6 +1015,12 @@ export function initOutput() {
     });
   }
 
+  if (dom.outputEscapeHint) {
+    dom.outputEscapeHint.addEventListener('click', function() {
+      returnOutputToLive();
+    });
+  }
+
   if (dom.outputDivider) {
     dom.outputDivider.addEventListener('pointerdown', beginDividerDrag);
     window.addEventListener('pointermove', updateDividerDrag);
@@ -1017,6 +1083,62 @@ export function scrollActiveOutputByPage(multiplier) {
   pane.scrollEl.scrollBy(0, pane.scrollEl.clientHeight * multiplier);
 }
 
+export function onOutputLine(observer) {
+  if (typeof observer !== 'function') return () => {};
+  lineObservers.add(observer);
+  return () => lineObservers.delete(observer);
+}
+
+export function isOutputLineAvailable(lineId) {
+  const id = Number(lineId);
+  if (!Number.isFinite(id)) return false;
+  return lineStore.some(line => line.id === id) || pendingLines.some(line => line.id === id);
+}
+
+export function scrollToOutputLine(lineId) {
+  const id = Number(lineId);
+  if (!Number.isFinite(id)) return false;
+
+  let index = lineStore.findIndex(line => line.id === id);
+  if (index < 0) {
+    const pending = pendingLines.find(line => line.id === id);
+    if (pending) {
+      lineStore.push(...pendingLines);
+      pendingLines = [];
+      evictOverflowLines();
+      index = lineStore.findIndex(line => line.id === id);
+    }
+  }
+  if (index < 0 || !panes.main.scrollEl) return false;
+
+  if (isSplitActive) {
+    deactivateSplitView();
+  }
+
+  const prefix = getPrefixHeights();
+  const targetTop = Math.max(0, prefix[index] - Math.round((panes.main.scrollEl.clientHeight || 0) * 0.35));
+  suppressAutoPause = true;
+  isOutputPaused = false;
+  isScrollLocked = true;
+  setPaneScrollTop(panes.main, targetTop);
+
+  highlightedLineId = id;
+  escapeReturnAvailable = true;
+  if (highlightTimer) clearTimeout(highlightTimer);
+  highlightTimer = setTimeout(() => {
+    if (highlightedLineId === id) {
+      highlightedLineId = null;
+      invalidateRender();
+    }
+  }, 2400);
+
+  syncOutputUi();
+  renderInvalidated = true;
+  scheduleFrame();
+  releaseAutoPauseSuppression();
+  return true;
+}
+
 export function appendOutput(text, cssClass) {
   if (shouldDebugOsc8(text)) {
     debugOsc8Output('appendOutput raw', escapeDebugText(text));
@@ -1074,15 +1196,18 @@ export function appendOutput(text, cssClass) {
     } else {
       visibleLines.push(line);
     }
+    notifyLineObservers(line);
   }
 
   if (trailingLine.length) {
     if (openOutputLine) {
       appendFragmentsToLine(openOutputLine, trailingLine);
       invalidateRender();
+      notifyLineObservers(openOutputLine);
     } else {
       openOutputLine = createLineFromFragments(trailingLine, cssClass);
       visibleLines.push(openOutputLine);
+      notifyLineObservers(openOutputLine);
     }
   }
 
@@ -1114,6 +1239,12 @@ export function clearOutput() {
   pendingLines = [];
   openOutputLine = null;
   nextLineId = 1;
+  highlightedLineId = null;
+  escapeReturnAvailable = false;
+  if (highlightTimer) {
+    clearTimeout(highlightTimer);
+    highlightTimer = null;
+  }
   isScrollLocked = false;
   isOutputPaused = false;
   isSplitActive = false;

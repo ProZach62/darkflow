@@ -8,6 +8,7 @@ import { windowManager } from './window-manager.js';
 import { ideManager } from './ide-manager.js';
 import { snoopManager } from './snoop-manager.js';
 import { announcementsManager } from './announcements-manager.js';
+import { notificationManager } from './notification-manager.js';
 import { giphyManager } from './giphy-manager.js';
 import { broadcastManager } from './broadcast-manager.js';
 import { soundPanel } from './sound-panel.js';
@@ -363,6 +364,7 @@ windowManager.init();
 ideManager.init();
 snoopManager.init();
 announcementsManager.init();
+notificationManager.init();
 giphyManager.init();
 broadcastManager.init();
 soundPanel.init();
@@ -385,6 +387,8 @@ document.addEventListener('visibilitychange', function() {
 const statusObserver = new MutationObserver(function() {
   if (dom.connectionState && dom.connectionState.textContent === 'Connected') {
     emitCurrentTabObservabilityState();
+  } else if (dom.connectionState && dom.connectionState.textContent === 'Disconnected') {
+    notificationManager.resetSession();
   }
 });
 

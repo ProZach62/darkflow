@@ -62,6 +62,7 @@ export const dom = {
   outputDivider: null,
   outputLiveBtn: null,
   outputPauseBtn: null,
+  outputEscapeHint: null,
   commandInput: null,
   sendBtn: null,
   statusConnection: null,
@@ -95,6 +96,7 @@ export function initDom() {
   dom.outputDivider = document.getElementById('output-divider');
   dom.outputLiveBtn = document.getElementById('output-live-btn');
   dom.outputPauseBtn = document.getElementById('output-pause-btn');
+  dom.outputEscapeHint = document.getElementById('output-escape-hint');
   dom.commandInput = document.getElementById('command-input');
   dom.sendBtn = document.getElementById('send-btn');
   dom.statusConnection = document.getElementById('status-connection');
