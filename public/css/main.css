@@ -11,6 +11,7 @@
   --df-accent-blue: #58a6ff;
   --df-font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --df-font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, "Consolas", "Liberation Mono", monospace;
+  color-scheme: dark;
 }
 
 html, body {
