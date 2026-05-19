@@ -40,6 +40,7 @@ export const notificationManager = {
   state: {
     playerName: '',
     notifications: [],
+    pendingMentions: [],
     recentLines: [],
     nextId: 1,
     open: false,
@@ -139,6 +140,7 @@ export const notificationManager = {
 
     this.state.playerName = nextName;
     this.state.notifications = [];
+    this.state.pendingMentions = [];
     this.state.recentLines = [];
     this.state.nextId = 1;
     this.render();
@@ -165,12 +167,13 @@ export const notificationManager = {
       expired: false,
     };
 
-    this.bindNotificationToLine(notification);
-    this.state.notifications.unshift(notification);
-    if (this.state.notifications.length > MAX_NOTIFICATIONS) {
-      this.state.notifications.length = MAX_NOTIFICATIONS;
+    if (this.bindNotificationToLine(notification)) {
+      this.addNotification(notification);
+      return;
     }
-    this.render();
+
+    this.state.pendingMentions.push(notification);
+    this.prunePendingMentions();
   },
 
   recordOutputLine(line) {
@@ -196,9 +199,37 @@ export const notificationManager = {
       }
     }
 
-    for (const notification of this.state.notifications) {
+    this.promotePendingMentions();
+    for (const notification of this.state.notifications)
       if (!notification.lineId) this.bindNotificationToLine(notification);
+  },
+
+  addNotification(notification) {
+    this.state.notifications.unshift(notification);
+    if (this.state.notifications.length > MAX_NOTIFICATIONS) {
+      this.state.notifications.length = MAX_NOTIFICATIONS;
     }
+    this.render();
+  },
+
+  prunePendingMentions() {
+    const now = Date.now();
+    this.state.pendingMentions = this.state.pendingMentions
+      .filter(notification => (now - notification.timestamp) <= LINE_MATCH_WINDOW_MS);
+  },
+
+  promotePendingMentions() {
+    const remaining = [];
+
+    this.prunePendingMentions();
+    for (const notification of this.state.pendingMentions) {
+      if (this.bindNotificationToLine(notification)) {
+        this.addNotification(notification);
+      } else {
+        remaining.push(notification);
+      }
+    }
+    this.state.pendingMentions = remaining;
   },
 
   bindNotificationToLine(notification) {
@@ -246,6 +277,7 @@ export const notificationManager = {
   resetSession() {
     this.state.playerName = '';
     this.state.notifications = [];
+    this.state.pendingMentions = [];
     this.state.recentLines = [];
     this.state.nextId = 1;
     this.state.open = false;
