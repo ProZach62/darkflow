@@ -21,6 +21,7 @@ import { panelManager } from './panel-manager.js';
 import { executeAliasLine } from './automation-executor.js';
 import { replaceEmojiAliases } from './emoji-manager.js';
 import { handleEmojiPickerKeydown, initEmojiPicker } from './emoji-picker.js';
+import { handleMentionPickerKeydown, initMentionPicker } from './mention-picker.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -646,9 +647,12 @@ export function sendCommand() {
 export function initInput() {
   initCompletion();
   initEmojiPicker(dom.commandInput);
+  initMentionPicker(dom.commandInput);
 
   dom.commandInput.addEventListener('keydown', function(e) {
-    if (handleEmojiPickerKeydown(e)) {
+    if (handleMentionPickerKeydown(e)) {
+      return;
+    } else if (handleEmojiPickerKeydown(e)) {
       return;
     } else if (handleMappedKey(e)) {
       return;

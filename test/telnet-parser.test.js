@@ -80,7 +80,8 @@ test('DO non-GMCP replies WONT option', () => {
 });
 
 test('extracts a simple GMCP subnegotiation frame', () => {
-  const telnet = makeTelnetParser();
+  let agreed = 0;
+  const telnet = makeTelnetParser({ onGmcpAgreed: () => { agreed++; } });
   const frame = payload('Core.Hello {"client":"Darkflow"}');
   const result = telnet.parse(Buffer.concat([
     bytes(IAC, SB, TELOPT_GMCP),
@@ -92,6 +93,8 @@ test('extracts a simple GMCP subnegotiation frame', () => {
   assert.equal(result.reply, null);
   assert.equal(result.gmcpFrames.length, 1);
   assert.deepStrictEqual(result.gmcpFrames[0], frame);
+  assert.equal(telnet.isGmcpAgreed(), true);
+  assert.equal(agreed, 1);
 });
 
 test('unescapes IAC IAC inside a GMCP subnegotiation frame', () => {

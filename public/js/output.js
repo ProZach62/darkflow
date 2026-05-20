@@ -1139,6 +1139,24 @@ export function scrollToOutputLine(lineId) {
   return true;
 }
 
+export function flashOutputLine(lineId) {
+  const id = Number(lineId);
+  if (!Number.isFinite(id) || !isOutputLineAvailable(id)) return false;
+
+  highlightedLineId = id;
+  if (highlightTimer) clearTimeout(highlightTimer);
+  highlightTimer = setTimeout(() => {
+    if (highlightedLineId === id) {
+      highlightedLineId = null;
+      invalidateRender();
+    }
+  }, 2400);
+
+  renderInvalidated = true;
+  scheduleFrame();
+  return true;
+}
+
 export function appendOutput(text, cssClass) {
   if (shouldDebugOsc8(text)) {
     debugOsc8Output('appendOutput raw', escapeDebugText(text));

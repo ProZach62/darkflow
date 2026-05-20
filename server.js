@@ -182,6 +182,7 @@ function makeTelnetParser({ onGmcpAgreed } = {}) {
           } else if (b === SE) {
             if (!subOverflowed && subOpt === TELOPT_GMCP) {
               gmcpFrames.push(Buffer.from(subBuf));
+              markGmcpAgreed();
             }
             subBuf = [];
             subOpt = 0;

@@ -85,11 +85,11 @@ export const gmcp = {
   },
 
   send(packageName, data) {
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
     const payload = data !== undefined
       ? packageName + ' ' + JSON.stringify(data)
       : packageName;
-    sendSocketPayload(gmcpTextEncoder.encode(payload), {
+    return sendSocketPayload(gmcpTextEncoder.encode(payload), {
       kind: 'gmcp',
       size: payload.length,
       preview: packageName,
@@ -176,7 +176,7 @@ export const gmcp = {
       return false;
     }
 
-    this.send('Comm.Channel.Players');
+    this.send('Comm.Channel.Players', {});
     return true;
   },
 

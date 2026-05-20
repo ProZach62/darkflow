@@ -1,6 +1,6 @@
 import { gmcp } from './gmcp.js';
 import { dom } from './state.js';
-import { isOutputLineAvailable, onOutputLine, scrollToOutputLine } from './output.js';
+import { flashOutputLine, isOutputLineAvailable, onOutputLine, scrollToOutputLine } from './output.js';
 import { messageMentionsPlayer, normalizeMentionText } from './notification-utils.js';
 
 const MAX_NOTIFICATIONS = 100;
@@ -200,11 +200,15 @@ export const notificationManager = {
     }
 
     this.promotePendingMentions();
-    for (const notification of this.state.notifications)
-      if (!notification.lineId) this.bindNotificationToLine(notification);
+    for (const notification of this.state.notifications) {
+      if (!notification.lineId && this.bindNotificationToLine(notification)) {
+        this.flashNotificationLine(notification);
+      }
+    }
   },
 
   addNotification(notification) {
+    this.flashNotificationLine(notification);
     this.state.notifications.unshift(notification);
     if (this.state.notifications.length > MAX_NOTIFICATIONS) {
       this.state.notifications.length = MAX_NOTIFICATIONS;
@@ -230,6 +234,11 @@ export const notificationManager = {
       }
     }
     this.state.pendingMentions = remaining;
+  },
+
+  flashNotificationLine(notification) {
+    if (!notification || notification.flashed || !notification.lineId) return;
+    if (flashOutputLine(notification.lineId)) notification.flashed = true;
   },
 
   bindNotificationToLine(notification) {
