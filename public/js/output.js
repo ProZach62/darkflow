@@ -160,6 +160,27 @@ function snapPaneToBottom(pane) {
   setPaneScrollTop(pane, pane.scrollEl.scrollHeight);
 }
 
+export function refreshOutputLayout() {
+  const shouldStickToMainBottom = !isSplitActive && (!isScrollLocked || isPaneAtBottom(panes.main));
+  const shouldStickToLiveBottom = isSplitActive;
+
+  measureEstimatedLineHeight();
+  markAllLineHeightsDirty();
+  renderInvalidated = true;
+  scheduleFrame();
+
+  requestAnimationFrame(() => {
+    if (shouldStickToLiveBottom && isSplitActive) {
+      snapPaneToBottom(panes.live);
+      return;
+    }
+    if (shouldStickToMainBottom && !isSplitActive) {
+      snapPaneToBottom(panes.main);
+      isScrollLocked = false;
+    }
+  });
+}
+
 function releaseAutoPauseSuppression() {
   requestAnimationFrame(() => {
     suppressAutoPause = false;
@@ -1030,18 +1051,19 @@ export function initOutput() {
 
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(() => {
-      measureEstimatedLineHeight();
-      markAllLineHeightsDirty();
-      invalidateRender();
+      refreshOutputLayout();
     });
     resizeObserver.observe(dom.outputShell);
+    resizeObserver.observe(dom.output);
+    resizeObserver.observe(dom.outputHistory);
+    resizeObserver.observe(dom.outputLive);
   } else {
     window.addEventListener('resize', function() {
-      measureEstimatedLineHeight();
-      markAllLineHeightsDirty();
-      invalidateRender();
+      refreshOutputLayout();
     });
   }
+
+  window.addEventListener('darkflow:output-layout-changed', refreshOutputLayout);
 }
 
 export function setOutputScrollbackPreset(preset) {

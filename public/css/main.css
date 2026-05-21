@@ -1275,7 +1275,7 @@ body.zork-only-mode #toolbar-connect-fields {
 }
 
 #avatar-meter.visible {
-  display: block;
+  display: flex;
 }
 
 .avatar-meter-fill {

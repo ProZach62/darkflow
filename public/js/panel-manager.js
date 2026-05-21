@@ -863,12 +863,21 @@ export const panelManager = {
   _hideAvatarMeter() {
     const meter = document.getElementById('avatar-meter');
     if (!meter) return;
+    const wasVisible = meter.classList.contains('visible');
     meter.classList.remove('visible', 'full', 'active', 'patron-mitra', 'patron-gaea', 'patron-set');
     meter.removeAttribute('data-avatar-meter-present');
     this._stopAvatarMeterTicker();
     this._avatarActiveEndAt = 0;
     this._avatarActiveMaxSec = 0;
     this._avatarChargeSync = null;
+    this._notifyAvatarMeterLayoutIfChanged(meter, wasVisible);
+  },
+
+  _notifyAvatarMeterLayoutIfChanged(meter, wasVisible) {
+    if (!meter || wasVisible === meter.classList.contains('visible')) return;
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent('darkflow:output-layout-changed'));
+    });
   },
 
   _syncSubscriptionsAfterCharacterData() {
@@ -984,6 +993,7 @@ export const panelManager = {
     const meter = document.getElementById('avatar-meter');
     const charge = this._predictAvatarCharge();
     if (!meter || charge === null || !this._avatarChargeSync) return;
+    const wasVisible = meter.classList.contains('visible');
 
     const fill = meter.querySelector('.avatar-meter-fill');
     const label = meter.querySelector('.avatar-meter-label');
@@ -996,6 +1006,7 @@ export const panelManager = {
     meter.classList.remove('active');
     if (fill) fill.style.width = pct + '%';
     if (label) label.textContent = 'Wrathful Avatar ' + displayPct + '%';
+    this._notifyAvatarMeterLayoutIfChanged(meter, wasVisible);
 
     if (displayPct >= 100) this._stopAvatarMeterTicker();
   },
@@ -1027,6 +1038,7 @@ export const panelManager = {
     const activeMax = Number(data.avatar_active_max) || 0;
     const patron = data.divine_patron || data.patron ||
       (this.gmcpData.omens && this.gmcpData.omens.patron);
+    const wasVisible = meter.classList.contains('visible');
 
     meter.setAttribute('data-avatar-meter-present', '1');
     meter.classList.add('visible');
@@ -1066,6 +1078,7 @@ export const panelManager = {
         if (label) label.textContent = 'Wrathful Avatar ' + Math.floor(pct) + '%';
       }
     }
+    this._notifyAvatarMeterLayoutIfChanged(meter, wasVisible);
   },
 
   refreshMediaPanels() {
