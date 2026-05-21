@@ -58,6 +58,7 @@ function createPaneState() {
     topSpacer: null,
     viewportEl: null,
     bottomSpacer: null,
+    stickToBottomOnNextRender: false,
     suppressScrollEvents: false,
     scrollSuppressionToken: 0,
   };
@@ -160,9 +161,33 @@ function snapPaneToBottom(pane) {
   setPaneScrollTop(pane, pane.scrollEl.scrollHeight);
 }
 
+function requestPaneBottomSnap(pane) {
+  if (!pane) return;
+  pane.stickToBottomOnNextRender = true;
+}
+
+function requestLiveBottomSnapIfAtBottom() {
+  if (isSplitActive) {
+    if (isPaneAtBottom(panes.live)) {
+      requestPaneBottomSnap(panes.live);
+    }
+    return;
+  }
+
+  if (!isScrollLocked || isPaneAtBottom(panes.main)) {
+    requestPaneBottomSnap(panes.main);
+  }
+}
+
 export function refreshOutputLayout() {
   const shouldStickToMainBottom = !isSplitActive && (!isScrollLocked || isPaneAtBottom(panes.main));
   const shouldStickToLiveBottom = isSplitActive;
+
+  if (shouldStickToLiveBottom) {
+    requestPaneBottomSnap(panes.live);
+  } else if (shouldStickToMainBottom) {
+    requestPaneBottomSnap(panes.main);
+  }
 
   measureEstimatedLineHeight();
   markAllLineHeightsDirty();
@@ -218,6 +243,7 @@ function resumeOutputLive() {
   isScrollLocked = false;
   suppressAutoPause = true;
   syncOutputUi();
+  requestPaneBottomSnap(panes.main);
 
   if (pendingLines.length > 0) {
     lineStore.push(...pendingLines);
@@ -229,6 +255,7 @@ function resumeOutputLive() {
     renderActivePanes();
   }
 
+  requestPaneBottomSnap(panes.main);
   snapPaneToBottom(panes.main);
   renderInvalidated = true;
   scheduleFrame();
@@ -710,6 +737,7 @@ function renderPane(pane) {
     pane.topSpacer.style.height = '0px';
     pane.bottomSpacer.style.height = '0px';
     pane.viewportEl.textContent = '';
+    pane.stickToBottomOnNextRender = false;
     return;
   }
 
@@ -752,10 +780,20 @@ function renderPane(pane) {
 
   if (heightChanged) {
     const nextPrefix = getPrefixHeights();
-    const anchoredScrollTop = nextPrefix[anchorIndex] + anchorOffset;
-    setPaneScrollTop(pane, Math.max(0, anchoredScrollTop));
+    if (pane.stickToBottomOnNextRender) {
+      snapPaneToBottom(pane);
+    } else {
+      const anchoredScrollTop = nextPrefix[anchorIndex] + anchorOffset;
+      setPaneScrollTop(pane, Math.max(0, anchoredScrollTop));
+    }
     renderInvalidated = true;
     scheduleFrame();
+    return;
+  }
+
+  if (pane.stickToBottomOnNextRender) {
+    snapPaneToBottom(pane);
+    pane.stickToBottomOnNextRender = false;
   }
 }
 
@@ -796,6 +834,7 @@ function activateSplitView() {
   isSplitActive = true;
   syncOutputUi();
   setPaneScrollTop(panes.history, getInitialSplitHistoryScrollTop());
+  requestPaneBottomSnap(panes.live);
   snapPaneToBottom(panes.live);
   renderInvalidated = true;
   scheduleFrame();
@@ -808,6 +847,7 @@ function deactivateSplitView() {
   renderInvalidated = true;
   scheduleFrame();
   requestAnimationFrame(() => {
+    requestPaneBottomSnap(panes.main);
     snapPaneToBottom(panes.main);
   });
 }
@@ -842,6 +882,7 @@ export function returnOutputToLive() {
   isScrollLocked = false;
   suppressAutoPause = true;
   syncOutputUi();
+  requestPaneBottomSnap(panes.main);
   snapPaneToBottom(panes.main);
   renderInvalidated = true;
   scheduleFrame();
@@ -897,6 +938,7 @@ function handleHistoryScroll() {
 function handleLiveScroll() {
   if (panes.live.suppressScrollEvents || !isSplitActive) return;
   if (!isPaneAtBottom(panes.live)) {
+    requestPaneBottomSnap(panes.live);
     snapPaneToBottom(panes.live);
   }
   invalidateRender();
@@ -959,6 +1001,12 @@ function flushAndRender() {
     applyRemovedHeightAfterPrune(panes.main, removedHeight);
     applyRemovedHeightAfterPrune(panes.history, removedHeight);
     applyRemovedHeightAfterPrune(panes.live, removedHeight);
+
+    if (isSplitActive) {
+      requestPaneBottomSnap(panes.live);
+    } else if (shouldStickToMainBottom) {
+      requestPaneBottomSnap(panes.main);
+    }
 
     renderInvalidated = true;
     renderActivePanes();
@@ -1232,6 +1280,7 @@ export function appendOutput(text, cssClass) {
     }
 
     if (reusedOpenLine) {
+      requestLiveBottomSnapIfAtBottom();
       invalidateRender();
     } else {
       visibleLines.push(line);
@@ -1242,6 +1291,7 @@ export function appendOutput(text, cssClass) {
   if (trailingLine.length) {
     if (openOutputLine) {
       appendFragmentsToLine(openOutputLine, trailingLine);
+      requestLiveBottomSnapIfAtBottom();
       invalidateRender();
       notifyLineObservers(openOutputLine);
     } else {
