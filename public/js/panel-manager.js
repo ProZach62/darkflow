@@ -1872,14 +1872,30 @@ export const panelManager = {
     gmcp.on('Darkwind.Quests.Update', (data) => {
       if (!this.gmcpData.quests) this.gmcpData.quests = {};
       this.gmcpData.quests.lastUpdate = data;
-      if (this.gmcpData.quests.active && Array.isArray(this.gmcpData.quests.active.objectives)) {
-        for (let i = 0; i < this.gmcpData.quests.active.objectives.length; i++) {
-          if (this.gmcpData.quests.active.objectives[i].name === data.objective) {
-            this.gmcpData.quests.active.objectives[i].current = data.current;
-            this.gmcpData.quests.active.objectives[i].required = data.required;
-            this.gmcpData.quests.active.objectives[i].status = data.current >= data.required ? 'finished' : 'started';
-            break;
+      if (Array.isArray(this.gmcpData.quests.list)) {
+        for (let q = 0; q < this.gmcpData.quests.list.length; q++) {
+          const quest = this.gmcpData.quests.list[q];
+          if (data.questId && quest.id !== data.questId && quest.questPath !== data.questId) continue;
+          if (Array.isArray(quest.objectives)) {
+            for (let i = 0; i < quest.objectives.length; i++) {
+              if (quest.objectives[i].name === data.objective) {
+                quest.objectives[i].current = data.current;
+                quest.objectives[i].required = data.required;
+                quest.objectives[i].status = data.current >= data.required ? 'finished' : 'started';
+                break;
+              }
+            }
           }
+          if (typeof quest.current === 'number' && typeof data.current === 'number') {
+            let totalCurrent = 0;
+            if (Array.isArray(quest.objectives)) {
+              for (let i = 0; i < quest.objectives.length; i++) {
+                totalCurrent += Number(quest.objectives[i].current || 0);
+              }
+              quest.current = totalCurrent;
+            }
+          }
+          break;
         }
       }
       this._renderPanel('quests');

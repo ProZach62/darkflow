@@ -25,7 +25,7 @@ The `gmcp-darkwind-*.md` files describe custom GMCP extensions under the `Darkwi
 | [`gmcp-darkwind-mapdata.md`](gmcp-darkwind-mapdata.md) | Map state, movement inference, room coordinates, area data, sync, and correction messages. |
 | [`gmcp-darkwind-mapdata-v2.md`](gmcp-darkwind-mapdata-v2.md) | Server-authoritative map graph, display layout metadata, and V2 sync messages. |
 | [`gmcp-darkwind-completion.md`](gmcp-darkwind-completion.md) | Tab completion request/result flow and client behavior for ambiguous completions. |
-| [`gmcp-darkwind-quests.md`](gmcp-darkwind-quests.md) | Quest list, active quest, progress update, and completion payloads rendered by the client panels. |
+| [`gmcp-darkwind-quests.md`](gmcp-darkwind-quests.md) | Quest list, objective progress update, and completion payloads rendered by the client panels. |
 | [`gmcp-darkwind-achievements.md`](gmcp-darkwind-achievements.md) | Achievement snapshots and incremental updates. |
 | [`gmcp-darkwind-announcements.md`](gmcp-darkwind-announcements.md) | Announcement snapshots, new/update/state messages, and mark-read actions. |
 | [`gmcp-darkwind-char-avatar.md`](gmcp-darkwind-char-avatar.md) | Character avatar URL pushes from the game to the client. |

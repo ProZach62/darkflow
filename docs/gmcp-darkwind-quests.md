@@ -12,9 +12,9 @@ Support declaration advertised by the client:
 
 | Message | Direction | Purpose |
 |---------|-----------|---------|
-| `Darkwind.Quests.List` | Server -> Client | Replace the quest summary list shown in the quests panel |
-| `Darkwind.Quests.Active` | Server -> Client | Replace the active quest detail shown in the quests panel |
-| `Darkwind.Quests.Update` | Server -> Client | Incrementally update one active objective by name |
+| `Darkwind.Quests.List` | Server -> Client | Replace the accepted quest list shown in the quests panel |
+| `Darkwind.Quests.Active` | Server -> Client | Legacy compatibility payload; currently ignored by the panel |
+| `Darkwind.Quests.Update` | Server -> Client | Incrementally update one objective for one accepted quest |
 | `Darkwind.Quests.Complete` | Server -> Client | Notify the client that a quest completed |
 
 ## Client State
@@ -30,7 +30,7 @@ The client stores quest data in memory under `gmcpData.quests` with these keys:
 }
 ```
 
-`Darkwind.Quests.List` and `Darkwind.Quests.Active` replace their respective stored payloads. `Darkwind.Quests.Update` is then applied incrementally against `active.objectives`, matching on the objective `name` field.
+`Darkwind.Quests.List` replaces the stored accepted quest list. `Darkwind.Quests.Update` is applied incrementally against the matching quest in `list`, using `questId`/`questPath` plus the objective `name`.
 
 ## Darkwind.Quests.List
 
@@ -45,9 +45,16 @@ The client expects an array. The following fields are read by the renderer:
   {
     "name": "A Simple Task",
     "status": "Started",
-    "active": 1,
     "current": 2,
-    "total": 5
+    "total": 5,
+    "objectives": [
+      {
+        "name": "Gather herbs",
+        "current": 2,
+        "required": 5,
+        "status": "started"
+      }
+    ]
   }
 ]
 ```
@@ -56,9 +63,13 @@ The client expects an array. The following fields are read by the renderer:
 |-------|------|--------------------|-------|
 | `name` | string | Yes | Display name |
 | `status` | string | Yes | Rendered verbatim; `Finished` gets completed styling |
-| `active` | number | No | `1` marks the row as the active quest |
 | `current` | number | No | Progress numerator |
 | `total` | number | No | Progress denominator |
+| `objectives` | array | No | Objective list rendered under the quest row |
+| `objectives[].name` | string | Yes | Objective identifier for display and incremental updates |
+| `objectives[].current` | number | Yes | Current objective progress |
+| `objectives[].required` | number | Yes | Required objective progress |
+| `objectives[].status` | string | No | `finished` renders a completed checkmark and completed bar state |
 
 If `total > 0`, the client renders a progress bar using `current / total`.
 
@@ -66,45 +77,27 @@ If `total > 0`, the client renders a progress bar using `current / total`.
 
 Direction: `Server -> Client`
 
-Replaces the detailed active quest payload.
+Legacy compatibility payload.
 
-The client expects an object with at least:
+The current quest panel does not require this payload. The server may send an empty object or array:
 
 ```json
-{
-  "name": "A Simple Task",
-  "description": "Collect five herbs for the apothecary.",
-  "objectives": [
-    {
-      "name": "Gather herbs",
-      "current": 2,
-      "required": 5,
-      "status": "started"
-    }
-  ]
-}
+[]
 ```
-
-| Field | Type | Required By Client | Notes |
-|-------|------|--------------------|-------|
-| `name` | string | Yes | Used to decide whether an active quest exists |
-| `description` | string | No | Rendered when present |
-| `objectives` | array | No | Objective list for detailed progress rendering |
-| `objectives[].name` | string | Yes | Objective identifier for display and incremental updates |
-| `objectives[].current` | number | Yes | Current progress |
-| `objectives[].required` | number | Yes | Required progress total |
-| `objectives[].status` | string | No | `finished` renders a completed checkmark and completed bar state |
 
 ## Darkwind.Quests.Update
 
 Direction: `Server -> Client`
 
-Updates one objective inside the currently stored active quest.
+Updates one objective inside the currently stored accepted quest list.
 
 The client expects, at minimum:
 
 ```json
 {
+  "questId": "/quests/darkwind/l01_10/farmyard_roundup.c",
+  "questPath": "/quests/darkwind/l01_10/farmyard_roundup.c",
+  "questName": "Farmyard Roundup",
   "objective": "Gather herbs",
   "current": 3,
   "required": 5
@@ -113,18 +106,23 @@ The client expects, at minimum:
 
 | Field | Type | Required By Client | Notes |
 |-------|------|--------------------|-------|
-| `objective` | string | Yes | Matched against `active.objectives[].name` |
+| `questId` | string | Recommended | Matched against `list[].id` or `list[].questPath` |
+| `questPath` | string | No | Same logical quest path as `questId` |
+| `questName` | string | No | Human-readable quest name |
+| `objective` | string | Yes | Matched against `list[].objectives[].name` |
 | `current` | number | Yes | New current value |
 | `required` | number | Yes | New required value |
 
 ### Client Behavior
 
 - Stores the payload as `lastUpdate`.
-- If an active quest exists and has an `objectives` array, finds the first objective whose `name` equals `objective`.
+- Finds the matching quest in `list` by `questId`/`questPath`.
+- If the matching quest has an `objectives` array, finds the first objective whose `name` equals `objective`.
 - Replaces that objective's `current` and `required` values.
 - Sets `status` to `finished` when `current >= required`, otherwise `started`.
+- Recalculates the quest row's aggregate `current` from objective progress.
 
-If no matching active objective exists, the message is still stored as `lastUpdate`, but no in-place quest mutation occurs.
+If no matching quest or objective exists, the message is still stored as `lastUpdate`, but no in-place quest mutation occurs.
 
 ## Darkwind.Quests.Complete
 
@@ -153,5 +151,5 @@ PackageName JSONPayload
 Example:
 
 ```text
-Darkwind.Quests.Update {"objective":"Gather herbs","current":3,"required":5}
+Darkwind.Quests.Update {"questId":"/quests/darkwind/l01_10/farmyard_roundup.c","objective":"Gather herbs","current":3,"required":5}
 ```

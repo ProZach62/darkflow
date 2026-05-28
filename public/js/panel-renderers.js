@@ -1048,42 +1048,15 @@ export const panelRenderers = {
     }
 
     var html = '';
-    var active = data.active;
     var list = data.list;
-
-    // Active quest detail
-    if (active && active.name) {
-      html += '<div class="quest-active">';
-      html += '<div class="quest-active-name">' + escHtml(active.name) + '</div>';
-      if (active.description) {
-        html += '<div class="quest-active-desc">' + escHtml(active.description) + '</div>';
-      }
-      if (Array.isArray(active.objectives)) {
-        for (var i = 0; i < active.objectives.length; i++) {
-          var obj = active.objectives[i];
-          var pct = obj.required > 0 ? Math.round((obj.current / obj.required) * 100) : 0;
-          if (pct > 100) pct = 100;
-          var done = obj.status === 'finished';
-          html += '<div class="quest-obj">';
-          html += '<div class="quest-obj-name">' + (done ? '&#10003; ' : '') + escHtml(obj.name) + '</div>';
-          html += '<div class="quest-obj-progress">';
-          html += '<div class="quest-bar"><div class="quest-bar-fill' + (done ? ' quest-bar-done' : '') + '" style="width:' + pct + '%"></div></div>';
-          html += '<span class="quest-obj-count">' + obj.current + '/' + obj.required + '</span>';
-          html += '</div></div>';
-        }
-      }
-      html += '</div>';
-    }
 
     // Quest list
     if (Array.isArray(list) && list.length > 0) {
       html += '<div class="quest-list">';
-      html += '<div class="quest-list-header">Quests</div>';
+      html += '<div class="quest-list-header">Accepted Quests</div>';
       for (var j = 0; j < list.length; j++) {
         var q = list[j];
-        var isActive = q.active === 1;
         var cls = 'quest-list-item';
-        if (isActive) cls += ' quest-list-active';
         if (q.status === 'Finished') cls += ' quest-list-done';
         var qPct = q.total > 0 ? Math.round((q.current / q.total) * 100) : 0;
         if (qPct > 100) qPct = 100;
@@ -1093,9 +1066,25 @@ export const panelRenderers = {
         html += '<span class="quest-list-status">' + escHtml(q.status) + '</span>';
         html += '<div class="quest-bar quest-bar-sm"><div class="quest-bar-fill' + (q.status === 'Finished' ? ' quest-bar-done' : '') + '" style="width:' + qPct + '%"></div></div>';
         html += '</div></div>';
+        if (Array.isArray(q.objectives) && q.objectives.length > 0) {
+          html += '<div class="quest-objectives">';
+          for (var k = 0; k < q.objectives.length; k++) {
+            var obj = q.objectives[k];
+            var pct = obj.required > 0 ? Math.round((obj.current / obj.required) * 100) : 0;
+            if (pct > 100) pct = 100;
+            var done = obj.status === 'finished';
+            html += '<div class="quest-obj">';
+            html += '<div class="quest-obj-name">' + (done ? '&#10003; ' : '') + escHtml(obj.name) + '</div>';
+            html += '<div class="quest-obj-progress">';
+            html += '<div class="quest-bar"><div class="quest-bar-fill' + (done ? ' quest-bar-done' : '') + '" style="width:' + pct + '%"></div></div>';
+            html += '<span class="quest-obj-count">' + obj.current + '/' + obj.required + '</span>';
+            html += '</div></div>';
+          }
+          html += '</div>';
+        }
       }
       html += '</div>';
-    } else if (!active || !active.name) {
+    } else {
       html += '<div class="placeholder">No quests accepted</div>';
     }
 

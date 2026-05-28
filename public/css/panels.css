@@ -1324,6 +1324,7 @@ body.zork-only-mode #panels-menu {
 .quest-bar-fill { height: 100%; background: #58a6ff; border-radius: 3px; transition: width 0.3s; }
 .quest-bar-done { background: #3fb950; }
 .quest-obj-count { font-size: 11px; color: #8b949e; min-width: 32px; text-align: right; }
+.quest-objectives { margin: 2px 0 8px 8px; }
 
 .quest-list { border-top: 1px solid #30363d; padding-top: 6px; }
 .quest-list-header { font-size: 11px; color: #484f58; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
