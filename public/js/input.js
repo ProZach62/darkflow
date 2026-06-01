@@ -22,6 +22,7 @@ import { executeAliasLine } from './automation-executor.js';
 import { replaceEmojiAliases } from './emoji-manager.js';
 import { handleEmojiPickerKeydown, initEmojiPicker } from './emoji-picker.js';
 import { handleMentionPickerKeydown, initMentionPicker } from './mention-picker.js';
+import { isSocketOpen } from './socket-state.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -53,7 +54,10 @@ function normalizeOutboundCommand(text) {
 }
 
 function sendRawCommand(text) {
-  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+  if (!isSocketOpen(state.ws)) {
+    appendSystemMessage('Not connected.');
+    return false;
+  }
 
   const command = normalizeOutboundCommand(text);
 

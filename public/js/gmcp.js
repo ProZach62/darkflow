@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { appendSystemMessage } from './output.js';
 import { sendSocketPayload } from './connection.js';
 import { PRODUCT_NAME } from './brand.js';
+import { isSocketOpen } from './socket-state.js';
 
 const GMCP_CLIENT_NAME = PRODUCT_NAME;
 const GMCP_MEDIA_REFRESH_PACKAGE = 'Darkwind.Client.RefreshMedia';
@@ -85,7 +86,7 @@ export const gmcp = {
   },
 
   send(packageName, data) {
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+    if (!isSocketOpen(state.ws)) return false;
     const payload = data !== undefined
       ? packageName + ' ' + JSON.stringify(data)
       : packageName;
@@ -145,7 +146,7 @@ export const gmcp = {
   },
 
   sendSubscriptions(payload = {}) {
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+    if (!isSocketOpen(state.ws)) return false;
     this.subscriptions = normalizeSubscriptionPayload({
       ...this.subscriptions,
       ...payload,
@@ -163,7 +164,7 @@ export const gmcp = {
   },
 
   requestMediaRefresh() {
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+    if (!isSocketOpen(state.ws)) {
       return false;
     }
 
@@ -172,7 +173,7 @@ export const gmcp = {
   },
 
   requestChannelPlayers() {
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+    if (!isSocketOpen(state.ws)) {
       return false;
     }
 
@@ -182,7 +183,7 @@ export const gmcp = {
 
   enableChannel(channel) {
     const name = typeof channel === 'string' ? channel.trim() : '';
-    if (!name || !state.ws || state.ws.readyState !== WebSocket.OPEN) {
+    if (!name || !isSocketOpen(state.ws)) {
       return false;
     }
 
@@ -191,7 +192,7 @@ export const gmcp = {
   },
 
   restartHandshake(payload = {}) {
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+    if (!isSocketOpen(state.ws)) {
       appendSystemMessage('GMCP restart unavailable: not connected.');
       return false;
     }

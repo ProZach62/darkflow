@@ -6,6 +6,12 @@ import { windowManager } from './window-manager.js';
 import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
 import { settingsManager } from './settings-manager.js';
 import { PRODUCT_NAME } from './brand.js';
+import {
+  isSocketClosingOrClosed,
+  isSocketConnecting,
+  isSocketOpen,
+  socketReadyStateName,
+} from './socket-state.js';
 
 const WS_DIAG_LIMIT = 100;
 const WS_HEALTH_INTERVAL_MS = 5000;
@@ -41,6 +47,18 @@ function pushWsEvent(type, detail) {
   if (health.events.length > WS_DIAG_LIMIT) {
     health.events = health.events.slice(-WS_DIAG_LIMIT);
   }
+}
+
+function emitConnectionState(connState) {
+  if (typeof document === 'undefined') return;
+  document.dispatchEvent(new CustomEvent('dw:connectionstate', {
+    detail: {
+      state: connState,
+      readyState: state.ws ? state.ws.readyState : WebSocket.CLOSED,
+      readyStateName: socketReadyStateName(state.ws),
+      reconnectAttempts: state.reconnectAttempts,
+    },
+  }));
 }
 
 function recordBufferedAmount() {
@@ -118,7 +136,7 @@ function forceReconnect(reason) {
 }
 
 function evaluateSocketHealth() {
-  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  if (!isSocketOpen(state.ws)) return;
 
   const now = Date.now();
   const health = getHealth();
@@ -160,7 +178,7 @@ function startWatchdog() {
 
 function scheduleLostTransmissionRecovery(text) {
   if (!LOST_TRANSMISSION_PATTERN.test(String(text || ''))) return;
-  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  if (!isSocketOpen(state.ws)) return;
 
   const now = Date.now();
   if (lostTransmissionRecoveryTimer ||
@@ -178,7 +196,7 @@ function scheduleLostTransmissionRecovery(text) {
     lostTransmissionRecoveryTimer = null;
     lastLostTransmissionRecoveryAt = Date.now();
 
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    if (!isSocketOpen(state.ws)) return;
     panelManager.resetData({ preservePanels: ['chat'] });
     if (gmcp.restartHandshake({
       reason: 'lost-transmission',
@@ -212,7 +230,7 @@ export function noteOutboundActivity(kind, metadata) {
 }
 
 export function sendSocketPayload(payload, metadata) {
-  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+  if (!isSocketOpen(state.ws)) return false;
 
   const kind = metadata && metadata.kind ? metadata.kind : 'generic';
 
@@ -244,6 +262,10 @@ export function getWsDebugSnapshot() {
   return {
     url: health.currentUrl,
     readyState: state.ws ? state.ws.readyState : WebSocket.CLOSED,
+    readyStateName: socketReadyStateName(state.ws),
+    connectionPending: state.connectionPending,
+    reconnectAttempts: state.reconnectAttempts,
+    openWindows: Object.keys(windowManager.windows || {}),
     connectTime: state.connectTime,
     lastOpenAt: health.lastOpenAt,
     lastInboundAt: health.lastInboundAt,
@@ -288,9 +310,12 @@ export function setConnectionState(connState) {
     dom.commandInput.disabled = false;
     dom.sendBtn.disabled = false;
   }
+
+  emitConnectionState(connState);
 }
 
 function scheduleReconnect() {
+  if (state.reconnectTimer) return;
   state.reconnectAttempts++;
   const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, state.reconnectAttempts - 1), RECONNECT_MAX_MS);
   appendSystemMessage('Reconnecting in ' + (delay / 1000).toFixed(0) + 's...');
@@ -301,6 +326,9 @@ function scheduleReconnect() {
 }
 
 export async function connect() {
+  if (state.ws && isSocketClosingOrClosed(state.ws)) {
+    state.ws = null;
+  }
   if (state.ws || state.connectionPending) return;
 
   state.connectionPending = true;
@@ -310,7 +338,13 @@ export async function connect() {
       await state.clientVersionPromise;
     }
 
-    if (state.ws) return;
+    if (state.ws && isSocketClosingOrClosed(state.ws)) {
+      state.ws = null;
+    }
+    if (state.ws) {
+      if (isSocketConnecting(state.ws) || isSocketOpen(state.ws)) return;
+      return;
+    }
 
     state.userDisconnected = false;
     const sel = dom.protocolSelect.value || 'wss';
@@ -449,9 +483,7 @@ export async function connect() {
       }
     };
   } finally {
-    if (!state.ws) {
-      state.connectionPending = false;
-    }
+    state.connectionPending = false;
   }
 }
 

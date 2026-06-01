@@ -2,11 +2,14 @@ import { gmcp } from './gmcp.js';
 import { state } from './state.js';
 import { panelManager } from './panel-manager.js';
 import { renderLayout, collectFormData, updateElements } from './window-renderer.js';
+import { socketReadyStateName, isSocketOpen } from './socket-state.js';
 import {
   DW_WINDOW_OPEN, DW_WINDOW_UPDATE, DW_WINDOW_CLOSE,
   DW_WINDOW_SUBMIT, DW_WINDOW_ACTION, DW_WINDOW_CLOSED,
   ACTION_SUBMIT, ACTION_CLOSE,
 } from './window-types.js';
+
+const AUTH_WINDOW_IDS = new Set(['login', 'newchar', 'charselect']);
 
 export const windowManager = {
   windows: {},  // id -> { id, type, el, containerEl }
@@ -16,6 +19,7 @@ export const windowManager = {
     gmcp.on(DW_WINDOW_UPDATE, (data) => this.updateWindow(data));
     gmcp.on(DW_WINDOW_CLOSE, (data) => this.closeWindow(data.id));
     document.addEventListener('dw:avatarZoom', (event) => this._openAvatarZoom(event.detail));
+    document.addEventListener('dw:connectionstate', () => this._syncAuthWindowConnectionState());
   },
 
   openWindow(data) {
@@ -163,6 +167,7 @@ export const windowManager = {
       containerEl: bodyContainer,
       escHandler,
     };
+    this._syncWindowConnectionState(data.id);
   },
 
   _openPanel(data, content) {
@@ -213,21 +218,91 @@ export const windowManager = {
   },
 
   _userClose(id) {
-    gmcp.send(DW_WINDOW_CLOSED, { id });
+    if (!gmcp.send(DW_WINDOW_CLOSED, { id })) {
+      if (AUTH_WINDOW_IDS.has(id)) {
+        this._showConnectionMessage(id);
+        return;
+      }
+      this.closeWindow(id, true);
+      return;
+    }
     this.closeWindow(id, true);
   },
 
   _handleButton(windowId, buttonId, action) {
+    if (action === ACTION_CLOSE) {
+      this._userClose(windowId);
+      return;
+    }
+
+    if (!isSocketOpen(state.ws)) {
+      this._showConnectionMessage(windowId);
+      this._syncWindowConnectionState(windowId);
+      return;
+    }
+
     if (action === ACTION_SUBMIT) {
       const win = this.windows[windowId];
       if (!win) return;
       const data = collectFormData(win.containerEl);
-      gmcp.send(DW_WINDOW_SUBMIT, { id: windowId, button: buttonId, data });
-    } else if (action === ACTION_CLOSE) {
-      this._userClose(windowId);
+      if (!gmcp.send(DW_WINDOW_SUBMIT, { id: windowId, button: buttonId, data })) {
+        this._showConnectionMessage(windowId);
+        this._syncWindowConnectionState(windowId);
+      }
     } else {
-      gmcp.send(DW_WINDOW_ACTION, { id: windowId, button: buttonId });
+      if (!gmcp.send(DW_WINDOW_ACTION, { id: windowId, button: buttonId })) {
+        this._showConnectionMessage(windowId);
+        this._syncWindowConnectionState(windowId);
+      }
     }
+  },
+
+  _syncAuthWindowConnectionState() {
+    for (const id of Object.keys(this.windows)) {
+      this._syncWindowConnectionState(id);
+    }
+  },
+
+  _syncWindowConnectionState(id) {
+    const win = this.windows[id];
+    if (!win || win.type !== 'modal' || !AUTH_WINDOW_IDS.has(id)) return;
+
+    const connected = isSocketOpen(state.ws);
+    const buttons = win.containerEl ? win.containerEl.querySelectorAll('button') : [];
+    for (const button of buttons) {
+      button.disabled = !connected;
+    }
+  },
+
+  _showConnectionMessage(id) {
+    const win = this.windows[id];
+    if (!win || !win.containerEl) return;
+
+    const errorEl = win.containerEl.querySelector('[data-dw-id="error"]');
+    const readyStateName = socketReadyStateName(state.ws);
+    const reconnecting = state.reconnectTimer || state.connectionPending || readyStateName === 'connecting';
+    const message = reconnecting
+      ? 'Connection lost. Reconnecting...'
+      : 'Connection lost. Use Connect to try again.';
+
+    if (errorEl) {
+      errorEl.textContent = message;
+      return;
+    }
+
+    const existing = win.containerEl.querySelector('[data-dw-id="connection-error"]');
+    if (existing) {
+      existing.textContent = message;
+      return;
+    }
+
+    const fallback = document.createElement('p');
+    fallback.className = 'dw-paragraph';
+    fallback.setAttribute('data-dw-id', 'connection-error');
+    fallback.style.color = '#f85149';
+    fallback.style.textAlign = 'center';
+    fallback.textContent = message;
+    win.containerEl.prepend(fallback);
   },
 
   _openAvatarZoom(detail) {
