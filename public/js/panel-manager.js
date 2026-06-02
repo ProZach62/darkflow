@@ -754,7 +754,7 @@ export const panelManager = {
     this.syncGmcpSubscriptions('panel-open', false);
   },
 
-  createDynamicPanel(id, title, dock, order, onClose) {
+  createDynamicPanel(id, title, dock, order, onClose, options = {}) {
     if (appState.zorkOnlyMode) return null;
     if (this.panels[id]) return this.panels[id].bodyEl;
 
@@ -813,7 +813,44 @@ export const panelManager = {
       this._mobile.activePanelId = id;
       this.openMobileSheet();
     } else {
-      this._insertIntoDock(id, el, dock, order);
+      if (dock === 'float') {
+        const belowPanelId = options.defaultBelowPanel;
+        const belowState = belowPanelId && this.state.panels[belowPanelId];
+        const belowPanel = belowPanelId && this.panels[belowPanelId];
+        let x = options.defaultFloatX;
+        let y = options.defaultFloatY;
+        if (belowState && belowPanel) {
+          const rect = belowPanel.el.getBoundingClientRect();
+          x = belowState.floatX !== undefined ? belowState.floatX : rect.left;
+          y = belowState.floatY !== undefined ? belowState.floatY :
+            (rect.top + (belowState.floatH || rect.height) + 8);
+          if (options.defaultFloatW && belowState.floatW) {
+            x = Math.min(x, window.innerWidth - options.defaultFloatW - 16);
+          }
+        }
+        if (x === undefined) x = Math.round((window.innerWidth - (options.defaultFloatW || 280)) / 2);
+        if (y === undefined) y = Math.round((window.innerHeight - (options.defaultFloatH || 200)) / 2);
+        this.state.panels[id].floatX = x;
+        this.state.panels[id].floatY = y;
+        this.state.panels[id].floatW = options.defaultFloatW || el.offsetWidth || 280;
+        this.state.panels[id].floatH = options.defaultFloatH || el.offsetHeight || 200;
+        this.state.panels[id].snapLeft = !!options.defaultSnapLeft;
+        this.state.panels[id].snapTop = !!options.defaultSnapTop;
+        this.state.panels[id].snapRight = !!options.defaultSnapRight;
+        this.state.panels[id].snapBottom = !!options.defaultSnapBottom;
+        this._makeFloat(el, {
+          floatX: x,
+          floatY: y,
+          floatW: this.state.panels[id].floatW,
+          floatH: this.state.panels[id].floatH,
+          snapLeft: this.state.panels[id].snapLeft,
+          snapTop: this.state.panels[id].snapTop,
+          snapRight: this.state.panels[id].snapRight,
+          snapBottom: this.state.panels[id].snapBottom,
+        });
+      } else {
+        this._insertIntoDock(id, el, dock, order);
+      }
     }
 
     this._renderMobileSheet();

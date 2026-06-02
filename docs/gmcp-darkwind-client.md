@@ -1,23 +1,24 @@
 # Darkwind.Client GMCP Protocol Specification
 
-This document specifies the `Darkwind.Client` GMCP package, which carries client-side coordination messages: panel/feature subscriptions and on-demand media refresh.
+This document specifies the `Darkwind.Client` GMCP package, which carries client-side coordination messages: panel/feature subscriptions, terminal geometry, and on-demand media refresh.
 
 ## Package Overview
 
 Support declaration advertised by the client:
 
 ```json
-["Darkwind.Client.Subscriptions 1"]
+["Darkwind.Client.Subscriptions 1", "Darkwind.Client.NAWS 1"]
 ```
 
-Only `Darkwind.Client.Subscriptions` is advertised in the support set. The companion `Darkwind.Client.RefreshMedia` message is gated by other media-bearing packages (`Darkwind.Char.Avatar`, `Darkwind.Room.Image`).
+`Darkwind.Client.Subscriptions` and `Darkwind.Client.NAWS` are advertised in the support set. The companion `Darkwind.Client.RefreshMedia` message is gated by other media-bearing packages (`Darkwind.Char.Avatar`, `Darkwind.Room.Image`).
 
 | Message | Direction | Purpose |
 |---------|-----------|---------|
 | `Darkwind.Client.Subscriptions` | Client -> Server | Declare which panels are visible and which feature streams are wanted |
+| `Darkwind.Client.NAWS` | Client -> Server | Report terminal width/height so the server can wrap output to the active pane |
 | `Darkwind.Client.RefreshMedia` | Client -> Server | Ask the server to re-push current media (avatar and room image) |
 
-Both messages flow client -> server only; the server does not echo a structured acknowledgement. Subscriptions take effect by gating subsequent server-driven pushes; RefreshMedia takes effect by triggering pushes on packages such as `Darkwind.Char.Avatar` and `Darkwind.Room.Image`.
+All three messages flow client -> server only; the server does not echo a structured acknowledgement. Subscriptions take effect by gating subsequent server-driven pushes; RefreshMedia takes effect by triggering pushes on packages such as `Darkwind.Char.Avatar` and `Darkwind.Room.Image`; NAWS updates the server's active wrap width for this session.
 
 ## Darkwind.Client.Subscriptions
 
@@ -171,12 +172,44 @@ The message carries no payload:
 Darkwind.Client.RefreshMedia
 ```
 
+```text
+Darkwind.Client.NAWS {"width":120,"height":34}
+```
+
 Compliant clients may send an empty JSON object `{}`; the current Darkflow client sends the package name with no payload.
 
 ### Server Behavior
 
 - The server re-pushes the current `Darkwind.Char.Avatar` and `Darkwind.Room.Image` payloads through their normal helpers, subject to the corresponding subscription gates.
 - Other media surfaces (room images for sub-rooms, etc.) are pushed as part of the same refresh path.
+
+## Darkwind.Client.NAWS
+
+Direction: `Client -> Server`
+
+Reports the active terminal size using NAWS-style width/height semantics. Darkflow measures the visible text pane and sends the current value on connect and whenever the pane resizes.
+
+### Schema
+
+```json
+{
+  "width": 120,
+  "height": 34
+}
+```
+
+### Fields
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `width` | integer | Yes | Active terminal columns for wrapping room text, help, inventory, and similar output |
+| `height` | integer | Yes | Active terminal rows; tracked for completeness and future pager behavior |
+
+### Server Behavior
+
+- Updates the player/session terminal geometry used by shared output helpers.
+- Uses the latest width as the active wrap width for `wrap()`-based output.
+- Falls back to the legacy default width if no NAWS data is available.
 
 ## Transport
 

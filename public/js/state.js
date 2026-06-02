@@ -38,6 +38,11 @@ export const state = {
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: 'normal',
     tabObservabilityEnabled: false,
+    screenReaderMode: false,
+  },
+  terminalGeometry: {
+    columns: 75,
+    rows: 24,
   },
   tabObservability: {
     currentState: null,
@@ -63,6 +68,7 @@ export const dom = {
   outputLiveBtn: null,
   outputPauseBtn: null,
   outputEscapeHint: null,
+  screenReaderAnnouncer: null,
   commandInput: null,
   sendBtn: null,
   statusConnection: null,
@@ -97,6 +103,7 @@ export function initDom() {
   dom.outputLiveBtn = document.getElementById('output-live-btn');
   dom.outputPauseBtn = document.getElementById('output-pause-btn');
   dom.outputEscapeHint = document.getElementById('output-escape-hint');
+  dom.screenReaderAnnouncer = document.getElementById('screenreader-announcer');
   dom.commandInput = document.getElementById('command-input');
   dom.sendBtn = document.getElementById('send-btn');
   dom.statusConnection = document.getElementById('status-connection');

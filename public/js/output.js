@@ -14,6 +14,9 @@ import {
 
 const BOTTOM_THRESHOLD_PX = 5;
 const DEFAULT_LINE_HEIGHT_PX = 23;
+const DEFAULT_CHARACTER_WIDTH_PX = 10;
+const MIN_TERMINAL_COLUMNS = 40;
+const MIN_TERMINAL_ROWS = 8;
 const DEFAULT_SPLIT_RATIO = 0.6;
 const MIN_SPLIT_RATIO = 0.2;
 const MAX_SPLIT_RATIO = 0.8;
@@ -24,6 +27,10 @@ const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
 const OSC8_DEBUG_URL = 'https://gist.github.com/jasona/a03aa3851dce07b5c701c70e19db28df';
 const OSC8_DEBUG_PREFIX = 'https://gist.github.com/jasona/a03aa3851dce07b5c701c70e19db';
+const GMCP_TERMINAL_SIZE_PACKAGE = 'Darkwind.Client.NAWS';
+const SCREEN_READER_ANNOUNCE_DELAY_MS = 180;
+const SCREEN_READER_ANNOUNCE_MAX_LINES = 6;
+const terminalGeometryTextEncoder = new TextEncoder();
 
 let isScrollLocked = false;
 let isOutputPaused = false;
@@ -36,6 +43,7 @@ let frameScheduled = false;
 let renderInvalidated = false;
 let scrollbackLimit = OUTPUT_SCROLLBACK_PRESETS[DEFAULT_OUTPUT_SCROLLBACK_PRESET];
 let estimatedLineHeight = DEFAULT_LINE_HEIGHT_PX;
+let estimatedCharacterWidth = DEFAULT_CHARACTER_WIDTH_PX;
 let resizeObserver = null;
 let suppressAutoPause = false;
 let splitRatio = DEFAULT_SPLIT_RATIO;
@@ -44,6 +52,9 @@ let userScrollIntentUntil = 0;
 let highlightedLineId = null;
 let highlightTimer = null;
 let escapeReturnAvailable = false;
+let screenReaderAnnounceTimer = null;
+let screenReaderAnnounceQueue = [];
+const screenReaderAnnouncedLines = new Map();
 const lineObservers = new Set();
 
 const panes = {
@@ -190,6 +201,8 @@ export function refreshOutputLayout() {
   }
 
   measureEstimatedLineHeight();
+  measureEstimatedCharacterWidth();
+  sendTerminalGeometry(false);
   markAllLineHeightsDirty();
   renderInvalidated = true;
   scheduleFrame();
@@ -667,6 +680,7 @@ function evictOverflowLines() {
 }
 
 function notifyLineObservers(line) {
+  announceLineForScreenReader(line);
   if (!line || !lineObservers.size) return;
   const snapshot = {
     id: line.id,
@@ -679,6 +693,45 @@ function notifyLineObservers(line) {
     } catch (error) {
       console.warn('Output line observer failed', error);
     }
+  }
+}
+
+function pruneScreenReaderAnnouncements() {
+  if (screenReaderAnnouncedLines.size <= scrollbackLimit) return;
+  const keepIds = new Set(lineStore.map((line) => line.id).concat(pendingLines.map((line) => line.id)));
+  for (const id of screenReaderAnnouncedLines.keys()) {
+    if (!keepIds.has(id)) screenReaderAnnouncedLines.delete(id);
+  }
+}
+
+function flushScreenReaderAnnouncements() {
+  screenReaderAnnounceTimer = null;
+  if (!dom.screenReaderAnnouncer || !state.settings.screenReaderMode) {
+    screenReaderAnnounceQueue = [];
+    return;
+  }
+
+  const lines = screenReaderAnnounceQueue.splice(0, screenReaderAnnounceQueue.length)
+    .map((line) => String(line || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(-SCREEN_READER_ANNOUNCE_MAX_LINES);
+  if (!lines.length) return;
+
+  dom.screenReaderAnnouncer.textContent = lines.join('\n');
+}
+
+function announceLineForScreenReader(line) {
+  if (!state.settings.screenReaderMode || !dom.screenReaderAnnouncer || !line) return;
+  const text = String(line.text || '').trim();
+  if (!text) return;
+  if (screenReaderAnnouncedLines.get(line.id) === text) return;
+
+  screenReaderAnnouncedLines.set(line.id, text);
+  pruneScreenReaderAnnouncements();
+  screenReaderAnnounceQueue.push(text);
+
+  if (!screenReaderAnnounceTimer) {
+    screenReaderAnnounceTimer = setTimeout(flushScreenReaderAnnouncements, SCREEN_READER_ANNOUNCE_DELAY_MS);
   }
 }
 
@@ -728,6 +781,107 @@ function measureEstimatedLineHeight() {
   if (measured > 0) {
     estimatedLineHeight = measured;
   }
+}
+
+function measureEstimatedCharacterWidth() {
+  const probeHost = (isSplitActive
+    ? panes.history.viewportEl || panes.live.viewportEl || panes.main.viewportEl
+    : panes.main.viewportEl || panes.history.viewportEl || panes.live.viewportEl);
+  if (!probeHost) return;
+
+  const probe = document.createElement('div');
+  probe.className = 'output-line';
+  probe.style.visibility = 'hidden';
+  probe.style.position = 'absolute';
+  probe.style.whiteSpace = 'pre';
+  probe.textContent = 'MMMMMMMMMM';
+  probeHost.appendChild(probe);
+
+  const measured = probe.getBoundingClientRect().width;
+  probe.remove();
+
+  if (measured > 0) {
+    estimatedCharacterWidth = measured / 10;
+  }
+}
+
+function getTerminalGeometry() {
+  const host = isSplitActive ? dom.outputLive || dom.output : dom.output || dom.outputLive || dom.outputShell;
+  const fallback = state.terminalGeometry && typeof state.terminalGeometry === 'object'
+    ? state.terminalGeometry
+    : {};
+  const geometry = {
+    columns: fallback.columns || 75,
+    rows: fallback.rows || 24,
+  };
+
+  if (!host || typeof window === 'undefined') {
+    return geometry;
+  }
+
+  const rect = host.getBoundingClientRect();
+  const style = window.getComputedStyle(host);
+  const paddingLeft = parseFloat(style.paddingLeft) || 0;
+  const paddingRight = parseFloat(style.paddingRight) || 0;
+  const paddingTop = parseFloat(style.paddingTop) || 0;
+  const paddingBottom = parseFloat(style.paddingBottom) || 0;
+  const availableWidth = Math.max(0, rect.width - paddingLeft - paddingRight);
+  const availableHeight = Math.max(0, rect.height - paddingTop - paddingBottom);
+
+  if (estimatedCharacterWidth <= 0) {
+    measureEstimatedCharacterWidth();
+  }
+  if (estimatedLineHeight <= 0) {
+    measureEstimatedLineHeight();
+  }
+
+  const columns = estimatedCharacterWidth > 0
+    ? Math.max(MIN_TERMINAL_COLUMNS, Math.floor(availableWidth / estimatedCharacterWidth))
+    : geometry.columns;
+  const rows = estimatedLineHeight > 0
+    ? Math.max(MIN_TERMINAL_ROWS, Math.floor(availableHeight / estimatedLineHeight))
+    : geometry.rows;
+
+  if (Number.isFinite(columns) && columns > 0) {
+    geometry.columns = columns;
+  }
+  if (Number.isFinite(rows) && rows > 0) {
+    geometry.rows = rows;
+  }
+
+  return geometry;
+}
+
+function sendTerminalGeometry(force = false) {
+  const geometry = getTerminalGeometry();
+  const current = state.terminalGeometry && typeof state.terminalGeometry === 'object'
+    ? state.terminalGeometry
+    : {};
+  const columnsChanged = geometry.columns !== current.columns;
+  const rowsChanged = geometry.rows !== current.rows;
+
+  state.terminalGeometry = geometry;
+
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+
+  if (!force && !columnsChanged && !rowsChanged) {
+    return false;
+  }
+
+  const payload = JSON.stringify({
+    width: geometry.columns,
+    height: geometry.rows,
+  });
+  return sendSocketPayload(terminalGeometryTextEncoder.encode(
+    GMCP_TERMINAL_SIZE_PACKAGE + ' ' + payload
+  ), {
+    kind: 'gmcp',
+    size: payload.length,
+    preview: GMCP_TERMINAL_SIZE_PACKAGE,
+    closeOpenLine: false,
+  });
 }
 
 function renderPane(pane) {
@@ -1052,6 +1206,8 @@ export function initOutput() {
   initPane(panes.live, dom.outputLive);
   syncOutputUi();
   measureEstimatedLineHeight();
+  measureEstimatedCharacterWidth();
+  sendTerminalGeometry(true);
 
   dom.output.addEventListener('wheel', markUserScrollIntent, { passive: true });
   dom.output.addEventListener('touchstart', markUserScrollIntent, { passive: true });
@@ -1331,6 +1487,15 @@ export function clearOutput() {
   nextLineId = 1;
   highlightedLineId = null;
   escapeReturnAvailable = false;
+  screenReaderAnnounceQueue = [];
+  screenReaderAnnouncedLines.clear();
+  if (screenReaderAnnounceTimer) {
+    clearTimeout(screenReaderAnnounceTimer);
+    screenReaderAnnounceTimer = null;
+  }
+  if (dom.screenReaderAnnouncer) {
+    dom.screenReaderAnnouncer.textContent = '';
+  }
   if (highlightTimer) {
     clearTimeout(highlightTimer);
     highlightTimer = null;

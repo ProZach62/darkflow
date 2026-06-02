@@ -242,7 +242,9 @@ export function sendSocketPayload(payload, metadata) {
     // line open across frames. Any send to the server is a barrier:
     // the previous server prompt is "done" for merge purposes, and a
     // subsequent response should land on a fresh line.
-    closeOpenOutputLine();
+    if (!metadata || metadata.closeOpenLine !== false) {
+      closeOpenOutputLine();
+    }
     return true;
   } catch (error) {
     const health = getHealth();

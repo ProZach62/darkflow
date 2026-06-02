@@ -179,7 +179,8 @@ export const windowManager = {
       data.title || data.id,
       dock,
       order,
-      () => this._userClose(data.id)
+      () => this._userClose(data.id),
+      data
     );
 
     if (!bodyEl) return;
