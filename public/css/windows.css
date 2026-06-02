@@ -274,6 +274,39 @@
   margin: 0 auto;
 }
 
+/* ── Shared video display ───────────────────────────────────────── */
+.dw-youtube-embed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-height: 260px;
+  padding: 10px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+}
+
+.dw-youtube-embed iframe {
+  width: 100%;
+  min-height: 220px;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 4px;
+  background: #000;
+}
+
+.dw-youtube-link {
+  color: #58a6ff;
+  font-size: 12px;
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.dw-youtube-link:hover {
+  text-decoration: underline;
+}
+
 /* ── Rich player rows ────────────────────────────────────────────── */
 .dw-finger-profile {
   display: flex;

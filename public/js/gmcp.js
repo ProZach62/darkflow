@@ -98,9 +98,12 @@ export const gmcp = {
   },
 
   sendHandshake() {
+    const geometry = state.terminalGeometry || {};
     this.send('Core.Hello', {
       client: GMCP_CLIENT_NAME,
-      version: state.clientVersion || 'unknown'
+      version: state.clientVersion || 'unknown',
+      width: geometry.columns || 75,
+      height: geometry.rows || 24,
     });
     this.send('Core.Supports.Set', [
       'Char 1',
@@ -120,9 +123,10 @@ export const gmcp = {
       'Darkwind.Sky 1',
       'Darkwind.GuildVitals 1',
       'Darkwind.Client.Subscriptions 1',
+      'Darkwind.Client.NAWS 1',
       'Darkwind.Window 1',
       'Darkwind.Snoop 1',
-      'Darkwind.IDE 1',
+      'Darkwind.IDE 2',
       'Darkwind.MapData 1',
       'Darkwind.MapData2 1',
       'Darkwind.Completion 1',

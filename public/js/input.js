@@ -597,6 +597,13 @@ function isBlockedEditableTarget(target) {
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
 }
 
+function isSettingsShortcut(event) {
+  return (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    !event.shiftKey &&
+    (event.key === ',' || event.code === 'Comma');
+}
+
 function handleMappedKey(event) {
   if (event.defaultPrevented || event.repeat) return false;
   if (event.ctrlKey || event.altKey || event.metaKey) return false;
@@ -709,7 +716,10 @@ export function initInput() {
     if (e.defaultPrevented) return;
     if (isBlockedEditableTarget(e.target)) return;
 
-    if (e.ctrlKey && e.key === 'l') {
+    if (isSettingsShortcut(e)) {
+      e.preventDefault();
+      settingsManager.open();
+    } else if (e.ctrlKey && e.key === 'l') {
       e.preventDefault();
       clearOutput();
     } else if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {

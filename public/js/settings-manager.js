@@ -1,6 +1,12 @@
 import { state, dom } from './state.js';
 import { DEFAULT_OUTPUT_SCROLLBACK_PRESET } from './constants.js';
-import { setOutputScrollbackBehavior, setOutputScrollbackPreset, setOutputSplitRatio } from './output.js';
+import {
+  appendSystemMessage,
+  closeOpenOutputLine,
+  setOutputScrollbackBehavior,
+  setOutputScrollbackPreset,
+  setOutputSplitRatio,
+} from './output.js';
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
@@ -60,6 +66,7 @@ export const settingsManager = {
     scrollbackBehavior: 'pause',
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
+    screenReaderMode: false,
   },
   _settings: {},
   _draftSettings: {},
@@ -516,7 +523,26 @@ export const settingsManager = {
       scrollbackSplitRatio: this._normalizeSplitRatio(settings.scrollbackSplitRatio),
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
+      screenReaderMode: Boolean(settings.screenReaderMode),
     };
+  },
+
+  _syncScreenReaderServerSetting() {
+    const command = 'set screenreader on';
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      this._setFooterStatus('Connect before syncing the game screen reader setting.', true);
+      return;
+    }
+
+    try {
+      state.ws.send(command);
+      closeOpenOutputLine();
+      state.bytesSent += command.length;
+      appendSystemMessage('Sent to game: ' + command);
+      this._setFooterStatus('Game screen reader setting synced.');
+    } catch (error) {
+      this._setFooterStatus('Unable to sync the game screen reader setting.', true);
+    }
   },
 
   _normalizeScrollbackBehavior(value) {
@@ -3170,6 +3196,32 @@ export const settingsManager = {
         this._draftSettings.scrollbackBehavior = value;
       }
     ));
+    terminalSection.appendChild(this._createCheckboxRow(
+      'Screen reader announcements',
+      'Mirror new terminal lines into a hidden polite live region for browser screen readers.',
+      !!this._draftSettings.screenReaderMode,
+      (checked) => {
+        this._draftSettings.screenReaderMode = checked;
+      }
+    ));
+    const screenReaderSyncCard = document.createElement('div');
+    screenReaderSyncCard.className = 'settings-connection-card';
+    const screenReaderSyncLabel = document.createElement('div');
+    screenReaderSyncLabel.className = 'settings-label';
+    screenReaderSyncLabel.textContent = 'Game screen reader setting';
+    const screenReaderSyncCopy = document.createElement('p');
+    screenReaderSyncCopy.className = 'dw-paragraph';
+    screenReaderSyncCopy.textContent = 'This sends set screenreader on to the game. It changes your saved MUD setting only when you press the button.';
+    const screenReaderSyncBtn = document.createElement('button');
+    screenReaderSyncBtn.className = 'dw-button dw-button-secondary';
+    screenReaderSyncBtn.type = 'button';
+    screenReaderSyncBtn.textContent = 'Sync now';
+    screenReaderSyncBtn.disabled = !state.ws || state.ws.readyState !== WebSocket.OPEN;
+    screenReaderSyncBtn.addEventListener('click', () => this._syncScreenReaderServerSetting());
+    screenReaderSyncCard.appendChild(screenReaderSyncLabel);
+    screenReaderSyncCard.appendChild(screenReaderSyncCopy);
+    screenReaderSyncCard.appendChild(screenReaderSyncBtn);
+    terminalSection.appendChild(screenReaderSyncCard);
     const audioTitle = document.createElement('h3');
     audioTitle.className = 'dw-heading';
     audioTitle.textContent = 'Audio';

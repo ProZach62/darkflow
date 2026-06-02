@@ -7,13 +7,20 @@ This document specifies the `Darkwind.IDE` GMCP package as implemented by the cu
 Support declaration advertised by the client:
 
 ```json
-["Darkwind.IDE 1"]
+["Darkwind.IDE 2"]
 ```
 
 | Message | Direction | Purpose |
 |---------|-----------|---------|
 | `Darkwind.IDE.Open` | Server -> Client | Open the editor with file content and editor metadata |
+| `Darkwind.IDE.OpenStart` | Server -> Client | Begin a chunked large-file open |
+| `Darkwind.IDE.OpenChunk` | Server -> Client | Send one large-file open chunk |
+| `Darkwind.IDE.OpenFinish` | Server -> Client | Finish a chunked large-file open |
 | `Darkwind.IDE.Save` | Client -> Server | Submit the current file content for save/compile |
+| `Darkwind.IDE.SaveStart` | Client -> Server | Begin a chunked large-file save |
+| `Darkwind.IDE.SaveChunk` | Client -> Server | Send one large-file save chunk |
+| `Darkwind.IDE.SaveFinish` | Client -> Server | Finish a chunked large-file save |
+| `Darkwind.IDE.SaveAbort` | Client -> Server | Discard a partial large-file save |
 | `Darkwind.IDE.SaveResult` | Server -> Client | Return save/compile status and optional diagnostics |
 | `Darkwind.IDE.Close` | Client -> Server | Notify the server that the editor was closed for a specific path |
 
@@ -43,6 +50,47 @@ Opens the IDE for one file.
 | `language` | string | No | Language hint for syntax mode selection |
 | `readOnly` | boolean | No | When true, save controls are omitted and editing is disabled |
 
+## Chunked Opens
+
+Direction: `Server -> Client`
+
+Large files may be sent as a three-stage transfer instead of a single
+`Darkwind.IDE.Open` payload. The client reassembles the content and then opens
+the normal editor UI.
+
+### Darkwind.IDE.OpenStart
+
+```json
+{
+  "session": "transfer-id",
+  "path": "/domains/darkwind/rooms/tavern.c",
+  "content": "",
+  "language": "c",
+  "readOnly": false,
+  "chunks": 12,
+  "totalLength": 384000,
+  "hash": "sha1..."
+}
+```
+
+### Darkwind.IDE.OpenChunk
+
+```json
+{
+  "session": "transfer-id",
+  "index": 0,
+  "content": "chunk content..."
+}
+```
+
+### Darkwind.IDE.OpenFinish
+
+```json
+{
+  "session": "transfer-id"
+}
+```
+
 ## Darkwind.IDE.Save
 
 Direction: `Client -> Server`
@@ -64,6 +112,56 @@ Sent when the user activates save from the IDE UI.
 |-------|------|----------|-------|
 | `path` | string | Yes | Current editor path |
 | `content` | string | Yes | Full document contents |
+
+Small saves may still use the legacy single-message form above. Large saves use
+the chunked form below to avoid browser, proxy, and driver WebSocket message
+limits.
+
+## Chunked Saves
+
+Direction: `Client -> Server`
+
+### Darkwind.IDE.SaveStart
+
+```json
+{
+  "session": "transfer-id",
+  "path": "/domains/darkwind/rooms/tavern.c",
+  "chunks": 12,
+  "totalLength": 384000,
+  "hash": "sha1..."
+}
+```
+
+### Darkwind.IDE.SaveChunk
+
+```json
+{
+  "session": "transfer-id",
+  "index": 0,
+  "content": "chunk content..."
+}
+```
+
+### Darkwind.IDE.SaveFinish
+
+```json
+{
+  "session": "transfer-id"
+}
+```
+
+### Darkwind.IDE.SaveAbort
+
+```json
+{
+  "session": "transfer-id",
+  "reason": "send-failed"
+}
+```
+
+The server validates the path, chunk count, total length, and optional SHA1
+hash before writing the file. Partial sessions expire server-side.
 
 ## Darkwind.IDE.SaveResult
 

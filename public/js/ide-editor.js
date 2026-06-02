@@ -79,6 +79,7 @@ export const ideEditor = {
   closeBtn: null,
   statusText: null,
   readOnly: false,
+  saveTimeout: null,
 
   async init() {
     await loadCodeMirror();
@@ -249,10 +250,20 @@ export const ideEditor = {
     const content = this.view.state.doc.toString();
     this.updateStatus('Saving...');
     if (this.saveBtn) this.saveBtn.disabled = true;
-    this.callbacks.onSave(this.currentPath, content);
+    this.startSaveTimeout();
+    const result = this.callbacks.onSave(this.currentPath, content);
+    if (result && typeof result.catch === 'function') {
+      result.catch((error) => {
+        this.clearSaveTimeout();
+        if (this.saveBtn) this.saveBtn.disabled = false;
+        this.updateStatus('Save failed');
+        this.showErrors([], error && error.message ? error.message : 'Save failed.');
+      });
+    }
   },
 
   handleSaveResult(data) {
+    this.clearSaveTimeout();
     if (this.saveBtn) this.saveBtn.disabled = false;
 
     if (data.success) {
@@ -261,9 +272,34 @@ export const ideEditor = {
       this.updateModified();
       this.clearErrors();
     } else {
-      this.updateStatus('Compile failed');
+      this.updateStatus(data && data.message ? 'Save failed' : 'Compile failed');
       this.showErrors(data.errors || [], data.message || '');
     }
+  },
+
+  handleTransferProgress(label) {
+    this.updateStatus(label || 'Transferring...');
+  },
+
+  handleTransferFailure(message) {
+    this.clearSaveTimeout();
+    if (this.saveBtn) this.saveBtn.disabled = false;
+    this.updateStatus('Save failed');
+    this.showErrors([], message || 'The save did not complete.');
+  },
+
+  startSaveTimeout() {
+    this.clearSaveTimeout();
+    this.saveTimeout = setTimeout(() => {
+      this.saveTimeout = null;
+      this.handleTransferFailure('Timed out waiting for the IDE save response.');
+    }, 60000);
+  },
+
+  clearSaveTimeout() {
+    if (!this.saveTimeout) return;
+    clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
   },
 
   showErrors(errors, message) {
@@ -392,6 +428,7 @@ export const ideEditor = {
       this.overlay.remove();
       this.overlay = null;
     }
+    this.clearSaveTimeout();
     if (this.view) {
       this.view.destroy();
       this.view = null;
