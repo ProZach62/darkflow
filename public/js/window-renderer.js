@@ -135,6 +135,37 @@ function renderDisplay(schema) {
       }
       return el;
     }
+    case 'youtube_embed': {
+      const el = document.createElement('div');
+      el.className = 'dw-youtube-embed';
+      setAttr(el, schema);
+
+      if (schema.src) {
+        const iframe = document.createElement('iframe');
+        iframe.src = schema.src;
+        iframe.title = schema.title || schema.alt || 'YouTube video';
+        iframe.loading = 'lazy';
+        iframe.allowFullscreen = true;
+        iframe.setAttribute('allow',
+          'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+        iframe.setAttribute('referrerpolicy', 'origin-when-cross-origin');
+        iframe.setAttribute('sandbox',
+          'allow-scripts allow-same-origin allow-presentation allow-popups allow-forms');
+        el.appendChild(iframe);
+      }
+
+      if (schema.url) {
+        const link = document.createElement('a');
+        link.className = 'dw-youtube-link';
+        link.href = schema.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Open in YouTube';
+        el.appendChild(link);
+      }
+
+      return el;
+    }
     default: {
       const el = document.createElement('span');
       el.textContent = '[' + schema.type + ']';
@@ -602,6 +633,23 @@ export function updateElements(container, updates) {
       if (upd.alt) img.alt = upd.alt;
       const spinner = el.querySelector('.dw-image-loading');
       if (spinner) spinner.remove();
+    }
+
+    if (upd.src !== undefined && el.classList.contains('dw-youtube-embed')) {
+      let iframe = el.querySelector('iframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.loading = 'lazy';
+        iframe.allowFullscreen = true;
+        iframe.setAttribute('allow',
+          'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+        iframe.setAttribute('referrerpolicy', 'origin-when-cross-origin');
+        iframe.setAttribute('sandbox',
+          'allow-scripts allow-same-origin allow-presentation allow-popups allow-forms');
+        el.insertBefore(iframe, el.firstChild);
+      }
+      iframe.src = upd.src;
+      if (upd.title) iframe.title = upd.title;
     }
 
     // Input value updates

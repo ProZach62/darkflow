@@ -53,6 +53,15 @@ Opens a new window. If the `id` already exists, the client closes the existing w
 | `height` | string or number | No | Modal height; numbers are interpreted as pixels |
 | `dock` | string | No | Panel dock, default `right` |
 | `order` | number | No | Panel ordering value, default `99` |
+| `defaultFloatW` | number | No | Initial width hint when `dock` is `float` |
+| `defaultFloatH` | number | No | Initial height hint when `dock` is `float` |
+| `defaultFloatX` | number | No | Initial X coordinate hint when `dock` is `float` |
+| `defaultFloatY` | number | No | Initial Y coordinate hint when `dock` is `float` |
+| `defaultBelowPanel` | string | No | Panel id to position below when `dock` is `float` |
+| `defaultSnapLeft` | boolean | No | Initial float snap preference |
+| `defaultSnapTop` | boolean | No | Initial float snap preference |
+| `defaultSnapRight` | boolean | No | Initial float snap preference |
+| `defaultSnapBottom` | boolean | No | Initial float snap preference |
 | `layout` | object | Yes | Root node rendered by the window renderer |
 
 ### Supported Node Types
@@ -75,6 +84,7 @@ The current client supports only these node types.
 - `divider`
 - `progress`
 - `image`
+- `youtube_embed`
 
 #### Input nodes
 
@@ -114,6 +124,7 @@ lineHeight, textTransform
 | `heading`, `paragraph`, `text` | `text` |
 | `progress` | `value`, `color`, `label` |
 | `image` | `src`, `alt`, `loading`, `loadingText` |
+| `youtube_embed` | `src`, `url`, `title` |
 | `text`, `password` | `label`, `value`, `placeholder` |
 | `number` | `label`, `value`, `min`, `max`, `step` |
 | `select` | `label`, `value`, `options[]` with `value` and optional `label` |
@@ -202,6 +213,7 @@ Applies supported updates to elements inside an open window. The current client 
 - The client does not support structural patch operations such as insert, remove, replace-node, or append-child.
 - The client does not re-run layout creation from update payloads.
 - `text` updates operate on rendered DOM text, not on a stored schema tree.
+- `youtube_embed` is rendered as a sandboxed iframe with a clickable fallback link.
 
 ## Darkwind.Window.Close
 
