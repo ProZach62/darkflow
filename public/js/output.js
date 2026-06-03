@@ -849,6 +849,10 @@ function getTerminalGeometry() {
     geometry.rows = rows;
   }
 
+  if (Number.isInteger(state.settings.terminalWidthColumns)) {
+    geometry.columns = state.settings.terminalWidthColumns;
+  }
+
   return geometry;
 }
 
@@ -868,7 +872,7 @@ function updateTerminalGeometry() {
   };
 }
 
-function sendTerminalGeometry(force = false) {
+export function sendTerminalGeometry(force = false) {
   const result = updateTerminalGeometry();
 
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {

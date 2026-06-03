@@ -39,6 +39,7 @@ export const state = {
     outputScrollbackPreset: 'normal',
     tabObservabilityEnabled: false,
     screenReaderMode: false,
+    terminalWidthColumns: null,
   },
   terminalGeometry: {
     columns: 75,

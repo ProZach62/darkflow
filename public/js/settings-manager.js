@@ -3,6 +3,7 @@ import { DEFAULT_OUTPUT_SCROLLBACK_PRESET } from './constants.js';
 import {
   appendSystemMessage,
   closeOpenOutputLine,
+  sendTerminalGeometry,
   setOutputScrollbackBehavior,
   setOutputScrollbackPreset,
   setOutputSplitRatio,
@@ -20,6 +21,8 @@ const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
 const HIGHLIGHT_STORAGE_KEY = 'darkwind-client-highlights-v1';
 const TRIGGER_STORAGE_KEY = 'darkwind-client-triggers-v1';
+const MIN_TERMINAL_WIDTH_COLUMNS = 40;
+const MAX_TERMINAL_WIDTH_COLUMNS = 240;
 
 function formatKeyCodeLabel(code) {
   const value = String(code || '').trim();
@@ -67,6 +70,7 @@ export const settingsManager = {
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
     screenReaderMode: false,
+    terminalWidthColumns: null,
   },
   _settings: {},
   _draftSettings: {},
@@ -107,6 +111,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(this._settings.scrollbackBehavior);
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
+    sendTerminalGeometry(false);
   },
 
   get(key) {
@@ -224,6 +229,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(this._settings.scrollbackBehavior);
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
+    sendTerminalGeometry(true);
     this._save();
   },
 
@@ -468,6 +474,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(nextSettings.scrollbackBehavior);
     setOutputSplitRatio(nextSettings.scrollbackSplitRatio);
     setOutputScrollbackPreset(nextSettings.outputScrollbackPreset);
+    sendTerminalGeometry(true);
 
     try {
       localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(bundle.data.aliases || { scopes: {} }));
@@ -524,7 +531,20 @@ export const settingsManager = {
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
       screenReaderMode: Boolean(settings.screenReaderMode),
+      terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
     };
+  },
+
+  _normalizeTerminalWidthColumns(value) {
+    if (value === null || value === undefined || value === '') return null;
+
+    const number = Number(value);
+    if (!Number.isFinite(number)) return null;
+
+    return Math.max(
+      MIN_TERMINAL_WIDTH_COLUMNS,
+      Math.min(MAX_TERMINAL_WIDTH_COLUMNS, Math.round(number))
+    );
   },
 
   _syncScreenReaderServerSetting() {
@@ -590,6 +610,39 @@ export const settingsManager = {
     copy.appendChild(description);
     row.appendChild(copy);
     row.appendChild(select);
+
+    return row;
+  },
+
+  _createNumberRow(labelText, descriptionText, value, options, onChange) {
+    const row = document.createElement('div');
+    row.className = 'settings-select-row';
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+
+    const label = document.createElement('label');
+    label.className = 'settings-label';
+    label.textContent = labelText;
+
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = descriptionText;
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'dw-input';
+    input.value = value === null || value === undefined ? '' : String(value);
+    input.placeholder = options.placeholder || '';
+    input.min = String(options.min);
+    input.max = String(options.max);
+    input.step = String(options.step || 1);
+    input.addEventListener('input', () => onChange(input.value));
+
+    copy.appendChild(label);
+    copy.appendChild(description);
+    row.appendChild(copy);
+    row.appendChild(input);
 
     return row;
   },
@@ -3194,6 +3247,20 @@ export const settingsManager = {
       ],
       (value) => {
         this._draftSettings.scrollbackBehavior = value;
+      }
+    ));
+    terminalSection.appendChild(this._createNumberRow(
+      'Screen width',
+      'Leave blank for automatic pane width, or enter a fixed column width for server-side wrapping.',
+      this._draftSettings.terminalWidthColumns,
+      {
+        min: MIN_TERMINAL_WIDTH_COLUMNS,
+        max: MAX_TERMINAL_WIDTH_COLUMNS,
+        step: 1,
+        placeholder: 'Auto',
+      },
+      (value) => {
+        this._draftSettings.terminalWidthColumns = value;
       }
     ));
     terminalSection.appendChild(this._createCheckboxRow(
