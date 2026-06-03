@@ -33,6 +33,7 @@ export const state = {
     repeatLastCommand: true,
     keyMapperEnabled: false,
     keyMappings: [],
+    aliasTabCompletionEnabled: true,
     historyTabCompletionEnabled: false,
     scrollbackBehavior: 'pause',
     scrollbackSplitRatio: 0.6,

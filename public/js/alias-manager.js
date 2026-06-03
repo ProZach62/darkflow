@@ -300,6 +300,21 @@ export const aliasManager = {
     )) || null;
   },
 
+  listCompletionTriggers(scopeKey = this.getActiveScopeKey()) {
+    const seen = new Set();
+    return this._ensureScope(scopeKey).aliases
+      .filter((alias) => alias.enabled !== false && !alias.isRegex)
+      .map((alias) => normalizeWhitespace(alias.trigger))
+      .filter(Boolean)
+      .filter((trigger) => {
+        const key = trigger.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => a.localeCompare(b));
+  },
+
   upsertSimpleAlias(trigger, template, scopeKey = this.getActiveScopeKey()) {
     const normalizedTrigger = normalizeWhitespace(trigger);
     if (!normalizedTrigger) return null;

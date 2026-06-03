@@ -65,6 +65,7 @@ export const settingsManager = {
     repeatLastCommand: true,
     keyMapperEnabled: false,
     keyMappings: [],
+    aliasTabCompletionEnabled: true,
     historyTabCompletionEnabled: false,
     scrollbackBehavior: 'pause',
     scrollbackSplitRatio: 0.6,
@@ -639,6 +640,7 @@ export const settingsManager = {
       repeatLastCommand: settings.repeatLastCommand !== false,
       keyMapperEnabled: Boolean(settings.keyMapperEnabled),
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
+      aliasTabCompletionEnabled: settings.aliasTabCompletionEnabled !== false,
       historyTabCompletionEnabled: Boolean(settings.historyTabCompletionEnabled),
       scrollbackBehavior: this._normalizeScrollbackBehavior(settings.scrollbackBehavior),
       scrollbackSplitRatio: this._normalizeSplitRatio(settings.scrollbackSplitRatio),
@@ -3415,6 +3417,14 @@ export const settingsManager = {
       !!this._draftSettings.repeatLastCommand,
       (checked) => {
         this._draftSettings.repeatLastCommand = checked;
+      }
+    ));
+    controlsSection.appendChild(this._createCheckboxRow(
+      'Use aliases for Tab completion',
+      'Complete matching client aliases before falling back to command history or server-side Tab completion.',
+      !!this._draftSettings.aliasTabCompletionEnabled,
+      (checked) => {
+        this._draftSettings.aliasTabCompletionEnabled = checked;
       }
     ));
     controlsSection.appendChild(this._createCheckboxRow(
