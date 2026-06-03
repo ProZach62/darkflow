@@ -40,6 +40,7 @@ export const state = {
     tabObservabilityEnabled: false,
     screenReaderMode: false,
     terminalWidthColumns: null,
+    settingsBackupPromptEnabled: true,
   },
   terminalGeometry: {
     columns: 75,

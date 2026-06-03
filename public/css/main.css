@@ -882,6 +882,30 @@ body.zork-only-mode #toolbar-connect-fields {
   color: #ff7b72;
 }
 
+.settings-backup-prompt {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  border-radius: 8px;
+  background: rgba(113, 63, 18, 0.22);
+}
+
+.settings-backup-prompt .settings-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-backup-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-mapper-editor {
   display: flex;
   flex-direction: column;

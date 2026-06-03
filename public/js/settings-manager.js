@@ -71,6 +71,7 @@ export const settingsManager = {
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
     screenReaderMode: false,
     terminalWidthColumns: null,
+    settingsBackupPromptEnabled: true,
   },
   _settings: {},
   _draftSettings: {},
@@ -90,6 +91,8 @@ export const settingsManager = {
   _previousFocusEl: null,
   _modalKeyHandler: null,
   _activeEditFocusScope: null,
+  _settingsSessionBaseline: '',
+  _backupClosePromptEl: null,
 
   init() {
     this._settings = { ...this._defaults };
@@ -126,7 +129,7 @@ export const settingsManager = {
   },
 
   open() {
-    this.close();
+    this.close({ skipBackupPrompt: true });
     this._previousFocusEl = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -145,6 +148,7 @@ export const settingsManager = {
     this._draftHighlightScope = highlightManager.getScopeSnapshot(this._highlightScopeKey);
     this._triggerScopeKey = triggerManager.getActiveScopeKey();
     this._draftTriggerScope = triggerManager.getScopeSnapshot(this._triggerScopeKey);
+    this._settingsSessionBaseline = this._getCurrentSettingsSessionFingerprint();
 
     const overlay = this._buildModal();
     const modalKeyHandler = (event) => this._handleModalKeydown(event);
@@ -178,7 +182,12 @@ export const settingsManager = {
     this._focusSettingsControl('settings-tab-connection');
   },
 
-  close() {
+  close(options = {}) {
+    if (!options.skipBackupPrompt && this._shouldPromptForSettingsBackup()) {
+      this._showSettingsBackupPrompt();
+      return false;
+    }
+
     if (this._escHandler) {
       document.removeEventListener('keydown', this._escHandler, true);
       this._escHandler = null;
@@ -205,11 +214,14 @@ export const settingsManager = {
     this._footerStatusEl = null;
     this._modalKeyHandler = null;
     this._activeEditFocusScope = null;
+    this._settingsSessionBaseline = '';
+    this._backupClosePromptEl = null;
     const previous = this._previousFocusEl;
     this._previousFocusEl = null;
     if (previous && document.contains(previous)) {
       previous.focus();
     }
+    return true;
   },
 
   _save() {
@@ -378,6 +390,118 @@ export const settingsManager = {
     if (closeAfterApply) this.close();
   },
 
+  _getCurrentSettingsSessionFingerprint() {
+    const settings = this._draftSettings && Object.keys(this._draftSettings).length
+      ? this._draftSettings
+      : this._settings;
+    const sessionState = {
+      settings: this._normalizeSettings(settings),
+      aliasScopeKey: this._aliasScopeKey,
+      aliasScope: this._draftAliasScope,
+      highlightScopeKey: this._highlightScopeKey,
+      highlightScope: this._draftHighlightScope,
+      triggerScopeKey: this._triggerScopeKey,
+      triggerScope: this._draftTriggerScope,
+      sound: soundManager.getSettings(),
+    };
+    return JSON.stringify(sessionState);
+  },
+
+  _shouldPromptForSettingsBackup() {
+    if (!this._overlay || !this._settings.settingsBackupPromptEnabled) return false;
+    if (!this._settingsSessionBaseline) return false;
+
+    try {
+      return this._getCurrentSettingsSessionFingerprint() !== this._settingsSessionBaseline;
+    } catch (error) {
+      return false;
+    }
+  },
+
+  _dismissSettingsBackupPrompt() {
+    if (this._backupClosePromptEl) {
+      this._backupClosePromptEl.remove();
+      this._backupClosePromptEl = null;
+    }
+  },
+
+  _showSettingsBackupPrompt() {
+    if (!this._overlay) return;
+    if (this._backupClosePromptEl) {
+      const primary = this._backupClosePromptEl.querySelector('[data-backup-action="download"]');
+      if (primary instanceof HTMLElement) primary.focus();
+      return;
+    }
+
+    const prompt = document.createElement('div');
+    prompt.className = 'settings-backup-prompt';
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+
+    const title = document.createElement('div');
+    title.className = 'settings-label';
+    title.textContent = 'Download a settings backup?';
+
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = 'Your settings changed in this session. Save a JSON backup before closing.';
+
+    copy.appendChild(title);
+    copy.appendChild(description);
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-backup-actions';
+
+    const continueBtn = document.createElement('button');
+    continueBtn.type = 'button';
+    continueBtn.className = 'dw-button dw-button-secondary';
+    continueBtn.textContent = 'Continue editing';
+    continueBtn.addEventListener('click', () => this._dismissSettingsBackupPrompt());
+
+    const skipBtn = document.createElement('button');
+    skipBtn.type = 'button';
+    skipBtn.className = 'dw-button dw-button-secondary';
+    skipBtn.textContent = 'Skip';
+    skipBtn.addEventListener('click', () => this.close({ skipBackupPrompt: true }));
+
+    const neverBtn = document.createElement('button');
+    neverBtn.type = 'button';
+    neverBtn.className = 'dw-button dw-button-secondary';
+    neverBtn.textContent = 'Never ask again';
+    neverBtn.addEventListener('click', () => {
+      this._draftSettings.settingsBackupPromptEnabled = false;
+      this._applySettings({ settingsBackupPromptEnabled: false });
+      this.close({ skipBackupPrompt: true });
+    });
+
+    const downloadBtn = document.createElement('button');
+    downloadBtn.type = 'button';
+    downloadBtn.className = 'dw-button dw-button-primary';
+    downloadBtn.dataset.backupAction = 'download';
+    downloadBtn.textContent = 'Download backup';
+    downloadBtn.addEventListener('click', () => {
+      this._downloadSettingsBundle();
+      this.close({ skipBackupPrompt: true });
+    });
+
+    actions.appendChild(continueBtn);
+    actions.appendChild(skipBtn);
+    actions.appendChild(neverBtn);
+    actions.appendChild(downloadBtn);
+    prompt.appendChild(copy);
+    prompt.appendChild(actions);
+
+    const footer = this._overlay.querySelector('.settings-modal-footer');
+    if (footer && footer.parentElement) {
+      footer.parentElement.insertBefore(prompt, footer);
+    } else {
+      this._overlay.appendChild(prompt);
+    }
+    this._backupClosePromptEl = prompt;
+    downloadBtn.focus();
+  },
+
   _syncDraftVariablesFromSteps() {
     if (!this._draftAliasScope || !this._draftAliasScope.variables) return;
     const stepLists = [];
@@ -522,6 +646,7 @@ export const settingsManager = {
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
       screenReaderMode: Boolean(settings.screenReaderMode),
       terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
+      settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
     };
   },
 
@@ -3320,6 +3445,14 @@ export const settingsManager = {
       !!this._draftSettings.tabObservabilityEnabled,
       (checked) => {
         this._draftSettings.tabObservabilityEnabled = checked;
+      }
+    ));
+    controlsSection.appendChild(this._createCheckboxRow(
+      'Prompt to export changed settings',
+      'Ask to download a backup when settings changed during the session and the settings panel is closed.',
+      !!this._draftSettings.settingsBackupPromptEnabled,
+      (checked) => {
+        this._draftSettings.settingsBackupPromptEnabled = checked;
       }
     ));
 
