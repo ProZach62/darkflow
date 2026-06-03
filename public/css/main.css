@@ -585,6 +585,14 @@ body.zork-only-mode #toolbar-connect-fields {
 /* Gear dropdown */
 .gear-menu-wrap { display: inline-flex; }
 
+.settings-overlay {
+  background: transparent;
+  pointer-events: none;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 54px 14px 70px;
+}
+
 .settings-modal {
   width: 1000px;
   height: 700px;
@@ -592,6 +600,7 @@ body.zork-only-mode #toolbar-connect-fields {
   max-height: 700px;
   display: flex;
   flex-direction: column;
+  pointer-events: auto;
 }
 
 .settings-modal-body {

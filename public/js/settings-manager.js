@@ -301,26 +301,6 @@ export const settingsManager = {
       this.close();
       return;
     }
-
-    if (event.key !== 'Tab') return;
-
-    if (this._handleEditScopeTab(event)) return;
-
-    const focusables = this._getFocusableSettingsControls();
-    if (!focusables.length) {
-      event.preventDefault();
-      return;
-    }
-
-    const current = document.activeElement;
-    let index = focusables.indexOf(current);
-    if (index < 0) index = event.shiftKey ? 0 : -1;
-    const nextIndex = event.shiftKey
-      ? (index <= 0 ? focusables.length - 1 : index - 1)
-      : (index >= focusables.length - 1 ? 0 : index + 1);
-
-    event.preventDefault();
-    focusables[nextIndex].focus();
   },
 
   _getEditScopeName(target) {
@@ -386,6 +366,16 @@ export const settingsManager = {
     event.preventDefault();
     controls[nextIndex].focus();
     return true;
+  },
+
+  _applyDraftChanges(closeAfterApply = false) {
+    this._syncDraftVariablesFromSteps();
+    this._applySettings(this._draftSettings);
+    triggerManager.saveScope(this._triggerScopeKey, this._draftTriggerScope);
+    highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
+    aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
+    this._setFooterStatus('Settings applied.');
+    if (closeAfterApply) this.close();
   },
 
   _syncDraftVariablesFromSteps() {
@@ -3038,12 +3028,7 @@ export const settingsManager = {
 
   _buildModal() {
     const overlay = document.createElement('div');
-    overlay.className = 'dw-modal-overlay';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        this.close();
-      }
-    });
+    overlay.className = 'dw-modal-overlay settings-overlay';
     overlay.addEventListener('focusin', (event) => {
       const scopeRoot = event.target instanceof HTMLElement
         ? event.target.closest('[data-edit-focus-scope]')
@@ -3059,7 +3044,6 @@ export const settingsManager = {
     const modal = document.createElement('div');
     modal.className = 'dw-modal settings-modal';
     modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-labelledby', 'settings-modal-title');
 
     const header = document.createElement('div');
@@ -3417,28 +3401,28 @@ export const settingsManager = {
     importBtn.textContent = 'Import settings';
     importBtn.addEventListener('click', () => this._promptImportSettingsBundle());
 
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'dw-button dw-button-secondary';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', () => this.close());
+    const closePanelBtn = document.createElement('button');
+    closePanelBtn.className = 'dw-button dw-button-secondary';
+    closePanelBtn.textContent = 'Close';
+    closePanelBtn.addEventListener('click', () => this.close());
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'dw-button dw-button-secondary';
+    applyBtn.dataset.focusKey = 'settings-apply';
+    applyBtn.textContent = 'Apply';
+    applyBtn.addEventListener('click', () => this._applyDraftChanges(false));
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'dw-button dw-button-primary';
     saveBtn.dataset.focusKey = 'settings-save';
-    saveBtn.textContent = 'Save';
-    saveBtn.addEventListener('click', () => {
-      this._applySettings(this._draftSettings);
-      this._syncDraftVariablesFromSteps();
-      triggerManager.saveScope(this._triggerScopeKey, this._draftTriggerScope);
-      highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
-      aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
-      this.close();
-    });
+    saveBtn.textContent = 'Save & Close';
+    saveBtn.addEventListener('click', () => this._applyDraftChanges(true));
 
     footer.appendChild(footerStatus);
     footer.appendChild(exportBtn);
     footer.appendChild(importBtn);
-    footer.appendChild(cancelBtn);
+    footer.appendChild(closePanelBtn);
+    footer.appendChild(applyBtn);
     footer.appendChild(saveBtn);
     body.appendChild(footer);
 
