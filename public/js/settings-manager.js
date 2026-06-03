@@ -1024,7 +1024,7 @@ export const settingsManager = {
     input.type = 'text';
     input.className = 'dw-input';
     input.value = value || '';
-    input.placeholder = 'yellow, bright-red, ansi-196, #ff8800';
+    input.placeholder = 'yellow, bright-cyan, ansi-214, #38bdf8';
     input.setAttribute('list', datalistId);
     input.addEventListener('input', sync);
     input.addEventListener('blur', () => {
