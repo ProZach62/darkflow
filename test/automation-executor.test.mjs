@@ -186,6 +186,40 @@ test('alias toggle trigger preserves trigger capture tokens in target pattern', 
   assert.deepEqual(io.sent, []);
 });
 
+test('trigger matching ignores a leading prompt marker on completed output lines', () => {
+  resetManagers();
+  triggerManager.saveScope(SCOPE_KEY, {
+    triggers: [{
+      id: 'trigger-exact-prompted-line',
+      enabled: true,
+      pattern: 'You are hungry.',
+      description: '',
+      group: '',
+      gag: true,
+      steps: [{ type: 'show_message', template: 'eat soon' }],
+    }, {
+      id: 'trigger-capture-prompted-line',
+      enabled: true,
+      pattern: 'You killed %1.',
+      description: '',
+      group: '',
+      gag: false,
+      steps: [{ type: 'send_command', template: 'burn %1 corpse' }],
+    }],
+  });
+
+  const exact = triggerManager.evaluateLine('> You are hungry.', SCOPE_KEY);
+  assert.equal(exact.gag, true);
+  assert.equal(exact.matches.length, 1);
+  assert.equal(exact.matches[0].fullMatch, 'You are hungry.');
+
+  const captured = triggerManager.evaluateLine('> You killed goblin.', SCOPE_KEY);
+  assert.equal(captured.gag, false);
+  assert.equal(captured.matches.length, 1);
+  assert.equal(captured.matches[0].fullMatch, 'You killed goblin.');
+  assert.deepEqual(captured.matches[0].captures, ['goblin']);
+});
+
 test('trigger steps can disable aliases by trigger text', () => {
   resetManagers();
   aliasManager.saveScope(SCOPE_KEY, {
@@ -253,6 +287,34 @@ test('alias send_command steps still expand other aliases', () => {
   });
 
   assert.deepEqual(io.sent, ['say hello']);
+});
+
+test('regex aliases match input lines and expose capture groups to templates', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-regex-give',
+      enabled: true,
+      trigger: '^gi\\s+(.+)$',
+      isRegex: true,
+      ignoreCase: true,
+      description: '',
+      group: '',
+      steps: [{ type: 'send_command', template: 'give %1 to pack mule' }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('GI silver sword', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.deepEqual(io.sent, ['give silver sword to pack mule']);
+  assert.deepEqual(io.messages, []);
 });
 
 
@@ -370,4 +432,32 @@ test('trigger run_alias warns without raw-sending unmatched alias text', () => {
 
   assert.deepEqual(io.sent, []);
   assert.match(io.messages.join('\n'), /Trigger: Alias "assist orc" is not defined or is disabled\./);
+});
+
+test('regex triggers match incoming lines and expose capture groups to templates', () => {
+  resetManagers();
+  triggerManager.saveScope(SCOPE_KEY, {
+    triggers: [{
+      id: 'trigger-regex-kill',
+      enabled: true,
+      pattern: '^You killed (.+)\\.$',
+      isRegex: true,
+      ignoreCase: false,
+      description: '',
+      group: '',
+      gag: false,
+      steps: [{ type: 'send_command', template: 'burn %1 corpse' }],
+    }],
+  });
+
+  const result = triggerManager.evaluateLine('You killed goblin.', SCOPE_KEY);
+  assert.equal(result.gag, false);
+  assert.equal(result.matches.length, 1);
+  assert.equal(result.matches[0].fullMatch, 'You killed goblin.');
+  assert.deepEqual(result.matches[0].captures, ['goblin']);
+
+  const io = messagesAndSends();
+  executeTriggerMatches(result.matches, SCOPE_KEY, io);
+  assert.deepEqual(io.sent, ['burn goblin corpse']);
+  assert.deepEqual(io.messages, []);
 });

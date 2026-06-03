@@ -15,6 +15,23 @@ function normalizeWhitespace(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+function compileRegex(source, ignoreCase) {
+  const pattern = String(source || '').trim();
+  if (!pattern) return { regex: null, error: 'Alias trigger is required.' };
+
+  try {
+    return {
+      regex: new RegExp(pattern, ignoreCase ? 'i' : ''),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      regex: null,
+      error: error instanceof Error ? error.message : 'Invalid regex.',
+    };
+  }
+}
+
 function tokenizeInput(line) {
   const tokens = [];
   const text = String(line || '');
@@ -119,6 +136,8 @@ function normalizeAlias(alias) {
     id: typeof alias.id === 'string' && alias.id ? alias.id : createId(),
     enabled: alias.enabled !== false,
     trigger,
+    isRegex: Boolean(alias.isRegex),
+    ignoreCase: alias.ignoreCase !== false,
     description: String(alias.description || ''),
     group: normalizeWhitespace(alias.group),
     steps: steps.length ? steps : [{ type: 'send_command', template: '' }],
@@ -160,6 +179,10 @@ function normalizeData(data) {
 }
 
 function compareAliasPriority(a, b) {
+  if (Boolean(a.isRegex) !== Boolean(b.isRegex)) {
+    return a.isRegex ? 1 : -1;
+  }
+  if (a.isRegex && b.isRegex) return 0;
   const aTokens = tokenizeInput(a.trigger).length;
   const bTokens = tokenizeInput(b.trigger).length;
   if (aTokens !== bTokens) return bTokens - aTokens;
@@ -264,6 +287,8 @@ export const aliasManager = {
       id: createId(),
       enabled: true,
       trigger: '',
+      isRegex: false,
+      ignoreCase: true,
       description: '',
       group: '',
       steps: [{ type: 'send_command', template: '' }],
@@ -315,9 +340,17 @@ export const aliasManager = {
       .sort((a, b) => a.localeCompare(b));
   },
 
-  upsertSimpleAlias(trigger, template, scopeKey = this.getActiveScopeKey()) {
+  upsertSimpleAlias(trigger, template, scopeKey = this.getActiveScopeKey(), options = {}) {
     const normalizedTrigger = normalizeWhitespace(trigger);
-    if (!normalizedTrigger) return null;
+    if (!normalizedTrigger) return { alias: null, error: 'Alias trigger is required.' };
+    const isRegex = options.isRegex === true;
+    const ignoreCase = options.ignoreCase !== false;
+    if (isRegex) {
+      const compiled = compileRegex(normalizedTrigger, ignoreCase);
+      if (compiled.error) {
+        return { alias: null, error: compiled.error };
+      }
+    }
 
     const scope = this._ensureScope(scopeKey);
     const existing = this.findAliasByTrigger(normalizedTrigger, scopeKey);
@@ -332,6 +365,8 @@ export const aliasManager = {
 
     alias.enabled = true;
     alias.trigger = normalizedTrigger;
+    alias.isRegex = isRegex;
+    alias.ignoreCase = ignoreCase;
     alias.steps = [{ type: 'send_command', template: normalizedTemplate }];
 
     if (!existing) {
@@ -339,9 +374,15 @@ export const aliasManager = {
     }
 
     this._save({ scopeKey });
-    return {
+    const snapshot = {
       ...alias,
       steps: alias.steps.map((step) => ({ ...step })),
+    };
+
+    return {
+      ...snapshot,
+      alias: snapshot,
+      error: null,
     };
   },
 
@@ -387,6 +428,19 @@ export const aliasManager = {
       .sort(compareAliasPriority);
 
     for (const alias of candidates) {
+      if (alias.isRegex) {
+        const compiled = compileRegex(alias.trigger, alias.ignoreCase !== false);
+        if (!compiled.regex) continue;
+        const match = compiled.regex.exec(line);
+        if (!match) continue;
+
+        return {
+          alias,
+          args: match.slice(1).map((value) => String(value ?? '')),
+          remainder: String(match[0] ?? ''),
+        };
+      }
+
       const triggerTokens = tokenizeInput(alias.trigger);
       if (!triggerTokens.length || triggerTokens.length > inputTokens.length) continue;
 
@@ -462,8 +516,17 @@ export const aliasManager = {
     if (!normalizedTrigger) {
       diagnostics.push('Trigger is required.');
     } else {
-      const duplicate = aliases.find((item) => item.id !== alias.id && normalizeWhitespace(item.trigger).toLowerCase() === normalizedTrigger);
+      const duplicate = aliases.find((item) => (
+        item.id !== alias.id
+        && Boolean(item.isRegex) === Boolean(alias.isRegex)
+        && normalizeWhitespace(item.trigger).toLowerCase() === normalizedTrigger
+      ));
       if (duplicate) diagnostics.push('Trigger conflicts with another alias in this scope.');
+    }
+
+    if (alias.isRegex) {
+      const compiled = compileRegex(alias.trigger, alias.ignoreCase !== false);
+      if (compiled.error) diagnostics.push(compiled.error);
     }
 
     if (!Array.isArray(alias.steps) || alias.steps.length === 0) {

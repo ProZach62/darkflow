@@ -1849,7 +1849,7 @@ export const settingsManager = {
       triggerInput.type = 'text';
       triggerInput.className = 'dw-input';
       triggerInput.dataset.focusKey = 'alias-trigger';
-      triggerInput.placeholder = 'gi';
+      triggerInput.placeholder = alias.isRegex ? '^gi\\s+(.+)$' : 'gi';
       triggerInput.value = alias.trigger;
       triggerInput.addEventListener('input', () => {
         alias.trigger = triggerInput.value;
@@ -1861,6 +1861,28 @@ export const settingsManager = {
       });
       triggerField.appendChild(triggerInput);
       editor.appendChild(triggerField);
+
+      editor.appendChild(this._createCheckboxRow(
+        'Use regex',
+        'Treat this alias trigger as a JavaScript regular expression. Capturing groups become %1, %2, and so on.',
+        alias.isRegex === true,
+        (checked) => {
+          alias.isRegex = checked;
+          render();
+        }
+      ));
+
+      if (alias.isRegex) {
+        editor.appendChild(this._createCheckboxRow(
+          'Ignore case',
+          'Match this regex alias without caring about capitalization.',
+          alias.ignoreCase !== false,
+          (checked) => {
+            alias.ignoreCase = checked;
+            render();
+          }
+        ));
+      }
 
       const descriptionField = document.createElement('label');
       descriptionField.className = 'dw-field';
@@ -2050,7 +2072,7 @@ export const settingsManager = {
         helper.className = 'settings-helper-text';
         helper.textContent = step.type === 'set_trigger_enabled'
           ? 'Target may be an exact trigger pattern or a template that resolves to one.'
-          : 'Templates support %0 for the full remainder, %1-%9 for arguments, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
+          : 'Simple aliases match command words. Regex aliases use JavaScript regular expressions, with capture groups available as %1-%9. Templates support %0 for the full remainder or regex match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -2193,7 +2215,8 @@ export const settingsManager = {
 
         const description = document.createElement('div');
         description.className = 'settings-alias-list-meta';
-        description.textContent = alias.description || alias.steps.length + ' step' + (alias.steps.length === 1 ? '' : 's');
+        description.textContent = alias.description
+          || (alias.isRegex ? 'regex, ' : '') + alias.steps.length + ' step' + (alias.steps.length === 1 ? '' : 's');
 
         copy.appendChild(trigger);
         copy.appendChild(description);
@@ -2536,7 +2559,7 @@ export const settingsManager = {
       patternInput.type = 'text';
       patternInput.className = 'dw-input';
       patternInput.dataset.focusKey = 'trigger-pattern';
-      patternInput.placeholder = 'You are attacked by *';
+      patternInput.placeholder = trigger.isRegex ? 'You are attacked by (.+)' : 'You are attacked by *';
       patternInput.value = trigger.pattern;
       patternInput.addEventListener('input', () => {
         trigger.pattern = patternInput.value;
@@ -2548,6 +2571,28 @@ export const settingsManager = {
       });
       patternField.appendChild(patternInput);
       editor.appendChild(patternField);
+
+      editor.appendChild(this._createCheckboxRow(
+        'Use regex',
+        'Treat this trigger pattern as a JavaScript regular expression. Capturing groups become %1, %2, and so on.',
+        trigger.isRegex === true,
+        (checked) => {
+          trigger.isRegex = checked;
+          render();
+        }
+      ));
+
+      if (trigger.isRegex) {
+        editor.appendChild(this._createCheckboxRow(
+          'Ignore case',
+          'Match this regex trigger without caring about capitalization.',
+          trigger.ignoreCase === true,
+          (checked) => {
+            trigger.ignoreCase = checked;
+            render();
+          }
+        ));
+      }
 
       const descriptionField = document.createElement('label');
       descriptionField.className = 'dw-field';
@@ -2827,7 +2872,7 @@ export const settingsManager = {
           ? 'Sound actions use Darkflow audio settings, category toggles, and browser audio unlock.'
           : step.type === 'set_alias_enabled'
             ? 'Target may be an exact alias trigger or a template that resolves to one.'
-            : 'Patterns support * or %1-%9 as captures. Step templates support %0 for the full matched line, %1-%9 for captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
+            : 'Simple patterns support * or %1-%9 as captures. Regex triggers use JavaScript regular expressions, with capture groups available as %1-%9. Step templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -2977,10 +3022,10 @@ export const settingsManager = {
         const description = document.createElement('div');
         description.className = 'settings-alias-list-meta';
         if (trigger.description) description.textContent = trigger.description;
-        else if (trigger.gag) description.textContent = 'gag enabled';
+        else if (trigger.gag) description.textContent = (trigger.isRegex ? 'regex, ' : '') + 'gag enabled';
         else if (trigger.steps[0] && trigger.steps[0].type === 'play_sound')
-          description.textContent = 'Play sound: ' + soundLabel(trigger.steps[0].category, trigger.steps[0].sound);
-        else description.textContent = trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
+          description.textContent = (trigger.isRegex ? 'regex, ' : '') + 'Play sound: ' + soundLabel(trigger.steps[0].category, trigger.steps[0].sound);
+        else description.textContent = (trigger.isRegex ? 'regex, ' : '') + trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
 
         copy.appendChild(pattern);
         copy.appendChild(description);
