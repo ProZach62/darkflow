@@ -282,3 +282,62 @@ export function clearMapData() {
   resetInMemoryState();
   localStorage.removeItem(STORAGE_KEY);
 }
+
+// ── Debug tools (exposed on window.mapDebug for the browser console) ─────────
+
+function shortId(id) {
+  return id === null || id === undefined ? null : String(id).slice(0, 8);
+}
+
+function debugSummary() {
+  let positioned = 0;
+  let unpositioned = 0;
+  const byArea = {};
+  const pending = [];
+  for (const room of rooms.values()) {
+    if (room.x !== null) {
+      positioned++;
+      byArea[room.area] = (byArea[room.area] || 0) + 1;
+    } else {
+      unpositioned++;
+      if (room.name) pending.push(room.name);
+    }
+  }
+  const cur = currentRoomId ? rooms.get(currentRoomId) : null;
+  return {
+    active,
+    totalRooms: rooms.size,
+    positioned,
+    unpositioned,
+    currentRoom: cur
+      ? { id: shortId(cur.id), name: cur.name, area: cur.area, positioned: cur.x !== null }
+      : null,
+    roomsByArea: byArea,
+    pendingRooms: pending.slice(0, 25),
+    areaVersions: Object.fromEntries(areaVersions),
+  };
+}
+
+function debugRooms(area) {
+  const out = [];
+  for (const room of rooms.values()) {
+    if (area && room.area !== area) continue;
+    out.push({
+      id: shortId(room.id),
+      name: room.name,
+      area: room.area,
+      coords: room.x !== null ? room.x + ',' + room.y + ',' + room.z : 'NONE',
+      exits: Object.keys(room.exits || {}),
+    });
+  }
+  return out;
+}
+
+if (typeof window !== 'undefined') {
+  window.mapDebug = {
+    summary: debugSummary,
+    rooms: debugRooms,
+    clearData: clearMapData,
+    resync: (area) => requestAreaSync(area, true),
+  };
+}

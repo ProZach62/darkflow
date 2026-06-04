@@ -1,7 +1,9 @@
-import * as mapDataV1 from './map-data.js';
-import * as mapDataV2 from './map-data-v2.js';
+import * as mapData from './map-data-v2.js';
 
 const TILE_SIZE = 32;
+// Gap between room boxes. Rooms are drawn as separate boxes spaced apart, with
+// connector lines bridging the gap between connected neighbours.
+const TILE_GAP = 8;
 const MAP_DIRECTIONS = new Set([
   'north', 'south', 'east', 'west',
   'northeast', 'northwest', 'southeast', 'southwest',
@@ -13,28 +15,69 @@ const CARDINAL_DIRS = [
   ['north', 'n'], ['south', 's'], ['east', 'e'], ['west', 'w'],
 ];
 
-// Returns extra CSS classes for a positioned tile: base .map-tile-room plus
-// .map-tile-open-{n|s|e|w} for each cardinal exit that leads to an adjacent
-// positioned room at the expected coordinate. Open sides render as gaps in the
-// tile border so connected rooms visually flow together.
-function activeMapSource() {
-  return mapDataV2.isActive() ? mapDataV2 : mapDataV1;
+// Remember the last room the player occupied that had a coordinate, per area.
+// When the player steps into a room the server has not positioned yet, we keep
+// the view parked on this spot instead of blanking the whole panel.
+const lastCenterByArea = new Map();
+
+// Pick a coordinate to center the grid on when the player's own room has no
+// coordinate. Prefer the last positioned room we centered on for this area;
+// otherwise fall back to the area room nearest the centroid so the view is
+// stable rather than jumping to an arbitrary edge room.
+function pickCenterRoom(area, areaRooms, source) {
+  const lastId = lastCenterByArea.get(area);
+  if (lastId) {
+    const last = source.getRoom(lastId);
+    if (last && last.area === area && last.x !== null) return last;
+  }
+
+  let sumX = 0;
+  let sumY = 0;
+  for (const room of areaRooms) {
+    sumX += room.x;
+    sumY += room.y;
+  }
+  const cx = sumX / areaRooms.length;
+  const cy = sumY / areaRooms.length;
+
+  let best = areaRooms[0];
+  let bestDist = Infinity;
+  for (const room of areaRooms) {
+    const dx = room.x - cx;
+    const dy = room.y - cy;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      best = room;
+      bestDist = dist;
+    }
+  }
+  return best;
 }
 
-function buildExitClasses(room, cz, source) {
-  if (!room || !room.exits) return ' map-tile-room';
-  let cls = ' map-tile-room';
+// Child spans drawn in the gap outside a room box for each cardinal exit:
+//  - a CONNECTOR line bridging to an adjacent mapped neighbour, or
+//  - a shorter STUB tick toward an exit whose destination is not mapped yet
+//    (so the player can see where there is still more to explore -- the map
+//    grows visibly as you walk, mirroring Mudlet's exit stubs).
+function buildExitSpans(room, cz, source) {
+  if (!room || !room.exits) return '';
+  let spans = '';
   for (const [dir, abbr] of CARDINAL_DIRS) {
     const destId = room.exits[dir];
     if (!destId) continue;
     const dest = source.getRoom(destId);
-    if (!dest || dest.z !== cz || dest.x === null) continue;
+    if (!dest || dest.x === null) {
+      spans += '<span class="map-stub map-stub-' + abbr + '"></span>';
+      continue;
+    }
+    if (dest.z !== cz) continue;
     const offset = source.DIR_OFFSETS[dir];
     if (dest.x === room.x + offset.dx && dest.y === room.y + offset.dy) {
-      cls += ' map-tile-open-' + abbr;
+      spans += '<span class="map-conn map-conn-' + abbr + '"></span>';
     }
+    // Connected room positioned elsewhere (not adjacent): no drawable line.
   }
-  return cls;
+  return spans;
 }
 
 // Priority order: more specific terrains first
@@ -55,25 +98,47 @@ function getTerrainName(environment) {
 }
 
 export function renderMap(bodyEl) {
-  const source = activeMapSource();
+  const source = mapData;
   const currentId = source.getCurrentRoomId();
   const currentRoom = currentId ? source.getRoom(currentId) : null;
 
-  if (!currentRoom || currentRoom.x === null) {
-    const message = source === mapDataV2 && mapDataV2.hasCurrentRoom()
-      ? 'Map layout pending.<br>Keep exploring this area.'
-      : 'No map data yet.<br>Explore to build the map.';
-    bodyEl.innerHTML = '<div class="map-grid map-empty">'
-      + '<div class="map-empty-msg">' + message + '</div></div>';
-    return;
+  // The player's room is only a usable render center when it has a coordinate.
+  const playerRoom = currentRoom && currentRoom.x !== null ? currentRoom : null;
+  const playerId = playerRoom ? playerRoom.id : null;
+
+  // Decide what to center the grid on. If the player's room is positioned we
+  // center on it. If it is not (a room the server has not laid out yet) we do
+  // NOT blank the map: we keep showing the surrounding area parked on the last
+  // known position, with a "locating" indicator, so a single unpositioned room
+  // never wipes everything the player has already explored.
+  let centerRoom = playerRoom;
+  let pending = false;
+
+  if (!centerRoom) {
+    const area = currentRoom ? currentRoom.area : null;
+    const areaRooms = area ? source.getRoomsByArea(area) : [];
+    if (!area || areaRooms.length === 0) {
+      const message = currentRoom
+        ? 'Locating you...<br>Keep exploring this area.'
+        : 'No map data yet.<br>Explore to build the map.';
+      bodyEl.innerHTML = '<div class="map-grid map-empty">'
+        + '<div class="map-empty-msg">' + message + '</div></div>';
+      return;
+    }
+    centerRoom = pickCenterRoom(area, areaRooms, source);
+    pending = true;
+  } else if (centerRoom.area) {
+    // Remember where we are so we can park here if the next room is unpositioned.
+    lastCenterByArea.set(centerRoom.area, centerRoom.id);
   }
 
   const bodyWidth = bodyEl.clientWidth || 320;
   const bodyHeight = bodyEl.clientHeight || 240;
 
-  // How many tiles fit in the panel
-  const tilesX = Math.max(3, Math.floor(bodyWidth / TILE_SIZE));
-  const tilesY = Math.max(3, Math.floor(bodyHeight / TILE_SIZE));
+  // How many tiles fit in the panel (each cell is a tile plus the gap to the next)
+  const pitch = TILE_SIZE + TILE_GAP;
+  const tilesX = Math.max(3, Math.floor((bodyWidth + TILE_GAP) / pitch));
+  const tilesY = Math.max(3, Math.floor((bodyHeight + TILE_GAP) / pitch));
 
   // Ensure odd numbers so player is centered
   const gridW = tilesX % 2 === 0 ? tilesX - 1 : tilesX;
@@ -81,12 +146,12 @@ export function renderMap(bodyEl) {
   const radiusX = (gridW - 1) / 2;
   const radiusY = (gridH - 1) / 2;
 
-  const cx = currentRoom.x;
-  const cy = currentRoom.y;
-  const cz = currentRoom.z;
+  const cx = centerRoom.x;
+  const cy = centerRoom.y;
+  const cz = centerRoom.z;
 
-  const areaRooms = source.getRoomsByArea(currentRoom.area);
-  const distances = buildConnectedDistances(currentRoom, Math.max(gridW, gridH) + 8, source);
+  const areaRooms = source.getRoomsByArea(centerRoom.area);
+  const distances = buildConnectedDistances(centerRoom, Math.max(gridW, gridH) + 8, source);
   const buckets = new Map();
   const visibleBounds = {
     minX: cx - radiusX,
@@ -106,6 +171,7 @@ export function renderMap(bodyEl) {
 
   // Build grid HTML
   let html = '<div class="map-grid" style="'
+    + 'gap:' + TILE_GAP + 'px;'
     + 'grid-template-columns:repeat(' + gridW + ',' + TILE_SIZE + 'px);'
     + 'grid-template-rows:repeat(' + gridH + ',' + TILE_SIZE + 'px)">';
 
@@ -114,31 +180,34 @@ export function renderMap(bodyEl) {
       const worldX = cx - radiusX + rx;
       const worldY = cy - radiusY + ry;
       const bucket = buckets.get(worldX + ',' + worldY) || [];
-      const room = chooseRoomForTile(bucket, currentId, distances, connectedVisibleCount);
+      const room = chooseRoomForTile(bucket, playerId, distances, connectedVisibleCount);
 
       if (!room) {
         html += '<div class="map-tile"></div>';
-      } else if (room.id === currentId) {
+      } else if (room.id === playerId) {
         const terrain = getTerrainName(room.environment);
-        html += '<div class="map-tile map-tile-' + terrain
-          + buildExitClasses(room, cz, source)
+        html += '<div class="map-tile map-tile-room map-tile-' + terrain
           + ' map-tile-player' + conflictClass(bucket)
-          + '" title="' + escAttr(tileTitle(room, bucket)) + '"></div>';
+          + '" title="' + escAttr(tileTitle(room, bucket)) + '">'
+          + buildExitSpans(room, cz, source) + '</div>';
       } else {
         const terrain = getTerrainName(room.environment);
-        html += '<div class="map-tile map-tile-' + terrain
-          + buildExitClasses(room, cz, source)
-          + conflictClass(bucket)
-          + '" title="' + escAttr(tileTitle(room, bucket)) + '"></div>';
+        const lastPos = pending && room.id === centerRoom.id ? ' map-tile-lastpos' : '';
+        html += '<div class="map-tile map-tile-room map-tile-' + terrain
+          + conflictClass(bucket) + lastPos
+          + '" title="' + escAttr(tileTitle(room, bucket)) + '">'
+          + buildExitSpans(room, cz, source) + '</div>';
       }
     }
   }
 
   html += '</div>';
 
-  // Z-level indicator overlay
-  const hasUp = currentRoom.exits && currentRoom.exits.up !== undefined;
-  const hasDown = currentRoom.exits && currentRoom.exits.down !== undefined;
+  // Z-level indicator overlay. Reflects the room the player is in when known,
+  // otherwise the parked center room.
+  const zRoom = playerRoom || centerRoom;
+  const hasUp = zRoom.exits && zRoom.exits.up !== undefined;
+  const hasDown = zRoom.exits && zRoom.exits.down !== undefined;
   if (hasUp || hasDown || cz !== 0) {
     html += '<div class="map-zlevel">';
     if (hasUp) html += '<span class="map-zlevel-arrow">&#x25B2;</span> ';
@@ -147,10 +216,16 @@ export function renderMap(bodyEl) {
     html += '</div>';
   }
 
-  html += '<div class="map-roomname">' + escAttr(currentRoom.name) + '</div>';
+  // Name the room the player is actually in (even if it is not positioned yet).
+  const nameRoom = currentRoom || centerRoom;
+  html += '<div class="map-roomname">' + escAttr(nameRoom.name) + '</div>';
   html += '<div class="map-compass">N&#x2191;</div>';
-  const status = source.getMapStatus();
-  if (status) html += '<div class="map-status">' + escAttr(status) + '</div>';
+  if (pending) {
+    html += '<div class="map-pending">&#x25C9; Locating you...</div>';
+  } else {
+    const status = source.getMapStatus();
+    if (status) html += '<div class="map-status">' + escAttr(status) + '</div>';
+  }
   html += '<button class="map-resync-btn" title="Clear and resync map for this area">Resync</button>';
 
   bodyEl.innerHTML = html;
@@ -158,18 +233,24 @@ export function renderMap(bodyEl) {
   const resyncBtn = bodyEl.querySelector('.map-resync-btn');
   if (resyncBtn) {
     resyncBtn.addEventListener('click', () => {
-      const room = currentId ? source.getRoom(currentId) : null;
-      if (room && room.area) source.clearMapDataForArea(room.area);
+      const area = (currentRoom || centerRoom).area;
+      if (area) source.clearMapDataForArea(area);
     });
   }
 
   lastRenderDebug = {
-    currentRoom: {
+    pending,
+    currentRoom: currentRoom ? {
       id: currentRoom.id.slice(0, 8),
       name: currentRoom.name,
       area: currentRoom.area,
-      coords: cx + ',' + cy + ',' + cz,
+      positioned: currentRoom.x !== null,
       exits: currentRoom.exits ? Object.keys(currentRoom.exits) : [],
+    } : null,
+    centerRoom: {
+      id: centerRoom.id.slice(0, 8),
+      name: centerRoom.name,
+      coords: cx + ',' + cy + ',' + cz,
     },
     areaRoomCount: areaRooms.length,
     connectedRoomCount: distances.size,

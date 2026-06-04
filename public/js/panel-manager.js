@@ -2,9 +2,7 @@ import { gmcp } from './gmcp.js';
 import { state as appState } from './state.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { panelRenderers } from './panel-renderers.js';
-import { processRoomInfo, mergeServerAreaData, mergeServerUpdate, applyRoomCorrection, load as loadMapData } from './map-data.js';
 import {
-  isActive as isMapData2Active,
   processCurrent as processMapData2Current,
   mergeServerAreaData as mergeMapData2Area,
   mergeServerUpdate as mergeMapData2Update,
@@ -98,7 +96,6 @@ export const panelManager = {
   init() {
     if (appState.zorkOnlyMode) {
       this.disableForZorkOnlyMode();
-      loadMapData();
       loadMapData2();
       this.registerGmcpHandlers();
       return;
@@ -115,7 +112,6 @@ export const panelManager = {
     }
 
     this._applyDockStateToDom();
-    loadMapData();
     loadMapData2();
     this.attachDragHandlers();
     this.registerGmcpHandlers();
@@ -1709,23 +1705,7 @@ export const panelManager = {
         this._renderPanel('roomImage');
       }
       this._renderPanel('room');
-      if (!isMapData2Active()) processRoomInfo(data);
       this._queuePanelRender('map');
-    });
-
-    gmcp.on('Darkwind.MapData.Area', (data) => {
-      mergeServerAreaData(data);
-      this._queuePanelRender('map');
-    });
-
-    gmcp.on('Darkwind.MapData.Update', (data) => {
-      const merged = mergeServerUpdate(data);
-      if (merged) this._queuePanelRender('map');
-    });
-
-    gmcp.on('Darkwind.MapData.RoomCoords', (data) => {
-      const merged = applyRoomCorrection(data);
-      if (merged) this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData2.Current', (data) => {

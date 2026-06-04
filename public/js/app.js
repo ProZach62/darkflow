@@ -14,7 +14,7 @@ import { broadcastManager } from './broadcast-manager.js';
 import { soundPanel } from './sound-panel.js';
 import { soundManager } from './sound-manager.js';
 import { settingsManager } from './settings-manager.js';
-import { flushPendingMapSave } from './map-data.js';
+import { flushPendingMapSave } from './map-data-v2.js';
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
