@@ -39,6 +39,11 @@ function formatInt(n) {
   return typeof n === 'number' ? n.toLocaleString('en-US') : n;
 }
 
+function isCompletedQuest(quest) {
+  const status = String(quest && quest.status ? quest.status : '').trim().toLowerCase();
+  return status === 'finished' || status === 'complete' || status === 'completed';
+}
+
 function trimLeadingFragments(fragments, charCount) {
   let remaining = Math.max(0, charCount);
   const trimmed = [];
@@ -1053,7 +1058,9 @@ export const panelRenderers = {
     }
 
     var html = '';
-    var list = data.list;
+    var list = Array.isArray(data.list)
+      ? data.list.filter(function(q) { return !isCompletedQuest(q); })
+      : data.list;
 
     // Quest list
     if (Array.isArray(list) && list.length > 0) {
@@ -1062,14 +1069,13 @@ export const panelRenderers = {
       for (var j = 0; j < list.length; j++) {
         var q = list[j];
         var cls = 'quest-list-item';
-        if (q.status === 'Finished') cls += ' quest-list-done';
         var qPct = q.total > 0 ? Math.round((q.current / q.total) * 100) : 0;
         if (qPct > 100) qPct = 100;
         html += '<div class="' + cls + '">';
         html += '<div class="quest-list-name">' + escHtml(q.name) + '</div>';
         html += '<div class="quest-list-info">';
         html += '<span class="quest-list-status">' + escHtml(q.status) + '</span>';
-        html += '<div class="quest-bar quest-bar-sm"><div class="quest-bar-fill' + (q.status === 'Finished' ? ' quest-bar-done' : '') + '" style="width:' + qPct + '%"></div></div>';
+        html += '<div class="quest-bar quest-bar-sm"><div class="quest-bar-fill" style="width:' + qPct + '%"></div></div>';
         html += '</div></div>';
         if (Array.isArray(q.objectives) && q.objectives.length > 0) {
           html += '<div class="quest-objectives">';
@@ -1090,7 +1096,7 @@ export const panelRenderers = {
       }
       html += '</div>';
     } else {
-      html += '<div class="placeholder">No quests accepted</div>';
+      html += '<div class="placeholder">No active quests</div>';
     }
 
     bodyEl.innerHTML = html;
