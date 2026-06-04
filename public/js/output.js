@@ -202,7 +202,7 @@ export function refreshOutputLayout() {
 
   measureEstimatedLineHeight();
   measureEstimatedCharacterWidth();
-  sendTerminalGeometry(false);
+  updateTerminalGeometry();
   markAllLineHeightsDirty();
   renderInvalidated = true;
   scheduleFrame();
@@ -849,10 +849,14 @@ function getTerminalGeometry() {
     geometry.rows = rows;
   }
 
+  if (Number.isInteger(state.settings.terminalWidthColumns)) {
+    geometry.columns = state.settings.terminalWidthColumns;
+  }
+
   return geometry;
 }
 
-function sendTerminalGeometry(force = false) {
+function updateTerminalGeometry() {
   const geometry = getTerminalGeometry();
   const current = state.terminalGeometry && typeof state.terminalGeometry === 'object'
     ? state.terminalGeometry
@@ -862,17 +866,26 @@ function sendTerminalGeometry(force = false) {
 
   state.terminalGeometry = geometry;
 
+  return {
+    geometry,
+    changed: columnsChanged || rowsChanged,
+  };
+}
+
+export function sendTerminalGeometry(force = false) {
+  const result = updateTerminalGeometry();
+
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
     return false;
   }
 
-  if (!force && !columnsChanged && !rowsChanged) {
+  if (!force && !result.changed) {
     return false;
   }
 
   const payload = JSON.stringify({
-    width: geometry.columns,
-    height: geometry.rows,
+    width: result.geometry.columns,
+    height: result.geometry.rows,
   });
   return sendSocketPayload(terminalGeometryTextEncoder.encode(
     GMCP_TERMINAL_SIZE_PACKAGE + ' ' + payload

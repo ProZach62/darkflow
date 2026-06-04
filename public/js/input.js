@@ -302,6 +302,11 @@ function parseBraceArguments(text, command) {
   return values;
 }
 
+function startsWithSlashCommand(text, command) {
+  const trimmed = String(text || '').trim().toLowerCase();
+  return trimmed === '/' + command || trimmed.startsWith('/' + command + ' ');
+}
+
 function handleAliasSlashCommand(text) {
   const trimmed = String(text || '').trim();
   if (!trimmed.startsWith('/')) return null;
@@ -355,6 +360,48 @@ function handleAliasSlashCommand(text) {
 
   if (command === '/alias') {
     const scope = aliasManager.getScopeSnapshot(scopeKey);
+    if (startsWithSlashCommand(trimmed, 'alias regex')) {
+      const args = parseBraceArguments(trimmed, 'alias regex');
+      if (args === null || (args.length !== 0 && args.length !== 1 && args.length !== 2)) {
+        appendAliasWarning('Usage: /alias regex {pattern} {command}');
+        return { handled: true, localOnly: true };
+      }
+
+      if (!args.length) {
+        const aliases = scope.aliases
+          .filter((alias) => alias.isRegex)
+          .slice()
+          .sort((a, b) => a.trigger.localeCompare(b.trigger));
+        appendSystemMessage(aliases.length
+          ? 'Regex aliases: ' + aliases.map((alias) => alias.trigger).join(', ')
+          : 'Regex aliases: none set for this server.');
+        return { handled: true, localOnly: true };
+      }
+
+      if (args.length === 1) {
+        const alias = scope.aliases.find((item) => item.isRegex && item.trigger === String(args[0] || '').trim());
+        if (!alias) {
+          appendSystemMessage('Alias: regex "' + args[0] + '" is not defined.');
+          return { handled: true, localOnly: true };
+        }
+        appendSystemMessage(
+          'Alias: /' + alias.trigger + '/ -> '
+          + (alias.steps.length === 1 && alias.steps[0].type === 'send_command'
+            ? formatAliasStepTemplate(alias.steps[0].template)
+            : alias.steps.length + ' step' + (alias.steps.length === 1 ? '' : 's'))
+        );
+        return { handled: true, localOnly: true };
+      }
+
+      const result = aliasManager.upsertSimpleAlias(args[0], args[1], scopeKey, { isRegex: true, ignoreCase: true });
+      if (result && result.error) {
+        appendAliasWarning(result.error);
+      } else {
+        appendSystemMessage('Regex alias set: /' + args[0] + '/ -> ' + formatAliasStepTemplate(args[1]));
+      }
+      return { handled: true, localOnly: true };
+    }
+
     const trigger = tokens[1] ? tokens[1].value : '';
 
     if (!trigger) {
@@ -398,10 +445,14 @@ function handleAliasSlashCommand(text) {
       return { handled: true, localOnly: true };
     }
 
-    aliasManager.upsertSimpleAlias(trigger, template, scopeKey);
-    appendSystemMessage(
-      'Alias set: ' + trigger + ' -> ' + formatAliasStepTemplate(template)
-    );
+    const result = aliasManager.upsertSimpleAlias(trigger, template, scopeKey);
+    if (result && result.error) {
+      appendAliasWarning(result.error);
+    } else {
+      appendSystemMessage(
+        'Alias set: ' + trigger + ' -> ' + formatAliasStepTemplate(template)
+      );
+    }
     return { handled: true, localOnly: true };
   }
 
@@ -446,6 +497,40 @@ function handleAliasSlashCommand(text) {
 
   if (command === '/trigger') {
     const scope = triggerManager.getScopeSnapshot(scopeKey);
+    if (startsWithSlashCommand(trimmed, 'trigger regex')) {
+      const args = parseBraceArguments(trimmed, 'trigger regex');
+      if (args === null) {
+        appendTriggerWarning('Usage: /trigger regex {pattern} {command}');
+        return { handled: true, localOnly: true };
+      }
+
+      if (!args.length) {
+        const triggers = scope.triggers.filter((trigger) => trigger.isRegex).slice();
+        appendSystemMessage(triggers.length
+          ? 'Regex triggers: ' + triggers.map((trigger) => triggerManager.describeTrigger(trigger)).join(' | ')
+          : 'Regex triggers: none set for this server.');
+        return { handled: true, localOnly: true };
+      }
+
+      if (args.length === 1) {
+        const trigger = scope.triggers.find((item) => item.isRegex && item.pattern === String(args[0] || '').trim());
+        if (!trigger) {
+          appendSystemMessage('Trigger: regex "' + args[0] + '" is not defined.');
+        } else {
+          appendSystemMessage('Trigger: ' + triggerManager.describeTrigger(trigger));
+        }
+        return { handled: true, localOnly: true };
+      }
+
+      const result = triggerManager.upsertSimpleTrigger(args[0], args[1], scopeKey, { isRegex: true, ignoreCase: false });
+      if (result.error) {
+        appendTriggerWarning(result.error);
+      } else {
+        appendSystemMessage('Trigger set: ' + triggerManager.describeTrigger(result.trigger));
+      }
+      return { handled: true, localOnly: true };
+    }
+
     const args = parseBraceArguments(trimmed, 'trigger');
     if (args === null) {
       appendTriggerWarning('Usage: /trigger {pattern} {command}');
@@ -501,6 +586,20 @@ function handleAliasSlashCommand(text) {
   }
 
   if (command === '/unalias') {
+    if (startsWithSlashCommand(trimmed, 'unalias regex')) {
+      const args = parseBraceArguments(trimmed, 'unalias regex');
+      if (args === null || args.length !== 1) {
+        appendAliasWarning('Usage: /unalias regex {pattern}');
+        return { handled: true, localOnly: true };
+      }
+      if (!aliasManager.removeAliasByTrigger(args[0], scopeKey)) {
+        appendSystemMessage('Alias: regex "' + args[0] + '" was not defined.');
+      } else {
+        appendSystemMessage('Regex alias cleared: ' + args[0]);
+      }
+      return { handled: true, localOnly: true };
+    }
+
     const trigger = tokens[1] ? tokens[1].value : '';
     if (!trigger) {
       appendAliasWarning('Usage: /unalias <trigger>');
@@ -531,6 +630,20 @@ function handleAliasSlashCommand(text) {
   }
 
   if (command === '/untrigger') {
+    if (startsWithSlashCommand(trimmed, 'untrigger regex')) {
+      const args = parseBraceArguments(trimmed, 'untrigger regex');
+      if (args === null || args.length !== 1) {
+        appendTriggerWarning('Usage: /untrigger regex {pattern}');
+        return { handled: true, localOnly: true };
+      }
+      if (!triggerManager.removeTriggerByPattern(args[0], scopeKey)) {
+        appendSystemMessage('Trigger: regex "' + args[0] + '" was not defined.');
+      } else {
+        appendSystemMessage('Regex trigger cleared: ' + args[0]);
+      }
+      return { handled: true, localOnly: true };
+    }
+
     const args = parseBraceArguments(trimmed, 'untrigger');
     if (args === null || args.length !== 1) {
       appendTriggerWarning('Usage: /untrigger {pattern}');

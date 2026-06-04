@@ -11,6 +11,10 @@ function normalizeWhitespace(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+function normalizeTriggerMatchText(value) {
+  return String(value || '').replace(/^>\s?/, '');
+}
+
 function normalizeVolume(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 1;
@@ -81,6 +85,8 @@ function normalizeTrigger(trigger) {
     id: typeof trigger.id === 'string' && trigger.id ? trigger.id : createId(),
     enabled: trigger.enabled !== false,
     pattern,
+    isRegex: Boolean(trigger.isRegex),
+    ignoreCase: Boolean(trigger.ignoreCase),
     description: String(trigger.description || ''),
     group: normalizeWhitespace(trigger.group),
     gag: Boolean(trigger.gag),
@@ -110,9 +116,27 @@ function escapeRegex(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function compilePattern(pattern) {
+function compileRegexPattern(pattern, ignoreCase) {
   const source = String(pattern || '').trim();
   if (!source) return { regex: null, error: 'Trigger pattern is required.' };
+
+  try {
+    return {
+      regex: new RegExp(source, ignoreCase ? 'i' : ''),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      regex: null,
+      error: error instanceof Error ? error.message : 'Invalid regex.',
+    };
+  }
+}
+
+function compilePattern(pattern, options = {}) {
+  const source = String(pattern || '').trim();
+  if (!source) return { regex: null, error: 'Trigger pattern is required.' };
+  if (options.isRegex) return compileRegexPattern(source, options.ignoreCase);
 
   let compiled = '^';
   let index = 0;
@@ -216,6 +240,8 @@ export const triggerManager = {
       id: createId(),
       enabled: true,
       pattern: '',
+      isRegex: false,
+      ignoreCase: false,
       description: '',
       group: '',
       gag: false,
@@ -229,9 +255,11 @@ export const triggerManager = {
     return this._ensureScope(scopeKey).triggers.find((trigger) => trigger.pattern === normalizedPattern) || null;
   },
 
-  upsertSimpleTrigger(pattern, template, scopeKey = this.getActiveScopeKey()) {
+  upsertSimpleTrigger(pattern, template, scopeKey = this.getActiveScopeKey(), options = {}) {
     const normalizedPattern = String(pattern || '').trim();
     const normalizedTemplate = String(template || '').trim();
+    const isRegex = options.isRegex === true;
+    const ignoreCase = options.ignoreCase === true;
     if (!normalizedPattern) {
       return { trigger: null, error: 'Trigger pattern is required.' };
     }
@@ -239,7 +267,7 @@ export const triggerManager = {
       return { trigger: null, error: 'Trigger action is required.' };
     }
 
-    const compiled = compilePattern(normalizedPattern);
+    const compiled = compilePattern(normalizedPattern, { isRegex, ignoreCase });
     if (compiled.error) {
       return { trigger: null, error: compiled.error };
     }
@@ -250,6 +278,8 @@ export const triggerManager = {
 
     trigger.enabled = true;
     trigger.pattern = normalizedPattern;
+    trigger.isRegex = isRegex;
+    trigger.ignoreCase = ignoreCase;
     trigger.gag = false;
     trigger.steps = [{ type: 'send_command', template: normalizedTemplate }];
 
@@ -305,12 +335,19 @@ export const triggerManager = {
       diagnostics.push('Pattern is required.');
     }
 
-    const duplicate = triggers.find((item) => item.id !== trigger.id && item.pattern === trigger.pattern);
+    const duplicate = triggers.find((item) => (
+      item.id !== trigger.id
+      && Boolean(item.isRegex) === Boolean(trigger.isRegex)
+      && item.pattern === trigger.pattern
+    ));
     if (duplicate) {
       diagnostics.push('Pattern conflicts with another trigger in this scope.');
     }
 
-    const compiled = compilePattern(trigger.pattern);
+    const compiled = compilePattern(trigger.pattern, {
+      isRegex: trigger.isRegex,
+      ignoreCase: trigger.ignoreCase,
+    });
     if (compiled.error) {
       diagnostics.push(compiled.error);
     }
@@ -357,7 +394,9 @@ export const triggerManager = {
     let action = trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
     if (firstStep && firstStep.template) action = firstStep.template;
     if (firstStep && firstStep.type === 'play_sound') action = 'Play sound: ' + formatSoundStep(firstStep);
-    return '{' + trigger.pattern + '} -> ' + action + (trigger.gag ? ' [gag]' : '');
+    return '{' + trigger.pattern + '}'
+      + (trigger.isRegex ? ' [regex' + (trigger.ignoreCase ? ', ignore case' : '') + ']' : '')
+      + ' -> ' + action + (trigger.gag ? ' [gag]' : '');
   },
 
   getCompiledTriggers(scopeKey = this.getActiveScopeKey(), scopeOverride = null) {
@@ -365,7 +404,10 @@ export const triggerManager = {
     return sourceScope.triggers
       .filter((trigger) => trigger.enabled !== false)
       .map((trigger) => {
-        const compiled = compilePattern(trigger.pattern);
+        const compiled = compilePattern(trigger.pattern, {
+          isRegex: trigger.isRegex,
+          ignoreCase: trigger.ignoreCase,
+        });
         return {
           ...trigger,
           regex: compiled.regex,
@@ -381,17 +423,18 @@ export const triggerManager = {
       return { matches: [], gag: false };
     }
 
-    const line = String(text || '');
+    const line = normalizeTriggerMatchText(text);
     const matches = [];
     let gag = false;
 
     for (const trigger of compiledTriggers) {
+      trigger.regex.lastIndex = 0;
       const match = trigger.regex.exec(line);
       if (!match) continue;
 
       matches.push({
         trigger,
-        fullMatch: line,
+        fullMatch: String(match[0] ?? line),
         captures: match.slice(1).map((value) => String(value ?? '')),
       });
       if (trigger.gag) gag = true;

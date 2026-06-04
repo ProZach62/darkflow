@@ -3,6 +3,7 @@ import { DEFAULT_OUTPUT_SCROLLBACK_PRESET } from './constants.js';
 import {
   appendSystemMessage,
   closeOpenOutputLine,
+  sendTerminalGeometry,
   setOutputScrollbackBehavior,
   setOutputScrollbackPreset,
   setOutputSplitRatio,
@@ -20,6 +21,8 @@ const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
 const HIGHLIGHT_STORAGE_KEY = 'darkwind-client-highlights-v1';
 const TRIGGER_STORAGE_KEY = 'darkwind-client-triggers-v1';
+const MIN_TERMINAL_WIDTH_COLUMNS = 40;
+const MAX_TERMINAL_WIDTH_COLUMNS = 240;
 
 function formatKeyCodeLabel(code) {
   const value = String(code || '').trim();
@@ -62,11 +65,14 @@ export const settingsManager = {
     repeatLastCommand: true,
     keyMapperEnabled: false,
     keyMappings: [],
+    aliasTabCompletionEnabled: true,
     historyTabCompletionEnabled: false,
     scrollbackBehavior: 'pause',
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
     screenReaderMode: false,
+    terminalWidthColumns: null,
+    settingsBackupPromptEnabled: true,
   },
   _settings: {},
   _draftSettings: {},
@@ -86,6 +92,8 @@ export const settingsManager = {
   _previousFocusEl: null,
   _modalKeyHandler: null,
   _activeEditFocusScope: null,
+  _settingsSessionBaseline: '',
+  _backupClosePromptEl: null,
 
   init() {
     this._settings = { ...this._defaults };
@@ -107,6 +115,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(this._settings.scrollbackBehavior);
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
+    sendTerminalGeometry(false);
   },
 
   get(key) {
@@ -121,7 +130,7 @@ export const settingsManager = {
   },
 
   open() {
-    this.close();
+    this.close({ skipBackupPrompt: true });
     this._previousFocusEl = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -140,6 +149,7 @@ export const settingsManager = {
     this._draftHighlightScope = highlightManager.getScopeSnapshot(this._highlightScopeKey);
     this._triggerScopeKey = triggerManager.getActiveScopeKey();
     this._draftTriggerScope = triggerManager.getScopeSnapshot(this._triggerScopeKey);
+    this._settingsSessionBaseline = this._getCurrentSettingsSessionFingerprint();
 
     const overlay = this._buildModal();
     const modalKeyHandler = (event) => this._handleModalKeydown(event);
@@ -173,7 +183,12 @@ export const settingsManager = {
     this._focusSettingsControl('settings-tab-connection');
   },
 
-  close() {
+  close(options = {}) {
+    if (!options.skipBackupPrompt && this._shouldPromptForSettingsBackup()) {
+      this._showSettingsBackupPrompt();
+      return false;
+    }
+
     if (this._escHandler) {
       document.removeEventListener('keydown', this._escHandler, true);
       this._escHandler = null;
@@ -200,11 +215,14 @@ export const settingsManager = {
     this._footerStatusEl = null;
     this._modalKeyHandler = null;
     this._activeEditFocusScope = null;
+    this._settingsSessionBaseline = '';
+    this._backupClosePromptEl = null;
     const previous = this._previousFocusEl;
     this._previousFocusEl = null;
     if (previous && document.contains(previous)) {
       previous.focus();
     }
+    return true;
   },
 
   _save() {
@@ -224,6 +242,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(this._settings.scrollbackBehavior);
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
+    sendTerminalGeometry(true);
     this._save();
   },
 
@@ -295,26 +314,6 @@ export const settingsManager = {
       this.close();
       return;
     }
-
-    if (event.key !== 'Tab') return;
-
-    if (this._handleEditScopeTab(event)) return;
-
-    const focusables = this._getFocusableSettingsControls();
-    if (!focusables.length) {
-      event.preventDefault();
-      return;
-    }
-
-    const current = document.activeElement;
-    let index = focusables.indexOf(current);
-    if (index < 0) index = event.shiftKey ? 0 : -1;
-    const nextIndex = event.shiftKey
-      ? (index <= 0 ? focusables.length - 1 : index - 1)
-      : (index >= focusables.length - 1 ? 0 : index + 1);
-
-    event.preventDefault();
-    focusables[nextIndex].focus();
   },
 
   _getEditScopeName(target) {
@@ -380,6 +379,128 @@ export const settingsManager = {
     event.preventDefault();
     controls[nextIndex].focus();
     return true;
+  },
+
+  _applyDraftChanges(closeAfterApply = false) {
+    this._syncDraftVariablesFromSteps();
+    this._applySettings(this._draftSettings);
+    triggerManager.saveScope(this._triggerScopeKey, this._draftTriggerScope);
+    highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
+    aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
+    this._setFooterStatus('Settings applied.');
+    if (closeAfterApply) this.close();
+  },
+
+  _getCurrentSettingsSessionFingerprint() {
+    const settings = this._draftSettings && Object.keys(this._draftSettings).length
+      ? this._draftSettings
+      : this._settings;
+    const sessionState = {
+      settings: this._normalizeSettings(settings),
+      aliasScopeKey: this._aliasScopeKey,
+      aliasScope: this._draftAliasScope,
+      highlightScopeKey: this._highlightScopeKey,
+      highlightScope: this._draftHighlightScope,
+      triggerScopeKey: this._triggerScopeKey,
+      triggerScope: this._draftTriggerScope,
+      sound: soundManager.getSettings(),
+    };
+    return JSON.stringify(sessionState);
+  },
+
+  _shouldPromptForSettingsBackup() {
+    if (!this._overlay || !this._settings.settingsBackupPromptEnabled) return false;
+    if (!this._settingsSessionBaseline) return false;
+
+    try {
+      return this._getCurrentSettingsSessionFingerprint() !== this._settingsSessionBaseline;
+    } catch (error) {
+      return false;
+    }
+  },
+
+  _dismissSettingsBackupPrompt() {
+    if (this._backupClosePromptEl) {
+      this._backupClosePromptEl.remove();
+      this._backupClosePromptEl = null;
+    }
+  },
+
+  _showSettingsBackupPrompt() {
+    if (!this._overlay) return;
+    if (this._backupClosePromptEl) {
+      const primary = this._backupClosePromptEl.querySelector('[data-backup-action="download"]');
+      if (primary instanceof HTMLElement) primary.focus();
+      return;
+    }
+
+    const prompt = document.createElement('div');
+    prompt.className = 'settings-backup-prompt';
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+
+    const title = document.createElement('div');
+    title.className = 'settings-label';
+    title.textContent = 'Download a settings backup?';
+
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = 'Your settings changed in this session. Save a JSON backup before closing.';
+
+    copy.appendChild(title);
+    copy.appendChild(description);
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-backup-actions';
+
+    const continueBtn = document.createElement('button');
+    continueBtn.type = 'button';
+    continueBtn.className = 'dw-button dw-button-secondary';
+    continueBtn.textContent = 'Continue editing';
+    continueBtn.addEventListener('click', () => this._dismissSettingsBackupPrompt());
+
+    const skipBtn = document.createElement('button');
+    skipBtn.type = 'button';
+    skipBtn.className = 'dw-button dw-button-secondary';
+    skipBtn.textContent = 'Skip';
+    skipBtn.addEventListener('click', () => this.close({ skipBackupPrompt: true }));
+
+    const neverBtn = document.createElement('button');
+    neverBtn.type = 'button';
+    neverBtn.className = 'dw-button dw-button-secondary';
+    neverBtn.textContent = 'Never ask again';
+    neverBtn.addEventListener('click', () => {
+      this._draftSettings.settingsBackupPromptEnabled = false;
+      this._applySettings({ settingsBackupPromptEnabled: false });
+      this.close({ skipBackupPrompt: true });
+    });
+
+    const downloadBtn = document.createElement('button');
+    downloadBtn.type = 'button';
+    downloadBtn.className = 'dw-button dw-button-primary';
+    downloadBtn.dataset.backupAction = 'download';
+    downloadBtn.textContent = 'Download backup';
+    downloadBtn.addEventListener('click', () => {
+      this._downloadSettingsBundle();
+      this.close({ skipBackupPrompt: true });
+    });
+
+    actions.appendChild(continueBtn);
+    actions.appendChild(skipBtn);
+    actions.appendChild(neverBtn);
+    actions.appendChild(downloadBtn);
+    prompt.appendChild(copy);
+    prompt.appendChild(actions);
+
+    const footer = this._overlay.querySelector('.settings-modal-footer');
+    if (footer && footer.parentElement) {
+      footer.parentElement.insertBefore(prompt, footer);
+    } else {
+      this._overlay.appendChild(prompt);
+    }
+    this._backupClosePromptEl = prompt;
+    downloadBtn.focus();
   },
 
   _syncDraftVariablesFromSteps() {
@@ -468,6 +589,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(nextSettings.scrollbackBehavior);
     setOutputSplitRatio(nextSettings.scrollbackSplitRatio);
     setOutputScrollbackPreset(nextSettings.outputScrollbackPreset);
+    sendTerminalGeometry(true);
 
     try {
       localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(bundle.data.aliases || { scopes: {} }));
@@ -518,13 +640,28 @@ export const settingsManager = {
       repeatLastCommand: settings.repeatLastCommand !== false,
       keyMapperEnabled: Boolean(settings.keyMapperEnabled),
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
+      aliasTabCompletionEnabled: settings.aliasTabCompletionEnabled !== false,
       historyTabCompletionEnabled: Boolean(settings.historyTabCompletionEnabled),
       scrollbackBehavior: this._normalizeScrollbackBehavior(settings.scrollbackBehavior),
       scrollbackSplitRatio: this._normalizeSplitRatio(settings.scrollbackSplitRatio),
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
       screenReaderMode: Boolean(settings.screenReaderMode),
+      terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
+      settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
     };
+  },
+
+  _normalizeTerminalWidthColumns(value) {
+    if (value === null || value === undefined || value === '') return null;
+
+    const number = Number(value);
+    if (!Number.isFinite(number)) return null;
+
+    return Math.max(
+      MIN_TERMINAL_WIDTH_COLUMNS,
+      Math.min(MAX_TERMINAL_WIDTH_COLUMNS, Math.round(number))
+    );
   },
 
   _syncScreenReaderServerSetting() {
@@ -590,6 +727,39 @@ export const settingsManager = {
     copy.appendChild(description);
     row.appendChild(copy);
     row.appendChild(select);
+
+    return row;
+  },
+
+  _createNumberRow(labelText, descriptionText, value, options, onChange) {
+    const row = document.createElement('div');
+    row.className = 'settings-select-row';
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+
+    const label = document.createElement('label');
+    label.className = 'settings-label';
+    label.textContent = labelText;
+
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = descriptionText;
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'dw-input';
+    input.value = value === null || value === undefined ? '' : String(value);
+    input.placeholder = options.placeholder || '';
+    input.min = String(options.min);
+    input.max = String(options.max);
+    input.step = String(options.step || 1);
+    input.addEventListener('input', () => onChange(input.value));
+
+    copy.appendChild(label);
+    copy.appendChild(description);
+    row.appendChild(copy);
+    row.appendChild(input);
 
     return row;
   },
@@ -856,7 +1026,7 @@ export const settingsManager = {
     input.type = 'text';
     input.className = 'dw-input';
     input.value = value || '';
-    input.placeholder = 'yellow, bright-red, ansi-196, #ff8800';
+    input.placeholder = 'yellow, bright-cyan, ansi-214, #38bdf8';
     input.setAttribute('list', datalistId);
     input.addEventListener('input', sync);
     input.addEventListener('blur', () => {
@@ -1679,7 +1849,7 @@ export const settingsManager = {
       triggerInput.type = 'text';
       triggerInput.className = 'dw-input';
       triggerInput.dataset.focusKey = 'alias-trigger';
-      triggerInput.placeholder = 'gi';
+      triggerInput.placeholder = alias.isRegex ? '^gi\\s+(.+)$' : 'gi';
       triggerInput.value = alias.trigger;
       triggerInput.addEventListener('input', () => {
         alias.trigger = triggerInput.value;
@@ -1691,6 +1861,28 @@ export const settingsManager = {
       });
       triggerField.appendChild(triggerInput);
       editor.appendChild(triggerField);
+
+      editor.appendChild(this._createCheckboxRow(
+        'Use regex',
+        'Treat this alias trigger as a JavaScript regular expression. Capturing groups become %1, %2, and so on.',
+        alias.isRegex === true,
+        (checked) => {
+          alias.isRegex = checked;
+          render();
+        }
+      ));
+
+      if (alias.isRegex) {
+        editor.appendChild(this._createCheckboxRow(
+          'Ignore case',
+          'Match this regex alias without caring about capitalization.',
+          alias.ignoreCase !== false,
+          (checked) => {
+            alias.ignoreCase = checked;
+            render();
+          }
+        ));
+      }
 
       const descriptionField = document.createElement('label');
       descriptionField.className = 'dw-field';
@@ -1880,7 +2072,7 @@ export const settingsManager = {
         helper.className = 'settings-helper-text';
         helper.textContent = step.type === 'set_trigger_enabled'
           ? 'Target may be an exact trigger pattern or a template that resolves to one.'
-          : 'Templates support %0 for the full remainder, %1-%9 for arguments, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
+          : 'Simple aliases match command words. Regex aliases use JavaScript regular expressions, with capture groups available as %1-%9. Templates support %0 for the full remainder or regex match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -2023,7 +2215,8 @@ export const settingsManager = {
 
         const description = document.createElement('div');
         description.className = 'settings-alias-list-meta';
-        description.textContent = alias.description || alias.steps.length + ' step' + (alias.steps.length === 1 ? '' : 's');
+        description.textContent = alias.description
+          || (alias.isRegex ? 'regex, ' : '') + alias.steps.length + ' step' + (alias.steps.length === 1 ? '' : 's');
 
         copy.appendChild(trigger);
         copy.appendChild(description);
@@ -2366,7 +2559,7 @@ export const settingsManager = {
       patternInput.type = 'text';
       patternInput.className = 'dw-input';
       patternInput.dataset.focusKey = 'trigger-pattern';
-      patternInput.placeholder = 'You are attacked by *';
+      patternInput.placeholder = trigger.isRegex ? 'You are attacked by (.+)' : 'You are attacked by *';
       patternInput.value = trigger.pattern;
       patternInput.addEventListener('input', () => {
         trigger.pattern = patternInput.value;
@@ -2378,6 +2571,28 @@ export const settingsManager = {
       });
       patternField.appendChild(patternInput);
       editor.appendChild(patternField);
+
+      editor.appendChild(this._createCheckboxRow(
+        'Use regex',
+        'Treat this trigger pattern as a JavaScript regular expression. Capturing groups become %1, %2, and so on.',
+        trigger.isRegex === true,
+        (checked) => {
+          trigger.isRegex = checked;
+          render();
+        }
+      ));
+
+      if (trigger.isRegex) {
+        editor.appendChild(this._createCheckboxRow(
+          'Ignore case',
+          'Match this regex trigger without caring about capitalization.',
+          trigger.ignoreCase === true,
+          (checked) => {
+            trigger.ignoreCase = checked;
+            render();
+          }
+        ));
+      }
 
       const descriptionField = document.createElement('label');
       descriptionField.className = 'dw-field';
@@ -2657,7 +2872,7 @@ export const settingsManager = {
           ? 'Sound actions use Darkflow audio settings, category toggles, and browser audio unlock.'
           : step.type === 'set_alias_enabled'
             ? 'Target may be an exact alias trigger or a template that resolves to one.'
-            : 'Patterns support * or %1-%9 as captures. Step templates support %0 for the full matched line, %1-%9 for captures, $name for variables, and ${lower:%1} or ${lower:$name} for lowercase.';
+            : 'Simple patterns support * or %1-%9 as captures. Regex triggers use JavaScript regular expressions, with capture groups available as %1-%9. Step templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase.';
         stepCard.appendChild(helper);
 
         stepList.appendChild(stepCard);
@@ -2807,10 +3022,10 @@ export const settingsManager = {
         const description = document.createElement('div');
         description.className = 'settings-alias-list-meta';
         if (trigger.description) description.textContent = trigger.description;
-        else if (trigger.gag) description.textContent = 'gag enabled';
+        else if (trigger.gag) description.textContent = (trigger.isRegex ? 'regex, ' : '') + 'gag enabled';
         else if (trigger.steps[0] && trigger.steps[0].type === 'play_sound')
-          description.textContent = 'Play sound: ' + soundLabel(trigger.steps[0].category, trigger.steps[0].sound);
-        else description.textContent = trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
+          description.textContent = (trigger.isRegex ? 'regex, ' : '') + 'Play sound: ' + soundLabel(trigger.steps[0].category, trigger.steps[0].sound);
+        else description.textContent = (trigger.isRegex ? 'regex, ' : '') + trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
 
         copy.appendChild(pattern);
         copy.appendChild(description);
@@ -2985,12 +3200,7 @@ export const settingsManager = {
 
   _buildModal() {
     const overlay = document.createElement('div');
-    overlay.className = 'dw-modal-overlay';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        this.close();
-      }
-    });
+    overlay.className = 'dw-modal-overlay settings-overlay';
     overlay.addEventListener('focusin', (event) => {
       const scopeRoot = event.target instanceof HTMLElement
         ? event.target.closest('[data-edit-focus-scope]')
@@ -3006,7 +3216,6 @@ export const settingsManager = {
     const modal = document.createElement('div');
     modal.className = 'dw-modal settings-modal';
     modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-labelledby', 'settings-modal-title');
 
     const header = document.createElement('div');
@@ -3196,6 +3405,20 @@ export const settingsManager = {
         this._draftSettings.scrollbackBehavior = value;
       }
     ));
+    terminalSection.appendChild(this._createNumberRow(
+      'Screen width',
+      'Leave blank for automatic pane width, or enter a fixed column width for server-side wrapping.',
+      this._draftSettings.terminalWidthColumns,
+      {
+        min: MIN_TERMINAL_WIDTH_COLUMNS,
+        max: MAX_TERMINAL_WIDTH_COLUMNS,
+        step: 1,
+        placeholder: 'Auto',
+      },
+      (value) => {
+        this._draftSettings.terminalWidthColumns = value;
+      }
+    ));
     terminalSection.appendChild(this._createCheckboxRow(
       'Screen reader announcements',
       'Mirror new terminal lines into a hidden polite live region for browser screen readers.',
@@ -3242,6 +3465,14 @@ export const settingsManager = {
       }
     ));
     controlsSection.appendChild(this._createCheckboxRow(
+      'Use aliases for Tab completion',
+      'Complete matching client aliases before falling back to command history or server-side Tab completion.',
+      !!this._draftSettings.aliasTabCompletionEnabled,
+      (checked) => {
+        this._draftSettings.aliasTabCompletionEnabled = checked;
+      }
+    ));
+    controlsSection.appendChild(this._createCheckboxRow(
       'Use command history for Tab completion',
       'Try recent commands with the same verb before falling back to server-side Tab completion.',
       !!this._draftSettings.historyTabCompletionEnabled,
@@ -3269,6 +3500,14 @@ export const settingsManager = {
       !!this._draftSettings.tabObservabilityEnabled,
       (checked) => {
         this._draftSettings.tabObservabilityEnabled = checked;
+      }
+    ));
+    controlsSection.appendChild(this._createCheckboxRow(
+      'Prompt to export changed settings',
+      'Ask to download a backup when settings changed during the session and the settings panel is closed.',
+      !!this._draftSettings.settingsBackupPromptEnabled,
+      (checked) => {
+        this._draftSettings.settingsBackupPromptEnabled = checked;
       }
     ));
 
@@ -3350,28 +3589,28 @@ export const settingsManager = {
     importBtn.textContent = 'Import settings';
     importBtn.addEventListener('click', () => this._promptImportSettingsBundle());
 
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'dw-button dw-button-secondary';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', () => this.close());
+    const closePanelBtn = document.createElement('button');
+    closePanelBtn.className = 'dw-button dw-button-secondary';
+    closePanelBtn.textContent = 'Close';
+    closePanelBtn.addEventListener('click', () => this.close());
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'dw-button dw-button-secondary';
+    applyBtn.dataset.focusKey = 'settings-apply';
+    applyBtn.textContent = 'Apply';
+    applyBtn.addEventListener('click', () => this._applyDraftChanges(false));
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'dw-button dw-button-primary';
     saveBtn.dataset.focusKey = 'settings-save';
-    saveBtn.textContent = 'Save';
-    saveBtn.addEventListener('click', () => {
-      this._applySettings(this._draftSettings);
-      this._syncDraftVariablesFromSteps();
-      triggerManager.saveScope(this._triggerScopeKey, this._draftTriggerScope);
-      highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
-      aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
-      this.close();
-    });
+    saveBtn.textContent = 'Save & Close';
+    saveBtn.addEventListener('click', () => this._applyDraftChanges(true));
 
     footer.appendChild(footerStatus);
     footer.appendChild(exportBtn);
     footer.appendChild(importBtn);
-    footer.appendChild(cancelBtn);
+    footer.appendChild(closePanelBtn);
+    footer.appendChild(applyBtn);
     footer.appendChild(saveBtn);
     body.appendChild(footer);
 

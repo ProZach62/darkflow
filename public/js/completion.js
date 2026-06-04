@@ -2,7 +2,7 @@ import { dom } from './state.js';
 import { gmcp } from './gmcp.js';
 import { appendSystemMessage } from './output.js';
 import { settingsManager } from './settings-manager.js';
-import { tokenizeInput } from './alias-manager.js';
+import { aliasManager, tokenizeInput } from './alias-manager.js';
 
 const REQUEST_PACKAGE = 'Darkwind.Completion.Request';
 const RESULT_PACKAGE = 'Darkwind.Completion.Result';
@@ -93,6 +93,74 @@ function buildHistoryCompletion(line, cursor, history) {
   return null;
 }
 
+function commonPrefix(values) {
+  if (!values.length) return '';
+  let prefix = values[0];
+
+  for (let index = 1; index < values.length; index++) {
+    const value = values[index];
+    let offset = 0;
+    while (
+      offset < prefix.length
+      && offset < value.length
+      && prefix[offset].toLowerCase() === value[offset].toLowerCase()
+    ) {
+      offset++;
+    }
+    prefix = prefix.slice(0, offset);
+    if (!prefix) break;
+  }
+
+  return prefix;
+}
+
+function buildAliasCompletion(line, cursor, repeated = false) {
+  const beforeCursor = line.slice(0, cursor);
+  const afterCursor = line.slice(cursor);
+  const indentMatch = beforeCursor.match(/^\s*/);
+  const indent = indentMatch ? indentMatch[0] : '';
+  const partial = beforeCursor.slice(indent.length);
+  if (!partial || /\s$/.test(partial)) return null;
+  if (/["']/.test(partial)) return null;
+
+  const partialLower = partial.toLowerCase();
+  const matches = aliasManager.listCompletionTriggers()
+    .filter((trigger) => trigger.toLowerCase().startsWith(partialLower));
+
+  if (!matches.length) return null;
+
+  const exactMatch = matches.find((trigger) => trigger.toLowerCase() === partialLower);
+  if (exactMatch) {
+    return {
+      line,
+      cursor,
+      matches,
+      ambiguous: matches.length > 1,
+      showMatches: repeated && matches.length > 1,
+    };
+  }
+
+  const replacement = matches.length === 1 ? matches[0] : commonPrefix(matches);
+  if (replacement && replacement.length > partial.length) {
+    const nextLine = indent + replacement + afterCursor;
+    return {
+      line: nextLine,
+      cursor: indent.length + replacement.length,
+      matches,
+      ambiguous: matches.length > 1,
+      showMatches: false,
+    };
+  }
+
+  return {
+    line,
+    cursor,
+    matches,
+    ambiguous: matches.length > 1,
+    showMatches: repeated && matches.length > 1,
+  };
+}
+
 function applyCompletionResult(data) {
   let nextLine;
   let nextCursor;
@@ -143,6 +211,24 @@ export function requestCompletion(history = []) {
   const cursor = dom.commandInput.selectionStart == null
     ? line.length
     : dom.commandInput.selectionStart;
+  const signature = signatureFor(line, cursor);
+
+  if (settingsManager.get('aliasTabCompletionEnabled')) {
+    const aliasCompletion = buildAliasCompletion(line, cursor, signature === lastAmbiguousSignature);
+    if (aliasCompletion) {
+      pendingRequest = null;
+      applyInputValue(aliasCompletion.line, aliasCompletion.cursor);
+      if (aliasCompletion.ambiguous) {
+        lastAmbiguousSignature = signatureFor(aliasCompletion.line, aliasCompletion.cursor);
+        if (aliasCompletion.showMatches) {
+          appendSystemMessage(formatMatches(aliasCompletion.matches));
+        }
+      } else {
+        clearAmbiguousState();
+      }
+      return;
+    }
+  }
 
   if (settingsManager.get('historyTabCompletionEnabled')) {
     const historyCompletion = buildHistoryCompletion(line, cursor, history);
@@ -153,8 +239,6 @@ export function requestCompletion(history = []) {
       return;
     }
   }
-
-  const signature = signatureFor(line, cursor);
 
   pendingRequest = {
     line,

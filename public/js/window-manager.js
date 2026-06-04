@@ -10,6 +10,8 @@ import {
 } from './window-types.js';
 
 const AUTH_WINDOW_IDS = new Set(['login', 'newchar', 'charselect']);
+const SHARED_VIDEO_GEOMETRY_KEY = 'darkwind-shared-video-window-geometry';
+let videoWindowCounter = 0;
 
 export const windowManager = {
   windows: {},  // id -> { id, type, el, containerEl }
@@ -25,6 +27,7 @@ export const windowManager = {
   openWindow(data) {
     if (!data || !data.id || !data.layout) return;
     if (state.zorkOnlyMode && this._isZorkOnlySuppressedWindow(data.id)) return;
+    data = this._instanceSharedVideoWindow(data);
 
     // Close existing window with same id
     if (this.windows[data.id]) {
@@ -41,6 +44,79 @@ export const windowManager = {
       this._openPanel(data, content);
     } else {
       this._openModal(data, content);
+    }
+  },
+
+  _instanceSharedVideoWindow(data) {
+    if (!this._hasYoutubeEmbed(data.layout)) return data;
+
+    const sourceId = String(data.id);
+    const safeSourceId = sourceId.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'video';
+    const geometry = this._loadSharedVideoGeometry();
+    return {
+      ...data,
+      id: safeSourceId + '-video-' + Date.now() + '-' + (++videoWindowCounter),
+      sourceId,
+      ...(geometry ? {
+        dock: 'float',
+        defaultFloatX: geometry.x,
+        defaultFloatY: geometry.y,
+        defaultFloatW: geometry.w,
+        defaultFloatH: geometry.h,
+        defaultSnapLeft: false,
+        defaultSnapTop: false,
+        defaultSnapRight: false,
+        defaultSnapBottom: false,
+      } : {}),
+    };
+  },
+
+  _hasYoutubeEmbed(node) {
+    if (!node || typeof node !== 'object') return false;
+    if (node.type === 'youtube_embed') return true;
+    if (!Array.isArray(node.children)) return false;
+    return node.children.some((child) => this._hasYoutubeEmbed(child));
+  },
+
+  _loadSharedVideoGeometry() {
+    try {
+      const raw = localStorage.getItem(SHARED_VIDEO_GEOMETRY_KEY);
+      const geometry = raw ? JSON.parse(raw) : null;
+      if (!geometry || typeof geometry !== 'object') return null;
+      const x = Number(geometry.x);
+      const y = Number(geometry.y);
+      const w = Number(geometry.w);
+      const h = Number(geometry.h);
+      if (![x, y, w, h].every(Number.isFinite)) return null;
+      return {
+        x: Math.max(0, Math.min(x, Math.max(0, window.innerWidth - 80))),
+        y: Math.max(0, Math.min(y, Math.max(0, window.innerHeight - 80))),
+        w: Math.max(260, Math.min(w, Math.max(260, window.innerWidth - 24))),
+        h: Math.max(180, Math.min(h, Math.max(180, window.innerHeight - 80))),
+      };
+    } catch (error) {
+      return null;
+    }
+  },
+
+  _saveSharedVideoGeometry(win) {
+    if (!win || !win.sourceId || win.sourceId === win.id || win.type !== 'panel' || !win.panelId) return;
+    const panel = panelManager.panels && panelManager.panels[win.panelId];
+    const el = panel && panel.el;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    const geometry = {
+      x: Math.round(rect.left),
+      y: Math.round(rect.top),
+      w: Math.round(rect.width),
+      h: Math.round(rect.height),
+    };
+
+    try {
+      localStorage.setItem(SHARED_VIDEO_GEOMETRY_KEY, JSON.stringify(geometry));
+    } catch (error) {
+      // Ignore storage failures; video windows can still open normally.
     }
   },
 
@@ -162,6 +238,7 @@ export const windowManager = {
 
     this.windows[data.id] = {
       id: data.id,
+      sourceId: data.sourceId || data.id,
       type: 'modal',
       el: overlay,
       containerEl: bodyContainer,
@@ -188,6 +265,7 @@ export const windowManager = {
 
     this.windows[data.id] = {
       id: data.id,
+      sourceId: data.sourceId || data.id,
       type: 'panel',
       el: null,
       containerEl: bodyEl,
@@ -207,6 +285,7 @@ export const windowManager = {
   closeWindow(id, silent) {
     const win = this.windows[id];
     if (!win) return;
+    this._saveSharedVideoGeometry(win);
 
     if (win.type === 'modal') {
       if (win.escHandler) document.removeEventListener('keydown', win.escHandler);

@@ -2,6 +2,7 @@
 // Lazy-loads the CodeMirror editor on first use and routes GMCP messages.
 
 import { gmcp } from './gmcp.js';
+import { state } from './state.js';
 
 const DW_IDE_OPEN = 'Darkwind.IDE.Open';
 const DW_IDE_OPEN_START = 'Darkwind.IDE.OpenStart';
@@ -17,6 +18,8 @@ const DW_IDE_CLOSE = 'Darkwind.IDE.Close';
 
 const IDE_CHUNK_SIZE = 32 * 1024;
 const IDE_INLINE_SAVE_LIMIT = 256 * 1024;
+const IDE_SAVE_BUFFERED_LIMIT = 32 * 1024;
+const IDE_SAVE_BACKPRESSURE_DELAY_MS = 8;
 
 const textEncoder = new TextEncoder();
 
@@ -41,6 +44,16 @@ function chunkString(content) {
     chunks.push(content.slice(i, i + IDE_CHUNK_SIZE));
   }
   return chunks.length ? chunks : [''];
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForSaveBackpressure() {
+  while (state.ws && state.ws.bufferedAmount > IDE_SAVE_BUFFERED_LIMIT) {
+    await sleep(IDE_SAVE_BACKPRESSURE_DELAY_MS);
+  }
 }
 
 export const ideManager = {
@@ -171,7 +184,8 @@ export const ideManager = {
         gmcp.send(DW_IDE_SAVE_ABORT, { session, reason: 'send-failed' });
         throw new Error('Socket disconnected before save completed.');
       }
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await waitForSaveBackpressure();
+      await sleep(0);
     }
 
     if (!gmcp.send(DW_IDE_SAVE_FINISH, { session })) {

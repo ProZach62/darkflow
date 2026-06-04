@@ -154,16 +154,6 @@ function renderDisplay(schema) {
         el.appendChild(iframe);
       }
 
-      if (schema.url) {
-        const link = document.createElement('a');
-        link.className = 'dw-youtube-link';
-        link.href = schema.url;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.textContent = 'Open in YouTube';
-        el.appendChild(link);
-      }
-
       return el;
     }
     default: {

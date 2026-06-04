@@ -296,17 +296,6 @@
   background: #000;
 }
 
-.dw-youtube-link {
-  color: #58a6ff;
-  font-size: 12px;
-  text-decoration: none;
-  word-break: break-word;
-}
-
-.dw-youtube-link:hover {
-  text-decoration: underline;
-}
-
 /* ── Rich player rows ────────────────────────────────────────────── */
 .dw-finger-profile {
   display: flex;

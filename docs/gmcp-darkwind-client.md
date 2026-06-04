@@ -187,7 +187,7 @@ Compliant clients may send an empty JSON object `{}`; the current Darkflow clien
 
 Direction: `Client -> Server`
 
-Reports the active terminal size using NAWS-style width/height semantics. Darkflow measures the visible text pane and sends the current value on connect and whenever the pane resizes.
+Reports the active terminal size using NAWS-style width/height semantics. Darkflow measures the visible text pane and sends the current value on connect and whenever the pane resizes. If the player configures a fixed screen width in Darkflow's Terminal settings, Darkflow reports that configured column width while continuing to measure the active pane height.
 
 ### Schema
 
@@ -202,7 +202,7 @@ Reports the active terminal size using NAWS-style width/height semantics. Darkfl
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `width` | integer | Yes | Active terminal columns for wrapping room text, help, inventory, and similar output |
+| `width` | integer | Yes | Active terminal columns for wrapping room text, help, inventory, and similar output; measured automatically unless the player configured a fixed Darkflow screen width |
 | `height` | integer | Yes | Active terminal rows; tracked for completeness and future pager behavior |
 
 ### Server Behavior

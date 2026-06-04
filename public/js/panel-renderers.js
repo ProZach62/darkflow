@@ -637,9 +637,14 @@ export const panelRenderers = {
     html += '<div class="exit-compass">';
     for (const dir of compassDirs) {
       if (dir === null) {
-        html += '<div></div>';
+        html += '<div class="exit-rose-center" aria-hidden="true">' +
+          '<span class="exit-rose-ring"></span>' +
+          '<span class="exit-rose-needle exit-rose-needle-ns"></span>' +
+          '<span class="exit-rose-needle exit-rose-needle-ew"></span>' +
+          '<span class="exit-rose-dot"></span>' +
+          '</div>';
       } else if (exits[dir] !== undefined) {
-        html += '<button class="exit-btn" data-dir="' + dir + '">' + dirLabels[dir] + '</button>';
+        html += '<button class="exit-btn exit-dir-' + dir + '" data-dir="' + dir + '" title="' + escHtml(dir) + '">' + dirLabels[dir] + '</button>';
       } else {
         html += '<div class="exit-btn inactive"></div>';
       }

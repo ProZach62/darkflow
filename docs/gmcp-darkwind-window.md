@@ -24,6 +24,7 @@ Support declaration advertised by the client:
 Direction: `Server -> Client`
 
 Opens a new window. If the `id` already exists, the client closes the existing window first and replaces it.
+Windows whose layout contains `youtube_embed` are instanced by the client so each shared video opens in a fresh window instead of replacing another video from the same source id. The client remembers the last closed shared-video window rectangle and reuses that location and size for later shared videos.
 
 ### Schema
 
@@ -213,7 +214,7 @@ Applies supported updates to elements inside an open window. The current client 
 - The client does not support structural patch operations such as insert, remove, replace-node, or append-child.
 - The client does not re-run layout creation from update payloads.
 - `text` updates operate on rendered DOM text, not on a stored schema tree.
-- `youtube_embed` is rendered as a sandboxed iframe with a clickable fallback link.
+- `youtube_embed` is rendered as a sandboxed iframe.
 
 ## Darkwind.Window.Close
 
