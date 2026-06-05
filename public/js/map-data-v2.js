@@ -283,6 +283,74 @@ export function clearMapData() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+// ── Browse mode: view an arbitrary catalog area in the Area Map pane ─────────
+// Kept entirely separate from the live `rooms` store so the live you-are-here
+// map is never disturbed.
+
+let browseRooms = new Map();
+let browseCatalog = '';
+let browseName = '';
+let browseCenterId = null;
+
+export function requestBrowse(catalogId) {
+  if (!catalogId) return;
+  browseCatalog = catalogId;
+  gmcp.send('Darkwind.MapData2.Browse', { catalog: catalogId });
+}
+
+export function mergeBrowseArea(data) {
+  if (!data || !data.catalog) return 0;
+  if (data.replace || data.catalog !== browseCatalog) browseRooms.clear();
+  browseCatalog = data.catalog;
+  browseName = data.name || data.catalog;
+  if (data.center !== undefined && data.center !== null) {
+    browseCenterId = normalizeRoomId(data.center);
+  }
+
+  let merged = 0;
+  if (Array.isArray(data.rooms)) {
+    for (const raw of data.rooms) {
+      const room = normalizeRoomPayload(raw, data.catalog);
+      if (room) { browseRooms.set(room.id, room); merged++; }
+    }
+  }
+  if (data.more && data.offset) {
+    gmcp.send('Darkwind.MapData2.Browse', { catalog: data.catalog, offset: data.offset });
+  }
+  return merged;
+}
+
+export function exitBrowse() {
+  browseRooms.clear();
+  browseCatalog = '';
+  browseName = '';
+  browseCenterId = null;
+}
+
+export function getBrowseName() {
+  return browseName;
+}
+
+// A read-only source adapter exposing the same interface the renderer uses, so
+// the Area Map pane reuses renderMap() unchanged.
+export const browseSource = {
+  isBrowse: true,
+  DIR_OFFSETS,
+  isActive() { return true; },
+  hasCurrentRoom() { return !!browseCenterId; },
+  getCurrentRoomId() { return browseCenterId; },
+  getRoom(id) { return browseRooms.get(normalizeRoomId(id)); },
+  getRoomsByArea() {
+    const out = [];
+    for (const room of browseRooms.values()) {
+      if (room.x !== null) out.push(room);
+    }
+    return out;
+  },
+  getMapStatus() { return browseName; },
+  clearMapDataForArea() {},
+};
+
 // ── Debug tools (exposed on window.mapDebug for the browser console) ─────────
 
 function shortId(id) {

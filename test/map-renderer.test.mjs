@@ -116,6 +116,43 @@ test('exits to unmapped rooms render as stubs', () => {
   assert.ok(body.innerHTML.includes('map-stub-e'), 'unmapped east exit -> east stub');
 });
 
+test('browse mode renders a catalog area with no player marker', () => {
+  // Live current room is elsewhere; the browse pane must be independent of it.
+  seedArea('LiveLand');
+  v2.processCurrent({
+    id: 'LiveLand:A', name: 'Town Square', area: 'LiveLand',
+    positioned: true, x: 0, y: 0, z: 0, areaVersion: 1, exits: {},
+  });
+
+  v2.mergeBrowseArea({
+    catalog: 'darkwind.maincity', name: 'Darkwind City', replace: true,
+    center: 'mc:1', more: false, offset: 0,
+    rooms: [
+      { id: 'mc:1', name: 'Temple Yard', area: 'Darkwind', env: 'city',
+        positioned: true, x: 0, y: 0, z: 0, exits: { east: 'mc:2' } },
+      { id: 'mc:2', name: 'Market', area: 'Darkwind', env: 'city',
+        positioned: true, x: 1, y: 0, z: 0, exits: { west: 'mc:1' } },
+    ],
+  });
+
+  const body = makeBody();
+  renderMap(body, v2.browseSource);
+  const out = body.innerHTML;
+
+  assert.ok(!out.includes('map-empty'), 'browse area renders, not blank');
+  assert.ok(out.includes('map-grid'), 'renders the tile grid');
+  assert.ok(out.includes('Darkwind City'), 'titled with the catalog area name');
+  assert.ok(out.includes('map-conn-e'), 'connector between the two browse rooms');
+  assert.ok(!out.includes('map-tile-player'), 'no player marker in browse mode');
+  assert.ok(!out.includes('map-resync-btn'), 'no resync button in browse mode');
+
+  v2.exitBrowse();
+  // Live render is unaffected after browsing.
+  const body2 = makeBody();
+  renderMap(body2);
+  assert.ok(body2.innerHTML.includes('map-tile-player'), 'live map still has the player');
+});
+
 test('genuinely empty area still shows the explore placeholder', () => {
   v2.processCurrent({
     id: 'Voidland:x', name: 'Featureless Void', area: 'Voidland',

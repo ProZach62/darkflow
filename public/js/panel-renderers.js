@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { renderMap } from './map-renderer.js';
+import { browseSource } from './map-data-v2.js';
 import { sendCommandText } from './input.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
 
@@ -1049,6 +1050,10 @@ export const panelRenderers = {
 
   map(bodyEl, _data) {
     renderMap(bodyEl);
+  },
+
+  areaMap(bodyEl, _data) {
+    renderMap(bodyEl, browseSource);
   },
 
   quests(bodyEl, data) {

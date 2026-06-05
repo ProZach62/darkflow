@@ -24,11 +24,13 @@ const lastCenterByArea = new Map();
 // coordinate. Prefer the last positioned room we centered on for this area;
 // otherwise fall back to the area room nearest the centroid so the view is
 // stable rather than jumping to an arbitrary edge room.
-function pickCenterRoom(area, areaRooms, source) {
-  const lastId = lastCenterByArea.get(area);
-  if (lastId) {
-    const last = source.getRoom(lastId);
-    if (last && last.area === area && last.x !== null) return last;
+function pickCenterRoom(area, areaRooms, source, skipLast) {
+  if (!skipLast) {
+    const lastId = lastCenterByArea.get(area);
+    if (lastId) {
+      const last = source.getRoom(lastId);
+      if (last && last.area === area && last.x !== null) return last;
+    }
   }
 
   let sumX = 0;
@@ -97,24 +99,36 @@ function getTerrainName(environment) {
   return 'outside';
 }
 
-export function renderMap(bodyEl) {
-  const source = mapData;
+export function renderMap(bodyEl, source = mapData) {
+  // Browse mode renders an arbitrary catalog area (opened in the Area Map pane)
+  // with no player marker; the live map is the default source.
+  const browse = !!source.isBrowse;
   const currentId = source.getCurrentRoomId();
   const currentRoom = currentId ? source.getRoom(currentId) : null;
 
-  // The player's room is only a usable render center when it has a coordinate.
-  const playerRoom = currentRoom && currentRoom.x !== null ? currentRoom : null;
+  // The player's room is only a usable render center when it has a coordinate
+  // (and only in live mode -- a browse view has no player).
+  const playerRoom = !browse && currentRoom && currentRoom.x !== null ? currentRoom : null;
   const playerId = playerRoom ? playerRoom.id : null;
 
-  // Decide what to center the grid on. If the player's room is positioned we
-  // center on it. If it is not (a room the server has not laid out yet) we do
-  // NOT blank the map: we keep showing the surrounding area parked on the last
-  // known position, with a "locating" indicator, so a single unpositioned room
-  // never wipes everything the player has already explored.
   let centerRoom = playerRoom;
   let pending = false;
 
-  if (!centerRoom) {
+  if (browse) {
+    // Center on the server-suggested room, else the area centroid.
+    const areaRooms = source.getRoomsByArea(currentRoom ? currentRoom.area : null);
+    if (areaRooms.length === 0) {
+      bodyEl.innerHTML = '<div class="map-grid map-empty">'
+        + '<div class="map-empty-msg">No rooms mapped for this area yet.</div></div>';
+      return;
+    }
+    centerRoom = currentRoom && currentRoom.x !== null
+      ? currentRoom
+      : pickCenterRoom(areaRooms[0].area, areaRooms, source, true);
+  } else if (!centerRoom) {
+    // Live mode: the player's room is not positioned yet. Do NOT blank the map;
+    // keep showing the surrounding area parked on the last known position with a
+    // "locating" indicator, so a single unpositioned room never wipes the map.
     const area = currentRoom ? currentRoom.area : null;
     const areaRooms = area ? source.getRoomsByArea(area) : [];
     if (!area || areaRooms.length === 0) {
@@ -216,17 +230,24 @@ export function renderMap(bodyEl) {
     html += '</div>';
   }
 
-  // Name the room the player is actually in (even if it is not positioned yet).
-  const nameRoom = currentRoom || centerRoom;
-  html += '<div class="map-roomname">' + escAttr(nameRoom.name) + '</div>';
+  // Title: in browse mode show the area name; live mode names the room the
+  // player is actually in (even if it is not positioned yet).
+  const titleText = browse
+    ? (source.getMapStatus() || 'Area Map')
+    : (currentRoom || centerRoom).name;
+  html += '<div class="map-roomname">' + escAttr(titleText) + '</div>';
   html += '<div class="map-compass">N&#x2191;</div>';
-  if (pending) {
+  if (browse) {
+    // No player marker, pending banner, or Resync for a read-only browse view.
+  } else if (pending) {
     html += '<div class="map-pending">&#x25C9; Locating you...</div>';
   } else {
     const status = source.getMapStatus();
     if (status) html += '<div class="map-status">' + escAttr(status) + '</div>';
   }
-  html += '<button class="map-resync-btn" title="Clear and resync map for this area">Resync</button>';
+  if (!browse) {
+    html += '<button class="map-resync-btn" title="Clear and resync map for this area">Resync</button>';
+  }
 
   bodyEl.innerHTML = html;
 

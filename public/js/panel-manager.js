@@ -6,6 +6,8 @@ import {
   processCurrent as processMapData2Current,
   mergeServerAreaData as mergeMapData2Area,
   mergeServerUpdate as mergeMapData2Update,
+  mergeBrowseArea as mergeMapData2Browse,
+  exitBrowse as exitMapData2Browse,
   load as loadMapData2,
 } from './map-data-v2.js';
 
@@ -729,6 +731,7 @@ export const panelManager = {
     this._renderMobileSheet();
     if (id === 'buffs') this._syncBuffTimer();
     if (id === 'sky') this._syncSkyTimer();
+    if (id === 'areaMap') exitMapData2Browse();
     this.saveState();
     this.syncGmcpSubscriptions('panel-close', false);
   },
@@ -1721,6 +1724,13 @@ export const panelManager = {
     gmcp.on('Darkwind.MapData2.Update', (data) => {
       mergeMapData2Update(data);
       this._queuePanelRender('map');
+    });
+
+    // Browse: a catalog area's map, opened in its own pane (areas map <id>).
+    gmcp.on('Darkwind.MapData2.BrowseArea', (data) => {
+      mergeMapData2Browse(data);
+      this.openPanel('areaMap');
+      this._renderPanel('areaMap');
     });
 
     gmcp.on('Room.Players', (data) => {
