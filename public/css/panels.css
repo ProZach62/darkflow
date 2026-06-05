@@ -1299,11 +1299,31 @@ body.zork-only-mode #panels-menu {
   border: 1px solid rgba(255, 255, 255, 0.13);
   box-sizing: border-box;
 }
-/* Exit openings: make that side's border transparent so adjacent tiles flow together */
-.map-tile-open-n { border-top-color: transparent; }
-.map-tile-open-s { border-bottom-color: transparent; }
-.map-tile-open-e { border-right-color: transparent; }
-.map-tile-open-w { border-left-color: transparent; }
+/* Connector: a line bridging the gap to an adjacent connected room. Spans the
+   full TILE_GAP (8px) so it visually touches both room boxes. */
+.map-conn {
+  position: absolute;
+  z-index: 2;
+  background: rgba(180, 195, 210, 0.8);
+  pointer-events: none;
+}
+.map-conn-n { bottom: 100%; left: 50%; width: 3px; height: 8px; transform: translateX(-50%); }
+.map-conn-s { top: 100%; left: 50%; width: 3px; height: 8px; transform: translateX(-50%); }
+.map-conn-e { left: 100%; top: 50%; width: 8px; height: 3px; transform: translateY(-50%); }
+.map-conn-w { right: 100%; top: 50%; width: 8px; height: 3px; transform: translateY(-50%); }
+
+/* Exit stub: a shorter, dimmer tick toward an exit whose destination is not
+   mapped yet -- "there is more to explore this way". Sits in the gap. */
+.map-stub {
+  position: absolute;
+  z-index: 2;
+  background: rgba(150, 165, 180, 0.5);
+  pointer-events: none;
+}
+.map-stub-n { bottom: 100%; left: 50%; width: 2px; height: 5px; transform: translateX(-50%); }
+.map-stub-s { top: 100%; left: 50%; width: 2px; height: 5px; transform: translateX(-50%); }
+.map-stub-e { left: 100%; top: 50%; width: 5px; height: 2px; transform: translateY(-50%); }
+.map-stub-w { right: 100%; top: 50%; width: 5px; height: 2px; transform: translateY(-50%); }
 
 .map-roomname {
   position: absolute;
@@ -1350,6 +1370,39 @@ body.zork-only-mode #panels-menu {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Shown when the player's room has not been positioned yet: the map stays on
+   the last known area instead of blanking, with this indicator. */
+.map-pending {
+  position: absolute;
+  bottom: 4px;
+  left: 56px;
+  right: 52px;
+  background: rgba(40, 33, 12, 0.82);
+  color: #f2cc60;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--df-font-mono);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+/* Last known player position while locating: a dashed marker, no player icon. */
+.map-tile-lastpos {
+  box-shadow: inset 0 0 0 1px rgba(242, 204, 96, 0.85);
+}
+.map-tile-lastpos::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  z-index: 1;
+  border: 1px dashed rgba(242, 204, 96, 0.9);
+  border-radius: 50%;
 }
 
 .map-resync-btn {

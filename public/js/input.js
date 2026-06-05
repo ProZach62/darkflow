@@ -9,7 +9,6 @@ import {
   scrollActiveOutputByPage,
 } from './output.js';
 import { MAX_HISTORY, HISTORY_STORAGE_KEY, LEGACY_SESSION_KEY } from './constants.js';
-import { trackCommand } from './map-data.js';
 import { initCompletion, requestCompletion, resetCompletionState } from './completion.js';
 import { settingsManager } from './settings-manager.js';
 import { sendSocketPayload } from './connection.js';
@@ -61,7 +60,6 @@ function sendRawCommand(text) {
 
   const command = normalizeOutboundCommand(text);
 
-  trackCommand(command);
   if (!sendSocketPayload(command, {
     kind: 'command',
     size: command.length,

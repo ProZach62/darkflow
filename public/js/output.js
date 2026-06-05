@@ -4,7 +4,6 @@ import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { giphyManager } from './giphy-manager.js';
 import { sendSocketPayload } from './connection.js';
-import { trackCommand } from './map-data.js';
 import { executeTriggerMatches } from './automation-executor.js';
 import {
   DEFAULT_OUTPUT_SCROLLBACK_PRESET,
@@ -1201,7 +1200,6 @@ function queueLines(lines) {
 function sendTriggerCommand(text) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
 
-  trackCommand(text);
   if (!sendSocketPayload(text, {
     kind: 'command',
     size: text.length,
