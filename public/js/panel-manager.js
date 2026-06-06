@@ -8,6 +8,7 @@ import {
   mergeServerUpdate as mergeMapData2Update,
   mergeBrowseArea as mergeMapData2Browse,
   exitBrowse as exitMapData2Browse,
+  clearMapData as clearMapData2,
   load as loadMapData2,
 } from './map-data-v2.js';
 
@@ -1731,6 +1732,15 @@ export const panelManager = {
       mergeMapData2Browse(data);
       this.openPanel('areaMap');
       this._renderPanel('areaMap');
+    });
+
+    // Server wiped the shared map (map2d clearall): drop our cache + browse view;
+    // the fresh Room.Info/Current that follows repopulates the live map.
+    gmcp.on('Darkwind.MapData2.Reset', () => {
+      clearMapData2();
+      exitMapData2Browse();
+      if (this.panels['areaMap']) this.closePanel('areaMap');
+      this._queuePanelRender('map');
     });
 
     gmcp.on('Room.Players', (data) => {
