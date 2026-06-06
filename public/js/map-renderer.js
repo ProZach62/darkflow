@@ -233,12 +233,19 @@ export function renderMap(bodyEl, source = mapData) {
     html += '</div>';
   }
 
-  // Title: in browse mode show the area name; live mode names the room the
-  // player is actually in (even if it is not positioned yet).
-  const titleText = browse
-    ? (source.getMapStatus() || 'Area Map')
-    : (currentRoom || centerRoom).name;
-  html += '<div class="map-roomname">' + escAttr(titleText) + '</div>';
+  // Area name on top (updates as you cross areas); the raw area key is the
+  // tooltip to aid map-data troubleshooting. Below it, in live mode, the name of
+  // the room you are actually in.
+  const titleRoom = currentRoom || centerRoom;
+  const areaKey = titleRoom.area || '';
+  const areaName = (source.getAreaName && source.getAreaName()) || areaKey;
+  if (areaName) {
+    html += '<div class="map-areaname" title="' + escAttr(areaKey) + '">'
+      + escAttr(areaName) + '</div>';
+  }
+  if (!browse) {
+    html += '<div class="map-roomname">' + escAttr(titleRoom.name) + '</div>';
+  }
   html += '<div class="map-compass">N&#x2191;</div>';
   if (browse) {
     // No player marker, pending banner, or Resync for a read-only browse view.

@@ -79,7 +79,7 @@ test('positioned current room renders the player tile normally', () => {
   const area = 'Playerland';
   seedArea(area);
   v2.processCurrent({
-    id: area + ':A', name: 'Town Square', area, env: 'city',
+    id: area + ':A', name: 'Town Square', area, env: 'city', areaName: 'Player Land',
     positioned: true, x: 0, y: 0, z: 0, areaVersion: 1, exits: { north: area + ':B' },
   });
 
@@ -89,6 +89,9 @@ test('positioned current room renders the player tile normally', () => {
 
   assert.ok(out.includes('map-tile-player'), 'player tile present');
   assert.ok(out.includes('map-conn-n'), 'connector drawn to adjacent mapped room to the north');
+  assert.ok(out.includes('map-areaname'), 'area name label present');
+  assert.ok(out.includes('Player Land'), 'shows the human area name from the payload');
+  assert.ok(out.includes('Town Square'), 'still shows the current room name');
   assert.ok(!out.includes('map-pending'), 'no pending indicator when positioned');
   assert.ok(!out.includes('map-empty'), 'not the empty placeholder');
 

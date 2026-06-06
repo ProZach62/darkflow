@@ -1325,9 +1325,29 @@ body.zork-only-mode #panels-menu {
 .map-stub-e { left: 100%; top: 50%; width: 5px; height: 2px; transform: translateY(-50%); }
 .map-stub-w { right: 100%; top: 50%; width: 5px; height: 2px; transform: translateY(-50%); }
 
-.map-roomname {
+/* Area name (top line) -- the zone you're in; updates as you cross areas. */
+.map-areaname {
   position: absolute;
   top: 4px;
+  left: 4px;
+  right: 36px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #f0c674;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--df-font-mono);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Room name (second line) -- the specific room you're standing in. */
+.map-roomname {
+  position: absolute;
+  top: 24px;
   left: 4px;
   right: 36px;
   background: rgba(0, 0, 0, 0.72);

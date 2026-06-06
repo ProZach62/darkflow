@@ -3,7 +3,9 @@ import { gmcp } from './gmcp.js';
 const STORAGE_KEY = 'darkwind-map-data-v2';
 const LEGACY_STORAGE_KEY = 'darkwind-map-data-v3';
 const MIGRATION_KEY = 'darkwind-map-data-v2-migration-complete';
-const SCHEMA_VERSION = 2;
+// Bumped to 3 to flush browser caches after the server map was rebuilt with the
+// incremental/sticky placement algorithm (old cached coordinates were stale).
+const SCHEMA_VERSION = 3;
 
 export const DIR_OFFSETS = {
   north:     { dx:  0, dy: -1, dz: 0 },
@@ -20,6 +22,7 @@ export const DIR_OFFSETS = {
 
 let rooms = new Map();
 let currentRoomId = null;
+let currentAreaName = '';
 let areaVersions = new Map();
 let active = false;
 let mapStatusMessage = '';
@@ -63,6 +66,12 @@ export function getRoom(id) {
 export function getMapStatus() {
   if (!mapStatusMessage || Date.now() - mapStatusAt > MAP_STATUS_TTL_MS) return '';
   return mapStatusMessage;
+}
+
+// Human-readable name of the area the player is currently in (updates on each
+// Darkwind.MapData2.Current as they cross areas).
+export function getAreaName() {
+  return currentAreaName;
 }
 
 export function getRoomsByArea(area) {
@@ -152,6 +161,7 @@ function resetInMemoryState() {
   rooms.clear();
   areaVersions.clear();
   currentRoomId = null;
+  currentAreaName = '';
   active = false;
 }
 
@@ -222,6 +232,7 @@ export function processCurrent(data) {
   active = true;
   mergeRoom(data, data.area);
   currentRoomId = normalizeRoomId(data.id);
+  currentAreaName = data.areaName || data.area || '';
   if (data.area && data.areaVersion !== undefined) {
     areaVersions.set(data.area, data.areaVersion);
   }
@@ -348,6 +359,7 @@ export const browseSource = {
     return out;
   },
   getMapStatus() { return browseName; },
+  getAreaName() { return browseName; },
   clearMapDataForArea() {},
 };
 
