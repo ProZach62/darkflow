@@ -68,7 +68,10 @@ function buildExitSpans(room, cz, source) {
     const destId = room.exits[dir];
     if (!destId) continue;
     const dest = source.getRoom(destId);
-    if (!dest || dest.x === null) {
+    // Stub if the destination isn't positioned, OR lives in a different zone --
+    // a cross-zone exit's coordinates are in another area's space and must not be
+    // drawn as an adjacent connector.
+    if (!dest || dest.x === null || dest.area !== room.area) {
       spans += '<span class="map-stub map-stub-' + abbr + '"></span>';
       continue;
     }

@@ -116,6 +116,31 @@ test('exits to unmapped rooms render as stubs', () => {
   assert.ok(body.innerHTML.includes('map-stub-e'), 'unmapped east exit -> east stub');
 });
 
+test('exits to a different zone render as stubs, not connectors', () => {
+  const area = 'ZoneA';
+  // Current room is positioned; its east exit leads to a room positioned in a
+  // DIFFERENT zone (ZoneB) -- must be a boundary stub, never a connector.
+  v2.mergeServerAreaData({
+    area, version: 1, replace: true,
+    rooms: [
+      { id: 'ZoneA:edge', name: 'Border Gate', area, env: 'city',
+        positioned: true, x: 0, y: 0, z: 0, exits: { east: 'ZoneB:gate' } },
+      { id: 'ZoneB:gate', name: 'Other Gate', area: 'ZoneB', env: 'city',
+        positioned: true, x: 1, y: 0, z: 0, exits: { west: 'ZoneA:edge' } },
+    ],
+  });
+  v2.processCurrent({
+    id: 'ZoneA:edge', name: 'Border Gate', area, env: 'city',
+    positioned: true, x: 0, y: 0, z: 0, areaVersion: 1, exits: { east: 'ZoneB:gate' },
+  });
+
+  const body = makeBody();
+  renderMap(body);
+  const out = body.innerHTML;
+  assert.ok(out.includes('map-stub-e'), 'cross-zone east exit -> stub');
+  assert.ok(!out.includes('map-conn-e'), 'cross-zone exit must not be a connector');
+});
+
 test('browse mode renders a catalog area with no player marker', () => {
   // Live current room is elsewhere; the browse pane must be independent of it.
   seedArea('LiveLand');
