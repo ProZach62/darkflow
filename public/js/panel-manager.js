@@ -879,7 +879,30 @@ export const panelManager = {
     if (!st || !panel || st.dock !== 'float' || this._mobile.enabled) return;
     st.floatZ = ++this._topFloatZ;
     panel.el.style.zIndex = String(st.floatZ);
+    if (id !== 'enemy') this._keepEnemyPanelAbove();
     this.saveState();
+  },
+
+  _hasActiveEnemy() {
+    const enemy = this.gmcpData.enemy;
+    return !!(enemy && enemy.enemy_name && enemy.enemy_name !== 'None' && enemy.enemy_name !== '');
+  },
+
+  _keepEnemyPanelAbove() {
+    if (!this._hasActiveEnemy()) return;
+    const st = this.state.panels.enemy;
+    const panel = this.panels.enemy;
+    if (!st || !panel || st.dock !== 'float' || this._mobile.enabled) return;
+    if (panel.el.style.display === 'none') return;
+    const highest = Object.entries(this.state.panels).reduce((max, [id, state]) => {
+      const current = this.panels[id];
+      if (!state || !current || state.dock !== 'float') return max;
+      if (current.el.style.display === 'none') return max;
+      return Math.max(max, Number(state.floatZ) || 0);
+    }, 0);
+    if ((Number(st.floatZ) || 0) >= highest) return;
+    st.floatZ = ++this._topFloatZ;
+    panel.el.style.zIndex = String(st.floatZ);
   },
 
   _getSnapBounds() {
@@ -2353,6 +2376,7 @@ export const panelManager = {
       if (this.panels.enemy) {
         this.panels.enemy.el.style.display = inCombat ? '' : 'none';
         if (inCombat && wasHidden) this._bringPanelToFront('enemy');
+        else if (inCombat) this._keepEnemyPanelAbove();
       }
       this._renderPanel('enemy');
     });

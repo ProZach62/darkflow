@@ -52,6 +52,25 @@ app.get('/api/version', (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Mount the Darkflow MCP relay at /mcp (optional) so starting this web client
+// also serves MCP for LLM clients on the same port. The relay lives in the
+// sibling mud-test-mcp package; it is loaded dynamically and skipped gracefully
+// if absent or unable to load, so it can never break the web client. Configure
+// with MCP_PATH / MCP_AUTH_TOKEN; disable entirely with MCP_ENABLED=0.
+if (process.env.MCP_ENABLED !== '0') {
+  const { pathToFileURL } = require('url');
+  const mcpModule = path.join(__dirname, '..', 'mud-test-mcp', 'core', 'mcp.js');
+  import(pathToFileURL(mcpModule).href)
+    .then(({ attachMcp }) => {
+      const info = attachMcp(app, {
+        path: process.env.MCP_PATH || '/mcp',
+        token: process.env.MCP_AUTH_TOKEN,
+      });
+      console.log(`[mcp] mounted at ${info.path}` + (info.authenticated ? ' (bearer auth on)' : ' (open)'));
+    })
+    .catch((err) => console.warn('[mcp] not mounted:', err.message));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // /proxy : WebSocket ↔ TCP/TLS bridge for connecting to non-WebSocket MUDs.
 //
@@ -62,179 +81,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 // v1: open relay with logging. Future: allowlist (see docs).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const IAC = 0xFF, DONT = 0xFE, DO = 0xFD, WONT = 0xFC, WILL = 0xFB;
-const SB = 0xFA, SE = 0xF0;
-const TELOPT_GMCP = 0xC9; // 201
-const MAX_SUBNEG_BYTES = 1024 * 1024;
-
-// Telnet IAC parser with GMCP bridging.
-//
-// This is intentionally a byte-by-byte state machine instead of an
-// index-scanning parser. Telnet and ANSI sequences can split across TCP chunks,
-// and musicmud.org's protocol notes call out that telnet parsing belongs in its
-// own state-machine layer. The shape also follows the chrysalis client parser:
-// persist parser state, subnegotiation mode, and accumulated subnegotiation
-// bytes across parse() calls rather than concatenating and rescanning pending
-// chunks.
-//
-// The parser strips telnet commands from upstream text, negotiates GMCP option
-// 201, extracts IAC SB 201 ... IAC SE payloads as gmcpFrames, unescapes IAC IAC
-// inside subnegotiations, and drops subnegotiation payloads over 1 MiB.
-function makeTelnetParser({ onGmcpAgreed } = {}) {
-  const S_DATA = 0;
-  const S_IAC = 1;
-  const S_OPT = 2;
-  const S_SB_OPT = 3;
-  const S_SB_DATA = 4;
-  const S_SB_IAC = 5;
-  const S_SB_OPT_NEG = 6;
-
-  let state = S_DATA;
-  let negCmd = 0;
-  let subOpt = 0;
-  let subBuf = [];
-  let subOverflowed = false;
-  let gmcpAgreed = false;
-
-  function markGmcpAgreed() {
-    if (gmcpAgreed) return;
-    gmcpAgreed = true;
-    if (typeof onGmcpAgreed === 'function') onGmcpAgreed();
-  }
-
-  function appendSub(b) {
-    if (subOverflowed) return;
-    if (subBuf.length >= MAX_SUBNEG_BYTES) {
-      subOverflowed = true;
-      subBuf = [];
-      return;
-    }
-    subBuf.push(b);
-  }
-
-  function negotiateOption(opt, reply) {
-    if (opt === TELOPT_GMCP) {
-      if (negCmd === WILL) {
-        reply.push(IAC, DO, opt);
-        markGmcpAgreed();
-      } else if (negCmd === DO) {
-        reply.push(IAC, WILL, opt);
-        markGmcpAgreed();
-      }
-      return;
-    }
-
-    if (negCmd === WILL) reply.push(IAC, DONT, opt);
-    else if (negCmd === DO) reply.push(IAC, WONT, opt);
-  }
-
-  function parse(chunk) {
-    const out = [];
-    const reply = [];
-    const gmcpFrames = [];
-
-    for (let i = 0; i < chunk.length; i++) {
-      const b = chunk[i];
-
-      switch (state) {
-        case S_DATA:
-          if (b === IAC) state = S_IAC;
-          else out.push(b);
-          break;
-
-        case S_IAC:
-          if (b === IAC) {
-            out.push(IAC);
-            state = S_DATA;
-          } else if (b === WILL || b === WONT || b === DO || b === DONT) {
-            negCmd = b;
-            state = S_OPT;
-          } else if (b === SB) {
-            state = S_SB_OPT;
-          } else {
-            // Stray SE, NOP, GA, EOR, and unknown 2-byte commands are eaten.
-            state = S_DATA;
-          }
-          break;
-
-        case S_OPT:
-          negotiateOption(b, reply);
-          negCmd = 0;
-          state = S_DATA;
-          break;
-
-        case S_SB_OPT:
-          subOpt = b;
-          subBuf = [];
-          subOverflowed = false;
-          state = S_SB_DATA;
-          break;
-
-        case S_SB_DATA:
-          if (b === IAC) state = S_SB_IAC;
-          else appendSub(b);
-          break;
-
-        case S_SB_IAC:
-          if (b === IAC) {
-            appendSub(IAC);
-            state = S_SB_DATA;
-          } else if (b === SE) {
-            if (!subOverflowed && subOpt === TELOPT_GMCP) {
-              gmcpFrames.push(Buffer.from(subBuf));
-              markGmcpAgreed();
-            }
-            subBuf = [];
-            subOpt = 0;
-            subOverflowed = false;
-            state = S_DATA;
-          } else if (b === WILL || b === WONT || b === DO || b === DONT) {
-            negCmd = b;
-            state = S_SB_OPT_NEG;
-          } else {
-            // Nested telnet command inside SB; eat the command, not payload.
-            state = S_SB_DATA;
-          }
-          break;
-
-        case S_SB_OPT_NEG:
-          // Telnet option negotiation can legally appear inside SB. Process it
-          // without letting its command or option bytes leak into subBuf.
-          negotiateOption(b, reply);
-          negCmd = 0;
-          state = S_SB_DATA;
-          break;
-
-        default:
-          state = S_DATA;
-          break;
-        }
-    }
-
-    return {
-      text: Buffer.from(out),
-      reply: reply.length ? Buffer.from(reply) : null,
-      gmcpFrames,
-    };
-  }
-
-  return { parse, isGmcpAgreed: () => gmcpAgreed };
-}
-
-// Wrap a GMCP payload as an IAC SB 201 ... IAC SE block.
-// Any 0xFF byte in the payload is escaped as IAC IAC.
-function wrapGmcp(payload) {
-  const escaped = [];
-  for (let i = 0; i < payload.length; i++) {
-    if (payload[i] === IAC) escaped.push(IAC, IAC);
-    else escaped.push(payload[i]);
-  }
-  return Buffer.concat([
-    Buffer.from([IAC, SB, TELOPT_GMCP]),
-    Buffer.from(escaped),
-    Buffer.from([IAC, SE]),
-  ]);
-}
+// Telnet/GMCP parser lives in lib/telnet-parser.js so it can be shared with
+// out-of-process tooling (e.g. the headless MUD test harness) without pulling
+// in express/ws. Re-exported below for backward compat.
+const {
+  makeTelnetParser,
+  wrapGmcp,
+  constants,
+} = require('./lib/telnet-parser');
+const { IAC, DO, TELOPT_GMCP } = constants;
 
 // Cap on the pending GMCP buffer (browser->MUD) before negotiation completes,
 // to bound memory if a non-GMCP MUD is connected.
@@ -433,15 +288,5 @@ if (require.main === module) {
 module.exports = {
   makeTelnetParser,
   wrapGmcp,
-  constants: {
-    IAC,
-    DONT,
-    DO,
-    WONT,
-    WILL,
-    SB,
-    SE,
-    TELOPT_GMCP,
-    MAX_SUBNEG_BYTES,
-  },
+  constants,
 };

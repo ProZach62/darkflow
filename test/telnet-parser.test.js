@@ -11,6 +11,7 @@ const {
     WILL,
     SB,
     SE,
+    GA,
     TELOPT_GMCP,
     MAX_SUBNEG_BYTES,
   },
@@ -163,6 +164,27 @@ test('drops oversized subnegotiation payload and resumes later traffic', () => {
 
   assert.deepStrictEqual(end.gmcpFrames, []);
   assert.deepStrictEqual(end.text, bytes(0x63));
+});
+
+test('fires onGoAhead on IAC GA and strips it from text', () => {
+  let goAheads = 0;
+  const telnet = makeTelnetParser({ onGoAhead: () => { goAheads++; } });
+  const result = telnet.parse(bytes(0x61, IAC, GA, 0x62));
+
+  assert.deepStrictEqual(result.text, bytes(0x61, 0x62));
+  assert.equal(result.reply, null);
+  assert.equal(goAheads, 1);
+});
+
+test('persists state when IAC GA straddles chunks', () => {
+  let goAheads = 0;
+  const telnet = makeTelnetParser({ onGoAhead: () => { goAheads++; } });
+  const one = telnet.parse(bytes(0x61, IAC));
+  const two = telnet.parse(bytes(GA, 0x62));
+
+  assert.deepStrictEqual(one.text, bytes(0x61));
+  assert.deepStrictEqual(two.text, bytes(0x62));
+  assert.equal(goAheads, 1);
 });
 
 test('eats nested telnet commands inside subnegotiation without payload leakage', () => {
