@@ -1177,6 +1177,7 @@ export const panelManager = {
     }
     if (id === 'buffs') this._syncBuffTimer();
     if (id === 'sky') this._syncSkyTimer();
+    if (id === 'enemy') this._bringPanelToFront(id);
     this.saveState();
     this.syncGmcpSubscriptions('panel-open', false);
   },
@@ -1884,11 +1885,18 @@ export const panelManager = {
       const gh = drag.ghostEl.offsetHeight;
       const SNAP = 30;
       const bounds = this._getSnapBounds();
+      const drop = this._getDropTarget(e.clientX, e.clientY, drag.panelId);
 
-      const snL = gx < (bounds.left + SNAP);
+      let snL = gx < (bounds.left + SNAP);
       const snT = gy < (bounds.top + SNAP);
-      const snR = (gx + gw) > (bounds.right - SNAP);
+      let snR = (gx + gw) > (bounds.right - SNAP);
       const snB = (gy + gh) > (bounds.bottom - SNAP);
+      const dockingToSidebar = drop.target === 'left' || drop.target === 'right';
+
+      if (dockingToSidebar) {
+        snL = false;
+        snR = false;
+      }
 
       if (snL) gx = bounds.left;
       if (snT) gy = bounds.top;
@@ -1906,7 +1914,7 @@ export const panelManager = {
       drag.ghostEl.style.top = gy + 'px';
 
       this._showSnapEdges(snL, snT, snR, snB, bounds, drag);
-      this._updateDropZone(e.clientX, e.clientY, drag);
+      this._updateDropZone(drop, drag);
     });
 
     document.addEventListener('pointerup', (e) => {
@@ -2025,7 +2033,7 @@ export const panelManager = {
     return { x: snapX, y: snapY, targetId };
   },
 
-  _updateDropZone(x, y, drag) {
+  _updateDropZone(drop, drag) {
     const leftDock = document.getElementById('left-dock');
     const rightDock = document.getElementById('right-dock');
 
@@ -2033,7 +2041,6 @@ export const panelManager = {
     rightDock.classList.remove('drag-over');
     drag.indicator.style.display = 'none';
 
-    const drop = this._getDropTarget(x, y, drag.panelId);
     if (drop.target === 'left' || drop.target === 'right') {
       const dock = document.getElementById(drop.target + '-dock');
       dock.classList.add('drag-over');
@@ -2055,6 +2062,16 @@ export const panelManager = {
         drag.indicator.style.top = (first.top - 2) + 'px';
         drag.indicator.style.width = first.width + 'px';
         drag.indicator.style.position = 'fixed';
+      } else if (drop.beforeId) {
+        const before = panels.find(el => el.dataset.panelId === drop.beforeId);
+        const rect = before ? before.getBoundingClientRect() : null;
+        if (rect) {
+          drag.indicator.style.display = 'block';
+          drag.indicator.style.left = rect.left + 'px';
+          drag.indicator.style.top = (rect.top - 2) + 'px';
+          drag.indicator.style.width = rect.width + 'px';
+          drag.indicator.style.position = 'fixed';
+        }
       } else {
         const idx = Math.min(drop.order - 1, panels.length - 1);
         const after = panels[idx].getBoundingClientRect();
@@ -2122,15 +2139,17 @@ export const panelManager = {
       .filter(el => el.dataset.panelId !== panelId);
 
     let order = panels.length;
+    let beforeId = null;
     for (let i = 0; i < panels.length; i++) {
       const rect = panels[i].getBoundingClientRect();
       if (y < rect.top + rect.height / 2) {
         order = this.state.panels[panels[i].dataset.panelId].order;
+        beforeId = panels[i].dataset.panelId;
         break;
       }
     }
 
-    return { target: side, order };
+    return { target: side, order, beforeId };
   },
 
   registerGmcpHandlers() {
@@ -2327,11 +2346,13 @@ export const panelManager = {
     gmcp.on('Char.Enemy', (data) => {
       this.gmcpData.enemy = data;
       const inCombat = data && data.enemy_name && data.enemy_name !== 'None' && data.enemy_name !== '';
+      const wasHidden = !!(this.panels.enemy && this.panels.enemy.el.style.display === 'none');
       if (inCombat && !this.panels.enemy) {
         this.openPanel('enemy');
       }
       if (this.panels.enemy) {
         this.panels.enemy.el.style.display = inCombat ? '' : 'none';
+        if (inCombat && wasHidden) this._bringPanelToFront('enemy');
       }
       this._renderPanel('enemy');
     });
