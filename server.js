@@ -59,7 +59,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // with MCP_PATH / MCP_AUTH_TOKEN; disable entirely with MCP_ENABLED=0.
 if (process.env.MCP_ENABLED !== '0') {
   const { pathToFileURL } = require('url');
-  const mcpModule = path.join(__dirname, '..', 'mud-test-mcp', 'core', 'mcp.js');
+  const mcpModule = path.join(__dirname, 'mud-test-mcp', 'core', 'mcp.js');
   import(pathToFileURL(mcpModule).href)
     .then(({ attachMcp }) => {
       const info = attachMcp(app, {

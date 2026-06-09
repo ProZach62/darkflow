@@ -1,0 +1,18 @@
+# Minimal, location-independent smoke test.
+#   node cli.js run examples/smoke.yaml
+#
+# Demonstrates the three step kinds and both a success path and a
+# graceful-failure path. "*** " / "Uncaught" guard against LPC tracebacks
+# leaking to the player on either path.
+steps:
+  - send: "look"
+    label: "look produces room output without an LPC traceback"
+    expect_not_contains: ["*** ", "Bad argument", "Uncaught"]
+
+  - gmcp: "Room.Info"
+    label: "server pushed structured room data"
+    expect_contains: ['"name"']
+
+  - send: "get __nonexistent_item__"
+    label: "missing item is handled gracefully (failure path)"
+    expect_not_contains: ["*** ", "Uncaught", "0 lines"]

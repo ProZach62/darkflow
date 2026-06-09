@@ -18,6 +18,7 @@ The app is intentionally lightweight: Express serves static files, the browser c
 - **Announcements and media**: announcement inbox with unread state, Giphy popups, avatar media, room imagery, and media refresh support.
 - **Portable settings**: settings, aliases, highlights, triggers, and panel layouts can be exported/imported as JSON.
 - **Darkflow branding**: app icon, favicons, manifest, About modal, and hidden brand asset page at `/darkflow-brand.html`.
+- **LLM test harness (MCP)**: an embedded MCP relay at `/mcp` lets an LLM (Claude Code, Codex) drive the MUD — connect, run commands, assert on output/GMCP, and run scripted pass/fail tests. See [docs/mcp.md](docs/mcp.md).
 
 ## How It Works
 
@@ -58,8 +59,32 @@ The Express server serves static files and exposes `/config.json` and `/api/vers
 | `MUD_PORT` | `4242` | Default MUD port |
 | `MUD_WSS` | enabled | Set to `0` to default to plain `ws://` |
 | `GAME_NAME` | empty | Optional game name appended to the browser title |
+| `MCP_ENABLED` | `1` | Set to `0` to not mount the MCP relay at `/mcp` |
+| `MCP_PATH` | `/mcp` | Route the MCP relay is served on (use a long random path in production) |
+| `MCP_AUTH_TOKEN` | empty | If set, MCP clients must send `Authorization: Bearer <token>` |
 
 The runtime client version is stored in `public/version.json` and returned by `/api/version` with `Cache-Control: no-store`.
+
+## MCP / MUD test harness
+
+Starting the web client also exposes an **MCP relay** at `/mcp` on the same port,
+so an LLM (Claude Code, Codex, …) can drive a MUD: connect, log in, send commands,
+read framed output, assert on GMCP state, and run scripted pass/fail tests. The
+target MUD is chosen per connection, so it works against any MUD — not just Darkwind.
+
+```bash
+npm start        # serves the client AND http://localhost:3000/mcp
+```
+
+A standalone CLI (`mud-test-mcp/cli.js`) runs the same checks for manual smoke
+tests and CI.
+
+- Overview, tools, wiring, and client (Claude Code / Codex) setup — [docs/mcp.md](docs/mcp.md)
+- CLI reference — [docs/mcp-cli.md](docs/mcp-cli.md)
+- Test-script (YAML) format — [docs/mcp-test-scripts.md](docs/mcp-test-scripts.md)
+
+Disable with `MCP_ENABLED=0`; secure a public deployment with a hidden `MCP_PATH`
+and an `MCP_AUTH_TOKEN` bearer token.
 
 ## Docker
 
@@ -106,7 +131,8 @@ docker run -p 3000:3000 darkflow-client
 │       ├── completion.js        # Local/server Tab completion
 │       ├── announcements-manager.js
 │       └── giphy-manager.js
-├── docs/                        # GMCP protocol documentation
+├── docs/                        # GMCP protocol + MCP/test-harness documentation
+├── mud-test-mcp/                # MCP relay + CLI MUD test harness (see docs/mcp.md)
 ├── Dockerfile
 ├── package.json
 └── CLAUDE.md

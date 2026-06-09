@@ -1,0 +1,21 @@
+{
+  "name": "mud-test-mcp",
+  "version": "0.1.0",
+  "description": "Headless test harness for the Darkwind MUD: a telnet client that logs in as a test character, sends commands, frames output, and reports pass/fail for scripted sequences. Exposed both as an MCP server (for an LLM) and a CLI (for manual smoke tests and CI).",
+  "type": "module",
+  "bin": {
+    "mud-test": "cli.js"
+  },
+  "scripts": {
+    "mcp": "node mcp-server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^5.0.0",
+    "yaml": "^2.4.0"
+  }
+}

@@ -44,6 +44,18 @@ These files are useful for understanding why the client is shaped the way it is,
 
 Some details in the blueprint and plan are historical. When they differ from the live repo, prefer the live code and then update the docs if the docs are supposed to remain current.
 
+## MCP / Test Harness Docs
+
+These cover the embedded MCP relay that lets an LLM (Claude Code, Codex) drive a
+MUD, plus its CLI and test-script format. The relay code lives in `../mud-test-mcp/`
+and is mounted at `/mcp` when the web client starts.
+
+| Document | What It Covers |
+| --- | --- |
+| [`mcp.md`](mcp.md) | Overview, the MCP tools, output framing, wiring (embedded/stdio/HTTP/remote), and Claude Code / Codex client setup. |
+| [`mcp-cli.md`](mcp-cli.md) | The `mud-test-mcp/cli.js` runner: `send`/`state`/`run` commands, connection flags, and environment. |
+| [`mcp-test-scripts.md`](mcp-test-scripts.md) | The YAML/JSON test-script format (steps, expectations) and the worked Kingdom example suite. |
+
 ## How To Use This Directory
 
 - To add or change a `Darkwind.*` package, update [`gmcp-darkwind-index.md`](gmcp-darkwind-index.md) and the package-specific spec.

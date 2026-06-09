@@ -1,0 +1,43 @@
+# Scenario 1 (fast subset) - Full loop through the FIRST build only.
+#
+# homestead -> claim -> visit -> build camp marker -> confirm timer/status ->
+# wait past completion -> confirm built. Runs in ~70s, suitable for routine
+# checks. Use 01-smoke-full.yaml for the complete lean-to/foundation progression.
+#
+# PREREQUISITES: fresh UNCLAIMED character with >= ~1,025,000 coins (charter
+# 1,000,000 + camp 25,000), starting outside domains/kingdoms/.
+steps:
+  - send: "homestead"
+    label: "travel to the kingdom commons"
+    expect_contains: ["old road toward the shared kingdom commons"]
+    expect_not_contains: ["cannot retreat", "Something here prevents"]
+
+  - send: "say I accept the charter"
+    label: "claim the frontier charter"
+    expect_contains: ["yours by charter, coin, and witness"]
+    expect_not_contains: ["You are short", "already hold a frontier plot"]
+
+  - send: "say take me to my plot"
+    label: "visit the staked plot"
+    expect_contains: ["follow a survey road toward"]
+    expect_not_contains: ["do not hold a frontier plot"]
+
+  - send: "build camp marker"
+    label: "start camp marker build"
+    expect_contains: ["begin work on camp marker", "ready in"]
+    expect_not_contains: ["Stand on your plot", "Claim a frontier plot"]
+
+  - send: "homestead status"
+    label: "status shows the job and its timer"
+    expect_contains: ["Working on:", "camp marker finishes in"]
+
+  - wait_ms: 65000
+    label: "wait past camp marker completion (60s)"
+
+  - read: true
+    label: "drain the completion notice (best-effort)"
+
+  - send: "homestead status"
+    label: "camp marker is built, nothing in progress"
+    expect_contains: ["Built:", "camp marker"]
+    expect_not_contains: ["camp marker finishes in"]

@@ -1,0 +1,17 @@
+# Scenario 3 (cont.) - Claiming a charter without enough money.
+#
+# Must run on a character whose bank + cash is LESS than 1,000,000 coins, so the
+# charter is refused with the shortfall message. (On a funded character this
+# step would instead succeed and permanently claim a plot.)
+#
+# PREREQUISITES: fresh UNCLAIMED character with < 1,000,000 coins, starting
+# outside domains/kingdoms/.
+steps:
+  - send: "homestead"
+    label: "travel to the kingdom commons"
+    expect_contains: ["old road toward the shared kingdom commons"]
+
+  - send: "say I accept the charter"
+    label: "EDGE: claiming without enough money is refused with the shortfall"
+    expect_contains: ["A frontier charter costs 1000000 coins", "You are short"]
+    expect_not_contains: ["yours by charter, coin, and witness"]

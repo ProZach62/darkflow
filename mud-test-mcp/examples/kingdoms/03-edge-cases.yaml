@@ -1,0 +1,47 @@
+# Scenario 3 (auto-runnable subset) - Edge cases on a FUNDED fresh character.
+#
+# Covers the edge cases reachable by a normal command sequence:
+#   - homestead from inside the kingdom commons (refused)
+#   - skipping build prerequisites (lean-to / foundation before camp marker)
+# The correct first build (camp marker) is then accepted as a sanity check.
+#
+# Edge cases that need a poor character or wizard-only state are split out:
+#   - claim without enough money -> 03b-edge-claim-poor.yaml (low-funds char)
+#   - build while fighting / dead, build on another player's plot -> see README
+#     (these require combat/death/goto setup, not a plain command sequence).
+#
+# PREREQUISITES: fresh UNCLAIMED character with >= 1,000,000 coins, starting
+# outside domains/kingdoms/.
+steps:
+  - send: "homestead"
+    label: "travel to the kingdom commons"
+    expect_contains: ["old road toward the shared kingdom commons"]
+
+  - send: "homestead"
+    label: "EDGE: homestead from inside the commons is refused"
+    expect_contains: ["Something here prevents you from finding the road to the kingdom commons"]
+    expect_not_contains: ["old road toward the shared kingdom commons"]
+
+  - send: "say I accept the charter"
+    label: "claim a plot so build prerequisites can be exercised"
+    expect_contains: ["yours by charter, coin, and witness"]
+    expect_not_contains: ["You are short", "already hold a frontier plot"]
+
+  - send: "say take me to my plot"
+    label: "visit the staked plot"
+    expect_contains: ["follow a survey road toward"]
+
+  - send: "build lean-to"
+    label: "EDGE: lean-to before camp marker is refused (prerequisite)"
+    expect_contains: ["Build the earlier shelter first"]
+    expect_not_contains: ["begin work on lean-to"]
+
+  - send: "build foundation"
+    label: "EDGE: foundation before lean-to is refused (prerequisite)"
+    expect_contains: ["Build the earlier shelter first"]
+    expect_not_contains: ["begin work on hut foundation"]
+
+  - send: "build camp marker"
+    label: "SANITY: the correct first build is accepted"
+    expect_contains: ["begin work on camp marker"]
+    expect_not_contains: ["Build the earlier shelter first"]

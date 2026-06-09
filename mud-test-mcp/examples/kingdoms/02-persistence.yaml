@@ -1,0 +1,49 @@
+# Scenario 2 - Persistence across a daemon reload.
+#
+# Confirms an in-progress build survives `update /secure/daemons/homestead_d`
+# (state is restored from the save file) and still completes from the saved
+# complete_at after the reload.
+#
+# PREREQUISITES: a FRESH UNCLAIMED *wizard* character (the reload step needs the
+# `update` command) with >= ~1,025,000 coins, starting outside domains/kingdoms/.
+steps:
+  - send: "homestead"
+    label: "travel to the kingdom commons"
+    expect_contains: ["old road toward the shared kingdom commons"]
+
+  - send: "say I accept the charter"
+    label: "claim the frontier charter"
+    expect_contains: ["yours by charter, coin, and witness"]
+    expect_not_contains: ["You are short", "already hold a frontier plot"]
+
+  - send: "say take me to my plot"
+    label: "visit the staked plot"
+    expect_contains: ["follow a survey road toward"]
+
+  - send: "build camp marker"
+    label: "start a build so there is an in-progress job to persist"
+    expect_contains: ["begin work on camp marker", "ready in"]
+
+  - send: "homestead status"
+    label: "job is underway before the reload"
+    expect_contains: ["camp marker finishes in"]
+
+  - send: "update /secure/daemons/homestead_d"
+    label: "reload the homestead daemon mid-build"
+    expect_not_contains: ["*** ", "Bad ", "What?", "denied", "No such"]
+
+  - send: "homestead status"
+    label: "job STILL shows after reload (restored from save)"
+    expect_contains: ["camp marker finishes in"]
+    expect_not_contains: ["Plot:         unclaimed", "Working on:   nothing"]
+
+  - wait_ms: 65000
+    label: "wait past the original complete_at (60s)"
+
+  - read: true
+    label: "drain the completion notice (best-effort)"
+
+  - send: "homestead status"
+    label: "completes from the saved complete_at after reload"
+    expect_contains: ["Built:", "camp marker"]
+    expect_not_contains: ["camp marker finishes in"]
