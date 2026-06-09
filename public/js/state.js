@@ -41,6 +41,7 @@ export const state = {
     tabObservabilityEnabled: false,
     screenReaderMode: false,
     terminalWidthColumns: null,
+    workspaceLayout: 'classic',
     settingsBackupPromptEnabled: true,
   },
   terminalGeometry: {

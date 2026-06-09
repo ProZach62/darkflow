@@ -72,6 +72,7 @@ export const settingsManager = {
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
     screenReaderMode: false,
     terminalWidthColumns: null,
+    workspaceLayout: 'classic',
     settingsBackupPromptEnabled: true,
   },
   _settings: {},
@@ -115,6 +116,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(this._settings.scrollbackBehavior);
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
+    panelManager.setWorkspaceLayout(this._settings.workspaceLayout, { initializing: true });
     sendTerminalGeometry(false);
   },
 
@@ -242,6 +244,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(this._settings.scrollbackBehavior);
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
+    panelManager.setWorkspaceLayout(this._settings.workspaceLayout);
     sendTerminalGeometry(true);
     this._save();
   },
@@ -589,6 +592,7 @@ export const settingsManager = {
     setOutputScrollbackBehavior(nextSettings.scrollbackBehavior);
     setOutputSplitRatio(nextSettings.scrollbackSplitRatio);
     setOutputScrollbackPreset(nextSettings.outputScrollbackPreset);
+    panelManager.setWorkspaceLayout(nextSettings.workspaceLayout);
     sendTerminalGeometry(true);
 
     try {
@@ -648,6 +652,7 @@ export const settingsManager = {
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
       screenReaderMode: Boolean(settings.screenReaderMode),
       terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
+      workspaceLayout: settings.workspaceLayout === 'floating' ? 'floating' : 'classic',
       settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
     };
   },
@@ -3417,6 +3422,18 @@ export const settingsManager = {
       },
       (value) => {
         this._draftSettings.terminalWidthColumns = value;
+      }
+    ));
+    terminalSection.appendChild(this._createSelectRow(
+      'Workspace layout',
+      'Choose the classic fixed terminal and sidebars, or a floating workspace where the terminal and panes can all move and dock.',
+      this._draftSettings.workspaceLayout,
+      [
+        { value: 'classic', label: 'Classic terminal + sidebars' },
+        { value: 'floating', label: 'Floating workspace' },
+      ],
+      (value) => {
+        this._draftSettings.workspaceLayout = value;
       }
     ));
     terminalSection.appendChild(this._createCheckboxRow(

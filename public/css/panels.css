@@ -41,6 +41,51 @@ body.mobile-panel-mode #right-dock {
   padding: 0;
 }
 
+body.floating-workspace-mode #main-content {
+  position: relative;
+  display: block;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(88, 166, 255, 0.06), transparent 34%),
+    #0d1117;
+}
+
+body.floating-workspace-mode #center-column {
+  display: none;
+}
+
+body.floating-workspace-mode .dock-column {
+  position: fixed;
+  top: 42px;
+  bottom: 25px;
+  width: 280px;
+  max-width: min(320px, 38vw);
+  z-index: 950;
+  border: 1px solid #30363d;
+  background: rgba(22, 27, 34, 0.96);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+body.floating-workspace-mode #left-dock {
+  left: 0;
+  border-left: 0;
+}
+
+body.floating-workspace-mode #right-dock {
+  right: 0;
+  border-right: 0;
+}
+
+body.floating-workspace-mode .dock-column.collapsed {
+  width: 0;
+  max-width: 0;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
+}
+
 /* ── Dock toggle buttons ────────────────────────────────────────────── */
 .dock-toggle-btn {
   background: #21262d;
@@ -589,6 +634,47 @@ body.zork-only-mode #panels-menu {
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
   max-width: 90vw;
   max-height: 80vh;
+}
+
+.terminal-panel-widget {
+  min-width: 420px;
+  min-height: 260px;
+}
+
+.terminal-panel-widget.floating {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 72px);
+}
+
+.terminal-panel-widget .panel-header {
+  flex: 0 0 auto;
+}
+
+.terminal-panel-widget .terminal-panel-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.terminal-panel-widget #output-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.terminal-panel-widget #input-bar {
+  flex: 0 0 auto;
+}
+
+.dock-column .terminal-panel-widget {
+  display: flex;
+  flex-direction: column;
+  min-height: 360px;
 }
 
 /* ── Drag and drop ──────────────────────────────────────────────────── */

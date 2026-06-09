@@ -15,6 +15,8 @@ import {
 const MOBILE_BREAKPOINT_PX = 700;
 const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
 const AVATAR_CHARGE_TICK_MS = 2000;
+const PANEL_STORAGE_VERSION = 2;
+const TERMINAL_PANEL_ID = 'terminal';
 
 function cloneState(value) {
   return JSON.parse(JSON.stringify(value));
@@ -69,8 +71,13 @@ export const panelManager = {
   state: { docks: { left: false, right: false }, panels: {} },
   panels: {},
   gmcpData: {},
+  _initialized: false,
+  _workspaceLayout: 'classic',
+  _storedProfiles: null,
   _hiddenByDefault: new Set(),
   _hadSavedEntry: new Set(),
+  _terminalAnchors: null,
+  _topFloatZ: 1000,
   _saveTimer: null,
   _subscriptionTimer: null,
   _characterSubscriptionSyncSent: false,
@@ -104,9 +111,17 @@ export const panelManager = {
       return;
     }
 
+    this._workspaceLayout = this._getRequestedWorkspaceLayout();
     this.loadState();
     this.buildPanelsMenu();
     this._ensureMobileSheet();
+
+    this._syncWorkspaceClass();
+    if (this._isFloatingWorkspace()) {
+      this.createTerminalPanel();
+    } else {
+      this._restoreTerminalToClassic();
+    }
 
     for (const id of Object.keys(PANEL_DEFS)) {
       if (this.state.panels[id].visible) {
@@ -120,6 +135,7 @@ export const panelManager = {
     this.registerGmcpHandlers();
     this._attachResizeHandler();
     this._syncResponsiveMode(true);
+    this._initialized = true;
   },
 
   setHiddenByDefault(ids) {
@@ -134,7 +150,8 @@ export const panelManager = {
   },
 
   exportState() {
-    return cloneState(this.state);
+    this._storeActiveProfile();
+    return cloneState(this._storedProfiles || this._createPanelStorageEnvelope(null));
   },
 
   applyImportedState(nextState) {
@@ -150,6 +167,12 @@ export const panelManager = {
     this._resetLivePanels();
     this.loadState();
     this.buildPanelsMenu();
+    this._syncWorkspaceClass();
+    if (this._isFloatingWorkspace()) {
+      this.createTerminalPanel();
+    } else {
+      this._restoreTerminalToClassic();
+    }
 
     for (const id of Object.keys(PANEL_DEFS)) {
       if (this.state.panels[id] && this.state.panels[id].visible) {
@@ -190,6 +213,186 @@ export const panelManager = {
     }, 150);
   },
 
+  _getRequestedWorkspaceLayout() {
+    return appState.settings && appState.settings.workspaceLayout === 'floating'
+      ? 'floating'
+      : 'classic';
+  },
+
+  _isFloatingWorkspace() {
+    return this._workspaceLayout === 'floating';
+  },
+
+  _syncWorkspaceClass() {
+    document.body.classList.toggle('floating-workspace-mode', this._isFloatingWorkspace());
+  },
+
+  _createPanelStorageEnvelope(saved) {
+    const classicProfile = this._normalizeSavedProfile(saved && saved.version === PANEL_STORAGE_VERSION
+      ? saved.profiles && saved.profiles.classic
+      : saved);
+    const floatingProfile = this._normalizeSavedProfile(saved && saved.version === PANEL_STORAGE_VERSION
+      ? saved.profiles && saved.profiles.floating
+      : null);
+
+    if (!floatingProfile.panels[TERMINAL_PANEL_ID]) {
+      floatingProfile.panels[TERMINAL_PANEL_ID] = this._defaultTerminalPanelState();
+    }
+
+    if (saved && saved.version === PANEL_STORAGE_VERSION && saved.profiles) {
+      return {
+        version: PANEL_STORAGE_VERSION,
+        profiles: {
+          classic: classicProfile,
+          floating: floatingProfile,
+        },
+      };
+    }
+
+    return {
+      version: PANEL_STORAGE_VERSION,
+      profiles: {
+        classic: classicProfile,
+        floating: this._createInitialFloatingProfile(classicProfile, floatingProfile),
+      },
+    };
+  },
+
+  _normalizeSavedProfile(profile) {
+    const next = profile && typeof profile === 'object' ? profile : {};
+    return {
+      docks: {
+        left: !!(next.docks && next.docks.left),
+        right: !!(next.docks && next.docks.right),
+      },
+      panels: next.panels && typeof next.panels === 'object'
+        ? cloneState(next.panels)
+        : {},
+    };
+  },
+
+  _createInitialFloatingProfile(classicProfile, floatingProfile) {
+    const profile = this._normalizeSavedProfile(floatingProfile);
+    const sourcePanels = classicProfile && classicProfile.panels ? classicProfile.panels : {};
+    profile.docks = { left: true, right: true };
+    profile.panels[TERMINAL_PANEL_ID] = this._defaultTerminalPanelState();
+
+    let leftCount = 0;
+    let rightCount = 0;
+    for (const [id, def] of Object.entries(PANEL_DEFS)) {
+      if (profile.panels[id]) continue;
+      const source = sourcePanels[id] || {};
+      const fromLeft = def.defaultDock === 'left';
+      const index = fromLeft ? leftCount++ : rightCount++;
+      const width = source.floatW || def.defaultFloatW || 280;
+      const height = source.floatH || def.defaultFloatH || 200;
+      const x = fromLeft
+        ? 18
+        : Math.max(18, window.innerWidth - width - 18);
+      const y = 58 + (index * 34);
+
+      profile.panels[id] = {
+        dock: source.dock === 'float' ? 'float' : 'float',
+        order: source.order !== undefined ? source.order : def.defaultOrder,
+        collapsed: !!source.collapsed,
+        visible: source.visible !== undefined
+          ? source.visible
+          : (def.defaultVisible !== undefined ? def.defaultVisible : true),
+        floatX: source.dock === 'float' && source.floatX !== undefined ? source.floatX : x,
+        floatY: source.dock === 'float' && source.floatY !== undefined ? source.floatY : y,
+        floatW: width,
+        floatH: height,
+        floatZ: source.floatZ || 1000,
+        snapLeft: source.dock === 'float' ? !!source.snapLeft : fromLeft,
+        snapTop: false,
+        snapRight: source.dock === 'float' ? !!source.snapRight : !fromLeft,
+        snapBottom: source.dock === 'float' ? !!source.snapBottom : false,
+      };
+    }
+
+    return profile;
+  },
+
+  _storeActiveProfile() {
+    if (!this._storedProfiles) {
+      this._storedProfiles = this._createPanelStorageEnvelope(null);
+    }
+    this._storedProfiles.profiles[this._workspaceLayout] = cloneState(this.state);
+  },
+
+  _flushStoredProfiles() {
+    if (!this._storedProfiles) return;
+    try { localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(this._storedProfiles)); }
+    catch(e) { /* ignore */ }
+  },
+
+  _defaultTerminalPanelState() {
+    const toolbar = document.getElementById('toolbar');
+    const inputBar = document.getElementById('input-bar');
+    const statusBar = document.getElementById('status-bar');
+    const top = (toolbar ? toolbar.offsetHeight : 42) + 10;
+    const reservedBottom = (statusBar ? statusBar.offsetHeight : 0) + 12;
+    const width = Math.max(520, Math.round(window.innerWidth * 0.58));
+    const height = Math.max(360, window.innerHeight - top - reservedBottom - 80 + (inputBar ? inputBar.offsetHeight : 0));
+
+    return {
+      dock: 'float',
+      order: 0,
+      collapsed: false,
+      visible: true,
+      floatX: Math.max(12, Math.round((window.innerWidth - width) / 2)),
+      floatY: top,
+      floatW: Math.min(width, window.innerWidth - 24),
+      floatH: Math.min(height, window.innerHeight - top - reservedBottom),
+      floatZ: 1100,
+      snapLeft: false,
+      snapTop: true,
+      snapRight: false,
+      snapBottom: false,
+    };
+  },
+
+  _normalizeTerminalPanelState(state) {
+    return {
+      ...this._defaultTerminalPanelState(),
+      ...(state && typeof state === 'object' ? state : {}),
+      visible: true,
+      collapsed: false,
+    };
+  },
+
+  setWorkspaceLayout(layout, options = {}) {
+    const nextLayout = layout === 'floating' ? 'floating' : 'classic';
+    if (this._workspaceLayout === nextLayout && !options.initializing) return;
+
+    if (!this._initialized || appState.zorkOnlyMode) return;
+
+    this._storeActiveProfile();
+    this._flushStoredProfiles();
+    this._workspaceLayout = nextLayout;
+    this._syncWorkspaceClass();
+    this._resetLivePanels();
+    this.loadState();
+    this.buildPanelsMenu();
+    if (this._isFloatingWorkspace()) {
+      this.createTerminalPanel();
+    } else {
+      this._restoreTerminalToClassic();
+    }
+    for (const id of Object.keys(PANEL_DEFS)) {
+      if (this.state.panels[id] && this.state.panels[id].visible) {
+        this.createPanel(id);
+      }
+    }
+    this._applyDockStateToDom();
+    this._renderMobileSheet();
+    if (!this._mobile.enabled) {
+      this.repositionSnappedPanels();
+    }
+    this.saveState();
+    this._notifyOutputLayoutChanged();
+  },
+
   loadState() {
     let saved = null;
     try {
@@ -197,15 +400,28 @@ export const panelManager = {
       if (raw) saved = JSON.parse(raw);
     } catch(e) { /* ignore */ }
 
-    if (saved && saved.docks) {
-      this.state.docks = saved.docks;
+    this._storedProfiles = this._createPanelStorageEnvelope(saved);
+    this._workspaceLayout = this._getRequestedWorkspaceLayout();
+
+    const activeProfile = this._storedProfiles.profiles[this._workspaceLayout] || {};
+    if (activeProfile && activeProfile.docks) {
+      this.state.docks = activeProfile.docks;
+    } else {
+      this.state.docks = { left: false, right: false };
     }
 
     const panels = {};
     this._hadSavedEntry.clear();
+    if (activeProfile && activeProfile.panels && activeProfile.panels[TERMINAL_PANEL_ID]) {
+      this._hadSavedEntry.add(TERMINAL_PANEL_ID);
+      panels[TERMINAL_PANEL_ID] = this._normalizeTerminalPanelState(activeProfile.panels[TERMINAL_PANEL_ID]);
+    } else if (this._isFloatingWorkspace()) {
+      panels[TERMINAL_PANEL_ID] = this._defaultTerminalPanelState();
+    }
+
     for (const [id, def] of Object.entries(PANEL_DEFS)) {
-      const s = (saved && saved.panels && saved.panels[id]) || {};
-      const hasSavedState = !!(saved && saved.panels && saved.panels[id]);
+      const s = (activeProfile && activeProfile.panels && activeProfile.panels[id]) || {};
+      const hasSavedState = !!(activeProfile && activeProfile.panels && activeProfile.panels[id]);
       if (hasSavedState) this._hadSavedEntry.add(id);
       const defW = def.defaultFloatW || 280;
       const defH = def.defaultFloatH || 200;
@@ -238,8 +454,12 @@ export const panelManager = {
       }
       const builtInDefaultVisible = def.defaultVisible !== undefined ? def.defaultVisible : true;
       const effectiveDefaultVisible = this._hiddenByDefault.has(id) ? false : builtInDefaultVisible;
+      let defaultDock = def.defaultDock;
+      if (this._isFloatingWorkspace() && !hasSavedState) {
+        defaultDock = 'float';
+      }
       panels[id] = {
-        dock: s.dock || def.defaultDock,
+        dock: s.dock || defaultDock,
         order: s.order !== undefined ? s.order : def.defaultOrder,
         collapsed: !!s.collapsed,
         visible: s.visible !== undefined ? s.visible : effectiveDefaultVisible,
@@ -247,6 +467,7 @@ export const panelManager = {
         floatY: s.floatY !== undefined ? s.floatY : defY,
         floatW: s.floatW || defW,
         floatH: s.floatH || defH,
+        floatZ: s.floatZ || 1000,
         snapLeft: s.snapLeft !== undefined ? !!s.snapLeft : defaultSnapLeft,
         snapTop: s.snapTop !== undefined ? !!s.snapTop : defaultSnapTop,
         snapRight: s.snapRight !== undefined ? !!s.snapRight : defaultSnapRight,
@@ -254,13 +475,18 @@ export const panelManager = {
       };
     }
     this.state.panels = panels;
+    this._topFloatZ = Object.values(panels).reduce((max, panel) => {
+      const z = Number(panel && panel.floatZ);
+      return Number.isFinite(z) ? Math.max(max, z) : max;
+    }, 1000);
   },
 
   saveState() {
     if (this._mobile.enabled) return;
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {
-      try { localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(this.state)); }
+      this._storeActiveProfile();
+      try { localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(this._storedProfiles)); }
       catch(e) { /* ignore */ }
     }, 500);
   },
@@ -325,6 +551,113 @@ export const panelManager = {
     if (!this._mobile.overlayEl) return;
     this._mobile.sheetOpen = false;
     this._mobile.overlayEl.classList.remove('open');
+  },
+
+  _ensureTerminalAnchors() {
+    if (this._terminalAnchors) return this._terminalAnchors;
+    const outputShell = document.getElementById('output-shell');
+    const inputBar = document.getElementById('input-bar');
+    if (!outputShell || !inputBar) return null;
+    this._terminalAnchors = {
+      outputParent: outputShell.parentNode,
+      outputNext: outputShell.nextSibling,
+      inputParent: inputBar.parentNode,
+      inputNext: inputBar.nextSibling,
+    };
+    return this._terminalAnchors;
+  },
+
+  createTerminalPanel() {
+    if (appState.zorkOnlyMode) return;
+    if (!this._isFloatingWorkspace()) return;
+    if (this._mobile.enabled) return;
+    if (this.panels[TERMINAL_PANEL_ID]) return;
+
+    const anchors = this._ensureTerminalAnchors();
+    const outputShell = document.getElementById('output-shell');
+    const inputBar = document.getElementById('input-bar');
+    if (!anchors || !outputShell || !inputBar) return;
+
+    const st = this.state.panels[TERMINAL_PANEL_ID] || this._defaultTerminalPanelState();
+    this.state.panels[TERMINAL_PANEL_ID] = this._normalizeTerminalPanelState(st);
+
+    const el = document.createElement('div');
+    el.className = 'gmcp-panel-widget terminal-panel-widget';
+    el.dataset.panelId = TERMINAL_PANEL_ID;
+
+    const header = document.createElement('div');
+    header.className = 'panel-header';
+    header.dataset.panelId = TERMINAL_PANEL_ID;
+
+    const title = document.createElement('span');
+    title.className = 'panel-title';
+    title.textContent = 'Terminal';
+
+    const controls = document.createElement('span');
+    controls.className = 'panel-controls';
+
+    const floatBtn = document.createElement('button');
+    floatBtn.className = 'panel-btn panel-float';
+    floatBtn.title = st.dock === 'float' ? 'Dock' : 'Float';
+    floatBtn.innerHTML = st.dock === 'float' ? '&#x25A3;' : '&#x25A1;';
+    floatBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._mobile.enabled) return;
+      if (this.state.panels[TERMINAL_PANEL_ID].dock === 'float') {
+        this.dockPanel(TERMINAL_PANEL_ID, 'right');
+      } else {
+        const rect = el.getBoundingClientRect();
+        this.floatPanel(TERMINAL_PANEL_ID, rect.left, rect.top);
+      }
+    });
+
+    controls.appendChild(floatBtn);
+    header.appendChild(title);
+    header.appendChild(controls);
+
+    const body = document.createElement('div');
+    body.className = 'panel-body terminal-panel-body';
+    body.appendChild(outputShell);
+    body.appendChild(inputBar);
+
+    el.appendChild(header);
+    el.appendChild(body);
+
+    this.panels[TERMINAL_PANEL_ID] = {
+      el,
+      headerEl: header,
+      bodyEl: body,
+      title: 'Terminal',
+      terminal: true,
+    };
+    this._placePanelElement(TERMINAL_PANEL_ID, el, this.state.panels[TERMINAL_PANEL_ID]);
+    this._notifyOutputLayoutChanged();
+  },
+
+  _restoreTerminalToClassic() {
+    const anchors = this._ensureTerminalAnchors();
+    const outputShell = document.getElementById('output-shell');
+    const inputBar = document.getElementById('input-bar');
+    if (!anchors || !outputShell || !inputBar) return;
+
+    const terminalPanel = this.panels[TERMINAL_PANEL_ID];
+    if (anchors.outputParent) {
+      anchors.outputParent.insertBefore(outputShell, anchors.outputNext);
+    }
+    if (anchors.inputParent) {
+      anchors.inputParent.insertBefore(inputBar, anchors.inputNext);
+    }
+    if (terminalPanel && terminalPanel.el) {
+      terminalPanel.el.remove();
+      delete this.panels[TERMINAL_PANEL_ID];
+    }
+    this._notifyOutputLayoutChanged();
+  },
+
+  _notifyOutputLayoutChanged() {
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent('darkflow:output-layout-changed'));
+    });
   },
 
   createPanel(id) {
@@ -449,6 +782,9 @@ export const panelManager = {
   _makeFloat(el, st) {
     document.body.appendChild(el);
     el.classList.add('floating');
+    if (st.floatZ) {
+      el.style.zIndex = String(st.floatZ);
+    }
     this._applyFloatPosition(el, st);
 
     const id = el.dataset.panelId;
@@ -458,9 +794,21 @@ export const panelManager = {
         s.floatW = el.offsetWidth;
         s.floatH = el.offsetHeight;
         this.saveState();
+        if (id === TERMINAL_PANEL_ID) {
+          this._notifyOutputLayoutChanged();
+        }
       }
     });
     ro.observe(el);
+  },
+
+  _bringPanelToFront(id) {
+    const st = this.state.panels[id];
+    const panel = this.panels[id];
+    if (!st || !panel || st.dock !== 'float' || this._mobile.enabled) return;
+    st.floatZ = ++this._topFloatZ;
+    panel.el.style.zIndex = String(st.floatZ);
+    this.saveState();
   },
 
   _getSnapBounds() {
@@ -471,7 +819,7 @@ export const panelManager = {
     const rightDock = document.getElementById('right-dock');
     const top = toolbar ? toolbar.offsetHeight : 0;
     const bottom = (statusBar ? statusBar.offsetHeight : 0)
-      + (inputBar ? inputBar.offsetHeight : 0);
+      + (!this._isFloatingWorkspace() && inputBar ? inputBar.offsetHeight : 0);
     const leftEdge = leftDock ? leftDock.getBoundingClientRect().right : 0;
     let rightEdge = rightDock ? rightDock.getBoundingClientRect().left : window.innerWidth;
     rightEdge -= 8;
@@ -576,6 +924,9 @@ export const panelManager = {
     this._mobile.activePanelId = null;
     this.buildPanelsMenu();
 
+    if (this._isFloatingWorkspace()) {
+      this.createTerminalPanel();
+    }
     for (const id of Object.keys(PANEL_DEFS)) {
       if (this.state.panels[id] && this.state.panels[id].visible) {
         this.createPanel(id);
@@ -650,6 +1001,8 @@ export const panelManager = {
 
     st.dock = side;
     st.order = order;
+    this.state.docks[side] = false;
+    this._applyDockStateToDom();
     this._insertIntoDock(id, p.el, side, order);
 
     const dock = document.getElementById(side + '-dock');
@@ -663,6 +1016,7 @@ export const panelManager = {
     if (fb) { fb.title = 'Float'; fb.innerHTML = '&#x25A1;'; }
 
     this.saveState();
+    if (id === TERMINAL_PANEL_ID) this._notifyOutputLayoutChanged();
   },
 
   floatPanel(id, x, y) {
@@ -678,6 +1032,7 @@ export const panelManager = {
     st.dock = 'float';
     st.floatX = x;
     st.floatY = y;
+    st.floatZ = ++this._topFloatZ;
 
     const SNAP = 30;
     const w = st.floatW || p.el.offsetWidth || 280;
@@ -700,6 +1055,7 @@ export const panelManager = {
     if (fb) { fb.title = 'Dock'; fb.innerHTML = '&#x25A3;'; }
 
     this.saveState();
+    if (id === TERMINAL_PANEL_ID) this._notifyOutputLayoutChanged();
   },
 
   collapsePanel(id, collapsed) {
@@ -806,7 +1162,7 @@ export const panelManager = {
     el.appendChild(body);
 
     this.panels[id] = { el, headerEl: header, bodyEl: body, dynamic: true, title };
-    this.state.panels[id] = { dock, order, collapsed: false, visible: true };
+    this.state.panels[id] = { dock, order, collapsed: false, visible: true, floatZ: ++this._topFloatZ };
 
     if (this._mobile.enabled) {
       this._placePanelElement(id, el, this.state.panels[id]);
@@ -843,6 +1199,7 @@ export const panelManager = {
           floatY: y,
           floatW: this.state.panels[id].floatW,
           floatH: this.state.panels[id].floatH,
+          floatZ: this.state.panels[id].floatZ,
           snapLeft: this.state.panels[id].snapLeft,
           snapTop: this.state.panels[id].snapTop,
           snapRight: this.state.panels[id].snapRight,
@@ -1224,6 +1581,7 @@ export const panelManager = {
   },
 
   _resetLivePanels() {
+    this._restoreTerminalToClassic();
     for (const p of Object.values(this.panels)) {
       p.el.remove();
     }
@@ -1402,6 +1760,10 @@ export const panelManager = {
 
     document.addEventListener('pointerdown', (e) => {
       if (this._mobile.enabled) return;
+      const panel = e.target.closest('.gmcp-panel-widget.floating');
+      if (panel && panel.dataset.panelId) {
+        this._bringPanelToFront(panel.dataset.panelId);
+      }
       const header = e.target.closest('.panel-header');
       if (!header) return;
       if (e.target.closest('.panel-btn')) return;
@@ -1578,7 +1940,11 @@ export const panelManager = {
     const margin = 30;
 
     let side = null;
-    if (x < leftRect.right + margin && !leftDock.classList.contains('collapsed')) {
+    if (this._isFloatingWorkspace() && x < margin) {
+      side = 'left';
+    } else if (this._isFloatingWorkspace() && x > window.innerWidth - margin) {
+      side = 'right';
+    } else if (x < leftRect.right + margin && !leftDock.classList.contains('collapsed')) {
       side = 'left';
     } else if (x > rightRect.left - margin && !rightDock.classList.contains('collapsed')) {
       side = 'right';
