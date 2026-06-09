@@ -78,6 +78,7 @@ export const panelManager = {
   _hadSavedEntry: new Set(),
   _terminalAnchors: null,
   _topFloatZ: 1000,
+  _flushHandlersAttached: false,
   _saveTimer: null,
   _subscriptionTimer: null,
   _characterSubscriptionSyncSent: false,
@@ -132,6 +133,7 @@ export const panelManager = {
     this._applyDockStateToDom();
     loadMapData2();
     this.attachDragHandlers();
+    this._attachPersistenceFlushHandlers();
     this.registerGmcpHandlers();
     this._attachResizeHandler();
     this._syncResponsiveMode(true);
@@ -143,7 +145,7 @@ export const panelManager = {
     this._hiddenByDefault = new Set(Array.isArray(ids) ? ids : []);
     for (const id of this._hiddenByDefault) {
       if (!PANEL_DEFS[id]) continue;
-      if (this._hadSavedEntry.has(id)) continue;
+      if (this._hasSavedPanelState(id)) continue;
       const st = this.state.panels[id];
       if (st && st.visible) this.closePanel(id);
     }
@@ -320,10 +322,39 @@ export const panelManager = {
     this._storedProfiles.profiles[this._workspaceLayout] = cloneState(this.state);
   },
 
+  _hasSavedPanelState(id) {
+    if (this._hadSavedEntry.has(id)) return true;
+    const activeProfile = this._storedProfiles &&
+      this._storedProfiles.profiles &&
+      this._storedProfiles.profiles[this._workspaceLayout];
+    return !!(activeProfile && activeProfile.panels && activeProfile.panels[id]);
+  },
+
   _flushStoredProfiles() {
     if (!this._storedProfiles) return;
     try { localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(this._storedProfiles)); }
     catch(e) { /* ignore */ }
+  },
+
+  _flushPendingStateSave() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    if (this._mobile.enabled) return;
+    this._storeActiveProfile();
+    this._flushStoredProfiles();
+  },
+
+  _attachPersistenceFlushHandlers() {
+    if (this._flushHandlersAttached) return;
+    this._flushHandlersAttached = true;
+    window.addEventListener('pagehide', () => this._flushPendingStateSave());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        this._flushPendingStateSave();
+      }
+    });
   },
 
   _defaultTerminalPanelState() {
