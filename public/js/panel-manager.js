@@ -1749,6 +1749,9 @@ export const panelManager = {
       startX: 0, startY: 0,
       offsetX: 0, offsetY: 0,
       indicator: null,
+      snapTargetId: null,
+      lastFloatX: 0,
+      lastFloatY: 0,
       snapEdges,
     };
 
@@ -1821,6 +1824,13 @@ export const panelManager = {
       if (snR) gx = bounds.right - gw;
       if (snB) gy = bounds.bottom - gh;
 
+      const panelSnap = this._getPanelSnapPosition(gx, gy, gw, gh, drag.panelId);
+      gx = panelSnap.x;
+      gy = panelSnap.y;
+      this._setPanelSnapTarget(drag, panelSnap.targetId);
+      drag.lastFloatX = gx;
+      drag.lastFloatY = gy;
+
       drag.ghostEl.style.left = gx + 'px';
       drag.ghostEl.style.top = gy + 'px';
 
@@ -1834,6 +1844,7 @@ export const panelManager = {
 
       if (!drag.active) {
         drag.panelId = null;
+        this._clearPanelSnapTarget(drag);
         return;
       }
 
@@ -1846,19 +1857,101 @@ export const panelManager = {
 
       drag.indicator.style.display = 'none';
       this._showSnapEdges(false, false, false, false, null, drag);
+      this._clearPanelSnapTarget(drag);
 
       document.getElementById('left-dock').classList.remove('drag-over');
       document.getElementById('right-dock').classList.remove('drag-over');
 
       const drop = this._getDropTarget(e.clientX, e.clientY, panelId);
       if (drop.target === 'float') {
-        this.floatPanel(panelId, e.clientX - drag.offsetX, e.clientY - drag.offsetY);
+        this.floatPanel(
+          panelId,
+          drag.lastFloatX !== undefined ? drag.lastFloatX : e.clientX - drag.offsetX,
+          drag.lastFloatY !== undefined ? drag.lastFloatY : e.clientY - drag.offsetY
+        );
       } else {
         this.dockPanel(panelId, drop.target, drop.order);
       }
 
       drag.panelId = null;
     });
+  },
+
+  _clearPanelSnapTarget(drag) {
+    if (!drag || !drag.snapTargetId) return;
+    const panel = this.panels[drag.snapTargetId];
+    if (panel && panel.el) {
+      panel.el.classList.remove('panel-snap-target');
+    }
+    drag.snapTargetId = null;
+  },
+
+  _setPanelSnapTarget(drag, panelId) {
+    if (!drag) return;
+    if (drag.snapTargetId === panelId) return;
+    this._clearPanelSnapTarget(drag);
+    if (!panelId) return;
+    const panel = this.panels[panelId];
+    if (panel && panel.el) {
+      panel.el.classList.add('panel-snap-target');
+      drag.snapTargetId = panelId;
+    }
+  },
+
+  _getPanelSnapPosition(x, y, width, height, panelId) {
+    const SNAP = 24;
+    const GAP = 6;
+    const right = x + width;
+    const bottom = y + height;
+    const overlaps = (aStart, aEnd, bStart, bEnd) =>
+      aEnd >= bStart - SNAP && bEnd >= aStart - SNAP;
+    let snapX = x;
+    let snapY = y;
+    let bestX = SNAP + 1;
+    let bestY = SNAP + 1;
+    let targetId = null;
+
+    for (const [id, panel] of Object.entries(this.panels)) {
+      if (id === panelId || !panel || !panel.el) continue;
+      const st = this.state.panels[id];
+      if (!st || st.dock !== 'float') continue;
+
+      const rect = panel.el.getBoundingClientRect();
+      const candidatesX = [
+        { value: rect.right + GAP, distance: Math.abs(x - (rect.right + GAP)), adjacent: true },
+        { value: rect.left - width - GAP, distance: Math.abs(right - (rect.left - GAP)), adjacent: true },
+        { value: rect.left, distance: Math.abs(x - rect.left), adjacent: false },
+        { value: rect.right - width, distance: Math.abs(right - rect.right), adjacent: false },
+      ];
+      const candidatesY = [
+        { value: rect.bottom + GAP, distance: Math.abs(y - (rect.bottom + GAP)), adjacent: true },
+        { value: rect.top - height - GAP, distance: Math.abs(bottom - (rect.top - GAP)), adjacent: true },
+        { value: rect.top, distance: Math.abs(y - rect.top), adjacent: false },
+        { value: rect.bottom - height, distance: Math.abs(bottom - rect.bottom), adjacent: false },
+      ];
+
+      if (overlaps(y, bottom, rect.top, rect.bottom)) {
+        for (const candidate of candidatesX) {
+          if (candidate.distance < bestX && candidate.distance <= SNAP) {
+            bestX = candidate.distance;
+            snapX = candidate.value;
+            targetId = id;
+          }
+        }
+      }
+
+      if (overlaps(x, right, rect.left, rect.right)) {
+        for (const candidate of candidatesY) {
+          if (candidate.distance < bestY && candidate.distance <= SNAP) {
+            bestY = candidate.distance;
+            snapY = candidate.value;
+            targetId = id;
+          }
+        }
+      }
+    }
+
+    return { x: snapX, y: snapY, targetId };
   },
 
   _updateDropZone(x, y, drag) {
