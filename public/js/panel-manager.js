@@ -190,6 +190,46 @@ export const panelManager = {
     this.syncGmcpSubscriptions('visibility-sync', true);
   },
 
+  resetLayoutState() {
+    if (appState.zorkOnlyMode) return;
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    try {
+      localStorage.removeItem(PANEL_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Failed to reset panel layout state', error);
+    }
+
+    this._storedProfiles = null;
+    this._hadSavedEntry.clear();
+    this._resetLivePanels();
+    this.loadState();
+    this.buildPanelsMenu();
+    this._syncWorkspaceClass();
+    if (this._isFloatingWorkspace()) {
+      this.createTerminalPanel();
+    } else {
+      this._restoreTerminalToClassic();
+    }
+
+    for (const id of Object.keys(PANEL_DEFS)) {
+      if (this.state.panels[id] && this.state.panels[id].visible) {
+        this.createPanel(id);
+      }
+    }
+
+    this._applyDockStateToDom();
+    this._renderMobileSheet();
+    if (!this._mobile.enabled) {
+      this.repositionSnappedPanels();
+    }
+    this.saveState();
+    this.syncGmcpSubscriptions('layout-reset', true);
+    this._notifyOutputLayoutChanged();
+  },
+
   getSubscriptionPanels() {
     if (appState.zorkOnlyMode) return {};
     const panels = {};

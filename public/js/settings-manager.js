@@ -3436,6 +3436,28 @@ export const settingsManager = {
         this._draftSettings.workspaceLayout = value;
       }
     ));
+    const resetLayoutCard = document.createElement('div');
+    resetLayoutCard.className = 'settings-connection-card';
+    const resetLayoutLabel = document.createElement('div');
+    resetLayoutLabel.className = 'settings-label';
+    resetLayoutLabel.textContent = 'Pane layout';
+    const resetLayoutCopy = document.createElement('p');
+    resetLayoutCopy.className = 'dw-paragraph';
+    resetLayoutCopy.textContent = 'Reset saved pane, dock, and terminal window positions for the current browser.';
+    const resetLayoutBtn = document.createElement('button');
+    resetLayoutBtn.className = 'dw-button dw-button-secondary';
+    resetLayoutBtn.type = 'button';
+    resetLayoutBtn.textContent = 'Reset layout';
+    resetLayoutBtn.addEventListener('click', () => {
+      const confirmed = window.confirm('Reset saved pane and terminal layout for this browser?');
+      if (!confirmed) return;
+      panelManager.resetLayoutState();
+      this._setFooterStatus('Layout reset.');
+    });
+    resetLayoutCard.appendChild(resetLayoutLabel);
+    resetLayoutCard.appendChild(resetLayoutCopy);
+    resetLayoutCard.appendChild(resetLayoutBtn);
+    terminalSection.appendChild(resetLayoutCard);
     terminalSection.appendChild(this._createCheckboxRow(
       'Screen reader announcements',
       'Mirror new terminal lines into a hidden polite live region for browser screen readers.',
