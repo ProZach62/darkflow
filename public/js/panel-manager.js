@@ -1243,6 +1243,7 @@ export const panelManager = {
       this._panelRenderFrame = null;
     }
     for (const [id, p] of Object.entries(this.panels)) {
+      if (id === TERMINAL_PANEL_ID || p.terminal) continue;
       if (preservePanels.has(id) && this.gmcpData[id] !== undefined) {
         this._renderPanel(id);
       } else {
