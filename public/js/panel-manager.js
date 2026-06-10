@@ -1,6 +1,7 @@
 import { gmcp } from './gmcp.js';
 import { state as appState } from './state.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
+import { openPaneFontSettings } from './pane-settings.js';
 import { panelRenderers } from './panel-renderers.js';
 import {
   processCurrent as processMapData2Current,
@@ -137,6 +138,8 @@ export const panelManager = {
     this.registerGmcpHandlers();
     this._attachResizeHandler();
     this._syncResponsiveMode(true);
+    this._ensureTerminalGear();
+    this._applyPaneFont(TERMINAL_PANEL_ID);
     this._initialized = true;
   },
 
@@ -349,6 +352,7 @@ export const panelManager = {
         snapTop: false,
         snapRight: source.dock === 'float' ? !!source.snapRight : !fromLeft,
         snapBottom: source.dock === 'float' ? !!source.snapBottom : false,
+        font: source.font,
       };
     }
 
@@ -543,6 +547,7 @@ export const panelManager = {
         snapTop: s.snapTop !== undefined ? !!s.snapTop : defaultSnapTop,
         snapRight: s.snapRight !== undefined ? !!s.snapRight : defaultSnapRight,
         snapBottom: s.snapBottom !== undefined ? !!s.snapBottom : defaultSnapBottom,
+        font: (s.font && typeof s.font === 'object') ? s.font : undefined,
       };
     }
     this.state.panels = panels;
@@ -753,6 +758,15 @@ export const panelManager = {
     const controls = document.createElement('span');
     controls.className = 'panel-controls';
 
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'panel-btn panel-settings';
+    settingsBtn.title = 'Pane font settings';
+    settingsBtn.innerHTML = '&#x2699;';
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openPaneSettings(id);
+    });
+
     const collapseBtn = document.createElement('button');
     collapseBtn.className = 'panel-btn panel-collapse';
     collapseBtn.title = 'Collapse';
@@ -786,6 +800,7 @@ export const panelManager = {
       this.closePanel(id);
     });
 
+    controls.appendChild(settingsBtn);
     controls.appendChild(collapseBtn);
     controls.appendChild(floatBtn);
     controls.appendChild(closeBtn);
@@ -802,12 +817,117 @@ export const panelManager = {
 
     this.panels[id] = { el, headerEl: header, bodyEl: body, title: def.title };
     this._placePanelElement(id, el, st);
+    this._applyPaneFont(id);
 
     if (this.gmcpData[id]) {
       this._renderPanel(id);
     }
     if (id === 'sky') this._syncSkyTimer();
     this._renderMobileSheet();
+  },
+
+  // --- Per-pane font -------------------------------------------------------
+
+  openPaneSettings(id) {
+    const def = PANEL_DEFS[id];
+    const st = this.state.panels[id];
+    const title = id === TERMINAL_PANEL_ID ? 'Terminal' : ((def && def.title) || id);
+    openPaneFontSettings({
+      title,
+      font: (st && st.font) || {},
+      onChange: (font) => this.setPaneFont(id, font),
+      onReset: () => this.setPaneFont(id, null),
+    });
+  },
+
+  // Persist + apply a pane's font. `font` may be { family?, size?, weight? };
+  // null/empty clears the overrides back to the pane default.
+  setPaneFont(id, font) {
+    let st = this.state.panels[id];
+    // The terminal's state entry may not exist in classic layout; create it so
+    // the font persists regardless of layout.
+    if (!st && id === TERMINAL_PANEL_ID) {
+      st = this.state.panels[id] = this._normalizeTerminalPanelState({});
+    }
+    if (!st) return;
+    const clean = {};
+    if (font) {
+      if (font.family) clean.family = String(font.family);
+      if (font.size) clean.size = String(font.size);
+      if (font.weight) clean.weight = String(font.weight);
+    }
+    if (Object.keys(clean).length) st.font = clean;
+    else delete st.font;
+    this._applyPaneFont(id);
+    this.saveState();
+  },
+
+  // Apply a pane's saved font.
+  //
+  // GMCP info panes: applied to the pane body. Family is set directly (for
+  // inherited text) and via --df-font-mono/--df-font-ui (for content using those
+  // vars). Size is a scale on --pane-font-scale so the panel's size hierarchy
+  // scales proportionally (panel font-sizes are calc(Npx * var(--pane-font-scale,1))).
+  //
+  // Terminal pane: applied to #output-shell (present in both classic and floating
+  // layouts). Its text is uniform (no size hierarchy), so size is a direct px
+  // value. Only the FONT changes here; terminal/game colors stay fixed.
+  _applyPaneFont(id) {
+    const f = (this.state.panels[id] && this.state.panels[id].font) || {};
+
+    if (id === TERMINAL_PANEL_ID) {
+      const shell = document.getElementById('output-shell');
+      if (!shell) return;
+      if (f.family) {
+        shell.style.setProperty('--df-font-mono', f.family);
+        shell.style.setProperty('--df-font-ui', f.family);
+      } else {
+        shell.style.removeProperty('--df-font-mono');
+        shell.style.removeProperty('--df-font-ui');
+      }
+      shell.style.fontSize = (f.size && Number(f.size) > 0) ? (Number(f.size) + 'px') : '';
+      shell.style.fontWeight = f.weight ? String(f.weight) : '';
+      return;
+    }
+
+    const p = this.panels[id];
+    if (!p || !p.bodyEl) return;
+    const body = p.bodyEl;
+
+    if (f.family) {
+      body.style.fontFamily = f.family;
+      body.style.setProperty('--df-font-mono', f.family);
+      body.style.setProperty('--df-font-ui', f.family);
+    } else {
+      body.style.fontFamily = '';
+      body.style.removeProperty('--df-font-mono');
+      body.style.removeProperty('--df-font-ui');
+    }
+
+    if (f.size && Number(f.size) > 0) {
+      body.style.setProperty('--pane-font-scale', (Number(f.size) / 12).toString());
+    } else {
+      body.style.removeProperty('--pane-font-scale');
+    }
+
+    body.style.fontWeight = f.weight ? String(f.weight) : '';
+  },
+
+  // Add the terminal's font gear to #output-shell (it lives there in both
+  // layouts, unlike the floating-only terminal panel header).
+  _ensureTerminalGear() {
+    const shell = document.getElementById('output-shell');
+    if (!shell || shell.querySelector('.terminal-font-btn')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'panel-btn terminal-font-btn';
+    btn.title = 'Terminal font settings';
+    btn.innerHTML = '&#x2699;';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openPaneSettings(TERMINAL_PANEL_ID);
+    });
+    shell.appendChild(btn);
   },
 
   _placePanelElement(id, el, st) {

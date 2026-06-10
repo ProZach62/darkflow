@@ -2006,6 +2006,57 @@ body.zork-only-mode #toolbar-connect-fields {
   justify-content: flex-end;
 }
 
+/* Per-pane font settings modal */
+.pane-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--df-overlay, rgba(0, 0, 0, 0.6));
+}
+.pane-settings-modal {
+  width: min(360px, calc(100vw - 32px));
+  background: var(--df-panel);
+  border: 1px solid var(--df-border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  color: var(--df-text);
+}
+.pane-settings-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 14px;
+  color: var(--df-text-strong);
+}
+.pane-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.pane-settings-label { font-size: 12px; color: var(--df-muted); }
+.pane-settings-row .dw-select { min-width: 190px; }
+.pane-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Terminal pane font gear (lives in the top-right of the output shell) */
+.terminal-font-btn {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 6;
+  opacity: 0.45;
+}
+.terminal-font-btn:hover { opacity: 1; }
+
 .ansi-bold { font-weight: bold; }
 .ansi-italic { font-style: italic; }
 .ansi-fraktur {
