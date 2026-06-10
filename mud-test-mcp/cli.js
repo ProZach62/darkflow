@@ -5,7 +5,8 @@
 //
 //   node cli.js send "look"                 connect, log in, run one command
 //   node cli.js state [Package]             print the GMCP state snapshot
-//   node cli.js run path/to/script.yaml     run a scripted sequence (json or yaml)
+//   node cli.js run path/to/script.yaml     run one scripted sequence (json or yaml)
+//   node cli.js run path/to/dir/            run every .yaml/.yml/.json script in a directory
 //
 // Target the MUD with flags (they override .env), e.g.:
 //   node cli.js send "look" --host mud.example.com --port 5000 --user bob --password pw
@@ -16,6 +17,7 @@
 //
 // Exit code is non-zero when a scripted run has any failing step.
 import fs from 'node:fs';
+import path from 'node:path';
 
 import { loadEnv } from './core/config.js';
 import { MudSession } from './core/session.js';
@@ -59,6 +61,25 @@ async function loadScriptFile(file) {
   if (file.endsWith('.json')) return JSON.parse(raw);
   const { parse } = await import('yaml');
   return parse(raw);
+}
+
+// Test-script files (.yaml/.yml/.json) directly inside `dir`, sorted. Non-script
+// files (README.md, etc.) are skipped; not recursive.
+function listScriptFiles(dir) {
+  return fs.readdirSync(dir)
+    .filter((name) => /\.(ya?ml|json)$/i.test(name))
+    .sort()
+    .map((name) => path.join(dir, name));
+}
+
+// Run one script file in its own fresh session; print the per-step report and
+// return whether it passed.
+async function runScriptFile(file, opts) {
+  const script = await loadScriptFile(file);
+  const report = await withSession(opts, (session) => runScript(session, script, { stopOnFail: false }));
+  for (const r of report.results) printStepResult(r);
+  console.log(`${report.passed ? 'PASSED' : 'FAILED'}: ${report.run - report.failed}/${report.run} steps passed.`);
+  return report.passed;
 }
 
 async function withSession(opts, fn) {
@@ -115,13 +136,35 @@ async function main() {
   }
 
   if (cmd === 'run') {
-    const file = rest[0];
-    if (!file) throw new Error('usage: cli.js run <script.yaml|script.json> [--host H --port P --user U --password PW]');
-    const script = await loadScriptFile(file);
-    const report = await withSession(opts, async (session) => runScript(session, script, { stopOnFail: false }));
-    for (const r of report.results) printStepResult(r);
-    console.log(`\n${report.passed ? 'PASSED' : 'FAILED'}: ${report.run - report.failed}/${report.run} steps passed.`);
-    process.exitCode = report.passed ? 0 : 1;
+    const target = rest[0];
+    if (!target) throw new Error('usage: cli.js run <script.yaml|script.json|directory> [--host H --port P --user U --password PW]');
+
+    if (!fs.statSync(target).isDirectory()) {
+      // Single script.
+      const passed = await runScriptFile(target, opts);
+      process.exitCode = passed ? 0 : 1;
+      return;
+    }
+
+    // Directory: run every .yaml/.yml/.json script in it, each in its own session.
+    const files = listScriptFiles(target);
+    if (files.length === 0) {
+      console.error(`No .yaml/.yml/.json test scripts found in ${target}`);
+      process.exitCode = 2;
+      return;
+    }
+    let passedCount = 0;
+    for (const file of files) {
+      console.log(`\n=== ${path.relative(process.cwd(), file) || file} ===`);
+      try {
+        if (await runScriptFile(file, opts)) passedCount++;
+      } catch (err) {
+        // One script erroring (e.g. connect/login failure) shouldn't stop the rest.
+        console.log(`[ERROR] ${err.message}`);
+      }
+    }
+    console.log(`\n==== ${passedCount}/${files.length} scripts passed ====`);
+    process.exitCode = passedCount === files.length ? 0 : 1;
     return;
   }
 

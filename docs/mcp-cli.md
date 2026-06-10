@@ -35,7 +35,7 @@ node mud-test-mcp/cli.js state Room.Info
 node mud-test-mcp/cli.js state            # full snapshot
 ```
 
-### `run <script.yaml|script.json>`
+### `run <script.yaml|script.json|directory>`
 
 Load a test script (see [`mcp-test-scripts.md`](mcp-test-scripts.md)), run every
 step, and print a per-step `[PASS]`/`[FAIL]` report with captured output for
@@ -44,6 +44,18 @@ straight into CI).
 
 ```sh
 node mud-test-mcp/cli.js run mud-test-mcp/examples/smoke.yaml
+```
+
+If the path is a **directory**, every `.yaml` / `.yml` / `.json` script directly
+inside it (sorted by name; non-script files like `README.md` are skipped; not
+recursive) is run as its own script, **each in a fresh session**. You get the
+per-step report for each, a `=== <file> ===` header between them, and a final
+`==== N/M scripts passed ====` summary. The exit code is `0` only if **every**
+script passes. A script that errors (e.g. a connect/login failure) is reported and
+counted as failed, but does not stop the rest of the run.
+
+```sh
+node mud-test-mcp/cli.js run ../darkwind-nextgen/tests/kingdoms/
 ```
 
 Example output:

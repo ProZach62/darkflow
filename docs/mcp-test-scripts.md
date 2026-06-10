@@ -9,6 +9,10 @@ you get a per-step pass/fail report. Scripts are the durable, re-runnable form o
 node mud-test-mcp/cli.js run path/to/script.yaml
 ```
 
+Point `run` at a **directory** to run every `.yaml` / `.yml` / `.json` script in it
+(each in its own session, with an aggregate pass/fail summary) — see the
+[CLI reference](mcp-cli.md). Handy for a whole suite, e.g. the Kingdom tests below.
+
 ## File shape
 
 YAML or JSON. Top level is a `steps:` list (a bare array is also accepted):
@@ -96,9 +100,9 @@ steps:
 
 ---
 
-## Example suite: Kingdom / homestead
+## Test suite: Kingdom / homestead
 
-`mud-test-mcp/examples/kingdoms/` is a worked suite for the player-kingdom
+`../darkwind-nextgen/tests/kingdoms/` is a worked suite for the player-kingdom
 homestead system (`secure/daemons/homestead_d.c`, the commons NPCs
 Marra/Orrin/Brant, `objects/homestead/room.c`). Use it as a model for stateful,
 timer-driven systems.
