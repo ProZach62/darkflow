@@ -4,7 +4,7 @@
   position: fixed;
   inset: 0;
   z-index: 3100;
-  background: #0d1117;
+  background: var(--df-bg);
 }
 
 .ide-modal {
@@ -20,8 +20,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  background: #161b22;
-  border-bottom: 1px solid #30363d;
+  background: var(--df-panel);
+  border-bottom: 1px solid var(--df-border);
   flex-shrink: 0;
 }
 
@@ -34,7 +34,7 @@
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: #c9d1d9;
+  color: var(--df-text);
 }
 
 .ide-readonly-badge {
@@ -43,14 +43,14 @@
   padding: 1px 6px;
   font-size: 10px;
   font-weight: 600;
-  color: #d29922;
-  border: 1px solid #d29922;
+  color: var(--df-warn);
+  border: 1px solid var(--df-warn);
   border-radius: 3px;
   vertical-align: middle;
 }
 
 .ide-modified-dot {
-  color: #58a6ff;
+  color: var(--df-accent-blue);
 }
 
 .ide-actions {
@@ -63,19 +63,19 @@
   padding: 4px 14px;
   font-size: 12px;
   font-weight: 500;
-  border: 1px solid #30363d;
+  border: 1px solid var(--df-border);
   border-radius: 4px;
   cursor: pointer;
   font-family: inherit;
 }
 
 .ide-btn-save {
-  background: #238636;
+  background: var(--df-btn-bg);
   color: #fff;
-  border-color: #2ea043;
+  border-color: var(--df-btn-hover);
 }
 .ide-btn-save:hover {
-  background: #2ea043;
+  background: var(--df-btn-hover);
 }
 .ide-btn-save:disabled {
   opacity: 0.5;
@@ -83,11 +83,11 @@
 }
 
 .ide-btn-close {
-  background: #21262d;
-  color: #c9d1d9;
+  background: var(--df-btn-secondary);
+  color: var(--df-text);
 }
 .ide-btn-close:hover {
-  background: #30363d;
+  background: var(--df-border);
 }
 
 /* Editor container */
@@ -110,8 +110,8 @@
 .ide-error-panel {
   max-height: 180px;
   overflow-y: auto;
-  background: #161b22;
-  border-top: 2px solid #f85149;
+  background: var(--df-panel);
+  border-top: 2px solid var(--df-err);
   flex-shrink: 0;
 }
 
@@ -119,9 +119,9 @@
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
-  color: #f85149;
+  color: var(--df-err);
   background: #1c1118;
-  border-bottom: 1px solid #30363d;
+  border-bottom: 1px solid var(--df-border);
 }
 
 .ide-error-list {
@@ -133,23 +133,23 @@
   gap: 12px;
   padding: 4px 12px;
   font-size: 12px;
-  color: #c9d1d9;
+  color: var(--df-text);
   cursor: pointer;
-  border-bottom: 1px solid #21262d;
+  border-bottom: 1px solid var(--df-btn-secondary);
 }
 .ide-error-item:hover {
   background: #1c2128;
 }
 
 .ide-error-location {
-  color: #f85149;
+  color: var(--df-err);
   font-weight: 600;
   white-space: nowrap;
   min-width: 70px;
 }
 
 .ide-error-message {
-  color: #c9d1d9;
+  color: var(--df-text);
 }
 
 /* Status bar */
@@ -158,18 +158,18 @@
   justify-content: space-between;
   padding: 3px 12px;
   font-size: 11px;
-  color: #8b949e;
-  background: #161b22;
-  border-top: 1px solid #30363d;
+  color: var(--df-muted);
+  background: var(--df-panel);
+  border-top: 1px solid var(--df-border);
   flex-shrink: 0;
 }
 
 .ide-status-text {
-  color: #8b949e;
+  color: var(--df-muted);
 }
 
 .ide-status-pos {
-  color: #8b949e;
+  color: var(--df-muted);
 }
 
 /* Loading spinner */
@@ -188,14 +188,14 @@
 .ide-loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #30363d;
-  border-top-color: #58a6ff;
+  border: 3px solid var(--df-border);
+  border-top-color: var(--df-accent-blue);
   border-radius: 50%;
   animation: ide-spin 0.8s linear infinite;
 }
 
 .ide-loading-text {
-  color: #8b949e;
+  color: var(--df-muted);
   font-size: 14px;
 }
 

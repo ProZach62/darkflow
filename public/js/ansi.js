@@ -187,6 +187,8 @@ function rgbToHex(r, g, b) {
   return '#' + [r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
+// Terminal colors are intentionally FIXED, never theme-driven: game output must
+// look identical under every UI theme. The palette lives in constants.js.
 function resolveColor(color, isBackground) {
   if (!color) return isBackground ? DEFAULT_BG : DEFAULT_FG;
   if (color.type === '256') return COLOR_256[color.index] || (isBackground ? DEFAULT_BG : DEFAULT_FG);

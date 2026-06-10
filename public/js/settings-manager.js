@@ -16,6 +16,7 @@ import { panelManager } from './panel-manager.js';
 import { PRODUCT_NAME } from './brand.js';
 import { getSoundCatalog, isKnownSound, soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 import { getAutomationStepLabel } from './automation-executor.js';
+import { applyTheme, convertVsCodeTheme, BUILTIN_THEMES, DEFAULT_THEME_KEY } from './theme-manager.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
@@ -74,6 +75,8 @@ export const settingsManager = {
     terminalWidthColumns: null,
     workspaceLayout: 'classic',
     settingsBackupPromptEnabled: true,
+    theme: DEFAULT_THEME_KEY,
+    customThemes: {},
   },
   _settings: {},
   _draftSettings: {},
@@ -118,6 +121,7 @@ export const settingsManager = {
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
     panelManager.setWorkspaceLayout(this._settings.workspaceLayout, { initializing: true });
     sendTerminalGeometry(false);
+    this._applyActiveTheme();
   },
 
   get(key) {
@@ -246,6 +250,33 @@ export const settingsManager = {
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
     panelManager.setWorkspaceLayout(this._settings.workspaceLayout);
     sendTerminalGeometry(true);
+    this._applyActiveTheme();
+    this._save();
+  },
+
+  // --- Theming -------------------------------------------------------------
+
+  _resolveTheme(key) {
+    const custom = this._settings.customThemes && this._settings.customThemes[key];
+    if (custom) return custom;
+    return BUILTIN_THEMES[key] || BUILTIN_THEMES[DEFAULT_THEME_KEY];
+  },
+
+  _applyActiveTheme() {
+    try {
+      applyTheme(this._resolveTheme(this._settings.theme));
+    } catch (error) {
+      console.warn('Failed to apply theme', error);
+    }
+  },
+
+  // Theme changes apply (and persist) immediately, independent of the modal's
+  // save/cancel draft, since they are purely visual and low-risk.
+  _setTheme(key) {
+    this._settings.theme = key;
+    if (this._draftSettings) this._draftSettings.theme = key;
+    state.settings = { ...this._settings };
+    this._applyActiveTheme();
     this._save();
   },
 
@@ -594,6 +625,7 @@ export const settingsManager = {
     setOutputScrollbackPreset(nextSettings.outputScrollbackPreset);
     panelManager.setWorkspaceLayout(nextSettings.workspaceLayout);
     sendTerminalGeometry(true);
+    this._applyActiveTheme();
 
     try {
       localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(bundle.data.aliases || { scopes: {} }));
@@ -654,6 +686,8 @@ export const settingsManager = {
       terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
       workspaceLayout: settings.workspaceLayout === 'floating' ? 'floating' : 'classic',
       settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
+      theme: typeof settings.theme === 'string' && settings.theme ? settings.theme : DEFAULT_THEME_KEY,
+      customThemes: (settings.customThemes && typeof settings.customThemes === 'object') ? settings.customThemes : {},
     };
   },
 
@@ -734,6 +768,93 @@ export const settingsManager = {
     row.appendChild(select);
 
     return row;
+  },
+
+  _themeOptionList() {
+    const builtins = Object.values(BUILTIN_THEMES).map((t) => ({ value: t.key, label: t.label }));
+    const customs = Object.entries(this._settings.customThemes || {}).map(([key, t]) => ({
+      value: key,
+      label: (t && t.label ? t.label : key) + ' (imported)',
+    }));
+    return [...builtins, ...customs];
+  },
+
+  _createThemeRow() {
+    const row = document.createElement('div');
+    row.className = 'settings-select-row';
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+    const label = document.createElement('div');
+    label.className = 'settings-label';
+    label.textContent = 'Theme';
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = 'Recolor the terminal and interface. Import any VS Code theme (.json) to add your own. Applies immediately.';
+    copy.appendChild(label);
+    copy.appendChild(description);
+
+    const controls = document.createElement('div');
+    controls.className = 'settings-theme-controls';
+
+    const select = document.createElement('select');
+    select.className = 'dw-select';
+    const rebuildOptions = () => {
+      select.innerHTML = '';
+      for (const opt of this._themeOptionList()) {
+        const el = document.createElement('option');
+        el.value = opt.value;
+        el.textContent = opt.label;
+        if (opt.value === this._settings.theme) el.selected = true;
+        select.appendChild(el);
+      }
+    };
+    rebuildOptions();
+    select.addEventListener('change', () => this._setTheme(select.value));
+
+    const importBtn = document.createElement('button');
+    importBtn.type = 'button';
+    importBtn.className = 'dw-button';
+    importBtn.textContent = 'Import theme…';
+    importBtn.addEventListener('click', () => this._promptImportTheme(rebuildOptions));
+
+    controls.appendChild(select);
+    controls.appendChild(importBtn);
+    row.appendChild(copy);
+    row.appendChild(controls);
+    return row;
+  },
+
+  _promptImportTheme(onAdded) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        const json = JSON.parse(await file.text());
+        const theme = convertVsCodeTheme(json, {
+          label: (json && json.name) || file.name.replace(/\.json$/i, ''),
+        });
+        let key = theme.key || 'imported';
+        const base = key;
+        let n = 2;
+        while (BUILTIN_THEMES[key] || (this._settings.customThemes && this._settings.customThemes[key])) {
+          key = base + '-' + n++;
+        }
+        theme.key = key;
+        this._settings.customThemes = { ...(this._settings.customThemes || {}), [key]: theme };
+        if (this._draftSettings) this._draftSettings.customThemes = this._settings.customThemes;
+        this._setTheme(key);
+        if (typeof onAdded === 'function') onAdded();
+        this._setFooterStatus('Imported theme "' + theme.label + '".');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to import that theme file.';
+        this._setFooterStatus(message, true);
+      }
+    });
+    input.click();
   },
 
   _createNumberRow(labelText, descriptionText, value, options, onChange) {
@@ -3385,6 +3506,7 @@ export const settingsManager = {
     terminalTitle.textContent = 'Terminal';
 
     terminalSection.appendChild(terminalTitle);
+    terminalSection.appendChild(this._createThemeRow());
     terminalSection.appendChild(this._createSelectRow(
       'Scrollback memory',
       'Choose how much terminal history to retain before the oldest lines are discarded.',
