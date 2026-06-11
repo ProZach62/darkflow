@@ -29,9 +29,11 @@ let mapStatusMessage = '';
 let mapStatusAt = 0;
 let saveTimer = null;
 let forceFullSyncOnNextCurrent = false;
+let lastSyncRequestByArea = new Map();
 
 const MAP_STATUS_TTL_MS = 6000;
 const SAVE_DEBOUNCE_MS = 200;
+const SYNC_THROTTLE_MS = 4000;
 
 function normalizeRoomId(id) {
   return id === null || id === undefined ? null : String(id);
@@ -227,22 +229,48 @@ export function load() {
   }
 }
 
+// Reconcile our synced baseline for an area against the version the server
+// just reported. Three cases:
+//  - we have no completed sync for the area  -> full sync (covers login/reload,
+//    where the server only pushes area data on zone *changes*)
+//  - server version went BACKWARD            -> the server map for this area was
+//    rebuilt/cleared; our cached rooms are from another coordinate generation
+//    and must be replaced wholesale, or stale tiles mix with new ones
+//  - server version is ahead                  -> incremental catch-up (rooms other
+//    players mapped since our last sync)
+function reconcileAreaVersion(area, serverVersion) {
+  if (!area || serverVersion === undefined) return;
+  const known = areaVersions.get(area);
+  const full = known === undefined || serverVersion < known;
+  if (!full && serverVersion <= known) return;
+
+  const now = Date.now();
+  if (now - (lastSyncRequestByArea.get(area) || 0) < SYNC_THROTTLE_MS) return;
+  lastSyncRequestByArea.set(area, now);
+  if (full) setMapStatus('Syncing map...');
+  requestAreaSync(area, full);
+}
+
 export function processCurrent(data) {
   if (!data || data.id === null || data.id === undefined) return 0;
   active = true;
   mergeRoom(data, data.area);
   currentRoomId = normalizeRoomId(data.id);
   currentAreaName = data.areaName || data.area || '';
-  if (data.area && data.areaVersion !== undefined) {
-    areaVersions.set(data.area, data.areaVersion);
-  }
-  if (!data.positioned) {
-    setMapStatus('Map layout pending for ' + (data.name || 'current room'));
-  }
+  // NOTE: do NOT store data.areaVersion as our baseline here. The baseline
+  // means "we hold every room up to version V"; Current carries only ONE room,
+  // and storing its area version made incremental syncs skip everything other
+  // players mapped in between. Instead, compare and resync when behind.
   if (forceFullSyncOnNextCurrent && data.area) {
     forceFullSyncOnNextCurrent = false;
     setMapStatus('Updating map data...');
+    lastSyncRequestByArea.set(data.area, Date.now());
     requestAreaSync(data.area, true);
+  } else if (data.area) {
+    reconcileAreaVersion(data.area, data.areaVersion);
+  }
+  if (!data.positioned) {
+    setMapStatus('Map layout pending for ' + (data.name || 'current room'));
   }
   save();
   return 1;
@@ -257,17 +285,24 @@ export function mergeServerAreaData(data) {
   for (const room of data.rooms) {
     merged += mergeRoom(room, data.area);
   }
-  if (data.version !== undefined) areaVersions.set(data.area, data.version);
+  // Only a COMPLETED sync establishes the baseline; storing it mid-chunking
+  // would mark rooms we never received as already-held.
+  if (data.version !== undefined && !data.more) {
+    areaVersions.set(data.area, data.version);
+  }
   if (merged || data.replace || data.version !== undefined) save();
   return merged;
 }
 
 export function mergeServerUpdate(data) {
   const merged = mergeServerAreaData(data);
-  if (data && data.area && data.version !== undefined && data.more) {
+  if (data && data.area && data.more) {
+    // Continue THIS sync with the server's cursor. The old version-high-water
+    // continuation permanently dropped every room that missed the first chunk.
     gmcp.send('Darkwind.MapData2.Sync', {
       area: data.area,
-      version: data.version,
+      version: data.since || 0,
+      offset: data.offset || 0,
     });
   }
   return merged;
@@ -284,6 +319,8 @@ export function requestAreaSync(area, forceFull) {
 export function clearMapDataForArea(area) {
   if (!area) return;
   removeAreaRooms(area);
+  areaVersions.delete(area);
+  lastSyncRequestByArea.delete(area);
   save();
   setMapStatus('Cleared ' + area + ', resyncing...');
   requestAreaSync(area, true);

@@ -25,6 +25,10 @@ globalThis.Audio = class { play() { return Promise.resolve(); } addEventListener
 
 const { renderMap } = await import('../public/js/map-renderer.js');
 const v2 = await import('../public/js/map-data-v2.js');
+const { gmcp } = await import('../public/js/gmcp.js');
+// The model now sends sync requests on its own (login/baseline reconciliation);
+// stub the transport so tests never touch the real socket plumbing.
+gmcp.send = () => {};
 
 function makeBody() {
   let html = '';
@@ -190,4 +194,83 @@ test('genuinely empty area still shows the explore placeholder', () => {
   const body = makeBody();
   renderMap(body);
   assert.ok(body.innerHTML.includes('map-empty'), 'no data for area -> placeholder');
+});
+
+// ── Sync protocol semantics (chunk continuation + baseline reconciliation) ───
+
+function withGmcpSpy(fn) {
+  const sent = [];
+  const orig = gmcp.send;
+  gmcp.send = (pkg, data) => { sent.push({ pkg, data }); };
+  try { fn(sent); } finally { gmcp.send = orig; }
+}
+
+test('chunked area sync continues with the server cursor, not a version mark', () => {
+  v2.clearMapData();
+  withGmcpSpy((sent) => {
+    v2.mergeServerUpdate({
+      area: 'ChunkLand', version: 90, since: 0, offset: 50, more: 1, replace: 1,
+      rooms: [{ id: 'c1', name: 'C1', positioned: 1, x: 0, y: 0, z: 0, version: 90, exits: {} }],
+    });
+    assert.equal(sent.length, 1, 'continuation Sync sent while more=1');
+    assert.equal(sent[0].pkg, 'Darkwind.MapData2.Sync');
+    assert.equal(sent[0].data.version, 0, 'continuation re-sends the ORIGINAL since');
+    assert.equal(sent[0].data.offset, 50, 'continuation carries the cursor');
+  });
+
+  // Baseline is not established until the final chunk arrives.
+  withGmcpSpy(() => {
+    v2.processCurrent({
+      id: 'c1', name: 'C1', area: 'ChunkLand', positioned: 1,
+      x: 0, y: 0, z: 0, areaVersion: 90, exits: {},
+    });
+  });
+
+  withGmcpSpy((sent) => {
+    v2.mergeServerUpdate({
+      area: 'ChunkLand', version: 90, since: 0, offset: 70, more: 0,
+      rooms: [{ id: 'c2', name: 'C2', positioned: 1, x: 1, y: 0, z: 0, version: 88, exits: {} }],
+    });
+    assert.equal(sent.length, 0, 'no continuation after the final chunk');
+  });
+
+  // Now the baseline is 90: a Current at the same version requests nothing.
+  withGmcpSpy((sent) => {
+    v2.processCurrent({
+      id: 'c2', name: 'C2', area: 'ChunkLand', positioned: 1,
+      x: 1, y: 0, z: 0, areaVersion: 90, exits: {},
+    });
+    assert.equal(sent.length, 0, 'baseline up to date -> no sync request');
+  });
+});
+
+test('server version regression triggers a full resync (frame reset)', () => {
+  v2.clearMapData();
+  // Complete a sync at version 200.
+  v2.mergeServerAreaData({
+    area: 'ResetLand', version: 200, more: 0, replace: 1,
+    rooms: [{ id: 'r1', name: 'R1', positioned: 1, x: 0, y: 0, z: 0, version: 200, exits: {} }],
+  });
+
+  withGmcpSpy((sent) => {
+    v2.processCurrent({
+      id: 'r1', name: 'R1', area: 'ResetLand', positioned: 1,
+      x: 0, y: 0, z: 0, areaVersion: 5, exits: {},
+    });
+    assert.equal(sent.length, 1, 'regressed server version -> resync requested');
+    assert.equal(sent[0].data.version, 0, 'and it is a FULL sync');
+  });
+});
+
+test('first Current for an unsynced area requests a full sync (login path)', () => {
+  v2.clearMapData();
+  withGmcpSpy((sent) => {
+    v2.processCurrent({
+      id: 'f1', name: 'F1', area: 'FreshLand', positioned: 1,
+      x: 0, y: 0, z: 0, areaVersion: 42, exits: {},
+    });
+    assert.equal(sent.length, 1, 'no baseline -> full sync requested');
+    assert.equal(sent[0].data.area, 'FreshLand');
+    assert.equal(sent[0].data.version, 0);
+  });
 });

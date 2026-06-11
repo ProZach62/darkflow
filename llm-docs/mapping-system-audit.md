@@ -334,4 +334,54 @@ Each step is independently shippable and independently testable in-game.
 - Reload the browser mid-area: map restores without going blank.
 - `tools/lpc-check` clean on every touched `.c`; map panel renders in
   Chrome/Firefox/Safari.
+
+---
+
+## Phase 3 (June 2026): the "straight walk still breaks" bugs
+
+Live debugging of the v_road1 -> west repro (map fine, one step west = four
+scattered tiles) found four compounding root causes, all fixed and validated
+in-game by walking the village road on a cleared area and emulating a client's
+chunked sync:
+
+1. **Chunked area syncs silently dropped rooms.** Continuation used a version
+   high-water mark: any room not in chunk 1 whose version was <= chunk 1's max
+   was never sent. A 167-room Darkwind sync delivered an arbitrary hash-ordered
+   fraction -- the literal scattered-tile map. Fixed with a cursor
+   (`since`/`offset`) carried in `Darkwind.MapData2.Update`; the client
+   continues with the ORIGINAL since + the server's offset, and only stores its
+   version baseline when the final chunk (`more:0`) lands.
+2. **`processCurrent` clobbered the sync baseline.** Each step stored the
+   area's LATEST version after merging only ONE room, so incremental syncs
+   skipped everything other players had mapped in between. The client now never
+   takes a baseline from `Current`; instead it compares and resyncs:
+   no baseline -> full sync (fixes the login/reload gap, where the server only
+   pushes area data on zone changes); server version regressed -> full sync
+   (server map rebuilt; cached coordinates are another generation); server
+   ahead -> incremental catch-up. Throttled per area.
+3. **Every `m_delete` in `map2_d.c` was a silent no-op.** The mudlib simul_efun
+   `m_delete` is NON-destructive (returns a copy; see CLAUDE.md). Consequences:
+   rooms that changed zones stayed in their old area's dumps with foreign-frame
+   coordinates (stray junk tiles), stale edges persisted, and
+   `map2d cleararea`/`clear_area()` -- the repair tool -- did nothing at all.
+   All call sites now use `efun::m_delete`.
+4. **Cross-zone neighbours ping-ponged between zones.** `record_room_exits()`
+   re-zoned every exit destination into the OBSERVING room's zone. A boundary
+   room (e.g. the maincity alley off the Darkwind road) flipped zones on every
+   observation from either side, dropping its coordinates each flip and
+   re-stamping versions (constant churn). Now only MISSING stubs are created
+   with the observer's zone as a provisional guess; an existing room's zone
+   changes only when the room itself is observed.
+
+Plus: incremental sticky placement now **heals** stale coordinates -- if the
+player walks a compass/vertical exit and the destination's solver-placed
+coordinate contradicts `prev + offset`, the room is snapped to the walked edge
+(explicit room/grid coords are never moved). Walking a straight line is ground
+truth and repairs old layout generations tile by tile. `map2d room <id>` also
+accepts the numeric room ids now.
+
+Operational notes: `map2d cleararea Darkwind` was run after deploy to flush the
+mixed-generation junk (84/174 positioned, stub records with empty names);
+players' browsers fully resync on their next `Current` thanks to (2) -- a page
+refresh picks up the new client code.
 ```
