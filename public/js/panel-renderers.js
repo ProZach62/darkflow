@@ -444,6 +444,10 @@ export const panelRenderers = {
       Object.prototype.hasOwnProperty.call(data, 'maxsp');
     if (hasSpellpoints) renderVitalBar(bodyEl, 'SP', data.sp, data.maxsp);
     else removeVitalBar(bodyEl, 'SP');
+    const hasMove = Object.prototype.hasOwnProperty.call(data, 'fp') &&
+      Object.prototype.hasOwnProperty.call(data, 'maxfp');
+    if (hasMove) renderVitalBar(bodyEl, 'Move', data.fp, data.maxfp);
+    else removeVitalBar(bodyEl, 'Move');
     if (Object.prototype.hasOwnProperty.call(data, 'level_pct')) {
       const pct = Math.max(0, Math.min(100, Number(data.level_pct) || 0));
       renderVitalBar(bodyEl, 'Level', pct, 100, { display: pct + '%' });
@@ -637,6 +641,7 @@ export const panelRenderers = {
     if (data.environment) html += '<div class="room-env">' + escHtml(data.environment) + '</div>';
 
     const exits = (data.exits && typeof data.exits === 'object') ? data.exits : {};
+    const exitStates = (data.exit_states && typeof data.exit_states === 'object') ? data.exit_states : {};
     const compassDirs = ['northwest','north','northeast','west',null,'east','southwest','south','southeast'];
     const dirLabels = { northwest:'NW', north:'N', northeast:'NE', west:'W', east:'E', southwest:'SW', south:'S', southeast:'SE', up:'U', down:'D' };
 
@@ -649,6 +654,8 @@ export const panelRenderers = {
           '<span class="exit-rose-needle exit-rose-needle-ew"></span>' +
           '<span class="exit-rose-dot"></span>' +
           '</div>';
+      } else if (exitStates[dir]) {
+        html += '<div class="exit-btn inactive" title="' + escHtml(dir + ': ' + exitStates[dir]) + '">' + dirLabels[dir] + '</div>';
       } else if (exits[dir] !== undefined) {
         html += '<button class="exit-btn exit-dir-' + dir + '" data-dir="' + dir + '" title="' + escHtml(dir) + '">' + dirLabels[dir] + '</button>';
       } else {
@@ -659,10 +666,14 @@ export const panelRenderers = {
 
     if (exits.up !== undefined || exits.down !== undefined) {
       html += '<div class="exit-ud">';
-      html += exits.up !== undefined
+      html += exitStates.up
+        ? '<div class="exit-btn inactive" title="' + escHtml('up: ' + exitStates.up) + '">U</div>'
+        : exits.up !== undefined
         ? '<button class="exit-btn" data-dir="up">U</button>'
         : '<div class="exit-btn inactive"></div>';
-      html += exits.down !== undefined
+      html += exitStates.down
+        ? '<div class="exit-btn inactive" title="' + escHtml('down: ' + exitStates.down) + '">D</div>'
+        : exits.down !== undefined
         ? '<button class="exit-btn" data-dir="down">D</button>'
         : '<div class="exit-btn inactive"></div>';
       html += '</div>';

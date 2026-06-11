@@ -3,6 +3,7 @@ import { appendSystemMessage } from './output.js';
 import { sendSocketPayload } from './connection.js';
 import { PRODUCT_NAME } from './brand.js';
 import { isSocketOpen } from './socket-state.js';
+import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from './gmcp-normalizer.js';
 
 const GMCP_CLIENT_NAME = PRODUCT_NAME;
 const GMCP_MEDIA_REFRESH_PACKAGE = 'Darkwind.Client.RefreshMedia';
@@ -11,6 +12,7 @@ const gmcpTextEncoder = new TextEncoder();
 export const gmcpTextDecoder = new TextDecoder('utf-8');
 
 function normalizeSupports(payload) {
+  payload = normalizeSupportsPayload(payload);
   const supports = {};
   if (Array.isArray(payload)) {
     for (const item of payload) {
@@ -51,16 +53,22 @@ export const gmcp = {
   serverSupports: {},
 
   on(packageName, callback) {
+    packageName = canonicalPackageName(packageName);
     if (!this.handlers[packageName]) this.handlers[packageName] = [];
     this.handlers[packageName].push(callback);
   },
 
   off(packageName, callback) {
+    packageName = canonicalPackageName(packageName);
     if (!this.handlers[packageName]) return;
     this.handlers[packageName] = this.handlers[packageName].filter(cb => cb !== callback);
   },
 
   dispatch(packageName, data) {
+    const normalized = normalizeGmcpFrame(packageName, data);
+    packageName = normalized.packageName;
+    data = normalized.data;
+
     if (packageName === 'Core.Supports.Set') {
       this.serverSupports = normalizeSupports(data);
     } else if (packageName === 'Core.Supports.Add') {
@@ -82,7 +90,7 @@ export const gmcp = {
   },
 
   serverSupportsPackage(packageName) {
-    return !!this.serverSupports[packageName];
+    return !!this.serverSupports[canonicalPackageName(packageName)];
   },
 
   send(packageName, data) {

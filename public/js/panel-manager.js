@@ -60,12 +60,18 @@ function normalizeChannelName(data) {
 
 function isFullVitalsPayload(data) {
   if (!data || typeof data !== 'object') return false;
-  const hasBaseVitals = ['hp', 'maxhp', 'string']
-    .every(key => Object.prototype.hasOwnProperty.call(data, key));
-  if (!hasBaseVitals) return false;
+  if (!Object.prototype.hasOwnProperty.call(data, 'hp')) return false;
+  if (!Object.prototype.hasOwnProperty.call(data, 'maxhp')) return false;
   const hasSp = Object.prototype.hasOwnProperty.call(data, 'sp');
   const hasMaxSp = Object.prototype.hasOwnProperty.call(data, 'maxsp');
   return hasSp === hasMaxSp;
+}
+
+function chatMessageKey(message) {
+  const channel = String(message.channel || message.chan || '').toLowerCase();
+  const talker = String(message.talker || message.player || '').toLowerCase();
+  const text = String(message.text || message.msg || '');
+  return channel + '\n' + talker + '\n' + text;
 }
 
 export const panelManager = {
@@ -1524,6 +1530,18 @@ export const panelManager = {
     return this.gmcpData.chat;
   },
 
+  _appendChatMessage(data) {
+    const chat = this._ensureChatData();
+    const message = data && typeof data === 'object' ? data : { text: String(data || '') };
+    const key = chatMessageKey(message);
+    const last = chat.messages.length ? chat.messages[chat.messages.length - 1] : null;
+    if (!last || chatMessageKey(last) !== key) {
+      chat.messages.push(message);
+      if (chat.messages.length > 200) chat.messages.shift();
+    }
+    this._renderPanel('chat');
+  },
+
   _setAvatarMeterPatron(patron) {
     const meter = document.getElementById('avatar-meter');
     if (!meter) return;
@@ -2583,11 +2601,12 @@ export const panelManager = {
       this._renderPanel('chat');
     });
 
+    gmcp.on('Comm.Channel', (data) => {
+      this._appendChatMessage(data);
+    });
+
     gmcp.on('Comm.Channel.Text', (data) => {
-      const chat = this._ensureChatData();
-      chat.messages.push(data && typeof data === 'object' ? data : { text: String(data || '') });
-      if (chat.messages.length > 200) chat.messages.shift();
-      this._renderPanel('chat');
+      this._appendChatMessage(data);
     });
 
     gmcp.on('Darkwind.Quests.List', (data) => {

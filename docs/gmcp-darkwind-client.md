@@ -142,6 +142,8 @@ The `windows`, `ide`, `completion`, and `giphy` feature flags are advertised as 
 - The client always sends `vitals: true`. When the `buffs` panel is open, the client also forces `status: true`.
 - `Char.Status` is treated as sticky state: after the initial full status payload, subsequent delta payloads are merged into the cached status object instead of replacing it.
 - The client advertises standard `Comm.Channel 1`, stores `Comm.Channel.List` / `Comm.Channel.Players`, tracks `Comm.Channel.Start` / `Comm.Channel.End` scopes, renders `Comm.Channel.Text`, requests `Comm.Channel.Players` once character data confirms login, and exposes `Comm.Channel.Enable` through the GMCP helper.
+- Standard GMCP package names are matched case-insensitively. The client normalizes common cross-MUD aliases before panel rendering, including `mhp`/`mana`/`mmana` vitals, root `Comm.Channel {chan, player, msg}` messages, and `Room.Info.terrain`.
+- Darkwind-only features remain under `Darkwind.*`; standard packages should carry broadly useful data and compatibility aliases only.
 - Sent automatically on:
   - WebSocket open (`reason: "login"` or `"reconnect"`, `full: true`)
   - Initial panel hydration (`reason: "visibility-sync"`, `full: true`)

@@ -36,6 +36,14 @@ function channelLabel(entry) {
   return entry.channel ? '[' + entry.channel + ']' : '[Channel]';
 }
 
+function notificationKey(entry) {
+  return [
+    cleanSnippet(entry.channel || '').toLowerCase(),
+    cleanSnippet(entry.talker || '').toLowerCase(),
+    normalizeMentionText(entry.text || ''),
+  ].join('\n');
+}
+
 export const notificationManager = {
   state: {
     playerName: '',
@@ -58,6 +66,7 @@ export const notificationManager = {
     this.bindButton();
     onOutputLine((line) => this.recordOutputLine(line));
     gmcp.on('Char.Status', (data) => this.handleStatus(data));
+    gmcp.on('Comm.Channel', (data) => this.handleChannelText(data));
     gmcp.on('Comm.Channel.Text', (data) => this.handleChannelText(data));
     this.render();
   },
@@ -166,6 +175,13 @@ export const notificationManager = {
       lineId: null,
       expired: false,
     };
+
+    const key = notificationKey(notification);
+    const now = notification.timestamp;
+    const duplicate = this.state.notifications.concat(this.state.pendingMentions)
+      .some(entry => notificationKey(entry) === key &&
+        (now - (entry.timestamp || 0)) <= LINE_MATCH_WINDOW_MS);
+    if (duplicate) return;
 
     if (this.bindNotificationToLine(notification)) {
       this.addNotification(notification);
