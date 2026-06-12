@@ -141,6 +141,8 @@ function normalizeRule(rule) {
     enabled: rule.enabled !== false,
     patternSource,
     ignoreCase: Boolean(rule.ignoreCase),
+    description: String(rule.description || ''),
+    group: String(rule.group || '').trim().replace(/\s+/g, ' '),
     style: normalizeStyle(rule.style),
   };
 }
@@ -456,6 +458,8 @@ export const highlightManager = {
       enabled: true,
       patternSource: '',
       ignoreCase: false,
+      description: '',
+      group: '',
       style: {
         fg: 'yellow',
         bg: 'black',

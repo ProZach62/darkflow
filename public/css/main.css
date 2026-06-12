@@ -1310,10 +1310,275 @@ body.zork-only-mode #toolbar-connect-fields {
   background: #2d1117;
 }
 
+/* -- Automation editors (Aliases / Triggers / Highlights) ----------
+   Shared scaffold from settings-automation.js: toolbar, ordered list,
+   detail pane, pinned test bar. The wrapper fills the tab panel so the
+   list/detail scroll internally and the test bar stays visible. */
+.settings-automation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 0;
+  min-height: 320px;
+}
+
+.settings-automation-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-automation-toolbar .dw-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-automation-toolbar .dw-button {
+  white-space: nowrap;
+}
+
+.settings-automation-toolbar .settings-helper-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-scope-chip {
+  font-size: 11px;
+  color: var(--df-muted);
+  border: 1px solid var(--df-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.settings-automation-layout {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-automation-list-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 1 230px;
+  min-width: 150px;
+  min-height: 0;
+}
+
+.settings-automation-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.settings-automation-list-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-automation-detail {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.settings-flag-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-flag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--df-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--df-muted);
+  background: var(--df-bg);
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-flag-pill input[type="checkbox"] {
+  margin: 0;
+}
+
+.settings-flag-pill.on {
+  border-color: var(--df-accent-blue);
+  color: var(--df-text);
+  background: #111827;
+}
+
+.settings-flag-pill:focus-within {
+  outline: 2px solid var(--df-accent-blue);
+  outline-offset: 2px;
+}
+
+.settings-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 200px);
+  gap: 8px;
+}
+
+.settings-row-chip {
+  display: inline-block;
+  border: 1px solid var(--df-border);
+  border-radius: 999px;
+  padding: 0 6px;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #7dd3fc;
+}
+
+.settings-step-card {
+  padding: 8px;
+  gap: 6px;
+}
+
+.settings-step-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-step-index {
+  font-size: 11px;
+  color: var(--df-muted);
+  min-width: 14px;
+  text-align: right;
+}
+
+.settings-step-spacer {
+  flex: 1;
+}
+
+.settings-step-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.settings-step-sound-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-step-sound-row input[type="range"] {
+  flex: 1;
+  min-width: 80px;
+}
+
+.settings-step-template {
+  min-height: 44px;
+}
+
+.settings-add-step-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.settings-add-step {
+  width: auto;
+}
+
+.settings-syntax-help {
+  font-size: 11px;
+  color: var(--df-muted);
+  min-width: 0;
+}
+
+.settings-syntax-help summary {
+  cursor: pointer;
+}
+
+.settings-syntax-help p {
+  margin: 6px 0 0;
+}
+
+.settings-automation-preview {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--df-border);
+  border-radius: 8px;
+  background: var(--df-bg);
+  padding: 8px 10px;
+  max-height: 45%;
+  min-height: 0;
+}
+
+.settings-automation-preview.collapsed {
+  flex: 0 0 auto;
+}
+
+.settings-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-preview-head .settings-label {
+  cursor: default;
+}
+
+.settings-preview-summary {
+  flex: 1;
+  font-size: 11px;
+  color: var(--df-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.settings-preview-sample {
+  min-height: 34px;
+  max-height: 80px;
+}
+
+.settings-preview-results {
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .settings-highlight-style-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 10px;
+}
+
+.settings-highlight-bold {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 4px;
 }
 
 .settings-color-input-row {
