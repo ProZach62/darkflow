@@ -60,6 +60,51 @@ function normalizeLegacyKeyToCode(key) {
   return '';
 }
 
+// The settings window is a floating, draggable, resizable panel (not a
+// blocking modal) so triggers/aliases can be edited and tested while playing.
+// Its geometry and last-open section persist per browser.
+const SETTINGS_WINDOW_STATE_KEY = 'darkwind-settings-window';
+const SETTINGS_WINDOW_MIN_W = 560;
+const SETTINGS_WINDOW_MIN_H = 380;
+
+function loadSettingsWindowState() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_WINDOW_STATE_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    return data && typeof data === 'object' ? data : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveSettingsWindowState(patch) {
+  try {
+    const next = Object.assign(loadSettingsWindowState(), patch || {});
+    localStorage.setItem(SETTINGS_WINDOW_STATE_KEY, JSON.stringify(next));
+  } catch (e) {
+    // localStorage unavailable; the window just won't remember its spot.
+  }
+}
+
+// Saved (or default) geometry, clamped so the window always lands on-screen
+// even after a monitor/viewport change.
+function settingsWindowGeometry() {
+  const saved = loadSettingsWindowState();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let w = Number(saved.w) || Math.min(1000, vw - 28);
+  let h = Number(saved.h) || Math.min(700, vh - 130);
+  w = Math.max(SETTINGS_WINDOW_MIN_W, Math.min(w, vw - 8));
+  h = Math.max(SETTINGS_WINDOW_MIN_H, Math.min(h, vh - 8));
+  let x = Number.isFinite(Number(saved.x)) && saved.x !== null && saved.x !== undefined
+    ? Number(saved.x) : (vw - w - 14);
+  let y = Number.isFinite(Number(saved.y)) && saved.y !== null && saved.y !== undefined
+    ? Number(saved.y) : 54;
+  x = Math.max(0, Math.min(x, vw - 200));
+  y = Math.max(0, Math.min(y, vh - 100));
+  return { x, y, w, h, tab: typeof saved.tab === 'string' ? saved.tab : 'connection' };
+}
+
 export const settingsManager = {
   _defaults: {
     autoReconnect: true,
@@ -92,6 +137,7 @@ export const settingsManager = {
   _dataSyncHandler: null,
   _refreshEditors: null,
   _activateTab: null,
+  _clearSettingsSearch: null,
   _pendingAliasSelection: null,
   _footerStatusEl: null,
   _previousFocusEl: null,
@@ -188,7 +234,7 @@ export const settingsManager = {
     this._escHandler = modalKeyHandler;
     this._modalKeyHandler = modalKeyHandler;
     this._dataSyncHandler = dataSyncHandler;
-    this._focusSettingsControl('settings-tab-connection');
+    this._focusSettingsControl('settings-tab-' + settingsWindowGeometry().tab);
   },
 
   close(options = {}) {
@@ -219,6 +265,7 @@ export const settingsManager = {
     this._triggerScopeKey = '';
     this._refreshEditors = null;
     this._activateTab = null;
+    this._clearSettingsSearch = null;
     this._pendingAliasSelection = null;
     this._footerStatusEl = null;
     this._modalKeyHandler = null;
@@ -348,6 +395,14 @@ export const settingsManager = {
 
     if (event.key === 'Escape') {
       event.preventDefault();
+      // Esc in a non-empty settings search clears the search first; a second
+      // Esc closes the window.
+      if (event.target instanceof HTMLElement &&
+        event.target.dataset.focusKey === 'settings-search' &&
+        event.target.value && this._clearSettingsSearch) {
+        this._clearSettingsSearch();
+        return;
+      }
       this.close();
       return;
     }
@@ -3357,6 +3412,10 @@ export const settingsManager = {
     title.id = 'settings-modal-title';
     title.textContent = 'Settings';
 
+    const dragHint = document.createElement('span');
+    dragHint.className = 'settings-drag-hint';
+    dragHint.textContent = 'drag to move - drag corner to resize';
+
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'dw-modal-close';
@@ -3365,7 +3424,63 @@ export const settingsManager = {
     closeBtn.addEventListener('click', () => this.close());
 
     header.appendChild(title);
+    header.appendChild(dragHint);
     header.appendChild(closeBtn);
+
+    // ── Floating window behavior ────────────────────────────────────────
+    // The settings window is positioned, draggable by its header, resizable
+    // via the native corner grip, and remembers its geometry across opens.
+    const geo = settingsWindowGeometry();
+    modal.style.left = geo.x + 'px';
+    modal.style.top = geo.y + 'px';
+    modal.style.width = geo.w + 'px';
+    modal.style.height = geo.h + 'px';
+
+    const saveGeometry = () => {
+      saveSettingsWindowState({
+        x: modal.offsetLeft,
+        y: modal.offsetTop,
+        w: modal.offsetWidth,
+        h: modal.offsetHeight,
+      });
+    };
+
+    let dragFrom = null;
+    header.addEventListener('pointerdown', (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest('button')) return;
+      dragFrom = {
+        dx: event.clientX - modal.offsetLeft,
+        dy: event.clientY - modal.offsetTop,
+      };
+      try { header.setPointerCapture(event.pointerId); } catch (e) { /* ok */ }
+      event.preventDefault();
+    });
+    header.addEventListener('pointermove', (event) => {
+      if (!dragFrom) return;
+      const x = Math.max(0, Math.min(event.clientX - dragFrom.dx, window.innerWidth - 200));
+      const y = Math.max(0, Math.min(event.clientY - dragFrom.dy, window.innerHeight - 80));
+      modal.style.left = x + 'px';
+      modal.style.top = y + 'px';
+    });
+    const endDrag = () => {
+      if (!dragFrom) return;
+      dragFrom = null;
+      saveGeometry();
+    };
+    header.addEventListener('pointerup', endDrag);
+    header.addEventListener('pointercancel', endDrag);
+
+    if (typeof ResizeObserver === 'function') {
+      let resizeSaveTimer = null;
+      const ro = new ResizeObserver(() => {
+        if (resizeSaveTimer) clearTimeout(resizeSaveTimer);
+        resizeSaveTimer = setTimeout(() => {
+          resizeSaveTimer = null;
+          if (document.contains(modal)) saveGeometry();
+        }, 250);
+      });
+      ro.observe(modal);
+    }
 
     const body = document.createElement('div');
     body.className = 'dw-modal-body settings-modal-body';
@@ -3373,6 +3488,7 @@ export const settingsManager = {
     const tabs = document.createElement('div');
     tabs.className = 'settings-tabs';
     tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-orientation', 'vertical');
     tabs.setAttribute('aria-label', 'Settings sections');
 
     const tabPanels = document.createElement('div');
@@ -3383,7 +3499,67 @@ export const settingsManager = {
     const tabOrder = [];
     let renderAliasesSection = null;
     let renderVariablesSection = null;
+    let currentTabKey = 'connection';
+
+    // Search across every section: while a query is active, all sections are
+    // shown stacked with non-matching rows hidden; clearing restores the
+    // selected section.
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.className = 'settings-search-input';
+    searchInput.placeholder = 'Search settings...';
+    searchInput.setAttribute('aria-label', 'Search settings');
+    searchInput.dataset.focusKey = 'settings-search';
+
+    const restoreSectionRows = () => {
+      for (const panel of tabContents.values()) {
+        for (const child of panel.children) child.style.display = '';
+      }
+    };
+    const clearSearch = () => {
+      if (!searchInput.value) return;
+      searchInput.value = '';
+      restoreSectionRows();
+      activateTab(currentTabKey);
+    };
+    this._clearSettingsSearch = clearSearch;
+
+    const applySearch = () => {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) {
+        restoreSectionRows();
+        activateTab(currentTabKey);
+        return;
+      }
+      for (const [tabKey, btn] of tabButtons) {
+        btn.classList.toggle('active', false);
+        btn.setAttribute('aria-selected', 'false');
+      }
+      for (const panel of tabContents.values()) {
+        let matches = 0;
+        for (const child of panel.children) {
+          if (child.tagName === 'H3') continue;
+          const hit = (child.textContent || '').toLowerCase().includes(q);
+          child.style.display = hit ? '' : 'none';
+          if (hit) matches++;
+        }
+        // Keep the section heading when anything below it matched.
+        for (const child of panel.children) {
+          if (child.tagName === 'H3') child.style.display = matches ? '' : 'none';
+        }
+        panel.hidden = !matches;
+        panel.style.display = matches ? 'flex' : 'none';
+      }
+    };
+    searchInput.addEventListener('input', applySearch);
+
     const activateTab = (key) => {
+      if (searchInput.value) {
+        searchInput.value = '';
+        restoreSectionRows();
+      }
+      currentTabKey = key;
+      saveSettingsWindowState({ tab: key });
       if (key === 'aliases' && renderAliasesSection) renderAliasesSection();
       if (key === 'variables' && renderVariablesSection) renderVariablesSection();
       for (const [tabKey, btn] of tabButtons) {
@@ -3448,14 +3624,27 @@ export const settingsManager = {
       return panel;
     };
 
+    const addNavGroup = (label) => {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'settings-nav-group';
+      groupEl.textContent = label;
+      tabs.appendChild(groupEl);
+    };
+
+    addNavGroup('Client');
     const connectionSection = createTab('connection', 'Connection');
+    const appearanceSection = createTab('appearance', 'Appearance');
     const terminalSection = createTab('terminal', 'Terminal');
     const audioSection = createTab('audio', 'Audio');
     const controlsSection = createTab('controls', 'Controls');
+
+    addNavGroup('Automation');
+    const aliasesSection = createTab('aliases', 'Aliases');
     const triggersSection = createTab('triggers', 'Triggers');
     const highlightsSection = createTab('highlights', 'Highlights');
-    const aliasesSection = createTab('aliases', 'Aliases');
     const variablesSection = createTab('variables', 'Variables');
+
+    addNavGroup('Help');
     const aboutSection = createTab('about', 'About');
 
     const sectionTitle = document.createElement('h3');
@@ -3506,12 +3695,18 @@ export const settingsManager = {
       connectionSection.appendChild(connectionDetails);
     }
 
+    const appearanceTitle = document.createElement('h3');
+    appearanceTitle.className = 'dw-heading';
+    appearanceTitle.textContent = 'Appearance';
+
+    appearanceSection.appendChild(appearanceTitle);
+    appearanceSection.appendChild(this._createThemeRow());
+
     const terminalTitle = document.createElement('h3');
     terminalTitle.className = 'dw-heading';
     terminalTitle.textContent = 'Terminal';
 
     terminalSection.appendChild(terminalTitle);
-    terminalSection.appendChild(this._createThemeRow());
     terminalSection.appendChild(this._createSelectRow(
       'Scrollback memory',
       'Choose how much terminal history to retain before the oldest lines are discarded.',
@@ -3551,7 +3746,7 @@ export const settingsManager = {
         this._draftSettings.terminalWidthColumns = value;
       }
     ));
-    terminalSection.appendChild(this._createSelectRow(
+    appearanceSection.appendChild(this._createSelectRow(
       'Workspace layout',
       'Choose the classic fixed terminal and sidebars, or a floating workspace where the terminal and panes can all move and dock.',
       this._draftSettings.workspaceLayout,
@@ -3563,7 +3758,7 @@ export const settingsManager = {
         this._draftSettings.workspaceLayout = value;
       }
     ));
-    terminalSection.appendChild(this._createCheckboxRow(
+    appearanceSection.appendChild(this._createCheckboxRow(
       'Snap floating panes to grid',
       'Align floating pane positions and resized pane dimensions to a 16px grid.',
       !!this._draftSettings.paneGridSnapEnabled,
@@ -3592,7 +3787,7 @@ export const settingsManager = {
     resetLayoutCard.appendChild(resetLayoutLabel);
     resetLayoutCard.appendChild(resetLayoutCopy);
     resetLayoutCard.appendChild(resetLayoutBtn);
-    terminalSection.appendChild(resetLayoutCard);
+    appearanceSection.appendChild(resetLayoutCard);
     terminalSection.appendChild(this._createCheckboxRow(
       'Screen reader announcements',
       'Mirror new terminal lines into a hidden polite live region for browser screen readers.',
@@ -3742,9 +3937,22 @@ export const settingsManager = {
       if (renderVariablesSection) renderVariablesSection();
     };
 
-    activateTab('connection');
-    body.appendChild(tabs);
-    body.appendChild(tabPanels);
+    activateTab(tabButtons.has(geo.tab) ? geo.tab : 'connection');
+
+    const sidebar = document.createElement('div');
+    sidebar.className = 'settings-sidebar';
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'settings-search';
+    searchWrap.appendChild(searchInput);
+    sidebar.appendChild(searchWrap);
+    sidebar.appendChild(tabs);
+
+    const main = document.createElement('div');
+    main.className = 'settings-main';
+    main.appendChild(tabPanels);
+
+    body.appendChild(sidebar);
+    body.appendChild(main);
 
     const footer = document.createElement('div');
     footer.className = 'settings-modal-footer';
@@ -3786,7 +3994,7 @@ export const settingsManager = {
     footer.appendChild(closePanelBtn);
     footer.appendChild(applyBtn);
     footer.appendChild(saveBtn);
-    body.appendChild(footer);
+    main.appendChild(footer);
 
     modal.appendChild(header);
     modal.appendChild(body);

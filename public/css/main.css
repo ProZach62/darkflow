@@ -609,52 +609,128 @@ body.zork-only-mode #toolbar-connect-fields {
 /* Gear dropdown */
 .gear-menu-wrap { display: inline-flex; }
 
+/* The settings "modal" is a non-blocking floating window: the page stays
+   interactive (the overlay is pointer-transparent), and the window itself is
+   positioned/sized inline by settings-manager (persisted per browser),
+   draggable by its header, and resizable via the native corner grip. */
 .settings-overlay {
   background: transparent;
   pointer-events: none;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 54px 14px 70px;
 }
 
-.settings-modal {
-  width: 1000px;
-  height: 700px;
-  max-width: 1000px;
-  max-height: 700px;
+.dw-modal.settings-modal {
+  position: fixed;
   display: flex;
   flex-direction: column;
   pointer-events: auto;
+  min-width: min(560px, calc(100vw - 8px));
+  min-height: min(380px, calc(100vh - 8px));
+  max-width: calc(100vw - 8px);
+  max-height: calc(100vh - 8px);
+  resize: both;
+  overflow: hidden;
+}
+
+.settings-modal .dw-modal-header {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.settings-drag-hint {
+  margin-left: auto;
+  padding-right: 10px;
+  font-size: 10px;
+  color: var(--df-faint);
+  pointer-events: none;
 }
 
 .settings-modal-body {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1 1 auto;
   min-height: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.settings-sidebar {
+  flex: 0 0 176px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding-right: 10px;
+  border-right: 1px solid var(--df-border);
+}
+
+.settings-search {
+  flex: 0 0 auto;
+}
+
+.settings-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--df-bg);
+  border: 1px solid var(--df-border);
+  border-radius: 6px;
+  color: var(--df-text);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.settings-search-input:focus-visible {
+  outline: 2px solid var(--df-accent-blue);
+  outline-offset: 1px;
+}
+
+.settings-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding-left: 12px;
 }
 
 .settings-tabs {
   display: flex;
-  gap: 8px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--df-border);
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.settings-nav-group {
+  margin: 10px 2px 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--df-faint);
+}
+
+.settings-nav-group:first-child {
+  margin-top: 0;
 }
 
 .settings-tab-btn {
   background: transparent;
-  border: 1px solid var(--df-border);
+  border: 1px solid transparent;
   color: var(--df-muted);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  text-align: left;
   cursor: pointer;
+  width: 100%;
 }
 
 .settings-tab-btn:hover {
   color: var(--df-text);
-  border-color: var(--df-border-muted);
+  background: rgba(110, 118, 129, 0.12);
 }
 
 .settings-tab-btn:focus-visible {
@@ -673,6 +749,7 @@ body.zork-only-mode #toolbar-connect-fields {
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .settings-section {
