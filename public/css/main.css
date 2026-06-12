@@ -2040,22 +2040,13 @@ body.zork-only-mode #toolbar-connect-fields {
 }
 .pane-settings-label { font-size: 12px; color: var(--df-muted); }
 .pane-settings-row .dw-select { min-width: 190px; }
+.pane-settings-row .pane-settings-number { min-width: 190px; }
 .pane-settings-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
 }
-
-/* Terminal pane font gear (lives in the top-right of the output shell) */
-.terminal-font-btn {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  z-index: 6;
-  opacity: 0.45;
-}
-.terminal-font-btn:hover { opacity: 1; }
 
 .ansi-bold { font-weight: bold; }
 .ansi-italic { font-style: italic; }

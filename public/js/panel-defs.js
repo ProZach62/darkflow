@@ -13,6 +13,7 @@ export const PANEL_DEFS = {
   inventory: { title: 'Inventory', defaultDock: 'right', defaultOrder: 2 },
   enemy:     { title: 'Enemy',     defaultDock: 'float', defaultOrder: 0,
                defaultFloatW: 380, defaultFloatH: 131,
+               defaultLayer: 1,
                defaultSnapTop: true, defaultVisible: false },
   chat:      { title: 'Chat',      defaultDock: 'float', defaultOrder: 0,
                defaultFloatW: 750, defaultFloatH: 370,
