@@ -508,7 +508,6 @@ export const panelManager = {
         snapTop,
         snapRight,
         snapBottom,
-        panelAnchor: source.panelAnchor,
         font: source.font,
       };
     }
@@ -705,7 +704,10 @@ export const panelManager = {
         snapTop: s.snapTop !== undefined ? !!s.snapTop : defaultSnapTop,
         snapRight: s.snapRight !== undefined ? !!s.snapRight : defaultSnapRight,
         snapBottom: s.snapBottom !== undefined ? !!s.snapBottom : defaultSnapBottom,
-        panelAnchor: this._normalizePanelAnchor(s.panelAnchor),
+        // panelAnchor intentionally dropped: legacy saved anchors caused
+        // positions to be re-derived (and re-saved) from live DOM rects on
+        // every load, drifting panes across refreshes. Positions are
+        // absolute floatX/floatY only.
         font: (s.font && typeof s.font === 'object') ? s.font : undefined,
       };
     }
@@ -2354,7 +2356,6 @@ export const panelManager = {
       gx = panelSnap.x;
       gy = panelSnap.y;
       this._setPanelSnapTarget(drag, panelSnap.targetId);
-      drag.panelAnchor = panelSnap.panelAnchor || null;
       drag.lastFloatX = gx;
       drag.lastFloatY = gy;
 
@@ -2378,7 +2379,6 @@ export const panelManager = {
       drag.active = false;
       const panelId = drag.panelId;
       const el = this.panels[panelId].el;
-      const panelAnchor = drag.panelAnchor;
 
       if (drag.ghostEl) { drag.ghostEl.remove(); drag.ghostEl = null; }
       el.style.opacity = '';
@@ -2392,18 +2392,21 @@ export const panelManager = {
 
       const drop = this._getDropTarget(e.clientX, e.clientY, panelId);
       if (drop.target === 'float') {
+        // NOTE: pane-to-pane edge snapping adjusts the drop POSITION only.
+        // It must never persist an anchor relationship: saved anchors were
+        // re-resolved against live DOM rects on every load (including
+        // hidden/mid-restore targets), rewriting and saving drifted
+        // positions - panes inched across the screen on each refresh.
         this.floatPanel(
           panelId,
           drag.lastFloatX !== undefined ? drag.lastFloatX : e.clientX - drag.offsetX,
-          drag.lastFloatY !== undefined ? drag.lastFloatY : e.clientY - drag.offsetY,
-          { panelAnchor }
+          drag.lastFloatY !== undefined ? drag.lastFloatY : e.clientY - drag.offsetY
         );
       } else {
         this.dockPanel(panelId, drop.target, drop.order);
       }
 
       drag.panelId = null;
-      drag.panelAnchor = null;
     });
   },
 
