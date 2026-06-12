@@ -397,7 +397,7 @@ body.zork-only-mode #toolbar-connect-fields {
   position: fixed;
   left: 50%;
   bottom: 76px;
-  z-index: 1800;
+  z-index: 20000;
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, 8px) scale(0.98);
@@ -493,7 +493,7 @@ body.zork-only-mode #toolbar-connect-fields {
   position: fixed;
   left: 50%;
   bottom: 82px;
-  z-index: 1810;
+  z-index: 20010;
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, 10px);
