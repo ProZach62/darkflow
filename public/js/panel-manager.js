@@ -2792,6 +2792,16 @@ export const panelManager = {
   },
 
   registerGmcpHandlers() {
+    // Connection Health panel: fed by lag-monitor via document events (not
+    // GMCP) so the renderer and monitor stay decoupled.
+    document.addEventListener('dw:lag-update', (event) => {
+      this.gmcpData.connection = event.detail;
+      this._renderPanel('connection');
+    });
+    document.addEventListener('dw:lag-open-panel', () => {
+      this.openPanel('connection');
+    });
+
     gmcp.on('Char.Vitals', (data) => {
       this._syncSubscriptionsAfterCharacterData();
       const fullVitals = isFullVitalsPayload(data);

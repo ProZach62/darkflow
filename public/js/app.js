@@ -12,6 +12,7 @@ import { notificationManager } from './notification-manager.js';
 import { giphyManager } from './giphy-manager.js';
 import { broadcastManager } from './broadcast-manager.js';
 import { linuxRescueManager } from './linux-rescue-manager.js';
+import { lagMonitor } from './lag-monitor.js';
 import { soundPanel } from './sound-panel.js';
 import { soundManager } from './sound-manager.js';
 import { settingsManager } from './settings-manager.js';
@@ -369,7 +370,13 @@ notificationManager.init();
 giphyManager.init();
 broadcastManager.init();
 linuxRescueManager.init();
+lagMonitor.init();
 soundPanel.init();
+
+window.lagDebug = {
+  snapshot: () => lagMonitor.getSnapshot(),
+  runCheck: () => lagMonitor.runFullCheck(),
+};
 
 window.soundDebug = {
   settings: () => soundManager.getDebugSnapshot(),

@@ -31,6 +31,10 @@ export const PANEL_DEFS = {
                defaultVisible: true },
   quests:    { title: 'Quests',    defaultDock: 'right', defaultOrder: 3 },
   achievements: { title: 'Achievements', defaultDock: 'right', defaultOrder: 4 },
+  connection: { title: 'Connection', defaultDock: 'float', defaultOrder: 2,
+               defaultFloatW: 340, defaultFloatH: 330,
+               defaultSnapLeft: true, defaultSnapBottom: true,
+               defaultVisible: false },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';

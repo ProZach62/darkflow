@@ -108,6 +108,7 @@ export const settingsManager = {
     keyMappings: [],
     aliasTabCompletionEnabled: true,
     historyTabCompletionEnabled: false,
+    lagMonitorEnabled: true,
     scrollbackBehavior: 'pause',
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
@@ -732,6 +733,7 @@ export const settingsManager = {
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
       aliasTabCompletionEnabled: settings.aliasTabCompletionEnabled !== false,
       historyTabCompletionEnabled: Boolean(settings.historyTabCompletionEnabled),
+      lagMonitorEnabled: settings.lagMonitorEnabled !== false,
       scrollbackBehavior: this._normalizeScrollbackBehavior(settings.scrollbackBehavior),
       scrollbackSplitRatio: this._normalizeSplitRatio(settings.scrollbackSplitRatio),
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
@@ -1782,6 +1784,15 @@ export const settingsManager = {
       !!this._draftSettings.autoReconnect,
       (checked) => {
         this._draftSettings.autoReconnect = checked;
+      }
+    ));
+
+    connectionSection.appendChild(this._createCheckboxRow(
+      'Monitor connection health',
+      'Measure latency in the background and show it in the status bar; the Connection panel breaks lag down into network, server, and local causes.',
+      this._draftSettings.lagMonitorEnabled !== false,
+      (checked) => {
+        this._draftSettings.lagMonitorEnabled = checked;
       }
     ));
 

@@ -23,6 +23,8 @@ const CANONICAL_PACKAGES = new Map([
   ['comm.channel.end', 'Comm.Channel.End'],
   ['group', 'Group'],
   ['game', 'Game'],
+  ['core.ping', 'Core.Ping'],
+  ['darkwind.lag.status', 'Darkwind.Lag.Status'],
 ]);
 
 function isObject(value) {

@@ -3,6 +3,7 @@ import { renderMap } from './map-renderer.js';
 import { browseSource } from './map-data-v2.js';
 import { sendCommandText } from './input.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
+import { sparklinePoints } from './lag-core.mjs';
 
 let roomImageModal = null;
 let roomImageModalKeyHandler = null;
@@ -1192,5 +1193,92 @@ export const panelRenderers = {
     html += '</div>';
 
     bodyEl.innerHTML = html;
+  },
+
+  connection(bodyEl, data) {
+    if (!data || !data.diagnosis) {
+      bodyEl.innerHTML = '<div class="placeholder">Collecting connection samples...</div>';
+      return;
+    }
+
+    const d = data.diagnosis;
+    const inputs = data.inputs || {};
+    const mud = inputs.mud;
+    const http = inputs.http;
+    const server = inputs.server;
+    const local = inputs.local;
+
+    const axisRow = (label, axis, stat) => {
+      const reason = axis.reasons && axis.reasons.length ? axis.reasons[0] : '';
+      return '<div class="lag-axis">'
+        + '<span class="lag-dot lag-dot-' + escHtml(axis.status) + '"></span>'
+        + '<span class="lag-axis-name">' + escHtml(label) + '</span>'
+        + '<span class="lag-axis-stat">' + escHtml(stat) + '</span>'
+        + (reason ? '<div class="lag-axis-reason">' + escHtml(reason) + '</div>' : '')
+        + '</div>';
+    };
+
+    const networkStat = mud
+      ? mud.median + 'ms game / ' + (http ? http.median + 'ms web' : '-- web')
+        + (mud.lossPct ? ' / ' + mud.lossPct + '% loss' : '')
+      : 'collecting...';
+    const serverStat = server && (server.window_s || 0) > 0
+      ? 'drift ' + server.hb_drift_avg_ms + 'ms avg, ' + server.hb_drift_max_ms + 'ms max'
+      : (inputs.serverSupported ? 'collecting...' : 'not reported');
+    const localStat = local
+      ? 'tab drift ' + local.driftP90 + 'ms'
+        + ((inputs.reconnectsRecent || 0) ? ' / ' + inputs.reconnectsRecent + ' reconnect(s)' : '')
+      : 'collecting...';
+
+    let html = '<div class="lag-panel">';
+    html += '<div class="lag-verdict lag-verdict-' + escHtml(d.verdict) + '">' + escHtml(d.headline) + '</div>';
+    html += axisRow('Network', d.network, networkStat);
+    html += axisRow('Game server', d.server, serverStat);
+    html += axisRow('Your device', d.local, localStat);
+
+    // Dual sparkline: game RTT (accent) vs web RTT (muted), last 60s.
+    const t = data.t || 0;
+    const W = 280;
+    const H = 46;
+    const mudLine = sparklinePoints(data.mudSamples || [], t, { width: W, height: H });
+    const httpLine = sparklinePoints(data.httpSamples || [], t,
+      { width: W, height: H, floorMax: mudLine.maxRtt });
+    const poly = (line, cls) => line.segments
+      .filter((seg) => seg.length > 1)
+      .map((seg) => '<polyline class="' + cls + '" points="'
+        + seg.map((p) => p.x + ',' + p.y).join(' ') + '"/>')
+      .join('');
+    html += '<div class="lag-spark-wrap">'
+      + '<svg class="lag-spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
+      + poly(httpLine, 'lag-spark-http') + poly(mudLine, 'lag-spark-mud')
+      + '</svg>'
+      + '<div class="lag-spark-legend">'
+      + '<span><i class="lag-leg-mud"></i>game</span>'
+      + '<span><i class="lag-leg-http"></i>web</span>'
+      + '<span class="lag-spark-max">max ' + Math.round(mudLine.maxRtt) + 'ms</span>'
+      + '</div></div>';
+
+    // Full check controls + result.
+    const fc = data.fullCheck;
+    html += '<div class="lag-check-row">';
+    html += '<button type="button" class="lag-check-btn"' + (fc && fc.running ? ' disabled' : '') + '>'
+      + (fc && fc.running ? 'Checking...' : 'Run full check') + '</button>';
+    if (fc && !fc.running) {
+      if (fc.internetRtt !== null) {
+        html += '<span class="lag-check-result">internet ' + fc.internetRtt + 'ms</span>';
+      } else if (fc.internetError) {
+        html += '<span class="lag-check-result lag-check-warn">internet check failed</span>';
+      }
+    }
+    html += '</div>';
+    html += '</div>';
+
+    bodyEl.innerHTML = html;
+    const checkBtn = bodyEl.querySelector('.lag-check-btn');
+    if (checkBtn) {
+      checkBtn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('dw:lag-run-check'));
+      });
+    }
   },
 };

@@ -2382,6 +2382,19 @@ body.zork-only-mode #toolbar-connect-fields {
   background: var(--df-bg);
 }
 
+/* Connection-health latency chip (fed by lag-monitor.js). */
+.status-latency {
+  cursor: pointer;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--df-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.status-latency.lag-ok { color: #34d399; border-color: #1d5c45; }
+.status-latency.lag-warn { color: #fbbf24; border-color: #6b5418; }
+.status-latency.lag-bad { color: #f87171; border-color: #6b2424; }
+
 /* ANSI foreground colors. Fixed (never theme-driven) so game output is
    identical under every UI theme. */
 .ansi-fg-black   { color: #555555; }

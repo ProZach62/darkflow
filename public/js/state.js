@@ -76,6 +76,7 @@ export const dom = {
   commandInput: null,
   sendBtn: null,
   statusConnection: null,
+  statusLatency: null,
   statusUptime: null,
   statusVersions: null,
   updateBanner: null,
@@ -111,6 +112,7 @@ export function initDom() {
   dom.commandInput = document.getElementById('command-input');
   dom.sendBtn = document.getElementById('send-btn');
   dom.statusConnection = document.getElementById('status-connection');
+  dom.statusLatency = document.getElementById('status-latency');
   dom.statusUptime = document.getElementById('status-uptime');
   dom.statusVersions = document.getElementById('status-versions');
   dom.updateBanner = document.getElementById('update-banner');
