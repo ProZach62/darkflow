@@ -4,6 +4,7 @@ import {
   createLinuxRescueState,
   getLinuxRescuePrompt,
   runLinuxRescueCommand,
+  shouldRequestLinuxRescueFullscreen,
 } from './linux-rescue-core.mjs';
 
 const PKG_OPEN = 'Darkwind.LinuxRescue.Open';
@@ -12,11 +13,13 @@ export const linuxRescueManager = {
   els: {
     overlay: null,
     stream: null,
+    output: null,
     prompt: null,
     input: null,
   },
 
   open: false,
+  fullscreenRequested: false,
   state: createLinuxRescueState(),
   localHistory: [],
   historyIndex: 0,
@@ -24,7 +27,7 @@ export const linuxRescueManager = {
   init() {
     if (typeof document === 'undefined') return;
     this.mount();
-    gmcp.on(PKG_OPEN, () => this.show());
+    gmcp.on(PKG_OPEN, (data) => this.show(data));
     document.addEventListener('keydown', (event) => this.handleDocumentKeydown(event), true);
   },
 
@@ -46,6 +49,9 @@ export const linuxRescueManager = {
     const stream = document.createElement('div');
     stream.className = 'linux-rescue-stream';
 
+    const output = document.createElement('div');
+    output.className = 'linux-rescue-output';
+
     const row = document.createElement('div');
     row.className = 'linux-rescue-input-row';
 
@@ -64,19 +70,23 @@ export const linuxRescueManager = {
 
     row.appendChild(prompt);
     row.appendChild(input);
+    stream.appendChild(output);
+    stream.appendChild(row);
     terminal.appendChild(title);
     terminal.appendChild(stream);
-    terminal.appendChild(row);
     overlay.appendChild(terminal);
     document.body.appendChild(overlay);
 
-    this.els = { overlay, stream, prompt, input };
+    this.els = { overlay, stream, output, prompt, input };
     this.updatePrompt();
   },
 
-  show() {
+  show(data = {}) {
+    const requestFullscreen = shouldRequestLinuxRescueFullscreen(data);
+
     this.mount();
     this.open = true;
+    this.fullscreenRequested = false;
     this.state = createLinuxRescueState();
     this.localHistory = [];
     this.historyIndex = 0;
@@ -91,8 +101,10 @@ export const linuxRescueManager = {
     this.els.overlay.classList.add('open');
     this.els.input.value = '';
     this.els.input.focus();
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
+    if (requestFullscreen && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen()
+        .then(() => { this.fullscreenRequested = true; })
+        .catch(() => { this.fullscreenRequested = false; });
     }
   },
 
@@ -100,9 +112,10 @@ export const linuxRescueManager = {
     this.open = false;
     if (this.els.overlay) this.els.overlay.classList.remove('open');
     if (this.els.input) this.els.input.value = '';
-    if (document.fullscreenElement && document.exitFullscreen) {
+    if (this.fullscreenRequested && document.fullscreenElement && document.exitFullscreen) {
       document.exitFullscreen().catch(() => {});
     }
+    this.fullscreenRequested = false;
     if (dom.commandInput) dom.commandInput.focus();
   },
 
@@ -175,7 +188,7 @@ export const linuxRescueManager = {
   },
 
   clearStream() {
-    if (this.els.stream) this.els.stream.textContent = '';
+    if (this.els.output) this.els.output.textContent = '';
   },
 
   appendLines(lines) {
@@ -183,11 +196,11 @@ export const linuxRescueManager = {
   },
 
   appendLine(text) {
-    if (!this.els.stream) return;
+    if (!this.els.output) return;
     const line = document.createElement('div');
     line.className = 'linux-rescue-line';
     line.textContent = text;
-    this.els.stream.appendChild(line);
-    this.els.stream.scrollTop = this.els.stream.scrollHeight;
+    this.els.output.appendChild(line);
+    if (this.els.stream) this.els.stream.scrollTop = this.els.stream.scrollHeight;
   },
 };

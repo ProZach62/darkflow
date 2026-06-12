@@ -624,12 +624,15 @@ body.zork-only-mode #toolbar-connect-fields {
   scrollbar-color: #2f7c2f #050805;
 }
 
+.linux-rescue-output {
+  min-height: 0;
+}
+
 .linux-rescue-line {
   min-height: 1.45em;
 }
 
 .linux-rescue-input-row {
-  flex: 0 0 auto;
   display: flex;
   align-items: baseline;
   min-width: 0;

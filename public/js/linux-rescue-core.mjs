@@ -88,6 +88,10 @@ export function getLinuxRescuePrompt(state) {
   return work.user + '@' + work.host + ':' + displayPath(work.cwd) + '$';
 }
 
+export function shouldRequestLinuxRescueFullscreen(data) {
+  return !(data && (data.fullscreen === false || data.fullscreen === 0));
+}
+
 function fakeTop() {
   return [
     'top - 09:42:17 up 18 days,  4:21,  2 users,  load average: 0.16, 0.19, 0.17',

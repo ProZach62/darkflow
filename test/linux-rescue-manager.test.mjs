@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   getLinuxRescuePrompt,
   runLinuxRescueCommand,
+  shouldRequestLinuxRescueFullscreen,
 } from '../public/js/linux-rescue-core.mjs';
 
 test('linux rescue exposes a shell-like prompt', () => {
@@ -38,4 +39,12 @@ test('linux rescue supports clear and exit controls', () => {
   assert.equal(runLinuxRescueCommand(state, 'clear').clear, true);
   assert.equal(runLinuxRescueCommand(state, 'exit').exit, true);
   assert.equal(runLinuxRescueCommand(state, 'logout').exit, true);
+});
+
+test('linux rescue can skip browser fullscreen requests', () => {
+  assert.equal(shouldRequestLinuxRescueFullscreen({}), true);
+  assert.equal(shouldRequestLinuxRescueFullscreen({ fullscreen: true }), true);
+  assert.equal(shouldRequestLinuxRescueFullscreen({ fullscreen: 1 }), true);
+  assert.equal(shouldRequestLinuxRescueFullscreen({ fullscreen: false }), false);
+  assert.equal(shouldRequestLinuxRescueFullscreen({ fullscreen: 0 }), false);
 });
