@@ -87,6 +87,32 @@ function setAutomationEnabled(manager, target, mode, scopeKey) {
   return manager.toggleEnabledByTarget(target, scopeKey);
 }
 
+function setAutomationEnabledById(manager, id, mode, scopeKey) {
+  if (mode === 'enable') return manager.setEnabledById(id, true, scopeKey);
+  if (mode === 'disable') return manager.setEnabledById(id, false, scopeKey);
+  return manager.toggleEnabledById(id, scopeKey);
+}
+
+// Steps written by the picker UI reference their target by id; resolve those
+// directly. Legacy steps (pattern text or templates) fall through to the
+// template-resolution path below.
+function executeTargetIdStep(step, context) {
+  const { appendMessage, scopeKey, source } = context;
+  const isTrigger = step.type === 'set_trigger_enabled';
+  const manager = isTrigger ? triggerManager : aliasManager;
+  const noun = isTrigger ? 'Trigger' : 'Alias';
+
+  const result = setAutomationEnabledById(manager, step.targetId, normalizeMode(step.mode), scopeKey);
+  if (!result.target) {
+    warn(appendMessage, source.prefix, noun + ' referenced by ' + source.description + ' no longer exists.');
+    return { sent: false, localOnly: true, handled: true };
+  }
+  const label = result.target.description
+    || (isTrigger ? result.target.pattern : result.target.trigger);
+  notify(appendMessage, source.prefix, noun + ' "' + label + '" ' + (result.enabled ? 'enabled' : 'disabled') + '.');
+  return { sent: false, localOnly: true, handled: true };
+}
+
 function executeAutomationStep(step, context) {
   const {
     appendMessage,
@@ -105,6 +131,11 @@ function executeAutomationStep(step, context) {
     }
     soundManager.play(step.category, step.sound, step.volume);
     return { sent: false, localOnly: true, handled: true };
+  }
+
+  if ((step.type === 'set_trigger_enabled' || step.type === 'set_alias_enabled')
+    && String(step.targetId || '')) {
+    return executeTargetIdStep(step, context);
   }
 
   const { resolved, ok } = getStepResult(step, source, templateContext, appendMessage);

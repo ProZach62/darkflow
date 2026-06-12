@@ -122,6 +122,23 @@ function appendResolvedStepRow(body, prefix, resolved) {
   return { row, ok };
 }
 
+// Preview row for an enable/disable/toggle step that references its target
+// by id; mutates the preview copy so later steps see the change.
+function appendTargetIdPreviewRow(body, step, items, patternOf) {
+  const target = items.find((item) => item.id === step.targetId);
+  const label = target ? (String(target.description || '').trim() || patternOf(target)) : '';
+  const row = el('div', 'settings-alias-preview-step', getAutomationStepLabel(step) + ': ' + label);
+  if (!target) {
+    row.classList.add('warning');
+    row.textContent += '(target no longer exists)';
+  } else {
+    const mode = normalizeAutomationMode(step.mode);
+    target.enabled = mode === 'toggle' ? target.enabled === false : mode === 'enable';
+    row.textContent += ' -> ' + (target.enabled === false ? 'disabled' : 'enabled');
+  }
+  body.appendChild(row);
+}
+
 function appendStepsEditor(container, owner, opts, api) {
   container.appendChild(el('div', 'settings-label', 'Steps'));
 
@@ -151,7 +168,10 @@ function appendStepsEditor(container, owner, opts, api) {
       if (selected.mode) step.mode = selected.mode;
       else delete step.mode;
       if (step.type !== 'set_variable') delete step.name;
-      if (step.type !== opts.toggleTargetType) delete step.target;
+      if (step.type !== opts.toggleTargetType) {
+        delete step.target;
+        delete step.targetId;
+      }
       if (step.type === opts.toggleTargetType && !step.target) step.target = '';
       if (opts.sounds && step.type === 'play_sound') {
         delete step.template;
@@ -268,25 +288,51 @@ function appendStepsEditor(container, owner, opts, api) {
       }));
       card.appendChild(soundRow);
     } else if (step.type === opts.toggleTargetType) {
-      const targetInput = el('input', 'dw-input');
-      const listId = opts.focusPrefix + '-step-targets-' + index;
-      targetInput.type = 'text';
-      targetInput.placeholder = opts.targetPlaceholder;
-      targetInput.title = 'Exact target, or a template that resolves to one.';
-      targetInput.setAttribute('list', listId);
-      targetInput.value = step.target || '';
-      targetInput.addEventListener('input', () => {
-        step.target = targetInput.value;
+      // Pick the target from a dropdown of existing items, shown by name.
+      // The step stores the target's id; legacy steps that stored a pattern
+      // are preselected when the pattern still matches an item.
+      const targetSelect = el('select', 'dw-select settings-step-target');
+      targetSelect.dataset.focusKey = opts.focusPrefix + '-step-' + index + '-target';
+      targetSelect.title = 'Pick the ' + opts.targetNoun + ' this step enables or disables.';
+
+      const items = opts.targetItems();
+      const nameCounts = {};
+      items.forEach((item) => {
+        const name = String(item.description || '').trim();
+        if (name) nameCounts[name] = (nameCounts[name] || 0) + 1;
       });
-      const targetList = document.createElement('datalist');
-      targetList.id = listId;
-      opts.targetOptions().forEach((value) => {
-        const option = document.createElement('option');
-        option.value = value;
-        targetList.appendChild(option);
+      const legacyMatch = !step.targetId && step.target
+        ? items.find((item) => opts.targetPattern(item) === step.target)
+        : null;
+      const selectedId = step.targetId || (legacyMatch ? legacyMatch.id : '');
+
+      const article = opts.targetNoun === 'alias' ? 'an' : 'a';
+      const placeholder = el('option', '', step.target && !selectedId
+        ? 'Unresolved: ' + step.target
+        : 'Select ' + article + ' ' + opts.targetNoun + '...');
+      placeholder.value = '';
+      if (!selectedId) placeholder.selected = true;
+      targetSelect.appendChild(placeholder);
+
+      items.forEach((item) => {
+        const name = String(item.description || '').trim();
+        const pattern = opts.targetPattern(item);
+        let label = name || pattern || '(untitled)';
+        if (name && nameCounts[name] > 1) label = name + ' (' + pattern + ')';
+        const option = el('option', '', label);
+        option.value = item.id;
+        if (item.id === selectedId) option.selected = true;
+        targetSelect.appendChild(option);
       });
-      card.appendChild(targetInput);
-      card.appendChild(targetList);
+
+      targetSelect.addEventListener('change', () => {
+        step.targetId = targetSelect.value;
+        step.target = '';
+        // Full render so the diagnostics box reflects the new selection.
+        api.render();
+        api.focus(opts.focusPrefix + '-step-' + index + '-target');
+      });
+      card.appendChild(targetSelect);
     } else {
       // Everything else takes a template; for set_variable it is the value
       // to write (the name input above selects the variable).
@@ -360,9 +406,12 @@ function buildConfig(host, kind) {
       patternPlaceholder: (item) => (item.isRegex ? '^gi\\s+(.+)$' : 'gi'),
       emptyText: 'No aliases defined for this scope.',
       emptyDetailText: 'Create an alias to start building client-side command shortcuts.',
+      nameRequired: true,
+      namePlaceholder: 'Give to pack animal',
       haystack: (item) => (item.trigger + ' ' + item.description + ' ' + (item.group || '')).toLowerCase(),
-      rowMeta: (item) => item.description
-        || (item.isRegex ? 'regex, ' : '') + item.steps.length + ' step' + (item.steps.length === 1 ? '' : 's'),
+      rowMeta: (item) => (String(item.description || '').trim()
+        ? item.trigger
+        : (item.isRegex ? 'regex, ' : '') + item.steps.length + ' step' + (item.steps.length === 1 ? '' : 's')),
       diagnostics: (item) => aliasManager.getAliasDiagnostics(host._draftAliasScope, item.id),
       initialSelectedId: () => {
         const pending = host._pendingAliasSelection;
@@ -381,8 +430,9 @@ function buildConfig(host, kind) {
         appendStepsEditor(container, item, {
           focusPrefix: 'alias',
           toggleTargetType: 'set_trigger_enabled',
-          targetPlaceholder: 'Exact trigger pattern',
-          targetOptions: () => host._draftTriggerScope.triggers.map((trigger) => trigger.pattern),
+          targetNoun: 'trigger',
+          targetItems: () => host._draftTriggerScope.triggers,
+          targetPattern: (item) => item.pattern,
           variableNamePlaceholder: 'pack',
           sounds,
           stepTypes: [
@@ -428,6 +478,11 @@ function buildConfig(host, kind) {
           const previewTriggers = host._draftTriggerScope.triggers.map((trigger) => ({ ...trigger }));
 
           for (const step of match.alias.steps) {
+            if (step.type === 'set_trigger_enabled' && step.targetId) {
+              appendTargetIdPreviewRow(body, step, previewTriggers, (item) => item.pattern);
+              continue;
+            }
+
             const resolved = aliasManager.resolveTemplate(
               step.type === 'set_trigger_enabled' ? step.target : step.template,
               { args: match.args, remainder: match.remainder, variables: previewVariables }
@@ -479,9 +534,11 @@ function buildConfig(host, kind) {
       patternPlaceholder: (item) => (item.isRegex ? 'You are attacked by (.+)' : 'You are attacked by *'),
       emptyText: 'No triggers defined for this scope.',
       emptyDetailText: 'Create a trigger to react to incoming output lines.',
+      nameRequired: true,
+      namePlaceholder: 'Attack response',
       haystack: (item) => (item.pattern + ' ' + item.description + ' ' + (item.group || '')).toLowerCase(),
       rowMeta: (item) => {
-        if (item.description) return item.description;
+        if (String(item.description || '').trim()) return item.pattern;
         const prefix = item.isRegex ? 'regex, ' : '';
         if (item.gag) return prefix + 'gag enabled';
         if (item.steps[0] && item.steps[0].type === 'play_sound') {
@@ -504,8 +561,9 @@ function buildConfig(host, kind) {
         appendStepsEditor(container, item, {
           focusPrefix: 'trigger',
           toggleTargetType: 'set_alias_enabled',
-          targetPlaceholder: 'Exact alias trigger',
-          targetOptions: () => host._draftAliasScope.aliases.map((alias) => alias.trigger),
+          targetNoun: 'alias',
+          targetItems: () => host._draftAliasScope.aliases,
+          targetPattern: (item) => item.trigger,
           variableNamePlaceholder: 'enemy',
           sounds,
           stepTypes: [
@@ -570,6 +628,11 @@ function buildConfig(host, kind) {
                   row.textContent += ' (sound not found)';
                 }
                 body.appendChild(row);
+                continue;
+              }
+
+              if (step.type === 'set_alias_enabled' && step.targetId) {
+                appendTargetIdPreviewRow(body, step, previewAliases, (item) => item.trigger);
                 continue;
               }
 
@@ -638,9 +701,10 @@ function buildConfig(host, kind) {
     patternPlaceholder: () => 'You have emptied the keg!',
     emptyText: 'No highlight rules defined for this scope.',
     emptyDetailText: 'Create a highlight rule to start coloring matched terminal output.',
+    nameRequired: false,
+    namePlaceholder: 'Optional note shown in the list',
     haystack: (item) => (item.patternSource + ' ' + (item.description || '') + ' ' + (item.group || '')).toLowerCase(),
-    rowMeta: (item) => item.description
-      || highlightManager.formatRuleStyle(item) + (item.ignoreCase ? ' | ignore case' : ''),
+    rowMeta: (item) => highlightManager.formatRuleStyle(item) + (item.ignoreCase ? ' | ignore case' : ''),
     diagnostics: (item) => highlightManager.getRuleDiagnostics(host._draftHighlightScope, item.id),
     flags: (item, api) => [
       createFlagPill('Enabled', 'Disabled highlight rules stay saved but never recolor output.',
@@ -922,7 +986,8 @@ export function createAutomationEditor(host, kind) {
       });
 
       const copy = el('div', 'settings-copy');
-      copy.appendChild(el('div', 'settings-label', cfg.getPattern(item) || '(untitled)'));
+      const itemName = String(item.description || '').trim();
+      copy.appendChild(el('div', 'settings-label', itemName || cfg.getPattern(item) || '(untitled)'));
 
       const meta = el('div', 'settings-alias-list-meta');
       const group = (item.group || '').trim();
@@ -990,18 +1055,25 @@ export function createAutomationEditor(host, kind) {
     detail.appendChild(flagRow);
 
     const metaGrid = el('div', 'settings-meta-grid');
-    const descriptionField = el('label', 'dw-field');
-    descriptionField.appendChild(el('div', 'settings-label', 'Description'));
-    const descriptionInput = el('input', 'dw-input');
-    descriptionInput.type = 'text';
-    descriptionInput.placeholder = 'Optional note shown in the list';
-    descriptionInput.value = item.description || '';
-    descriptionInput.addEventListener('input', () => {
-      item.description = descriptionInput.value;
+    const nameField = el('label', 'dw-field');
+    nameField.appendChild(el('div', 'settings-label', cfg.nameRequired ? 'Name (required)' : 'Name'));
+    const nameInput = el('input', 'dw-input');
+    nameInput.type = 'text';
+    nameInput.dataset.focusKey = cfg.kind + '-name';
+    nameInput.placeholder = cfg.namePlaceholder;
+    nameInput.value = item.description || '';
+    const syncNameValidity = () => {
+      nameInput.classList.toggle('settings-input-invalid',
+        Boolean(cfg.nameRequired) && !nameInput.value.trim());
+    };
+    nameInput.addEventListener('input', () => {
+      item.description = nameInput.value;
+      syncNameValidity();
       renderList();
     });
-    descriptionField.appendChild(descriptionInput);
-    metaGrid.appendChild(descriptionField);
+    syncNameValidity();
+    nameField.appendChild(nameInput);
+    metaGrid.appendChild(nameField);
 
     const groupField = el('label', 'dw-field');
     groupField.appendChild(el('div', 'settings-label', 'Group'));

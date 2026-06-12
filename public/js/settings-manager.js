@@ -1345,7 +1345,9 @@ export const settingsManager = {
             const aliasBtn = document.createElement('button');
             aliasBtn.type = 'button';
             aliasBtn.className = 'settings-alias-usage-item';
-            aliasBtn.textContent = alias.trigger + (alias.description ? ' - ' + alias.description : '');
+            aliasBtn.textContent = alias.description
+              ? alias.description + ' (' + alias.trigger + ')'
+              : alias.trigger;
             aliasBtn.addEventListener('click', () => {
               this._pendingAliasSelection = alias.id;
               if (this._activateTab) this._activateTab('aliases');

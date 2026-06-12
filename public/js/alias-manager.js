@@ -117,7 +117,7 @@ function normalizeStep(step) {
 
   if (type === 'set_trigger_enabled') {
     const mode = step.mode === 'enable' || step.mode === 'disable' ? step.mode : 'toggle';
-    return { type, mode, target: String(step.target || '') };
+    return { type, mode, target: String(step.target || ''), targetId: String(step.targetId || '') };
   }
 
   return { type: 'send_command', template: String(step.template || '') };
@@ -409,6 +409,28 @@ export const aliasManager = {
     return { target: alias, enabled: alias.enabled };
   },
 
+  findAliasById(id, scopeKey = this.getActiveScopeKey()) {
+    const key = String(id || '');
+    if (!key) return null;
+    return this._ensureScope(scopeKey).aliases.find((alias) => alias.id === key) || null;
+  },
+
+  setEnabledById(id, enabled, scopeKey = this.getActiveScopeKey()) {
+    const alias = this.findAliasById(id, scopeKey);
+    if (!alias) return { target: null, enabled: null };
+    alias.enabled = enabled !== false;
+    this._save({ scopeKey });
+    return { target: alias, enabled: alias.enabled };
+  },
+
+  toggleEnabledById(id, scopeKey = this.getActiveScopeKey()) {
+    const alias = this.findAliasById(id, scopeKey);
+    if (!alias) return { target: null, enabled: null };
+    alias.enabled = alias.enabled === false;
+    this._save({ scopeKey });
+    return { target: alias, enabled: alias.enabled };
+  },
+
   toggleEnabledByTarget(trigger, scopeKey = this.getActiveScopeKey()) {
     const alias = this.findAliasByTrigger(trigger, scopeKey);
     if (!alias) return { target: null, enabled: null };
@@ -514,14 +536,18 @@ export const aliasManager = {
     const diagnostics = [];
     const normalizedTrigger = normalizeWhitespace(alias.trigger).toLowerCase();
     if (!normalizedTrigger) {
-      diagnostics.push('Trigger is required.');
+      diagnostics.push('Pattern is required.');
     } else {
       const duplicate = aliases.find((item) => (
         item.id !== alias.id
         && Boolean(item.isRegex) === Boolean(alias.isRegex)
         && normalizeWhitespace(item.trigger).toLowerCase() === normalizedTrigger
       ));
-      if (duplicate) diagnostics.push('Trigger conflicts with another alias in this scope.');
+      if (duplicate) diagnostics.push('Pattern conflicts with another alias in this scope.');
+    }
+
+    if (!String(alias.description || '').trim()) {
+      diagnostics.push('Name is required.');
     }
 
     if (alias.isRegex) {
@@ -547,8 +573,9 @@ export const aliasManager = {
         && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must have content.');
       }
-      if (step.type === 'set_trigger_enabled' && !String(step.target || '').trim()) {
-        diagnostics.push('Step ' + (index + 1) + ' must choose a trigger target.');
+      if (step.type === 'set_trigger_enabled'
+        && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {
+        diagnostics.push('Step ' + (index + 1) + ' must select a trigger.');
       }
     }
 
