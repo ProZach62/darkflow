@@ -612,8 +612,10 @@ body.zork-only-mode #toolbar-connect-fields {
 /* The settings "modal" is a non-blocking floating window: the page stays
    interactive (the overlay is pointer-transparent), and the window itself is
    positioned/sized inline by settings-manager (persisted per browser),
-   draggable by its header, and resizable via the native corner grip. */
-.settings-overlay {
+   draggable by its header, and resizable via the native corner grip.
+   Doubled selector: windows.css loads after this file and its
+   .dw-modal-overlay backdrop must lose the cascade here. */
+.dw-modal-overlay.settings-overlay {
   background: transparent;
   pointer-events: none;
 }
