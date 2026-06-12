@@ -18,6 +18,11 @@ const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'sky', 'omens', 
 const AVATAR_CHARGE_TICK_MS = 2000;
 const PANEL_STORAGE_VERSION = 2;
 const TERMINAL_PANEL_ID = 'terminal';
+const FLOAT_GRID_SIZE = 16;
+const FLOAT_PANEL_MIN_W = 200;
+const FLOAT_PANEL_MIN_H = 80;
+const TERMINAL_PANEL_MIN_W = 420;
+const TERMINAL_PANEL_MIN_H = 260;
 
 function cloneState(value) {
   return JSON.parse(JSON.stringify(value));
@@ -272,6 +277,100 @@ export const panelManager = {
 
   _isFloatingWorkspace() {
     return this._workspaceLayout === 'floating';
+  },
+
+  _isPaneGridSnapEnabled() {
+    return !!(appState.settings && appState.settings.paneGridSnapEnabled);
+  },
+
+  _snapToFloatGrid(value) {
+    return Math.round(Number(value || 0) / FLOAT_GRID_SIZE) * FLOAT_GRID_SIZE;
+  },
+
+  _getFloatMinSize(id) {
+    return id === TERMINAL_PANEL_ID
+      ? { width: TERMINAL_PANEL_MIN_W, height: TERMINAL_PANEL_MIN_H }
+      : { width: FLOAT_PANEL_MIN_W, height: FLOAT_PANEL_MIN_H };
+  },
+
+  _snapFloatSizeToGrid(id, width, height) {
+    const min = this._getFloatMinSize(id);
+    return {
+      width: Math.max(min.width, this._snapToFloatGrid(width)),
+      height: Math.max(min.height, this._snapToFloatGrid(height)),
+    };
+  },
+
+  _clampGridPosition(x, y, width, height) {
+    const bounds = this._getSnapBounds();
+    const maxX = Math.max(bounds.left, bounds.right - width);
+    const maxY = Math.max(bounds.top, bounds.bottom - height);
+    return {
+      x: Math.max(bounds.left, Math.min(maxX, x)),
+      y: Math.max(bounds.top, Math.min(maxY, y)),
+    };
+  },
+
+  _getGridSnappedFloatPosition(x, y, width, height, edges = {}) {
+    if (!this._isPaneGridSnapEnabled()) return { x, y };
+
+    let nextX = x;
+    let nextY = y;
+    if (!edges.left && !edges.right) {
+      nextX = this._snapToFloatGrid(nextX);
+    }
+    if (!edges.top && !edges.bottom) {
+      nextY = this._snapToFloatGrid(nextY);
+    }
+
+    return this._clampGridPosition(nextX, nextY, width, height);
+  },
+
+  _snapPanelStateToGrid(id, st) {
+    if (!st || st.dock !== 'float' || !this._isPaneGridSnapEnabled()) return false;
+
+    const size = this._snapFloatSizeToGrid(id, st.floatW || 280, st.floatH || 200);
+    const pos = this._getGridSnappedFloatPosition(st.floatX || 0, st.floatY || 0,
+      size.width, size.height, {
+        left: st.snapLeft,
+        top: st.snapTop,
+        right: st.snapRight,
+        bottom: st.snapBottom,
+      });
+    const changed = st.floatW !== size.width || st.floatH !== size.height ||
+      (!st.snapLeft && !st.snapRight && st.floatX !== pos.x) ||
+      (!st.snapTop && !st.snapBottom && st.floatY !== pos.y);
+
+    st.floatW = size.width;
+    st.floatH = size.height;
+    if (!st.snapLeft && !st.snapRight) st.floatX = pos.x;
+    if (!st.snapTop && !st.snapBottom) st.floatY = pos.y;
+
+    return changed;
+  },
+
+  snapFloatingPanesToGrid() {
+    if (this._mobile.enabled || !this._isPaneGridSnapEnabled()) return;
+    let changed = false;
+
+    for (const [id, st] of Object.entries(this.state.panels)) {
+      if (!st || st.dock !== 'float') continue;
+      changed = this._snapPanelStateToGrid(id, st) || changed;
+      const panel = this.panels[id];
+      if (panel && panel.el) {
+        this._applyFloatPosition(panel.el, st);
+      }
+    }
+
+    if (changed) {
+      this.saveState();
+      this._notifyOutputLayoutChanged();
+    }
+  },
+
+  setPaneGridSnapEnabled(enabled) {
+    if (!enabled || appState.zorkOnlyMode) return;
+    this.snapFloatingPanesToGrid();
   },
 
   _syncWorkspaceClass() {
@@ -557,6 +656,11 @@ export const panelManager = {
       };
     }
     this.state.panels = panels;
+    if (this._isPaneGridSnapEnabled()) {
+      for (const [id, st] of Object.entries(this.state.panels)) {
+        this._snapPanelStateToGrid(id, st);
+      }
+    }
     this._topFloatZ = Object.values(panels).reduce((max, panel) => {
       const z = Number(panel && panel.floatZ);
       return Number.isFinite(z) ? Math.max(max, z) : max;
@@ -566,11 +670,9 @@ export const panelManager = {
   saveState() {
     if (this._mobile.enabled) return;
     if (this._saveTimer) clearTimeout(this._saveTimer);
-    this._saveTimer = setTimeout(() => {
-      this._storeActiveProfile();
-      try { localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(this._storedProfiles)); }
-      catch(e) { /* ignore */ }
-    }, 500);
+    this._saveTimer = null;
+    this._storeActiveProfile();
+    this._flushStoredProfiles();
   },
 
   disableForZorkOnlyMode() {
@@ -982,14 +1084,23 @@ export const panelManager = {
     if (st.floatZ) {
       el.style.zIndex = String(st.floatZ);
     }
+    this._snapPanelStateToGrid(el.dataset.panelId, st);
     this._applyFloatPosition(el, st);
 
     const id = el.dataset.panelId;
     const ro = new ResizeObserver(() => {
       const s = this.state.panels[id];
       if (s && s.dock === 'float' && !this._mobile.enabled) {
-        s.floatW = el.offsetWidth;
-        s.floatH = el.offsetHeight;
+        if (this._isPaneGridSnapEnabled()) {
+          const size = this._snapFloatSizeToGrid(id, el.offsetWidth, el.offsetHeight);
+          s.floatW = size.width;
+          s.floatH = size.height;
+          if (el.offsetWidth !== size.width) el.style.width = size.width + 'px';
+          if (el.offsetHeight !== size.height) el.style.height = size.height + 'px';
+        } else {
+          s.floatW = el.offsetWidth;
+          s.floatH = el.offsetHeight;
+        }
         this.saveState();
         if (id === TERMINAL_PANEL_ID) {
           this._notifyOutputLayoutChanged();
@@ -1268,6 +1379,16 @@ export const panelManager = {
     if (st.snapTop) st.floatY = bounds.top;
     if (st.snapRight) st.floatX = bounds.right - w;
     if (st.snapBottom) st.floatY = bounds.bottom - h;
+    if ((!st.snapLeft && !st.snapRight) || (!st.snapTop && !st.snapBottom)) {
+      const grid = this._getGridSnappedFloatPosition(st.floatX, st.floatY, w, h, {
+        left: st.snapLeft,
+        top: st.snapTop,
+        right: st.snapRight,
+        bottom: st.snapBottom,
+      });
+      if (!st.snapLeft && !st.snapRight) st.floatX = grid.x;
+      if (!st.snapTop && !st.snapBottom) st.floatY = grid.y;
+    }
 
     this._makeFloat(p.el, st);
 
@@ -2063,6 +2184,15 @@ export const panelManager = {
       if (snT) gy = bounds.top;
       if (snR) gx = bounds.right - gw;
       if (snB) gy = bounds.bottom - gh;
+
+      const gridSnap = this._getGridSnappedFloatPosition(gx, gy, gw, gh, {
+        left: snL,
+        top: snT,
+        right: snR,
+        bottom: snB,
+      });
+      gx = gridSnap.x;
+      gy = gridSnap.y;
 
       const panelSnap = this._getPanelSnapPosition(gx, gy, gw, gh, drag.panelId);
       gx = panelSnap.x;

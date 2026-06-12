@@ -74,6 +74,7 @@ export const settingsManager = {
     screenReaderMode: false,
     terminalWidthColumns: null,
     workspaceLayout: 'classic',
+    paneGridSnapEnabled: false,
     settingsBackupPromptEnabled: true,
     theme: DEFAULT_THEME_KEY,
     customThemes: {},
@@ -120,6 +121,7 @@ export const settingsManager = {
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
     panelManager.setWorkspaceLayout(this._settings.workspaceLayout, { initializing: true });
+    panelManager.setPaneGridSnapEnabled(this._settings.paneGridSnapEnabled);
     sendTerminalGeometry(false);
     this._applyActiveTheme();
   },
@@ -249,6 +251,7 @@ export const settingsManager = {
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
     panelManager.setWorkspaceLayout(this._settings.workspaceLayout);
+    panelManager.setPaneGridSnapEnabled(this._settings.paneGridSnapEnabled);
     sendTerminalGeometry(true);
     this._applyActiveTheme();
     this._save();
@@ -624,6 +627,7 @@ export const settingsManager = {
     setOutputSplitRatio(nextSettings.scrollbackSplitRatio);
     setOutputScrollbackPreset(nextSettings.outputScrollbackPreset);
     panelManager.setWorkspaceLayout(nextSettings.workspaceLayout);
+    panelManager.setPaneGridSnapEnabled(nextSettings.paneGridSnapEnabled);
     sendTerminalGeometry(true);
     this._applyActiveTheme();
 
@@ -685,6 +689,7 @@ export const settingsManager = {
       screenReaderMode: Boolean(settings.screenReaderMode),
       terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
       workspaceLayout: settings.workspaceLayout === 'floating' ? 'floating' : 'classic',
+      paneGridSnapEnabled: Boolean(settings.paneGridSnapEnabled),
       settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
       theme: typeof settings.theme === 'string' && settings.theme ? settings.theme : DEFAULT_THEME_KEY,
       customThemes: (settings.customThemes && typeof settings.customThemes === 'object') ? settings.customThemes : {},
@@ -3556,6 +3561,14 @@ export const settingsManager = {
       ],
       (value) => {
         this._draftSettings.workspaceLayout = value;
+      }
+    ));
+    terminalSection.appendChild(this._createCheckboxRow(
+      'Snap floating panes to grid',
+      'Align floating pane positions and resized pane dimensions to a 16px grid.',
+      !!this._draftSettings.paneGridSnapEnabled,
+      (checked) => {
+        this._draftSettings.paneGridSnapEnabled = checked;
       }
     ));
     const resetLayoutCard = document.createElement('div');
