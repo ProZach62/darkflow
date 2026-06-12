@@ -13,6 +13,7 @@ export const PANEL_DEFS = {
   inventory: { title: 'Inventory', defaultDock: 'right', defaultOrder: 2 },
   enemy:     { title: 'Enemy',     defaultDock: 'float', defaultOrder: 0,
                defaultFloatW: 380, defaultFloatH: 131,
+               defaultLayer: 1,
                defaultSnapTop: true, defaultVisible: false },
   chat:      { title: 'Chat',      defaultDock: 'float', defaultOrder: 0,
                defaultFloatW: 750, defaultFloatH: 370,
@@ -30,6 +31,10 @@ export const PANEL_DEFS = {
                defaultVisible: true },
   quests:    { title: 'Quests',    defaultDock: 'right', defaultOrder: 3 },
   achievements: { title: 'Achievements', defaultDock: 'right', defaultOrder: 4 },
+  connection: { title: 'Connection', defaultDock: 'float', defaultOrder: 2,
+               defaultFloatW: 340, defaultFloatH: 330,
+               defaultSnapLeft: true, defaultSnapBottom: true,
+               defaultVisible: false },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';

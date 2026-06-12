@@ -1,9 +1,8 @@
 // pane-settings.js
 //
-// A small per-pane font settings modal. Opened from a pane's gear button; lets
-// the user pick a font family, base text size, and weight for just that pane.
-// The owner (panel-manager) persists and applies the choice; this module is only
-// the UI and emits the current selection via onChange / onReset.
+// A small per-pane settings modal. Opened from a pane's gear button; lets the
+// user pick font settings and a persistent layer for just that pane. The owner
+// (panel-manager) persists and applies the choices; this module is only the UI.
 
 const FAMILIES = [
   { label: 'Default', value: 'default' },
@@ -74,16 +73,31 @@ function makeRow(labelText, select) {
   return row;
 }
 
+function makeNumberInput(current, onChange) {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.className = 'dw-input pane-settings-number';
+  input.min = '0';
+  input.max = '999';
+  input.step = '1';
+  input.value = String(current);
+  input.addEventListener('change', () => onChange(input.value));
+  return input;
+}
+
 // font: { family?, size?, weight? } current values for the pane.
+// zLayer: current persistent pane layer.
 // onChange({ family, size, weight }) — each null when "default".
-// onReset() — clear the pane's font overrides.
-export function openPaneFontSettings({ title, font, onChange, onReset }) {
+// onLayerChange(zLayer) — applies the pane layer.
+// onReset() — clear the pane overrides.
+export function openPaneFontSettings({ title, font, zLayer, defaultLayer, onChange, onLayerChange, onReset }) {
   closePaneFontSettings();
 
   const current = {
     family: (font && font.family) || 'default',
     size: (font && font.size) || 'default',
     weight: (font && font.weight) || 'default',
+    zLayer: zLayer !== undefined ? zLayer : (defaultLayer || 0),
   };
   const emit = () => onChange({
     family: current.family === 'default' ? null : current.family,
@@ -100,11 +114,18 @@ export function openPaneFontSettings({ title, font, onChange, onReset }) {
 
   const heading = document.createElement('div');
   heading.className = 'pane-settings-title';
-  heading.textContent = (title || 'Pane') + ' — Font';
+  heading.textContent = (title || 'Pane') + ' — Settings';
 
   const familySel = makeSelect(FAMILIES, current.family, (v) => { current.family = v; emit(); });
   const sizeSel = makeSelect(SIZES, current.size, (v) => { current.size = v; emit(); });
   const weightSel = makeSelect(WEIGHTS, current.weight, (v) => { current.weight = v; emit(); });
+  const layerInput = makeNumberInput(current.zLayer, (v) => {
+    const next = Number(v);
+    if (!Number.isFinite(next)) return;
+    current.zLayer = Math.max(0, Math.min(999, Math.round(next)));
+    layerInput.value = String(current.zLayer);
+    if (onLayerChange) onLayerChange(current.zLayer);
+  });
 
   const actions = document.createElement('div');
   actions.className = 'pane-settings-actions';
@@ -120,6 +141,8 @@ export function openPaneFontSettings({ title, font, onChange, onReset }) {
     familySel.value = 'default';
     sizeSel.value = 'default';
     weightSel.value = 'default';
+    current.zLayer = defaultLayer || 0;
+    layerInput.value = String(current.zLayer);
     if (onReset) onReset();
   });
 
@@ -136,6 +159,7 @@ export function openPaneFontSettings({ title, font, onChange, onReset }) {
   modal.appendChild(makeRow('Font family', familySel));
   modal.appendChild(makeRow('Font size', sizeSel));
   modal.appendChild(makeRow('Font weight', weightSel));
+  modal.appendChild(makeRow('Layer', layerInput));
   modal.appendChild(actions);
   overlayEl.appendChild(modal);
   document.body.appendChild(overlayEl);

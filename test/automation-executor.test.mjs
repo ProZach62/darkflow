@@ -397,7 +397,7 @@ test('trigger diagnostics require known play_sound selections', () => {
       id: 'trigger-bad-sound',
       enabled: true,
       pattern: 'bad sound',
-      description: '',
+      description: 'Bad sound',
       group: '',
       gag: false,
       steps: [{ type: 'play_sound', category: 'alert', sound: 'missing', volume: 1 }],
@@ -460,4 +460,114 @@ test('regex triggers match incoming lines and expose capture groups to templates
   executeTriggerMatches(result.matches, SCOPE_KEY, io);
   assert.deepEqual(io.sent, ['burn goblin corpse']);
   assert.deepEqual(io.messages, []);
+});
+
+test('alias steps toggle triggers by targetId and report the trigger name', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-toggle-by-id',
+      enabled: true,
+      trigger: 'tog',
+      description: 'Toggle incoming watcher',
+      group: '',
+      steps: [{ type: 'set_trigger_enabled', mode: 'toggle', target: '', targetId: 'trigger-incoming' }],
+    }],
+    variables: {},
+  });
+  triggerManager.saveScope(SCOPE_KEY, {
+    triggers: [{
+      id: 'trigger-incoming',
+      enabled: true,
+      pattern: 'incoming *',
+      description: 'Incoming watcher',
+      group: '',
+      gag: false,
+      steps: [{ type: 'send_command', template: 'look' }],
+    }],
+  });
+
+  // targetId survives normalization in both managers
+  const savedAlias = aliasManager.getScopeSnapshot(SCOPE_KEY).aliases[0];
+  assert.equal(savedAlias.steps[0].targetId, 'trigger-incoming');
+
+  const io = messagesAndSends();
+  executeAliasLine('tog', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+  });
+
+  const trigger = triggerManager.findTriggerById('trigger-incoming', SCOPE_KEY);
+  assert.equal(trigger.enabled, false);
+  assert.match(io.messages.join('\n'), /Trigger "Incoming watcher" disabled\./);
+
+  // resolution is by id, so a renamed pattern still toggles the same trigger
+  trigger.pattern = 'renamed *';
+  executeAliasLine('tog', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+  });
+  assert.equal(triggerManager.findTriggerById('trigger-incoming', SCOPE_KEY).enabled, true);
+});
+
+test('targetId steps warn when the referenced item no longer exists', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-dangling-id',
+      enabled: true,
+      trigger: 'tog',
+      description: 'Toggle removed trigger',
+      group: '',
+      steps: [{ type: 'set_trigger_enabled', mode: 'toggle', target: '', targetId: 'trigger-deleted' }],
+    }],
+    variables: {},
+  });
+  triggerManager.saveScope(SCOPE_KEY, { triggers: [] });
+
+  const io = messagesAndSends();
+  executeAliasLine('tog', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+  });
+  assert.match(io.messages.join('\n'), /Trigger referenced by alias "tog" no longer exists\./);
+});
+
+test('trigger steps disable aliases by targetId', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-heal',
+      enabled: true,
+      trigger: 'heal',
+      description: 'Heal up',
+      group: '',
+      steps: [{ type: 'send_command', template: 'cast heal' }],
+    }],
+    variables: {},
+  });
+  triggerManager.saveScope(SCOPE_KEY, {
+    triggers: [{
+      id: 'trigger-low-mana',
+      enabled: true,
+      pattern: 'You are out of mana.',
+      description: 'Mana guard',
+      group: '',
+      gag: false,
+      steps: [{ type: 'set_alias_enabled', mode: 'disable', target: '', targetId: 'alias-heal' }],
+    }],
+  });
+
+  const io = messagesAndSends();
+  executeTriggerMatches([{
+    trigger: triggerManager.findTriggerByPattern('You are out of mana.', SCOPE_KEY),
+    fullMatch: 'You are out of mana.',
+    captures: [],
+  }], SCOPE_KEY, io);
+
+  assert.equal(aliasManager.findAliasById('alias-heal', SCOPE_KEY).enabled, false);
+  assert.match(io.messages.join('\n'), /Alias "Heal up" disabled\./);
 });

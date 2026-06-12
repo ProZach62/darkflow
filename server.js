@@ -50,6 +50,13 @@ app.get('/api/version', (req, res) => {
   }
 });
 
+// Tiny latency probe: times the network path to this host WITHOUT the MUD
+// driver in the loop, so the client can tell network lag from server lag.
+app.get('/ping', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.status(204).end();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Mount the Darkflow MCP relay at /mcp (optional) so starting this web client

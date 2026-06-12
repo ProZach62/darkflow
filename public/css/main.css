@@ -397,7 +397,7 @@ body.zork-only-mode #toolbar-connect-fields {
   position: fixed;
   left: 50%;
   bottom: 76px;
-  z-index: 1800;
+  z-index: 20000;
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, 8px) scale(0.98);
@@ -493,7 +493,7 @@ body.zork-only-mode #toolbar-connect-fields {
   position: fixed;
   left: 50%;
   bottom: 82px;
-  z-index: 1810;
+  z-index: 20010;
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, 10px);
@@ -578,6 +578,85 @@ body.zork-only-mode #toolbar-connect-fields {
   overflow-wrap: anywhere;
 }
 
+.linux-rescue-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: none;
+  background: #050805;
+  color: #d8ffd8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.linux-rescue-overlay.open {
+  display: flex;
+}
+
+.linux-rescue-terminal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px 22px;
+  background:
+    radial-gradient(circle at 80% 10%, rgba(40, 120, 40, 0.08), transparent 26%),
+    #050805;
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.82);
+}
+
+.linux-rescue-title {
+  flex: 0 0 auto;
+  margin-bottom: 14px;
+  color: #8cf08c;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.linux-rescue-stream {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 8px;
+  white-space: pre-wrap;
+  scrollbar-color: #2f7c2f #050805;
+}
+
+.linux-rescue-output {
+  min-height: 0;
+}
+
+.linux-rescue-line {
+  min-height: 1.45em;
+}
+
+.linux-rescue-input-row {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.linux-rescue-prompt {
+  flex: 0 0 auto;
+  color: #8cf08c;
+  white-space: pre;
+}
+
+.linux-rescue-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f2fff2;
+  font: inherit;
+  letter-spacing: 0;
+  caret-color: #d8ffd8;
+}
+
 @media (max-width: 700px) {
   .giphy-overlay {
     left: 50%;
@@ -609,52 +688,130 @@ body.zork-only-mode #toolbar-connect-fields {
 /* Gear dropdown */
 .gear-menu-wrap { display: inline-flex; }
 
-.settings-overlay {
+/* The settings "modal" is a non-blocking floating window: the page stays
+   interactive (the overlay is pointer-transparent), and the window itself is
+   positioned/sized inline by settings-manager (persisted per browser),
+   draggable by its header, and resizable via the native corner grip.
+   Doubled selector: windows.css loads after this file and its
+   .dw-modal-overlay backdrop must lose the cascade here. */
+.dw-modal-overlay.settings-overlay {
   background: transparent;
   pointer-events: none;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 54px 14px 70px;
 }
 
-.settings-modal {
-  width: 1000px;
-  height: 700px;
-  max-width: 1000px;
-  max-height: 700px;
+.dw-modal.settings-modal {
+  position: fixed;
   display: flex;
   flex-direction: column;
   pointer-events: auto;
+  min-width: min(560px, calc(100vw - 8px));
+  min-height: min(380px, calc(100vh - 8px));
+  max-width: calc(100vw - 8px);
+  max-height: calc(100vh - 8px);
+  resize: both;
+  overflow: hidden;
+}
+
+.settings-modal .dw-modal-header {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.settings-drag-hint {
+  margin-left: auto;
+  padding-right: 10px;
+  font-size: 10px;
+  color: var(--df-faint);
+  pointer-events: none;
 }
 
 .settings-modal-body {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1 1 auto;
   min-height: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.settings-sidebar {
+  flex: 0 0 176px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding-right: 10px;
+  border-right: 1px solid var(--df-border);
+}
+
+.settings-search {
+  flex: 0 0 auto;
+}
+
+.settings-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--df-bg);
+  border: 1px solid var(--df-border);
+  border-radius: 6px;
+  color: var(--df-text);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.settings-search-input:focus-visible {
+  outline: 2px solid var(--df-accent-blue);
+  outline-offset: 1px;
+}
+
+.settings-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding-left: 12px;
 }
 
 .settings-tabs {
   display: flex;
-  gap: 8px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--df-border);
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.settings-nav-group {
+  margin: 10px 2px 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--df-faint);
+}
+
+.settings-nav-group:first-child {
+  margin-top: 0;
 }
 
 .settings-tab-btn {
   background: transparent;
-  border: 1px solid var(--df-border);
+  border: 1px solid transparent;
   color: var(--df-muted);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  text-align: left;
   cursor: pointer;
+  width: 100%;
 }
 
 .settings-tab-btn:hover {
   color: var(--df-text);
-  border-color: var(--df-border-muted);
+  background: rgba(110, 118, 129, 0.12);
 }
 
 .settings-tab-btn:focus-visible {
@@ -673,6 +830,7 @@ body.zork-only-mode #toolbar-connect-fields {
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .settings-section {
@@ -1231,10 +1389,275 @@ body.zork-only-mode #toolbar-connect-fields {
   background: #2d1117;
 }
 
+/* -- Automation editors (Aliases / Triggers / Highlights) ----------
+   Shared scaffold from settings-automation.js: toolbar, ordered list,
+   detail pane, pinned test bar. The wrapper fills the tab panel so the
+   list/detail scroll internally and the test bar stays visible. */
+.settings-automation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 0;
+  min-height: 320px;
+}
+
+.settings-automation-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-automation-toolbar .dw-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-automation-toolbar .dw-button {
+  white-space: nowrap;
+}
+
+.settings-automation-toolbar .settings-helper-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-scope-chip {
+  font-size: 11px;
+  color: var(--df-muted);
+  border: 1px solid var(--df-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.settings-automation-layout {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-automation-list-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 1 230px;
+  min-width: 150px;
+  min-height: 0;
+}
+
+.settings-automation-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.settings-automation-list-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-automation-detail {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.settings-flag-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-flag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--df-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--df-muted);
+  background: var(--df-bg);
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-flag-pill input[type="checkbox"] {
+  margin: 0;
+}
+
+.settings-flag-pill.on {
+  border-color: var(--df-accent-blue);
+  color: var(--df-text);
+  background: #111827;
+}
+
+.settings-flag-pill:focus-within {
+  outline: 2px solid var(--df-accent-blue);
+  outline-offset: 2px;
+}
+
+.settings-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 200px);
+  gap: 8px;
+}
+
+.settings-row-chip {
+  display: inline-block;
+  border: 1px solid var(--df-border);
+  border-radius: 999px;
+  padding: 0 6px;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #7dd3fc;
+}
+
+.settings-step-card {
+  padding: 8px;
+  gap: 6px;
+}
+
+.settings-step-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-step-index {
+  font-size: 11px;
+  color: var(--df-muted);
+  min-width: 14px;
+  text-align: right;
+}
+
+.settings-step-spacer {
+  flex: 1;
+}
+
+.settings-step-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.settings-step-sound-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-step-sound-row input[type="range"] {
+  flex: 1;
+  min-width: 80px;
+}
+
+.settings-step-template {
+  min-height: 44px;
+}
+
+.settings-add-step-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.settings-add-step {
+  width: auto;
+}
+
+.settings-syntax-help {
+  font-size: 11px;
+  color: var(--df-muted);
+  min-width: 0;
+}
+
+.settings-syntax-help summary {
+  cursor: pointer;
+}
+
+.settings-syntax-help p {
+  margin: 6px 0 0;
+}
+
+.settings-automation-preview {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--df-border);
+  border-radius: 8px;
+  background: var(--df-bg);
+  padding: 8px 10px;
+  max-height: 45%;
+  min-height: 0;
+}
+
+.settings-automation-preview.collapsed {
+  flex: 0 0 auto;
+}
+
+.settings-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-preview-head .settings-label {
+  cursor: default;
+}
+
+.settings-preview-summary {
+  flex: 1;
+  font-size: 11px;
+  color: var(--df-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.settings-preview-sample {
+  min-height: 34px;
+  max-height: 80px;
+}
+
+.settings-preview-results {
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .settings-highlight-style-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 10px;
+}
+
+.settings-highlight-bold {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 4px;
 }
 
 .settings-color-input-row {
@@ -1959,6 +2382,19 @@ body.zork-only-mode #toolbar-connect-fields {
   background: var(--df-bg);
 }
 
+/* Connection-health latency chip (fed by lag-monitor.js). */
+.status-latency {
+  cursor: pointer;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--df-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.status-latency.lag-ok { color: #34d399; border-color: #1d5c45; }
+.status-latency.lag-warn { color: #fbbf24; border-color: #6b5418; }
+.status-latency.lag-bad { color: #f87171; border-color: #6b2424; }
+
 /* ANSI foreground colors. Fixed (never theme-driven) so game output is
    identical under every UI theme. */
 .ansi-fg-black   { color: #555555; }
@@ -2040,22 +2476,13 @@ body.zork-only-mode #toolbar-connect-fields {
 }
 .pane-settings-label { font-size: 12px; color: var(--df-muted); }
 .pane-settings-row .dw-select { min-width: 190px; }
+.pane-settings-row .pane-settings-number { min-width: 190px; }
 .pane-settings-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
 }
-
-/* Terminal pane font gear (lives in the top-right of the output shell) */
-.terminal-font-btn {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  z-index: 6;
-  opacity: 0.45;
-}
-.terminal-font-btn:hover { opacity: 1; }
 
 .ansi-bold { font-weight: bold; }
 .ansi-italic { font-style: italic; }

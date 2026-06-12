@@ -11,12 +11,11 @@ import {
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
-import { styleToElement } from './ansi.js';
 import { panelManager } from './panel-manager.js';
 import { PRODUCT_NAME } from './brand.js';
-import { getSoundCatalog, isKnownSound, soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
-import { getAutomationStepLabel } from './automation-executor.js';
+import { soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 import { applyTheme, convertVsCodeTheme, BUILTIN_THEMES, DEFAULT_THEME_KEY } from './theme-manager.js';
+import { createAutomationEditor } from './settings-automation.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
@@ -45,10 +44,6 @@ function formatKeyCodeLabel(code) {
   return value.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
 }
 
-function normalizeAutomationMode(mode) {
-  return mode === 'enable' || mode === 'disable' ? mode : 'toggle';
-}
-
 function normalizeLegacyKeyToCode(key) {
   const value = String(key || '').trim();
   if (!value) return '';
@@ -60,6 +55,51 @@ function normalizeLegacyKeyToCode(key) {
   return '';
 }
 
+// The settings window is a floating, draggable, resizable panel (not a
+// blocking modal) so triggers/aliases can be edited and tested while playing.
+// Its geometry and last-open section persist per browser.
+const SETTINGS_WINDOW_STATE_KEY = 'darkwind-settings-window';
+const SETTINGS_WINDOW_MIN_W = 560;
+const SETTINGS_WINDOW_MIN_H = 380;
+
+function loadSettingsWindowState() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_WINDOW_STATE_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    return data && typeof data === 'object' ? data : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveSettingsWindowState(patch) {
+  try {
+    const next = Object.assign(loadSettingsWindowState(), patch || {});
+    localStorage.setItem(SETTINGS_WINDOW_STATE_KEY, JSON.stringify(next));
+  } catch (e) {
+    // localStorage unavailable; the window just won't remember its spot.
+  }
+}
+
+// Saved (or default) geometry, clamped so the window always lands on-screen
+// even after a monitor/viewport change.
+function settingsWindowGeometry() {
+  const saved = loadSettingsWindowState();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let w = Number(saved.w) || Math.min(1000, vw - 28);
+  let h = Number(saved.h) || Math.min(700, vh - 130);
+  w = Math.max(SETTINGS_WINDOW_MIN_W, Math.min(w, vw - 8));
+  h = Math.max(SETTINGS_WINDOW_MIN_H, Math.min(h, vh - 8));
+  let x = Number.isFinite(Number(saved.x)) && saved.x !== null && saved.x !== undefined
+    ? Number(saved.x) : (vw - w - 14);
+  let y = Number.isFinite(Number(saved.y)) && saved.y !== null && saved.y !== undefined
+    ? Number(saved.y) : 54;
+  x = Math.max(0, Math.min(x, vw - 200));
+  y = Math.max(0, Math.min(y, vh - 100));
+  return { x, y, w, h, tab: typeof saved.tab === 'string' ? saved.tab : 'connection' };
+}
+
 export const settingsManager = {
   _defaults: {
     autoReconnect: true,
@@ -68,6 +108,7 @@ export const settingsManager = {
     keyMappings: [],
     aliasTabCompletionEnabled: true,
     historyTabCompletionEnabled: false,
+    lagMonitorEnabled: true,
     scrollbackBehavior: 'pause',
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
@@ -92,6 +133,7 @@ export const settingsManager = {
   _dataSyncHandler: null,
   _refreshEditors: null,
   _activateTab: null,
+  _clearSettingsSearch: null,
   _pendingAliasSelection: null,
   _footerStatusEl: null,
   _previousFocusEl: null,
@@ -188,7 +230,7 @@ export const settingsManager = {
     this._escHandler = modalKeyHandler;
     this._modalKeyHandler = modalKeyHandler;
     this._dataSyncHandler = dataSyncHandler;
-    this._focusSettingsControl('settings-tab-connection');
+    this._focusSettingsControl('settings-tab-' + settingsWindowGeometry().tab);
   },
 
   close(options = {}) {
@@ -219,6 +261,7 @@ export const settingsManager = {
     this._triggerScopeKey = '';
     this._refreshEditors = null;
     this._activateTab = null;
+    this._clearSettingsSearch = null;
     this._pendingAliasSelection = null;
     this._footerStatusEl = null;
     this._modalKeyHandler = null;
@@ -348,6 +391,14 @@ export const settingsManager = {
 
     if (event.key === 'Escape') {
       event.preventDefault();
+      // Esc in a non-empty settings search clears the search first; a second
+      // Esc closes the window.
+      if (event.target instanceof HTMLElement &&
+        event.target.dataset.focusKey === 'settings-search' &&
+        event.target.value && this._clearSettingsSearch) {
+        this._clearSettingsSearch();
+        return;
+      }
       this.close();
       return;
     }
@@ -682,6 +733,7 @@ export const settingsManager = {
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
       aliasTabCompletionEnabled: settings.aliasTabCompletionEnabled !== false,
       historyTabCompletionEnabled: Boolean(settings.historyTabCompletionEnabled),
+      lagMonitorEnabled: settings.lagMonitorEnabled !== false,
       scrollbackBehavior: this._normalizeScrollbackBehavior(settings.scrollbackBehavior),
       scrollbackSplitRatio: this._normalizeSplitRatio(settings.scrollbackSplitRatio),
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
@@ -1176,436 +1228,25 @@ export const settingsManager = {
   },
 
   _createHighlightEditor() {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'settings-aliases-editor';
-
-    const scopeCard = document.createElement('div');
-    scopeCard.className = 'settings-connection-card';
-
-    const scopeLabel = document.createElement('div');
-    scopeLabel.className = 'settings-label';
-    scopeLabel.textContent = 'Active highlight scope';
-
-    const scopeValue = document.createElement('div');
-    scopeValue.className = 'settings-connection-value';
-    scopeValue.textContent = this._highlightScopeKey;
-
-    const scopeHelp = document.createElement('p');
-    scopeHelp.className = 'dw-paragraph';
-    scopeHelp.textContent = 'Highlights are saved separately for each server connection target and apply to incoming terminal output.';
-
-    scopeCard.appendChild(scopeLabel);
-    scopeCard.appendChild(scopeValue);
-    scopeCard.appendChild(scopeHelp);
-    wrapper.appendChild(scopeCard);
-
-    const layout = document.createElement('div');
-    layout.className = 'settings-alias-layout';
-
-    const sidebar = document.createElement('div');
-    sidebar.className = 'settings-alias-sidebar';
-
-    const editor = document.createElement('div');
-    editor.className = 'settings-alias-detail';
-    editor.dataset.editFocusScope = 'highlight-editor';
-
-    const previewCard = document.createElement('div');
-    previewCard.className = 'settings-mapper-editor settings-alias-preview-card';
-    previewCard.dataset.editFocusScope = 'highlight-editor';
-
-    let searchTerm = '';
-    let sampleInput = 'You have emptied the keg!';
-    let selectedRuleId = this._draftHighlightScope.rules[0] ? this._draftHighlightScope.rules[0].id : null;
-
-    const ensureSelectedRule = () => {
-      const rules = this._draftHighlightScope.rules;
-      if (!rules.length) {
-        selectedRuleId = null;
-        return null;
-      }
-      const existing = rules.find((rule) => rule.id === selectedRuleId);
-      if (existing) return existing;
-      selectedRuleId = rules[0].id;
-      return rules[0];
-    };
-
-    const createFieldLabel = (text) => {
-      const label = document.createElement('div');
-      label.className = 'settings-label';
-      label.textContent = text;
-      return label;
-    };
-
-    const previewBody = document.createElement('div');
-    const sampleControl = document.createElement('textarea');
-    sampleControl.className = 'dw-input settings-alias-template';
-    sampleControl.value = sampleInput;
-    sampleControl.addEventListener('input', () => {
-      sampleInput = sampleControl.value;
-      renderPreviewBody();
-    });
-
-    const renderPreviewBody = () => {
-      previewBody.textContent = '';
-
-      const previewLine = document.createElement('div');
-      previewLine.className = 'settings-alias-preview-step';
-      const fragments = highlightManager.applyHighlightsToText(sampleInput, this._draftHighlightScope.rules);
-      fragments.forEach((fragment) => {
-        const node = styleToElement(fragment.text, fragment.style || {});
-        if (node) previewLine.appendChild(node);
-      });
-      previewBody.appendChild(previewLine);
-    };
-
-    const renderPreview = () => {
-      previewCard.textContent = '';
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Preview';
-      previewCard.appendChild(title);
-
-      const help = document.createElement('p');
-      help.className = 'dw-paragraph settings-helper-text';
-      help.textContent = 'Preview how the current rules will recolor matching terminal text.';
-      previewCard.appendChild(help);
-
-      const sampleField = document.createElement('label');
-      sampleField.className = 'dw-field';
-      sampleField.appendChild(createFieldLabel('Sample output'));
-      sampleControl.value = sampleInput;
-      sampleField.appendChild(sampleControl);
-      previewCard.appendChild(sampleField);
-      previewCard.appendChild(previewBody);
-      renderPreviewBody();
-    };
-
-    const renderRuleDetail = () => {
-      editor.textContent = '';
-      const rule = ensureSelectedRule();
-      if (!rule) {
-        const empty = document.createElement('div');
-        empty.className = 'settings-alias-empty';
-        empty.textContent = 'Create a highlight rule to start coloring matched terminal output.';
-        editor.appendChild(empty);
-        return;
-      }
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Highlight editor';
-      editor.appendChild(title);
-
-      const diagnostics = highlightManager.getRuleDiagnostics(this._draftHighlightScope, rule.id);
-      if (diagnostics.length) {
-        const warningBox = document.createElement('div');
-        warningBox.className = 'settings-alias-diagnostics';
-        diagnostics.forEach((message) => {
-          const item = document.createElement('div');
-          item.textContent = message;
-          warningBox.appendChild(item);
-        });
-        editor.appendChild(warningBox);
-      }
-
-      const patternField = document.createElement('label');
-      patternField.className = 'dw-field';
-      patternField.appendChild(createFieldLabel('Regex pattern'));
-      const patternInput = document.createElement('input');
-      patternInput.type = 'text';
-      patternInput.className = 'dw-input';
-      patternInput.dataset.focusKey = 'highlight-pattern';
-      patternInput.placeholder = 'You have emptied the keg!';
-      patternInput.value = rule.patternSource;
-      patternInput.addEventListener('input', () => {
-        rule.patternSource = patternInput.value;
-        renderHighlightList();
-        renderPreview();
-      });
-      patternInput.addEventListener('blur', () => render());
-      patternField.appendChild(patternInput);
-      editor.appendChild(patternField);
-
-      editor.appendChild(this._createCheckboxRow(
-        'Highlight enabled',
-        'Disabled highlight rules stay saved but never recolor output.',
-        rule.enabled !== false,
-        (checked) => {
-          rule.enabled = checked;
-          render();
-        }
-      ));
-
-      editor.appendChild(this._createCheckboxRow(
-        'Ignore letter casing',
-        'Use regex ignore-case matching so pattern text matches regardless of capitalization.',
-        rule.ignoreCase === true,
-        (checked) => {
-          rule.ignoreCase = checked;
-          renderPreview();
-        }
-      ));
-
-      const styleGrid = document.createElement('div');
-      styleGrid.className = 'settings-highlight-style-grid';
-
-      const fgField = document.createElement('label');
-      fgField.className = 'dw-field';
-      fgField.appendChild(createFieldLabel('Foreground'));
-      fgField.appendChild(this._createColorSelect(rule.style.fg, (value) => {
-        rule.style.fg = value;
-        renderPreview();
-      }));
-      styleGrid.appendChild(fgField);
-
-      const bgField = document.createElement('label');
-      bgField.className = 'dw-field';
-      bgField.appendChild(createFieldLabel('Background'));
-      bgField.appendChild(this._createColorSelect(rule.style.bg, (value) => {
-        rule.style.bg = value;
-        renderPreview();
-      }));
-      styleGrid.appendChild(bgField);
-
-      editor.appendChild(styleGrid);
-
-      editor.appendChild(this._createCheckboxRow(
-        'Bold matched text',
-        'Force matched text to render bold in addition to the selected colors.',
-        rule.style.bold === true,
-        (checked) => {
-          rule.style.bold = checked;
-          renderPreview();
-        }
-      ));
-    };
-
-    const renderHighlightList = () => {
-      const previousList = sidebar.querySelector('.settings-alias-list');
-      const previousScrollTop = previousList ? previousList.scrollTop : 0;
-      sidebar.textContent = '';
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Highlight rules';
-
-      const search = document.createElement('input');
-      search.type = 'text';
-      search.className = 'dw-input';
-      search.dataset.focusKey = 'highlight-search';
-      search.placeholder = 'Search highlights';
-      search.value = searchTerm;
-      search.addEventListener('input', () => {
-        const selectionStart = search.selectionStart;
-        const selectionEnd = search.selectionEnd;
-        searchTerm = search.value;
-        render();
-        this._focusSettingsTextControl('highlight-search', selectionStart, selectionEnd);
-      });
-
-      const list = document.createElement('div');
-      list.className = 'settings-alias-list';
-
-      const filteredRules = this._draftHighlightScope.rules.filter((rule) => (
-        rule.patternSource.toLowerCase().includes(searchTerm.trim().toLowerCase())
-      ));
-
-      const focusRuleByOffset = (index, offset) => {
-        if (!filteredRules.length) return;
-        const nextIndex = Math.max(0, Math.min(filteredRules.length - 1, index + offset));
-        selectedRuleId = filteredRules[nextIndex].id;
-        render();
-        this._focusSettingsControl('highlight-row-' + selectedRuleId);
-      };
-
-      filteredRules.forEach((rule, index) => {
-        const selected = rule.id === selectedRuleId;
-        const row = document.createElement('div');
-        row.className = 'settings-alias-list-item' + (selected ? ' active' : '');
-
-        const rowBtn = document.createElement('button');
-        rowBtn.type = 'button';
-        rowBtn.className = 'settings-alias-list-select';
-        rowBtn.dataset.focusKey = 'highlight-row-' + rule.id;
-        rowBtn.tabIndex = selected ? 0 : -1;
-        rowBtn.addEventListener('click', () => {
-          selectedRuleId = rule.id;
-          render();
-        });
-        rowBtn.addEventListener('keydown', (event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            focusRuleByOffset(index, 1);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            focusRuleByOffset(index, -1);
-          }
-        });
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = rule.enabled !== false;
-        checkbox.className = 'settings-alias-list-toggle';
-        checkbox.dataset.focusKey = 'highlight-toggle-' + rule.id;
-        checkbox.tabIndex = selected ? 0 : -1;
-        checkbox.addEventListener('change', () => {
-          rule.enabled = checkbox.checked;
-          render();
-          this._focusSettingsControl('highlight-toggle-' + rule.id);
-        });
-        checkbox.addEventListener('keydown', (event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            focusRuleByOffset(index, 1);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            focusRuleByOffset(index, -1);
-          }
-        });
-
-        const copy = document.createElement('div');
-        copy.className = 'settings-copy';
-
-        const pattern = document.createElement('div');
-        pattern.className = 'settings-label';
-        pattern.textContent = rule.patternSource || '(untitled)';
-
-        const detail = document.createElement('div');
-        detail.className = 'settings-alias-list-meta';
-        detail.textContent = highlightManager.formatRuleStyle(rule) + (rule.ignoreCase ? ' | ignore case' : '');
-
-        copy.appendChild(pattern);
-        copy.appendChild(detail);
-        rowBtn.appendChild(copy);
-        row.appendChild(rowBtn);
-        row.appendChild(checkbox);
-        list.appendChild(row);
-      });
-
-      if (!filteredRules.length) {
-        const empty = document.createElement('div');
-        empty.className = 'settings-alias-empty';
-        empty.textContent = searchTerm ? 'No highlight rules match this filter.' : 'No highlight rules defined for this scope.';
-        list.appendChild(empty);
-      }
-
-      const addActions = document.createElement('div');
-      addActions.className = 'settings-inline-actions';
-
-      const actions = document.createElement('div');
-      actions.className = 'settings-inline-actions';
-
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'dw-button dw-button-secondary';
-      addBtn.textContent = 'Add rule';
-      addBtn.addEventListener('click', () => {
-        const rule = highlightManager.createEmptyRule();
-        this._draftHighlightScope.rules.push(rule);
-        selectedRuleId = rule.id;
-        render();
-        this._focusSettingsControl('highlight-pattern');
-      });
-
-      const upBtn = document.createElement('button');
-      upBtn.type = 'button';
-      upBtn.className = 'dw-button dw-button-secondary';
-      upBtn.textContent = 'Up';
-      upBtn.disabled = !ensureSelectedRule() || this._draftHighlightScope.rules.findIndex((rule) => rule.id === selectedRuleId) <= 0;
-      upBtn.addEventListener('click', () => {
-        const index = this._draftHighlightScope.rules.findIndex((rule) => rule.id === selectedRuleId);
-        if (index <= 0) return;
-        const previous = this._draftHighlightScope.rules[index - 1];
-        this._draftHighlightScope.rules[index - 1] = this._draftHighlightScope.rules[index];
-        this._draftHighlightScope.rules[index] = previous;
-        render();
-        this._focusSettingsControl('highlight-row-' + selectedRuleId);
-      });
-
-      const downBtn = document.createElement('button');
-      downBtn.type = 'button';
-      downBtn.className = 'dw-button dw-button-secondary';
-      downBtn.textContent = 'Down';
-      downBtn.disabled = !ensureSelectedRule()
-        || this._draftHighlightScope.rules.findIndex((rule) => rule.id === selectedRuleId) === this._draftHighlightScope.rules.length - 1;
-      downBtn.addEventListener('click', () => {
-        const index = this._draftHighlightScope.rules.findIndex((rule) => rule.id === selectedRuleId);
-        if (index < 0 || index >= this._draftHighlightScope.rules.length - 1) return;
-        const next = this._draftHighlightScope.rules[index + 1];
-        this._draftHighlightScope.rules[index + 1] = this._draftHighlightScope.rules[index];
-        this._draftHighlightScope.rules[index] = next;
-        render();
-        this._focusSettingsControl('highlight-row-' + selectedRuleId);
-      });
-
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
-      removeBtn.textContent = 'Remove selected';
-      removeBtn.disabled = !ensureSelectedRule();
-      removeBtn.addEventListener('click', () => {
-        const rule = ensureSelectedRule();
-        if (!rule) return;
-        this._draftHighlightScope.rules = this._draftHighlightScope.rules.filter((item) => item.id !== rule.id);
-        selectedRuleId = this._draftHighlightScope.rules[0] ? this._draftHighlightScope.rules[0].id : null;
-        render();
-        this._focusSettingsControl(selectedRuleId ? 'highlight-row-' + selectedRuleId : 'highlight-add');
-      });
-
-      addBtn.dataset.focusKey = 'highlight-add';
-      addActions.appendChild(addBtn);
-      actions.appendChild(upBtn);
-      actions.appendChild(downBtn);
-      actions.appendChild(removeBtn);
-
-      sidebar.appendChild(title);
-      sidebar.appendChild(search);
-      sidebar.appendChild(addActions);
-      sidebar.appendChild(list);
-      sidebar.appendChild(actions);
-      list.scrollTop = previousScrollTop;
-    };
-
-    const render = () => {
-      ensureSelectedRule();
-      renderHighlightList();
-      renderRuleDetail();
-      renderPreview();
-    };
-
-    layout.appendChild(sidebar);
-    layout.appendChild(editor);
-    wrapper.appendChild(layout);
-    wrapper.appendChild(previewCard);
-
-    render();
-    return wrapper;
+    return createAutomationEditor(this, 'highlight');
   },
 
   _createVariablesEditor() {
     const wrapper = document.createElement('div');
     wrapper.className = 'settings-aliases-editor';
 
-    const scopeCard = document.createElement('div');
-    scopeCard.className = 'settings-connection-card';
-
-    const scopeLabel = document.createElement('div');
-    scopeLabel.className = 'settings-label';
-    scopeLabel.textContent = 'Active alias scope';
-
-    const scopeValue = document.createElement('div');
-    scopeValue.className = 'settings-connection-value';
-    scopeValue.textContent = this._aliasScopeKey;
-
-    const scopeHelp = document.createElement('p');
-    scopeHelp.className = 'dw-paragraph';
-    scopeHelp.textContent = 'Variables are saved with aliases for each server connection target.';
-
-    scopeCard.appendChild(scopeLabel);
-    scopeCard.appendChild(scopeValue);
-    scopeCard.appendChild(scopeHelp);
-    wrapper.appendChild(scopeCard);
+    const toolbar = document.createElement('div');
+    toolbar.className = 'settings-automation-toolbar';
+    const toolbarHint = document.createElement('p');
+    toolbarHint.className = 'dw-paragraph settings-helper-text';
+    toolbarHint.textContent = 'Persistent variables back aliases like $pack. Aliases can also write to them with Set variable steps.';
+    const scopeChip = document.createElement('span');
+    scopeChip.className = 'settings-scope-chip';
+    scopeChip.textContent = this._aliasScopeKey;
+    scopeChip.title = 'Variables are saved with aliases for each server connection target. Active scope: ' + this._aliasScopeKey;
+    toolbar.appendChild(toolbarHint);
+    toolbar.appendChild(scopeChip);
+    wrapper.appendChild(toolbar);
 
     const variableCard = document.createElement('div');
     variableCard.className = 'settings-mapper-editor settings-alias-variable-card';
@@ -1615,17 +1256,6 @@ export const settingsManager = {
     const render = () => {
       this._syncDraftVariablesFromSteps();
       variableCard.textContent = '';
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Variables';
-
-      const help = document.createElement('p');
-      help.className = 'dw-paragraph settings-helper-text';
-      help.textContent = 'Persistent variables back aliases like $pack. Aliases can also write to them with Set variable steps.';
-
-      variableCard.appendChild(title);
-      variableCard.appendChild(help);
 
       const usageDetails = aliasManager.collectAliasUsageDetails(this._draftAliasScope);
       const entries = Object.entries(this._draftAliasScope.variables).sort((a, b) => a[0].localeCompare(b[0]));
@@ -1717,7 +1347,9 @@ export const settingsManager = {
             const aliasBtn = document.createElement('button');
             aliasBtn.type = 'button';
             aliasBtn.className = 'settings-alias-usage-item';
-            aliasBtn.textContent = alias.trigger + (alias.description ? ' - ' + alias.description : '');
+            aliasBtn.textContent = alias.description
+              ? alias.description + ' (' + alias.trigger + ')'
+              : alias.trigger;
             aliasBtn.addEventListener('click', () => {
               this._pendingAliasSelection = alias.id;
               if (this._activateTab) this._activateTab('aliases');
@@ -1774,1462 +1406,11 @@ export const settingsManager = {
   },
 
   _createAliasEditor() {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'settings-aliases-editor';
-
-    const scopeCard = document.createElement('div');
-    scopeCard.className = 'settings-connection-card';
-
-    const scopeLabel = document.createElement('div');
-    scopeLabel.className = 'settings-label';
-    scopeLabel.textContent = 'Active alias scope';
-
-    const scopeValue = document.createElement('div');
-    scopeValue.className = 'settings-connection-value';
-    scopeValue.textContent = this._aliasScopeKey;
-
-    const scopeHelp = document.createElement('p');
-    scopeHelp.className = 'dw-paragraph';
-    scopeHelp.textContent = 'Aliases and variables are saved separately for each server connection target.';
-
-    scopeCard.appendChild(scopeLabel);
-    scopeCard.appendChild(scopeValue);
-    scopeCard.appendChild(scopeHelp);
-    wrapper.appendChild(scopeCard);
-
-    const layout = document.createElement('div');
-    layout.className = 'settings-alias-layout';
-
-    const sidebar = document.createElement('div');
-    sidebar.className = 'settings-alias-sidebar';
-
-    const editor = document.createElement('div');
-    editor.className = 'settings-alias-detail';
-    editor.dataset.editFocusScope = 'alias-editor';
-
-    const previewCard = document.createElement('div');
-    previewCard.className = 'settings-mapper-editor settings-alias-preview-card';
-    previewCard.dataset.editFocusScope = 'alias-editor';
-
-    let selectedAliasId = this._pendingAliasSelection || (this._draftAliasScope.aliases[0] ? this._draftAliasScope.aliases[0].id : null);
-    this._pendingAliasSelection = null;
-    let searchTerm = '';
-    let sampleInput = '';
-
-    const ensureSelectedAlias = () => {
-      const aliases = this._draftAliasScope.aliases;
-      if (!aliases.length) {
-        selectedAliasId = null;
-        return null;
-      }
-      const existing = aliases.find((alias) => alias.id === selectedAliasId);
-      if (existing) return existing;
-      selectedAliasId = aliases[0].id;
-      return aliases[0];
-    };
-
-    const createFieldLabel = (text) => {
-      const label = document.createElement('div');
-      label.className = 'settings-label';
-      label.textContent = text;
-      return label;
-    };
-
-    const aliasPreviewBody = document.createElement('div');
-
-    const sampleInputEl = document.createElement('input');
-    sampleInputEl.type = 'text';
-    sampleInputEl.className = 'dw-input';
-    sampleInputEl.placeholder = 'Example: gi sword';
-    sampleInputEl.value = sampleInput;
-    sampleInputEl.addEventListener('input', () => {
-      sampleInput = sampleInputEl.value;
-      renderPreviewBody();
-    });
-
-    const renderPreviewBody = () => {
-      aliasPreviewBody.textContent = '';
-      if (!sampleInput.trim()) return;
-
-      const match = aliasManager.matchAliasInAliases(sampleInput, this._draftAliasScope.aliases);
-      const body = document.createElement('div');
-      body.className = 'settings-alias-preview-results';
-
-      if (!match) {
-        const empty = document.createElement('div');
-        empty.className = 'settings-alias-empty';
-        empty.textContent = 'No enabled alias matches this input.';
-        body.appendChild(empty);
-        aliasPreviewBody.appendChild(body);
-        return;
-      }
-
-      const matchLabel = document.createElement('div');
-      matchLabel.className = 'settings-alias-preview-match';
-      matchLabel.textContent = 'Matches: ' + match.alias.trigger;
-      body.appendChild(matchLabel);
-
-      const previewVariables = { ...this._draftAliasScope.variables };
-      const previewTriggers = this._draftTriggerScope.triggers.map((trigger) => ({ ...trigger }));
-
-      for (const step of match.alias.steps) {
-        const row = document.createElement('div');
-        row.className = 'settings-alias-preview-step';
-        const resolved = aliasManager.resolveTemplate(
-          step.type === 'set_trigger_enabled' ? step.target : step.template,
-          {
-            args: match.args,
-            remainder: match.remainder,
-            variables: previewVariables,
-          }
-        );
-
-        if (step.type === 'set_trigger_enabled') {
-          const target = resolved.text.trim();
-          const mode = normalizeAutomationMode(step.mode);
-          const trigger = previewTriggers.find((item) => item.pattern === target);
-          row.textContent = getAutomationStepLabel(step) + ': ' + target;
-          if (resolved.missingVariables.length) {
-            row.classList.add('warning');
-            row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
-          } else if (resolved.errors.length) {
-            row.classList.add('warning');
-            row.textContent += ' (' + resolved.errors.join(' ') + ')';
-          } else if (!target || !trigger) {
-            row.classList.add('warning');
-            row.textContent += target ? ' (trigger not found)' : ' (empty target)';
-          } else {
-            trigger.enabled = mode === 'toggle' ? trigger.enabled === false : mode === 'enable';
-            row.textContent += ' -> ' + (trigger.enabled === false ? 'disabled' : 'enabled');
-          }
-          body.appendChild(row);
-          continue;
-        }
-
-        let prefix = 'Send';
-        if (step.type === 'set_variable') prefix = 'Set $' + step.name;
-        if (step.type === 'show_message') prefix = 'Show';
-
-        row.textContent = prefix + ': ' + resolved.text;
-        if (resolved.missingVariables.length) {
-          row.classList.add('warning');
-          row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
-        } else if (resolved.errors.length) {
-          row.classList.add('warning');
-          row.textContent += ' (' + resolved.errors.join(' ') + ')';
-        } else if (step.type === 'set_variable' && step.name) {
-          previewVariables[step.name] = resolved.text;
-        }
-        body.appendChild(row);
-      }
-
-      aliasPreviewBody.appendChild(body);
-    };
-
-    const renderPreview = () => {
-      previewCard.textContent = '';
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Live preview';
-
-      const help = document.createElement('p');
-      help.className = 'dw-paragraph settings-helper-text';
-      help.textContent = 'Try an input line to see which alias matches and what it will do with the current variables.';
-
-      sampleInputEl.value = sampleInput;
-      previewCard.appendChild(title);
-      previewCard.appendChild(help);
-      previewCard.appendChild(sampleInputEl);
-      previewCard.appendChild(aliasPreviewBody);
-      renderPreviewBody();
-    };
-
-    const renderAliasDetail = () => {
-      editor.textContent = '';
-      const alias = ensureSelectedAlias();
-      if (!alias) {
-        const empty = document.createElement('div');
-        empty.className = 'settings-alias-empty';
-        empty.textContent = 'Create an alias to start building client-side command shortcuts.';
-        editor.appendChild(empty);
-        return;
-      }
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Alias editor';
-      editor.appendChild(title);
-
-      const diagnostics = aliasManager.getAliasDiagnostics(this._draftAliasScope, alias.id);
-      if (diagnostics.length) {
-        const warningBox = document.createElement('div');
-        warningBox.className = 'settings-alias-diagnostics';
-        diagnostics.forEach((message) => {
-          const item = document.createElement('div');
-          item.textContent = message;
-          warningBox.appendChild(item);
-        });
-        editor.appendChild(warningBox);
-      }
-
-      const triggerField = document.createElement('label');
-      triggerField.className = 'dw-field';
-      triggerField.appendChild(createFieldLabel('Trigger'));
-      const triggerInput = document.createElement('input');
-      triggerInput.type = 'text';
-      triggerInput.className = 'dw-input';
-      triggerInput.dataset.focusKey = 'alias-trigger';
-      triggerInput.placeholder = alias.isRegex ? '^gi\\s+(.+)$' : 'gi';
-      triggerInput.value = alias.trigger;
-      triggerInput.addEventListener('input', () => {
-        alias.trigger = triggerInput.value;
-        renderAliasList();
-        renderPreview();
-      });
-      triggerInput.addEventListener('blur', () => {
-        render();
-      });
-      triggerField.appendChild(triggerInput);
-      editor.appendChild(triggerField);
-
-      editor.appendChild(this._createCheckboxRow(
-        'Use regex',
-        'Treat this alias trigger as a JavaScript regular expression. Capturing groups become %1, %2, and so on.',
-        alias.isRegex === true,
-        (checked) => {
-          alias.isRegex = checked;
-          render();
-        }
-      ));
-
-      if (alias.isRegex) {
-        editor.appendChild(this._createCheckboxRow(
-          'Ignore case',
-          'Match this regex alias without caring about capitalization.',
-          alias.ignoreCase !== false,
-          (checked) => {
-            alias.ignoreCase = checked;
-            render();
-          }
-        ));
-      }
-
-      const descriptionField = document.createElement('label');
-      descriptionField.className = 'dw-field';
-      descriptionField.appendChild(createFieldLabel('Description'));
-      const descriptionInput = document.createElement('input');
-      descriptionInput.type = 'text';
-      descriptionInput.className = 'dw-input';
-      descriptionInput.placeholder = 'Give an item to the pack animal';
-      descriptionInput.value = alias.description;
-      descriptionInput.addEventListener('input', () => {
-        alias.description = descriptionInput.value;
-        renderAliasList();
-      });
-      descriptionField.appendChild(descriptionInput);
-      editor.appendChild(descriptionField);
-
-      const groupField = document.createElement('label');
-      groupField.className = 'dw-field';
-      groupField.appendChild(createFieldLabel('Group / folder'));
-      const groupInput = document.createElement('input');
-      groupInput.type = 'text';
-      groupInput.className = 'dw-input';
-      groupInput.placeholder = 'Travel, Combat, Utility';
-      groupInput.value = alias.group || '';
-      groupInput.addEventListener('input', () => {
-        alias.group = groupInput.value;
-        renderAliasList();
-      });
-      groupField.appendChild(groupInput);
-      editor.appendChild(groupField);
-
-      const enabledRow = this._createCheckboxRow(
-        'Alias enabled',
-        'Disabled aliases stay saved but never match or expand.',
-        alias.enabled !== false,
-        (checked) => {
-          alias.enabled = checked;
-          render();
-        }
-      );
-      editor.appendChild(enabledRow);
-
-      const stepsTitle = createFieldLabel('Steps');
-      editor.appendChild(stepsTitle);
-
-      const stepList = document.createElement('div');
-      stepList.className = 'settings-alias-step-list';
-
-      const stepTypeOptions = [
-        { value: 'send_command', type: 'send_command', label: 'Send command' },
-        { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
-        { value: 'show_message', type: 'show_message', label: 'Show local message' },
-        { value: 'set_trigger_enabled:toggle', type: 'set_trigger_enabled', mode: 'toggle', label: 'Toggle trigger' },
-        { value: 'set_trigger_enabled:enable', type: 'set_trigger_enabled', mode: 'enable', label: 'Enable trigger' },
-        { value: 'set_trigger_enabled:disable', type: 'set_trigger_enabled', mode: 'disable', label: 'Disable trigger' },
-      ];
-      const getAliasStepOptionValue = (step) => (
-        step.type === 'set_trigger_enabled'
-          ? 'set_trigger_enabled:' + normalizeAutomationMode(step.mode)
-          : step.type
-      );
-
-      alias.steps.forEach((step, index) => {
-        const stepCard = document.createElement('div');
-        stepCard.className = 'settings-alias-step-card';
-
-        const stepHeader = document.createElement('div');
-        stepHeader.className = 'settings-alias-step-header';
-
-        const stepSelect = document.createElement('select');
-        stepSelect.className = 'dw-select';
-        stepSelect.dataset.focusKey = 'alias-step-' + index + '-type';
-        stepTypeOptions.forEach((option) => {
-          const el = document.createElement('option');
-          el.value = option.value;
-          el.textContent = option.label;
-          if (getAliasStepOptionValue(step) === option.value) el.selected = true;
-          stepSelect.appendChild(el);
-        });
-        stepSelect.addEventListener('change', () => {
-          const selectedOption = stepTypeOptions.find((option) => option.value === stepSelect.value) || stepTypeOptions[0];
-          step.type = selectedOption.type;
-          if (selectedOption.mode) step.mode = selectedOption.mode;
-          else delete step.mode;
-          if (step.type !== 'set_variable') delete step.name;
-          if (step.type !== 'set_trigger_enabled') delete step.target;
-          if (step.type === 'set_trigger_enabled' && !step.target) step.target = '';
-          if (!step.template) step.template = '';
-          render();
-        });
-
-        const controls = document.createElement('div');
-        controls.className = 'settings-alias-step-actions';
-
-        const upBtn = document.createElement('button');
-        upBtn.type = 'button';
-        upBtn.className = 'dw-button dw-button-secondary';
-        upBtn.textContent = 'Up';
-        upBtn.disabled = index === 0;
-        upBtn.addEventListener('click', () => {
-          const previous = alias.steps[index - 1];
-          alias.steps[index - 1] = step;
-          alias.steps[index] = previous;
-          render();
-          this._focusSettingsControl('alias-step-' + (index - 1) + '-type');
-        });
-
-        const downBtn = document.createElement('button');
-        downBtn.type = 'button';
-        downBtn.className = 'dw-button dw-button-secondary';
-        downBtn.textContent = 'Down';
-        downBtn.disabled = index === alias.steps.length - 1;
-        downBtn.addEventListener('click', () => {
-          const next = alias.steps[index + 1];
-          alias.steps[index + 1] = step;
-          alias.steps[index] = next;
-          render();
-          this._focusSettingsControl('alias-step-' + (index + 1) + '-type');
-        });
-
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
-        removeBtn.textContent = 'Remove';
-        removeBtn.addEventListener('click', () => {
-          alias.steps.splice(index, 1);
-          if (!alias.steps.length) alias.steps.push({ type: 'send_command', template: '' });
-          render();
-          this._focusSettingsControl('alias-step-' + Math.min(index, alias.steps.length - 1) + '-type');
-        });
-
-        stepHeader.appendChild(stepSelect);
-        stepCard.appendChild(stepHeader);
-
-        if (step.type === 'set_variable') {
-          const nameInput = document.createElement('input');
-          nameInput.type = 'text';
-          nameInput.className = 'dw-input';
-          nameInput.placeholder = 'pack';
-          nameInput.value = step.name || '';
-          nameInput.addEventListener('input', () => {
-            step.name = nameInput.value;
-          });
-          stepCard.appendChild(nameInput);
-        }
-
-        if (step.type === 'set_trigger_enabled') {
-          const targetInput = document.createElement('input');
-          const listId = 'alias-trigger-targets-' + index;
-          const targetList = document.createElement('datalist');
-          targetInput.type = 'text';
-          targetInput.className = 'dw-input';
-          targetInput.placeholder = 'Exact trigger pattern';
-          targetInput.setAttribute('list', listId);
-          targetInput.value = step.target || '';
-          targetList.id = listId;
-          this._draftTriggerScope.triggers.forEach((trigger) => {
-            const option = document.createElement('option');
-            option.value = trigger.pattern;
-            targetList.appendChild(option);
-          });
-          targetInput.addEventListener('input', () => {
-            step.target = targetInput.value;
-          });
-          stepCard.appendChild(targetInput);
-          stepCard.appendChild(targetList);
-        } else {
-          const templateInput = document.createElement('textarea');
-          templateInput.className = 'dw-input settings-alias-template';
-          templateInput.placeholder = step.type === 'show_message'
-            ? 'Pack animal set to: $pack'
-            : step.type === 'set_variable'
-              ? '%0'
-              : 'give %0 to $pack';
-          templateInput.value = step.template || '';
-          templateInput.addEventListener('input', () => {
-            step.template = templateInput.value;
-          });
-          stepCard.appendChild(templateInput);
-        }
-        controls.appendChild(upBtn);
-        controls.appendChild(downBtn);
-        controls.appendChild(removeBtn);
-        stepCard.appendChild(controls);
-
-        const helper = document.createElement('div');
-        helper.className = 'settings-helper-text';
-        helper.textContent = step.type === 'set_trigger_enabled'
-          ? 'Target may be an exact trigger pattern or a template that resolves to one.'
-          : 'Simple aliases match command words. Regex aliases use JavaScript regular expressions, with capture groups available as %1-%9. Templates support %0 for the full remainder or regex match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase.';
-        stepCard.appendChild(helper);
-
-        stepList.appendChild(stepCard);
-      });
-
-      editor.appendChild(stepList);
-
-      const stepAddActions = document.createElement('div');
-      stepAddActions.className = 'settings-inline-actions';
-      stepTypeOptions.forEach((option) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'dw-button dw-button-secondary';
-        btn.dataset.focusKey = 'alias-step-add-' + option.value;
-        btn.textContent = option.label;
-        btn.addEventListener('click', () => {
-          const step = { type: option.type, template: '' };
-          if (option.mode) step.mode = option.mode;
-          if (option.type === 'set_variable') step.name = '';
-          if (option.type === 'set_trigger_enabled') step.target = '';
-          alias.steps.push(step);
-          render();
-          this._focusSettingsControl('alias-step-' + (alias.steps.length - 1) + '-type');
-        });
-        stepAddActions.appendChild(btn);
-      });
-      editor.appendChild(stepAddActions);
-    };
-
-    const renderAliasList = () => {
-      const previousList = sidebar.querySelector('.settings-alias-list');
-      const previousScrollTop = previousList ? previousList.scrollTop : 0;
-      sidebar.textContent = '';
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Aliases';
-
-      const search = document.createElement('input');
-      search.type = 'text';
-      search.className = 'dw-input';
-      search.dataset.focusKey = 'alias-search';
-      search.placeholder = 'Search aliases';
-      search.value = searchTerm;
-      search.addEventListener('input', () => {
-        const selectionStart = search.selectionStart;
-        const selectionEnd = search.selectionEnd;
-        searchTerm = search.value;
-        render();
-        this._focusSettingsTextControl('alias-search', selectionStart, selectionEnd);
-      });
-
-      const list = document.createElement('div');
-      list.className = 'settings-alias-list';
-
-      const filteredAliases = this._draftAliasScope.aliases
-        .map((alias, index) => ({ alias, index }))
-        .filter((entry) => {
-          const alias = entry.alias;
-          const haystack = (alias.trigger + ' ' + alias.description + ' ' + (alias.group || '')).toLowerCase();
-          return haystack.includes(searchTerm.trim().toLowerCase());
-        })
-        .sort((a, b) => {
-          const groupA = (a.alias.group || '').trim() || 'Ungrouped';
-          const groupB = (b.alias.group || '').trim() || 'Ungrouped';
-          if (groupA !== groupB) return groupA.localeCompare(groupB);
-          return a.index - b.index;
-        })
-        .map((entry) => entry.alias);
-
-      let lastGroup = null;
-      const focusAliasByOffset = (index, offset) => {
-        if (!filteredAliases.length) return;
-        const nextIndex = Math.max(0, Math.min(filteredAliases.length - 1, index + offset));
-        selectedAliasId = filteredAliases[nextIndex].id;
-        render();
-        this._focusSettingsControl('alias-row-' + selectedAliasId);
-      };
-
-      filteredAliases.forEach((alias, index) => {
-        const group = (alias.group || '').trim() || 'Ungrouped';
-        if (group !== lastGroup) {
-          const groupHeader = document.createElement('div');
-          groupHeader.className = 'settings-alias-group-header';
-          groupHeader.textContent = group;
-          list.appendChild(groupHeader);
-          lastGroup = group;
-        }
-
-        const selected = alias.id === selectedAliasId;
-        const row = document.createElement('div');
-        row.className = 'settings-alias-list-item' + (selected ? ' active' : '');
-
-        const rowBtn = document.createElement('button');
-        rowBtn.type = 'button';
-        rowBtn.className = 'settings-alias-list-select';
-        rowBtn.dataset.focusKey = 'alias-row-' + alias.id;
-        rowBtn.tabIndex = selected ? 0 : -1;
-        rowBtn.addEventListener('click', () => {
-          selectedAliasId = alias.id;
-          render();
-        });
-        rowBtn.addEventListener('keydown', (event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            focusAliasByOffset(index, 1);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            focusAliasByOffset(index, -1);
-          }
-        });
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = alias.enabled !== false;
-        checkbox.className = 'settings-alias-list-toggle';
-        checkbox.dataset.focusKey = 'alias-toggle-' + alias.id;
-        checkbox.tabIndex = selected ? 0 : -1;
-        checkbox.addEventListener('change', () => {
-          alias.enabled = checkbox.checked;
-          render();
-          this._focusSettingsControl('alias-toggle-' + alias.id);
-        });
-        checkbox.addEventListener('keydown', (event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            focusAliasByOffset(index, 1);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            focusAliasByOffset(index, -1);
-          }
-        });
-
-        const copy = document.createElement('div');
-        copy.className = 'settings-copy';
-
-        const trigger = document.createElement('div');
-        trigger.className = 'settings-label';
-        trigger.textContent = alias.trigger || '(untitled)';
-
-        const description = document.createElement('div');
-        description.className = 'settings-alias-list-meta';
-        description.textContent = alias.description
-          || (alias.isRegex ? 'regex, ' : '') + alias.steps.length + ' step' + (alias.steps.length === 1 ? '' : 's');
-
-        copy.appendChild(trigger);
-        copy.appendChild(description);
-        rowBtn.appendChild(copy);
-        row.appendChild(rowBtn);
-        row.appendChild(checkbox);
-        list.appendChild(row);
-      });
-
-      if (!filteredAliases.length) {
-        const empty = document.createElement('div');
-        empty.className = 'settings-alias-empty';
-        empty.textContent = searchTerm ? 'No aliases match this filter.' : 'No aliases defined for this scope.';
-        list.appendChild(empty);
-      }
-
-      const addActions = document.createElement('div');
-      addActions.className = 'settings-inline-actions';
-
-      const actions = document.createElement('div');
-      actions.className = 'settings-inline-actions';
-
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'dw-button dw-button-secondary';
-      addBtn.textContent = 'Add alias';
-      addBtn.addEventListener('click', () => {
-        const alias = aliasManager.createEmptyAlias();
-        this._draftAliasScope.aliases.push(alias);
-        selectedAliasId = alias.id;
-        render();
-        this._focusSettingsControl('alias-trigger');
-      });
-
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
-      removeBtn.textContent = 'Remove selected';
-      removeBtn.disabled = !ensureSelectedAlias();
-      removeBtn.addEventListener('click', () => {
-        const alias = ensureSelectedAlias();
-        if (!alias) return;
-        this._draftAliasScope.aliases = this._draftAliasScope.aliases.filter((item) => item.id !== alias.id);
-        selectedAliasId = this._draftAliasScope.aliases[0] ? this._draftAliasScope.aliases[0].id : null;
-        render();
-        this._focusSettingsControl(selectedAliasId ? 'alias-row-' + selectedAliasId : 'alias-add');
-      });
-
-      addBtn.dataset.focusKey = 'alias-add';
-      addActions.appendChild(addBtn);
-      actions.appendChild(removeBtn);
-      sidebar.appendChild(title);
-      sidebar.appendChild(search);
-      sidebar.appendChild(addActions);
-      sidebar.appendChild(list);
-      sidebar.appendChild(actions);
-      list.scrollTop = previousScrollTop;
-    };
-
-    const render = () => {
-      ensureSelectedAlias();
-      renderAliasList();
-      renderAliasDetail();
-      renderPreview();
-    };
-
-    layout.appendChild(sidebar);
-    layout.appendChild(editor);
-    wrapper.appendChild(layout);
-    wrapper.appendChild(previewCard);
-
-    render();
-    return wrapper;
+    return createAutomationEditor(this, 'alias');
   },
 
   _createTriggerEditor() {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'settings-aliases-editor';
-
-    const scopeCard = document.createElement('div');
-    scopeCard.className = 'settings-connection-card';
-
-    const scopeLabel = document.createElement('div');
-    scopeLabel.className = 'settings-label';
-    scopeLabel.textContent = 'Active trigger scope';
-
-    const scopeValue = document.createElement('div');
-    scopeValue.className = 'settings-connection-value';
-    scopeValue.textContent = this._triggerScopeKey;
-
-    const scopeHelp = document.createElement('p');
-    scopeHelp.className = 'dw-paragraph';
-    scopeHelp.textContent = 'Triggers are saved separately for each server connection target and react to incoming output lines.';
-
-    scopeCard.appendChild(scopeLabel);
-    scopeCard.appendChild(scopeValue);
-    scopeCard.appendChild(scopeHelp);
-    wrapper.appendChild(scopeCard);
-
-    const layout = document.createElement('div');
-    layout.className = 'settings-alias-layout';
-
-    const sidebar = document.createElement('div');
-    sidebar.className = 'settings-alias-sidebar';
-
-    const editor = document.createElement('div');
-    editor.className = 'settings-alias-detail';
-    editor.dataset.editFocusScope = 'trigger-editor';
-
-    const previewCard = document.createElement('div');
-    previewCard.className = 'settings-mapper-editor settings-alias-preview-card';
-    previewCard.dataset.editFocusScope = 'trigger-editor';
-
-    let selectedTriggerId = this._draftTriggerScope.triggers[0] ? this._draftTriggerScope.triggers[0].id : null;
-    let searchTerm = '';
-    let sampleInput = '';
-
-    const ensureSelectedTrigger = () => {
-      const triggers = this._draftTriggerScope.triggers;
-      if (!triggers.length) {
-        selectedTriggerId = null;
-        return null;
-      }
-      const existing = triggers.find((trigger) => trigger.id === selectedTriggerId);
-      if (existing) return existing;
-      selectedTriggerId = triggers[0].id;
-      return triggers[0];
-    };
-
-    const createFieldLabel = (text) => {
-      const label = document.createElement('div');
-      label.className = 'settings-label';
-      label.textContent = text;
-      return label;
-    };
-
-    const previewBody = document.createElement('div');
-    const soundCatalog = getSoundCatalog();
-    const soundCategories = SOUND_CATEGORIES.filter((category) => (
-      soundCatalog.some((sound) => sound.category === category)
-    ));
-    const firstSound = soundCatalog[0] || { category: 'alert', sound: 'warning' };
-    const soundLabel = (category, sound) => {
-      const match = soundCatalog.find((item) => item.category === category && item.sound === sound);
-      if (match) return match.label;
-      return [category, sound].filter(Boolean).join(' / ') || 'No sound selected';
-    };
-    const soundsForCategory = (category) => soundCatalog.filter((item) => item.category === category);
-    const ensureSoundStep = (step) => {
-      if (!step.category || !soundsForCategory(step.category).length) step.category = firstSound.category;
-      if (!step.sound || !isKnownSound(step.category, step.sound)) {
-        const sounds = soundsForCategory(step.category);
-        step.sound = sounds[0] ? sounds[0].sound : firstSound.sound;
-      }
-      if (!Number.isFinite(Number(step.volume))) step.volume = 1;
-      step.volume = Math.max(0, Math.min(1, Number(step.volume)));
-    };
-
-    const sampleInputEl = document.createElement('textarea');
-    sampleInputEl.className = 'dw-input settings-alias-template';
-    sampleInputEl.placeholder = 'Example incoming line';
-    sampleInputEl.value = sampleInput;
-    sampleInputEl.addEventListener('input', () => {
-      sampleInput = sampleInputEl.value;
-      renderPreviewBody();
-    });
-
-    const renderPreviewBody = () => {
-      previewBody.textContent = '';
-      if (!sampleInput.trim()) return;
-
-      const result = triggerManager.evaluateLine(sampleInput, this._triggerScopeKey, this._draftTriggerScope);
-      const body = document.createElement('div');
-      body.className = 'settings-alias-preview-results';
-
-      if (!result.matches.length) {
-        const empty = document.createElement('div');
-        empty.className = 'settings-alias-empty';
-        empty.textContent = 'No enabled trigger matches this output.';
-        body.appendChild(empty);
-        previewBody.appendChild(body);
-        return;
-      }
-
-      const previewVariables = { ...this._draftAliasScope.variables };
-      const previewAliases = this._draftAliasScope.aliases.map((alias) => ({
-        ...alias,
-        steps: alias.steps.map((step) => ({ ...step })),
-      }));
-
-      result.matches.forEach((match) => {
-        const matchLabel = document.createElement('div');
-        matchLabel.className = 'settings-alias-preview-match';
-        matchLabel.textContent = 'Matches: ' + match.trigger.pattern + (match.trigger.gag ? ' [gag]' : '');
-        body.appendChild(matchLabel);
-
-        const captureRow = document.createElement('div');
-        captureRow.className = 'settings-helper-text';
-        captureRow.textContent = match.captures.length
-          ? match.captures.map((value, index) => '%' + (index + 1) + '=' + value).join(' | ')
-          : 'No captures';
-        body.appendChild(captureRow);
-
-        for (const step of match.trigger.steps || []) {
-          const row = document.createElement('div');
-          row.className = 'settings-alias-preview-step';
-
-          if (step.type === 'play_sound') {
-            row.textContent = getAutomationStepLabel(step) + ': ' + soundLabel(step.category, step.sound);
-            if (!isKnownSound(step.category, step.sound)) {
-              row.classList.add('warning');
-              row.textContent += ' (sound not found)';
-            }
-            body.appendChild(row);
-            continue;
-          }
-
-          const resolved = aliasManager.resolveTemplate(
-            step.type === 'set_alias_enabled' ? step.target : step.template,
-            {
-              args: match.captures,
-              remainder: match.fullMatch,
-              variables: previewVariables,
-            }
-          );
-
-          if (step.type === 'set_alias_enabled') {
-            const target = resolved.text.trim();
-            const mode = normalizeAutomationMode(step.mode);
-            const alias = previewAliases.find((item) => item.trigger.trim().replace(/\s+/g, ' ').toLowerCase() === target.trim().replace(/\s+/g, ' ').toLowerCase());
-            row.textContent = getAutomationStepLabel(step) + ': ' + target;
-            if (resolved.missingVariables.length) {
-              row.classList.add('warning');
-              row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
-            } else if (resolved.errors.length) {
-              row.classList.add('warning');
-              row.textContent += ' (' + resolved.errors.join(' ') + ')';
-            } else if (!target || !alias) {
-              row.classList.add('warning');
-              row.textContent += target ? ' (alias not found)' : ' (empty target)';
-            } else {
-              alias.enabled = mode === 'toggle' ? alias.enabled === false : mode === 'enable';
-              row.textContent += ' -> ' + (alias.enabled === false ? 'disabled' : 'enabled');
-            }
-            body.appendChild(row);
-            continue;
-          }
-
-          if (step.type === 'run_alias') {
-            const aliasMatch = aliasManager.matchAliasInAliases(resolved.text, previewAliases);
-            row.textContent = getAutomationStepLabel(step) + ': ' + resolved.text;
-            if (resolved.missingVariables.length) {
-              row.classList.add('warning');
-              row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
-            } else if (resolved.errors.length) {
-              row.classList.add('warning');
-              row.textContent += ' (' + resolved.errors.join(' ') + ')';
-            } else if (!aliasMatch) {
-              row.classList.add('warning');
-              row.textContent += ' (no enabled alias matches)';
-            } else {
-              row.textContent += ' -> ' + aliasMatch.alias.trigger;
-            }
-            body.appendChild(row);
-            continue;
-          }
-
-          let prefix = 'Send';
-          if (step.type === 'set_variable') prefix = 'Set $' + step.name;
-          if (step.type === 'show_message') prefix = 'Show';
-
-          row.textContent = prefix + ': ' + resolved.text;
-          if (resolved.missingVariables.length) {
-            row.classList.add('warning');
-            row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
-          } else if (resolved.errors.length) {
-            row.classList.add('warning');
-            row.textContent += ' (' + resolved.errors.join(' ') + ')';
-          } else if (step.type === 'set_variable' && step.name) {
-            previewVariables[step.name] = resolved.text;
-          }
-          body.appendChild(row);
-        }
-      });
-
-      previewBody.appendChild(body);
-    };
-
-    const renderPreview = () => {
-      previewCard.textContent = '';
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Live preview';
-
-      const help = document.createElement('p');
-      help.className = 'dw-paragraph settings-helper-text';
-      help.textContent = 'Try an incoming output line to see which triggers match, what they capture, and what actions will run.';
-
-      sampleInputEl.value = sampleInput;
-      previewCard.appendChild(title);
-      previewCard.appendChild(help);
-      previewCard.appendChild(sampleInputEl);
-      previewCard.appendChild(previewBody);
-      renderPreviewBody();
-    };
-
-    const renderTriggerDetail = () => {
-      editor.textContent = '';
-      const trigger = ensureSelectedTrigger();
-      if (!trigger) {
-        const empty = document.createElement('div');
-        empty.className = 'settings-alias-empty';
-        empty.textContent = 'Create a trigger to react to incoming output lines.';
-        editor.appendChild(empty);
-        return;
-      }
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Trigger editor';
-      editor.appendChild(title);
-
-      const diagnostics = triggerManager.getTriggerDiagnostics(this._draftTriggerScope, trigger.id);
-      if (diagnostics.length) {
-        const warningBox = document.createElement('div');
-        warningBox.className = 'settings-alias-diagnostics';
-        diagnostics.forEach((message) => {
-          const item = document.createElement('div');
-          item.textContent = message;
-          warningBox.appendChild(item);
-        });
-        editor.appendChild(warningBox);
-      }
-
-      const patternField = document.createElement('label');
-      patternField.className = 'dw-field';
-      patternField.appendChild(createFieldLabel('Pattern'));
-      const patternInput = document.createElement('input');
-      patternInput.type = 'text';
-      patternInput.className = 'dw-input';
-      patternInput.dataset.focusKey = 'trigger-pattern';
-      patternInput.placeholder = trigger.isRegex ? 'You are attacked by (.+)' : 'You are attacked by *';
-      patternInput.value = trigger.pattern;
-      patternInput.addEventListener('input', () => {
-        trigger.pattern = patternInput.value;
-        renderTriggerList();
-        renderPreview();
-      });
-      patternInput.addEventListener('blur', () => {
-        render();
-      });
-      patternField.appendChild(patternInput);
-      editor.appendChild(patternField);
-
-      editor.appendChild(this._createCheckboxRow(
-        'Use regex',
-        'Treat this trigger pattern as a JavaScript regular expression. Capturing groups become %1, %2, and so on.',
-        trigger.isRegex === true,
-        (checked) => {
-          trigger.isRegex = checked;
-          render();
-        }
-      ));
-
-      if (trigger.isRegex) {
-        editor.appendChild(this._createCheckboxRow(
-          'Ignore case',
-          'Match this regex trigger without caring about capitalization.',
-          trigger.ignoreCase === true,
-          (checked) => {
-            trigger.ignoreCase = checked;
-            render();
-          }
-        ));
-      }
-
-      const descriptionField = document.createElement('label');
-      descriptionField.className = 'dw-field';
-      descriptionField.appendChild(createFieldLabel('Description'));
-      const descriptionInput = document.createElement('input');
-      descriptionInput.type = 'text';
-      descriptionInput.className = 'dw-input';
-      descriptionInput.placeholder = 'Capture attackers and respond';
-      descriptionInput.value = trigger.description;
-      descriptionInput.addEventListener('input', () => {
-        trigger.description = descriptionInput.value;
-        renderTriggerList();
-      });
-      descriptionField.appendChild(descriptionInput);
-      editor.appendChild(descriptionField);
-
-      const groupField = document.createElement('label');
-      groupField.className = 'dw-field';
-      groupField.appendChild(createFieldLabel('Group / folder'));
-      const groupInput = document.createElement('input');
-      groupInput.type = 'text';
-      groupInput.className = 'dw-input';
-      groupInput.placeholder = 'Loot, Combat, Alerts';
-      groupInput.value = trigger.group || '';
-      groupInput.addEventListener('input', () => {
-        trigger.group = groupInput.value;
-        renderTriggerList();
-      });
-      groupField.appendChild(groupInput);
-      editor.appendChild(groupField);
-
-      editor.appendChild(this._createCheckboxRow(
-        'Trigger enabled',
-        'Disabled triggers stay saved but never match incoming output.',
-        trigger.enabled !== false,
-        (checked) => {
-          trigger.enabled = checked;
-          render();
-        }
-      ));
-
-      editor.appendChild(this._createCheckboxRow(
-        'Gag matching output',
-        'Hide matched lines from the terminal after this trigger runs.',
-        trigger.gag === true,
-        (checked) => {
-          trigger.gag = checked;
-          renderPreview();
-        }
-      ));
-
-      const stepsTitle = createFieldLabel('Steps');
-      editor.appendChild(stepsTitle);
-
-      const stepList = document.createElement('div');
-      stepList.className = 'settings-alias-step-list';
-
-      const stepTypeOptions = [
-        { value: 'send_command', type: 'send_command', label: 'Send command' },
-        { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
-        { value: 'show_message', type: 'show_message', label: 'Show local message' },
-        { value: 'set_alias_enabled:toggle', type: 'set_alias_enabled', mode: 'toggle', label: 'Toggle alias' },
-        { value: 'set_alias_enabled:enable', type: 'set_alias_enabled', mode: 'enable', label: 'Enable alias' },
-        { value: 'set_alias_enabled:disable', type: 'set_alias_enabled', mode: 'disable', label: 'Disable alias' },
-        { value: 'run_alias', type: 'run_alias', label: 'Run alias' },
-        { value: 'play_sound', type: 'play_sound', label: 'Play sound' },
-      ];
-      const getTriggerStepOptionValue = (step) => (
-        step.type === 'set_alias_enabled'
-          ? 'set_alias_enabled:' + normalizeAutomationMode(step.mode)
-          : step.type
-      );
-
-      trigger.steps.forEach((step, index) => {
-        const stepCard = document.createElement('div');
-        stepCard.className = 'settings-alias-step-card';
-
-        const stepHeader = document.createElement('div');
-        stepHeader.className = 'settings-alias-step-header';
-
-        const stepSelect = document.createElement('select');
-        stepSelect.className = 'dw-select';
-        stepSelect.dataset.focusKey = 'trigger-step-' + index + '-type';
-        stepTypeOptions.forEach((option) => {
-          const el = document.createElement('option');
-          el.value = option.value;
-          el.textContent = option.label;
-          if (getTriggerStepOptionValue(step) === option.value) el.selected = true;
-          stepSelect.appendChild(el);
-        });
-        stepSelect.addEventListener('change', () => {
-          const selectedOption = stepTypeOptions.find((option) => option.value === stepSelect.value) || stepTypeOptions[0];
-          step.type = selectedOption.type;
-          if (selectedOption.mode) step.mode = selectedOption.mode;
-          else delete step.mode;
-          if (step.type !== 'set_variable') delete step.name;
-          if (step.type !== 'set_alias_enabled') delete step.target;
-          if (step.type === 'set_alias_enabled' && !step.target) step.target = '';
-          if (step.type === 'play_sound') {
-            delete step.template;
-            ensureSoundStep(step);
-          } else {
-            delete step.category;
-            delete step.sound;
-            delete step.volume;
-            if (!step.template) step.template = '';
-          }
-          render();
-        });
-
-        const controls = document.createElement('div');
-        controls.className = 'settings-alias-step-actions';
-
-        const upBtn = document.createElement('button');
-        upBtn.type = 'button';
-        upBtn.className = 'dw-button dw-button-secondary';
-        upBtn.textContent = 'Up';
-        upBtn.disabled = index === 0;
-        upBtn.addEventListener('click', () => {
-          const previous = trigger.steps[index - 1];
-          trigger.steps[index - 1] = step;
-          trigger.steps[index] = previous;
-          render();
-          this._focusSettingsControl('trigger-step-' + (index - 1) + '-type');
-        });
-
-        const downBtn = document.createElement('button');
-        downBtn.type = 'button';
-        downBtn.className = 'dw-button dw-button-secondary';
-        downBtn.textContent = 'Down';
-        downBtn.disabled = index === trigger.steps.length - 1;
-        downBtn.addEventListener('click', () => {
-          const next = trigger.steps[index + 1];
-          trigger.steps[index + 1] = step;
-          trigger.steps[index] = next;
-          render();
-          this._focusSettingsControl('trigger-step-' + (index + 1) + '-type');
-        });
-
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
-        removeBtn.textContent = 'Remove';
-        removeBtn.addEventListener('click', () => {
-          trigger.steps.splice(index, 1);
-          if (!trigger.steps.length) trigger.steps.push({ type: 'send_command', template: '' });
-          render();
-          this._focusSettingsControl('trigger-step-' + Math.min(index, trigger.steps.length - 1) + '-type');
-        });
-
-        stepHeader.appendChild(stepSelect);
-        stepCard.appendChild(stepHeader);
-
-        if (step.type === 'set_variable') {
-          const nameInput = document.createElement('input');
-          nameInput.type = 'text';
-          nameInput.className = 'dw-input';
-          nameInput.placeholder = 'enemy';
-          nameInput.value = step.name || '';
-          nameInput.addEventListener('input', () => {
-            step.name = nameInput.value;
-          });
-          stepCard.appendChild(nameInput);
-        }
-
-        if (step.type === 'play_sound') {
-          ensureSoundStep(step);
-
-          const categorySelect = document.createElement('select');
-          categorySelect.className = 'dw-select';
-          categorySelect.dataset.focusKey = 'trigger-step-' + index + '-sound-category';
-          soundCategories.forEach((category) => {
-            const option = document.createElement('option');
-            option.value = category;
-            option.textContent = SOUND_CATEGORY_INFO[category] ? SOUND_CATEGORY_INFO[category].label : category;
-            if (step.category === category) option.selected = true;
-            categorySelect.appendChild(option);
-          });
-          categorySelect.addEventListener('change', () => {
-            step.category = categorySelect.value;
-            const sounds = soundsForCategory(step.category);
-            step.sound = sounds[0] ? sounds[0].sound : '';
-            render();
-            this._focusSettingsControl('trigger-step-' + index + '-sound-category');
-          });
-          stepCard.appendChild(categorySelect);
-
-          const soundSelect = document.createElement('select');
-          soundSelect.className = 'dw-select';
-          soundSelect.dataset.focusKey = 'trigger-step-' + index + '-sound';
-          soundsForCategory(step.category).forEach((item) => {
-            const option = document.createElement('option');
-            option.value = item.sound;
-            option.textContent = item.label.replace((SOUND_CATEGORY_INFO[item.category] ? SOUND_CATEGORY_INFO[item.category].label : item.category) + ' / ', '');
-            if (step.sound === item.sound) option.selected = true;
-            soundSelect.appendChild(option);
-          });
-          soundSelect.addEventListener('change', () => {
-            step.sound = soundSelect.value;
-            renderPreview();
-          });
-          stepCard.appendChild(soundSelect);
-
-          const volumeField = document.createElement('label');
-          volumeField.className = 'dw-field';
-          volumeField.appendChild(createFieldLabel('Volume'));
-          const volumeInput = document.createElement('input');
-          volumeInput.type = 'range';
-          volumeInput.min = '0';
-          volumeInput.max = '100';
-          volumeInput.value = String(Math.round(step.volume * 100));
-          volumeInput.dataset.focusKey = 'trigger-step-' + index + '-sound-volume';
-          const volumeValue = document.createElement('div');
-          volumeValue.className = 'settings-helper-text';
-          volumeValue.textContent = Math.round(step.volume * 100) + '%';
-          volumeInput.addEventListener('input', () => {
-            step.volume = Number(volumeInput.value) / 100;
-            volumeValue.textContent = volumeInput.value + '%';
-            renderPreview();
-          });
-          volumeField.appendChild(volumeInput);
-          volumeField.appendChild(volumeValue);
-          stepCard.appendChild(volumeField);
-
-          const testBtn = document.createElement('button');
-          testBtn.type = 'button';
-          testBtn.className = 'dw-button dw-button-secondary';
-          testBtn.textContent = 'Test';
-          testBtn.addEventListener('click', () => {
-            soundManager.play(step.category, step.sound, step.volume);
-          });
-          stepCard.appendChild(testBtn);
-        } else if (step.type === 'set_alias_enabled') {
-          const targetInput = document.createElement('input');
-          const listId = 'trigger-alias-targets-' + index;
-          const targetList = document.createElement('datalist');
-          targetInput.type = 'text';
-          targetInput.className = 'dw-input';
-          targetInput.placeholder = 'Exact alias trigger';
-          targetInput.setAttribute('list', listId);
-          targetInput.value = step.target || '';
-          targetList.id = listId;
-          this._draftAliasScope.aliases.forEach((alias) => {
-            const option = document.createElement('option');
-            option.value = alias.trigger;
-            targetList.appendChild(option);
-          });
-          targetInput.addEventListener('input', () => {
-            step.target = targetInput.value;
-          });
-          stepCard.appendChild(targetInput);
-          stepCard.appendChild(targetList);
-        } else {
-          const templateInput = document.createElement('textarea');
-          templateInput.className = 'dw-input settings-alias-template';
-          templateInput.placeholder = step.type === 'show_message'
-            ? 'Attacker: %1'
-            : step.type === 'set_variable'
-              ? '%1'
-              : step.type === 'run_alias'
-                ? 'assist %1'
-                : 'kill %1';
-          templateInput.value = step.template || '';
-          templateInput.addEventListener('input', () => {
-            step.template = templateInput.value;
-          });
-          stepCard.appendChild(templateInput);
-        }
-        controls.appendChild(upBtn);
-        controls.appendChild(downBtn);
-        controls.appendChild(removeBtn);
-        stepCard.appendChild(controls);
-
-        const helper = document.createElement('div');
-        helper.className = 'settings-helper-text';
-        helper.textContent = step.type === 'play_sound'
-          ? 'Sound actions use Darkflow audio settings, category toggles, and browser audio unlock.'
-          : step.type === 'set_alias_enabled'
-            ? 'Target may be an exact alias trigger or a template that resolves to one.'
-            : 'Simple patterns support * or %1-%9 as captures. Regex triggers use JavaScript regular expressions, with capture groups available as %1-%9. Step templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase.';
-        stepCard.appendChild(helper);
-
-        stepList.appendChild(stepCard);
-      });
-
-      editor.appendChild(stepList);
-
-      const stepAddActions = document.createElement('div');
-      stepAddActions.className = 'settings-inline-actions';
-      stepTypeOptions.forEach((option) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'dw-button dw-button-secondary';
-        btn.dataset.focusKey = 'trigger-step-add-' + option.value;
-        btn.textContent = option.label;
-        btn.addEventListener('click', () => {
-          const step = { type: option.type, template: '' };
-          if (option.mode) step.mode = option.mode;
-          if (option.type === 'set_variable') step.name = '';
-          if (option.type === 'set_alias_enabled') step.target = '';
-          if (option.type === 'play_sound') {
-            delete step.template;
-            step.category = firstSound.category;
-            step.sound = firstSound.sound;
-            step.volume = 1;
-          }
-          trigger.steps.push(step);
-          render();
-          this._focusSettingsControl('trigger-step-' + (trigger.steps.length - 1) + '-type');
-        });
-        stepAddActions.appendChild(btn);
-      });
-      editor.appendChild(stepAddActions);
-    };
-
-    const renderTriggerList = () => {
-      const previousList = sidebar.querySelector('.settings-alias-list');
-      const previousScrollTop = previousList ? previousList.scrollTop : 0;
-      sidebar.textContent = '';
-
-      const title = document.createElement('div');
-      title.className = 'settings-label';
-      title.textContent = 'Triggers';
-
-      const search = document.createElement('input');
-      search.type = 'text';
-      search.className = 'dw-input';
-      search.dataset.focusKey = 'trigger-search';
-      search.placeholder = 'Search triggers';
-      search.value = searchTerm;
-      search.addEventListener('input', () => {
-        const selectionStart = search.selectionStart;
-        const selectionEnd = search.selectionEnd;
-        searchTerm = search.value;
-        render();
-        this._focusSettingsTextControl('trigger-search', selectionStart, selectionEnd);
-      });
-
-      const list = document.createElement('div');
-      list.className = 'settings-alias-list';
-
-      const filteredTriggers = this._draftTriggerScope.triggers
-        .map((trigger, index) => ({ trigger, index }))
-        .filter((entry) => {
-          const trigger = entry.trigger;
-          const haystack = (trigger.pattern + ' ' + trigger.description + ' ' + (trigger.group || '')).toLowerCase();
-          return haystack.includes(searchTerm.trim().toLowerCase());
-        })
-        .sort((a, b) => {
-          const groupA = (a.trigger.group || '').trim() || 'Ungrouped';
-          const groupB = (b.trigger.group || '').trim() || 'Ungrouped';
-          if (groupA !== groupB) return groupA.localeCompare(groupB);
-          return a.index - b.index;
-        })
-        .map((entry) => entry.trigger);
-
-      let lastGroup = null;
-      const focusTriggerByOffset = (index, offset) => {
-        if (!filteredTriggers.length) return;
-        const nextIndex = Math.max(0, Math.min(filteredTriggers.length - 1, index + offset));
-        selectedTriggerId = filteredTriggers[nextIndex].id;
-        render();
-        this._focusSettingsControl('trigger-row-' + selectedTriggerId);
-      };
-
-      filteredTriggers.forEach((trigger, index) => {
-        const group = (trigger.group || '').trim() || 'Ungrouped';
-        if (group !== lastGroup) {
-          const groupHeader = document.createElement('div');
-          groupHeader.className = 'settings-alias-group-header';
-          groupHeader.textContent = group;
-          list.appendChild(groupHeader);
-          lastGroup = group;
-        }
-
-        const selected = trigger.id === selectedTriggerId;
-        const row = document.createElement('div');
-        row.className = 'settings-alias-list-item' + (selected ? ' active' : '');
-
-        const rowBtn = document.createElement('button');
-        rowBtn.type = 'button';
-        rowBtn.className = 'settings-alias-list-select';
-        rowBtn.dataset.focusKey = 'trigger-row-' + trigger.id;
-        rowBtn.tabIndex = selected ? 0 : -1;
-        rowBtn.addEventListener('click', () => {
-          selectedTriggerId = trigger.id;
-          render();
-        });
-        rowBtn.addEventListener('keydown', (event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            focusTriggerByOffset(index, 1);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            focusTriggerByOffset(index, -1);
-          }
-        });
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = trigger.enabled !== false;
-        checkbox.className = 'settings-alias-list-toggle';
-        checkbox.dataset.focusKey = 'trigger-toggle-' + trigger.id;
-        checkbox.tabIndex = selected ? 0 : -1;
-        checkbox.addEventListener('change', () => {
-          trigger.enabled = checkbox.checked;
-          render();
-          this._focusSettingsControl('trigger-toggle-' + trigger.id);
-        });
-        checkbox.addEventListener('keydown', (event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            focusTriggerByOffset(index, 1);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            focusTriggerByOffset(index, -1);
-          }
-        });
-
-        const copy = document.createElement('div');
-        copy.className = 'settings-copy';
-
-        const pattern = document.createElement('div');
-        pattern.className = 'settings-label';
-        pattern.textContent = trigger.pattern || '(untitled)';
-
-        const description = document.createElement('div');
-        description.className = 'settings-alias-list-meta';
-        if (trigger.description) description.textContent = trigger.description;
-        else if (trigger.gag) description.textContent = (trigger.isRegex ? 'regex, ' : '') + 'gag enabled';
-        else if (trigger.steps[0] && trigger.steps[0].type === 'play_sound')
-          description.textContent = (trigger.isRegex ? 'regex, ' : '') + 'Play sound: ' + soundLabel(trigger.steps[0].category, trigger.steps[0].sound);
-        else description.textContent = (trigger.isRegex ? 'regex, ' : '') + trigger.steps.length + ' step' + (trigger.steps.length === 1 ? '' : 's');
-
-        copy.appendChild(pattern);
-        copy.appendChild(description);
-        rowBtn.appendChild(copy);
-        row.appendChild(rowBtn);
-        row.appendChild(checkbox);
-        list.appendChild(row);
-      });
-
-      if (!filteredTriggers.length) {
-        const empty = document.createElement('div');
-        empty.className = 'settings-alias-empty';
-        empty.textContent = searchTerm ? 'No triggers match this filter.' : 'No triggers defined for this scope.';
-        list.appendChild(empty);
-      }
-
-      const addActions = document.createElement('div');
-      addActions.className = 'settings-inline-actions';
-
-      const actions = document.createElement('div');
-      actions.className = 'settings-inline-actions';
-
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'dw-button dw-button-secondary';
-      addBtn.textContent = 'Add trigger';
-      addBtn.addEventListener('click', () => {
-        const trigger = triggerManager.createEmptyTrigger();
-        this._draftTriggerScope.triggers.push(trigger);
-        selectedTriggerId = trigger.id;
-        render();
-        this._focusSettingsControl('trigger-pattern');
-      });
-
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'dw-button dw-button-secondary settings-row-remove';
-      removeBtn.textContent = 'Remove selected';
-      removeBtn.disabled = !ensureSelectedTrigger();
-      removeBtn.addEventListener('click', () => {
-        const trigger = ensureSelectedTrigger();
-        if (!trigger) return;
-        this._draftTriggerScope.triggers = this._draftTriggerScope.triggers.filter((item) => item.id !== trigger.id);
-        selectedTriggerId = this._draftTriggerScope.triggers[0] ? this._draftTriggerScope.triggers[0].id : null;
-        render();
-        this._focusSettingsControl(selectedTriggerId ? 'trigger-row-' + selectedTriggerId : 'trigger-add');
-      });
-
-      addBtn.dataset.focusKey = 'trigger-add';
-      addActions.appendChild(addBtn);
-      actions.appendChild(removeBtn);
-      sidebar.appendChild(title);
-      sidebar.appendChild(search);
-      sidebar.appendChild(addActions);
-      sidebar.appendChild(list);
-      sidebar.appendChild(actions);
-      list.scrollTop = previousScrollTop;
-    };
-
-    const render = () => {
-      ensureSelectedTrigger();
-      renderTriggerList();
-      renderTriggerDetail();
-      renderPreview();
-    };
-
-    layout.appendChild(sidebar);
-    layout.appendChild(editor);
-    wrapper.appendChild(layout);
-    wrapper.appendChild(previewCard);
-
-    render();
-    return wrapper;
+    return createAutomationEditor(this, 'trigger');
   },
 
   _createAboutPanel() {
@@ -3357,6 +1538,10 @@ export const settingsManager = {
     title.id = 'settings-modal-title';
     title.textContent = 'Settings';
 
+    const dragHint = document.createElement('span');
+    dragHint.className = 'settings-drag-hint';
+    dragHint.textContent = 'drag to move - drag corner to resize';
+
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'dw-modal-close';
@@ -3365,7 +1550,63 @@ export const settingsManager = {
     closeBtn.addEventListener('click', () => this.close());
 
     header.appendChild(title);
+    header.appendChild(dragHint);
     header.appendChild(closeBtn);
+
+    // ── Floating window behavior ────────────────────────────────────────
+    // The settings window is positioned, draggable by its header, resizable
+    // via the native corner grip, and remembers its geometry across opens.
+    const geo = settingsWindowGeometry();
+    modal.style.left = geo.x + 'px';
+    modal.style.top = geo.y + 'px';
+    modal.style.width = geo.w + 'px';
+    modal.style.height = geo.h + 'px';
+
+    const saveGeometry = () => {
+      saveSettingsWindowState({
+        x: modal.offsetLeft,
+        y: modal.offsetTop,
+        w: modal.offsetWidth,
+        h: modal.offsetHeight,
+      });
+    };
+
+    let dragFrom = null;
+    header.addEventListener('pointerdown', (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest('button')) return;
+      dragFrom = {
+        dx: event.clientX - modal.offsetLeft,
+        dy: event.clientY - modal.offsetTop,
+      };
+      try { header.setPointerCapture(event.pointerId); } catch (e) { /* ok */ }
+      event.preventDefault();
+    });
+    header.addEventListener('pointermove', (event) => {
+      if (!dragFrom) return;
+      const x = Math.max(0, Math.min(event.clientX - dragFrom.dx, window.innerWidth - 200));
+      const y = Math.max(0, Math.min(event.clientY - dragFrom.dy, window.innerHeight - 80));
+      modal.style.left = x + 'px';
+      modal.style.top = y + 'px';
+    });
+    const endDrag = () => {
+      if (!dragFrom) return;
+      dragFrom = null;
+      saveGeometry();
+    };
+    header.addEventListener('pointerup', endDrag);
+    header.addEventListener('pointercancel', endDrag);
+
+    if (typeof ResizeObserver === 'function') {
+      let resizeSaveTimer = null;
+      const ro = new ResizeObserver(() => {
+        if (resizeSaveTimer) clearTimeout(resizeSaveTimer);
+        resizeSaveTimer = setTimeout(() => {
+          resizeSaveTimer = null;
+          if (document.contains(modal)) saveGeometry();
+        }, 250);
+      });
+      ro.observe(modal);
+    }
 
     const body = document.createElement('div');
     body.className = 'dw-modal-body settings-modal-body';
@@ -3373,6 +1614,7 @@ export const settingsManager = {
     const tabs = document.createElement('div');
     tabs.className = 'settings-tabs';
     tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-orientation', 'vertical');
     tabs.setAttribute('aria-label', 'Settings sections');
 
     const tabPanels = document.createElement('div');
@@ -3383,7 +1625,67 @@ export const settingsManager = {
     const tabOrder = [];
     let renderAliasesSection = null;
     let renderVariablesSection = null;
+    let currentTabKey = 'connection';
+
+    // Search across every section: while a query is active, all sections are
+    // shown stacked with non-matching rows hidden; clearing restores the
+    // selected section.
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.className = 'settings-search-input';
+    searchInput.placeholder = 'Search settings...';
+    searchInput.setAttribute('aria-label', 'Search settings');
+    searchInput.dataset.focusKey = 'settings-search';
+
+    const restoreSectionRows = () => {
+      for (const panel of tabContents.values()) {
+        for (const child of panel.children) child.style.display = '';
+      }
+    };
+    const clearSearch = () => {
+      if (!searchInput.value) return;
+      searchInput.value = '';
+      restoreSectionRows();
+      activateTab(currentTabKey);
+    };
+    this._clearSettingsSearch = clearSearch;
+
+    const applySearch = () => {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) {
+        restoreSectionRows();
+        activateTab(currentTabKey);
+        return;
+      }
+      for (const [tabKey, btn] of tabButtons) {
+        btn.classList.toggle('active', false);
+        btn.setAttribute('aria-selected', 'false');
+      }
+      for (const panel of tabContents.values()) {
+        let matches = 0;
+        for (const child of panel.children) {
+          if (child.tagName === 'H3') continue;
+          const hit = (child.textContent || '').toLowerCase().includes(q);
+          child.style.display = hit ? '' : 'none';
+          if (hit) matches++;
+        }
+        // Keep the section heading when anything below it matched.
+        for (const child of panel.children) {
+          if (child.tagName === 'H3') child.style.display = matches ? '' : 'none';
+        }
+        panel.hidden = !matches;
+        panel.style.display = matches ? 'flex' : 'none';
+      }
+    };
+    searchInput.addEventListener('input', applySearch);
+
     const activateTab = (key) => {
+      if (searchInput.value) {
+        searchInput.value = '';
+        restoreSectionRows();
+      }
+      currentTabKey = key;
+      saveSettingsWindowState({ tab: key });
       if (key === 'aliases' && renderAliasesSection) renderAliasesSection();
       if (key === 'variables' && renderVariablesSection) renderVariablesSection();
       for (const [tabKey, btn] of tabButtons) {
@@ -3448,14 +1750,27 @@ export const settingsManager = {
       return panel;
     };
 
+    const addNavGroup = (label) => {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'settings-nav-group';
+      groupEl.textContent = label;
+      tabs.appendChild(groupEl);
+    };
+
+    addNavGroup('Client');
     const connectionSection = createTab('connection', 'Connection');
+    const appearanceSection = createTab('appearance', 'Appearance');
     const terminalSection = createTab('terminal', 'Terminal');
     const audioSection = createTab('audio', 'Audio');
     const controlsSection = createTab('controls', 'Controls');
+
+    addNavGroup('Automation');
+    const aliasesSection = createTab('aliases', 'Aliases');
     const triggersSection = createTab('triggers', 'Triggers');
     const highlightsSection = createTab('highlights', 'Highlights');
-    const aliasesSection = createTab('aliases', 'Aliases');
     const variablesSection = createTab('variables', 'Variables');
+
+    addNavGroup('Help');
     const aboutSection = createTab('about', 'About');
 
     const sectionTitle = document.createElement('h3');
@@ -3469,6 +1784,15 @@ export const settingsManager = {
       !!this._draftSettings.autoReconnect,
       (checked) => {
         this._draftSettings.autoReconnect = checked;
+      }
+    ));
+
+    connectionSection.appendChild(this._createCheckboxRow(
+      'Monitor connection health',
+      'Measure latency in the background and show it in the status bar; the Connection panel breaks lag down into network, server, and local causes.',
+      this._draftSettings.lagMonitorEnabled !== false,
+      (checked) => {
+        this._draftSettings.lagMonitorEnabled = checked;
       }
     ));
 
@@ -3506,12 +1830,18 @@ export const settingsManager = {
       connectionSection.appendChild(connectionDetails);
     }
 
+    const appearanceTitle = document.createElement('h3');
+    appearanceTitle.className = 'dw-heading';
+    appearanceTitle.textContent = 'Appearance';
+
+    appearanceSection.appendChild(appearanceTitle);
+    appearanceSection.appendChild(this._createThemeRow());
+
     const terminalTitle = document.createElement('h3');
     terminalTitle.className = 'dw-heading';
     terminalTitle.textContent = 'Terminal';
 
     terminalSection.appendChild(terminalTitle);
-    terminalSection.appendChild(this._createThemeRow());
     terminalSection.appendChild(this._createSelectRow(
       'Scrollback memory',
       'Choose how much terminal history to retain before the oldest lines are discarded.',
@@ -3551,7 +1881,7 @@ export const settingsManager = {
         this._draftSettings.terminalWidthColumns = value;
       }
     ));
-    terminalSection.appendChild(this._createSelectRow(
+    appearanceSection.appendChild(this._createSelectRow(
       'Workspace layout',
       'Choose the classic fixed terminal and sidebars, or a floating workspace where the terminal and panes can all move and dock.',
       this._draftSettings.workspaceLayout,
@@ -3563,7 +1893,7 @@ export const settingsManager = {
         this._draftSettings.workspaceLayout = value;
       }
     ));
-    terminalSection.appendChild(this._createCheckboxRow(
+    appearanceSection.appendChild(this._createCheckboxRow(
       'Snap floating panes to grid',
       'Align floating pane positions and resized pane dimensions to a 16px grid.',
       !!this._draftSettings.paneGridSnapEnabled,
@@ -3592,7 +1922,7 @@ export const settingsManager = {
     resetLayoutCard.appendChild(resetLayoutLabel);
     resetLayoutCard.appendChild(resetLayoutCopy);
     resetLayoutCard.appendChild(resetLayoutBtn);
-    terminalSection.appendChild(resetLayoutCard);
+    appearanceSection.appendChild(resetLayoutCard);
     terminalSection.appendChild(this._createCheckboxRow(
       'Screen reader announcements',
       'Mirror new terminal lines into a hidden polite live region for browser screen readers.',
@@ -3742,9 +2072,22 @@ export const settingsManager = {
       if (renderVariablesSection) renderVariablesSection();
     };
 
-    activateTab('connection');
-    body.appendChild(tabs);
-    body.appendChild(tabPanels);
+    activateTab(tabButtons.has(geo.tab) ? geo.tab : 'connection');
+
+    const sidebar = document.createElement('div');
+    sidebar.className = 'settings-sidebar';
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'settings-search';
+    searchWrap.appendChild(searchInput);
+    sidebar.appendChild(searchWrap);
+    sidebar.appendChild(tabs);
+
+    const main = document.createElement('div');
+    main.className = 'settings-main';
+    main.appendChild(tabPanels);
+
+    body.appendChild(sidebar);
+    body.appendChild(main);
 
     const footer = document.createElement('div');
     footer.className = 'settings-modal-footer';
@@ -3786,7 +2129,7 @@ export const settingsManager = {
     footer.appendChild(closePanelBtn);
     footer.appendChild(applyBtn);
     footer.appendChild(saveBtn);
-    body.appendChild(footer);
+    main.appendChild(footer);
 
     modal.appendChild(header);
     modal.appendChild(body);

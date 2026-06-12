@@ -150,7 +150,6 @@ export const panelManager = {
     this.registerGmcpHandlers();
     this._attachResizeHandler();
     this._syncResponsiveMode(true);
-    this._ensureTerminalGear();
     this._applyPaneFont(TERMINAL_PANEL_ID);
     this._initialized = true;
   },
@@ -304,6 +303,29 @@ export const panelManager = {
     };
   },
 
+  _measureFloatPanel(el) {
+    if (!el || el.style.display === 'none') return null;
+    let width = 0;
+    let height = 0;
+    if (typeof window.getComputedStyle === 'function') {
+      const cs = window.getComputedStyle(el);
+      width = parseFloat(cs.width) || 0;
+      height = parseFloat(cs.height) || 0;
+    }
+    if ((!width || !height) && el.getBoundingClientRect) {
+      const rect = el.getBoundingClientRect();
+      width = width || rect.width || 0;
+      height = height || rect.height || 0;
+    }
+    width = width || el.offsetWidth || el.clientWidth || 0;
+    height = height || el.offsetHeight || el.clientHeight || 0;
+    if (width <= 0 || height <= 0) return null;
+    return {
+      width: Math.round(width),
+      height: Math.round(height),
+    };
+  },
+
   _clampGridPosition(x, y, width, height) {
     const bounds = this._getSnapBounds();
     const maxX = Math.max(bounds.left, bounds.right - width);
@@ -450,6 +472,7 @@ export const panelManager = {
       const index = fromLeft ? leftCount++ : rightCount++;
       const width = source.floatW || def.defaultFloatW || 280;
       const height = source.floatH || def.defaultFloatH || 200;
+      const zLayer = this._normalizePaneLayer(source.zLayer, id);
       const hasFloatSource = source.dock === 'float';
       let snapLeft = hasFloatSource ? !!source.snapLeft : !!def.defaultSnapLeft;
       let snapTop = hasFloatSource ? !!source.snapTop : !!def.defaultSnapTop;
@@ -503,7 +526,8 @@ export const panelManager = {
         floatY: y,
         floatW: width,
         floatH: height,
-        floatZ: source.floatZ || 1000,
+        floatZ: this._getEffectivePaneZIndex(id, { zLayer }),
+        zLayer,
         snapLeft,
         snapTop,
         snapRight,
@@ -576,6 +600,7 @@ export const panelManager = {
       floatW: Math.min(width, window.innerWidth - 24),
       floatH: Math.min(height, window.innerHeight - top - reservedBottom),
       floatZ: 1100,
+      zLayer: this._defaultPaneLayer(TERMINAL_PANEL_ID),
       snapLeft: false,
       snapTop: true,
       snapRight: false,
@@ -584,12 +609,44 @@ export const panelManager = {
   },
 
   _normalizeTerminalPanelState(state) {
-    return {
+    const normalized = {
       ...this._defaultTerminalPanelState(),
       ...(state && typeof state === 'object' ? state : {}),
       visible: true,
       collapsed: false,
     };
+    normalized.zLayer = this._normalizePaneLayer(normalized.zLayer, TERMINAL_PANEL_ID);
+    normalized.floatZ = this._getEffectivePaneZIndex(TERMINAL_PANEL_ID, normalized);
+    return normalized;
+  },
+
+  _defaultPaneZIndex(id) {
+    return 1000 + (this._defaultPaneLayer(id) * 10);
+  },
+
+  _defaultPaneLayer(id) {
+    const def = PANEL_DEFS[id];
+    if (def && def.defaultLayer !== undefined) return Number(def.defaultLayer) || 0;
+    return id === TERMINAL_PANEL_ID ? 10 : 0;
+  },
+
+  _normalizePaneLayer(value, id) {
+    const fallback = this._defaultPaneLayer(id);
+    const next = Number(value);
+    if (!Number.isFinite(next)) return fallback;
+    // Values at or above 1000 are legacy/internal CSS z-index values, not the
+    // user-facing layer preference. Treat them as unsaved so old state does not
+    // surface as odd defaults like 1447.
+    if (next >= 1000) return fallback;
+    return Math.max(0, Math.min(999, Math.round(next)));
+  },
+
+  _getEffectivePaneZIndex(id, st) {
+    return 1000 + (this._normalizePaneLayer(st && st.zLayer, id) * 10);
+  },
+
+  _getFocusedPaneZIndex(id, st) {
+    return this._getEffectivePaneZIndex(id, st) + 9;
   },
 
   setWorkspaceLayout(layout, options = {}) {
@@ -686,6 +743,7 @@ export const panelManager = {
       }
       const builtInDefaultVisible = def.defaultVisible !== undefined ? def.defaultVisible : true;
       const effectiveDefaultVisible = this._hiddenByDefault.has(id) ? false : builtInDefaultVisible;
+      const zLayer = this._normalizePaneLayer(s.zLayer, id);
       let defaultDock = def.defaultDock;
       if (this._isFloatingWorkspace() && !hasSavedState) {
         defaultDock = 'float';
@@ -699,7 +757,8 @@ export const panelManager = {
         floatY: s.floatY !== undefined ? s.floatY : defY,
         floatW: s.floatW || defW,
         floatH: s.floatH || defH,
-        floatZ: s.floatZ || 1000,
+        floatZ: this._getEffectivePaneZIndex(id, { zLayer }),
+        zLayer,
         snapLeft: s.snapLeft !== undefined ? !!s.snapLeft : defaultSnapLeft,
         snapTop: s.snapTop !== undefined ? !!s.snapTop : defaultSnapTop,
         snapRight: s.snapRight !== undefined ? !!s.snapRight : defaultSnapRight,
@@ -836,6 +895,15 @@ export const panelManager = {
     const controls = document.createElement('span');
     controls.className = 'panel-controls';
 
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'panel-btn panel-settings';
+    settingsBtn.title = 'Pane settings';
+    settingsBtn.innerHTML = '&#x2699;';
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openPaneSettings(TERMINAL_PANEL_ID);
+    });
+
     const floatBtn = document.createElement('button');
     floatBtn.className = 'panel-btn panel-float';
     floatBtn.title = st.dock === 'float' ? 'Dock' : 'Float';
@@ -851,6 +919,7 @@ export const panelManager = {
       }
     });
 
+    controls.appendChild(settingsBtn);
     controls.appendChild(floatBtn);
     header.appendChild(title);
     header.appendChild(controls);
@@ -924,7 +993,7 @@ export const panelManager = {
 
     const settingsBtn = document.createElement('button');
     settingsBtn.className = 'panel-btn panel-settings';
-    settingsBtn.title = 'Pane font settings';
+    settingsBtn.title = 'Pane settings';
     settingsBtn.innerHTML = '&#x2699;';
     settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -996,11 +1065,18 @@ export const panelManager = {
     const def = PANEL_DEFS[id];
     const st = this.state.panels[id];
     const title = id === TERMINAL_PANEL_ID ? 'Terminal' : ((def && def.title) || id);
+    const defaultLayer = this._defaultPaneLayer(id);
     openPaneFontSettings({
       title,
       font: (st && st.font) || {},
+      zLayer: this._normalizePaneLayer(st && st.zLayer, id),
+      defaultLayer,
       onChange: (font) => this.setPaneFont(id, font),
-      onReset: () => this.setPaneFont(id, null),
+      onLayerChange: (zLayer) => this.setPaneLayer(id, zLayer),
+      onReset: () => {
+        this.setPaneFont(id, null);
+        this.setPaneLayer(id, defaultLayer);
+      },
     });
   },
 
@@ -1023,6 +1099,25 @@ export const panelManager = {
     if (Object.keys(clean).length) st.font = clean;
     else delete st.font;
     this._applyPaneFont(id);
+    this.saveState();
+  },
+
+  setPaneLayer(id, zLayer) {
+    let st = this.state.panels[id];
+    if (!st && id === TERMINAL_PANEL_ID) {
+      st = this.state.panels[id] = this._normalizeTerminalPanelState({});
+    }
+    if (!st) return;
+
+    st.zLayer = this._normalizePaneLayer(zLayer, id);
+    st.floatZ = this._getEffectivePaneZIndex(id, st);
+    this._topFloatZ = Math.max(this._topFloatZ, st.floatZ);
+
+    const panel = this.panels[id];
+    if (panel && panel.el && st.dock === 'float' && !this._mobile.enabled) {
+      panel.el.style.zIndex = String(st.floatZ);
+    }
+
     this.saveState();
   },
 
@@ -1077,23 +1172,6 @@ export const panelManager = {
     body.style.fontWeight = f.weight ? String(f.weight) : '';
   },
 
-  // Add the terminal's font gear to #output-shell (it lives there in both
-  // layouts, unlike the floating-only terminal panel header).
-  _ensureTerminalGear() {
-    const shell = document.getElementById('output-shell');
-    if (!shell || shell.querySelector('.terminal-font-btn')) return;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'panel-btn terminal-font-btn';
-    btn.title = 'Terminal font settings';
-    btn.innerHTML = '&#x2699;';
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.openPaneSettings(TERMINAL_PANEL_ID);
-    });
-    shell.appendChild(btn);
-  },
-
   _placePanelElement(id, el, st) {
     if (this._mobile.enabled) {
       if (!this._mobile.contentEl) return;
@@ -1137,9 +1215,7 @@ export const panelManager = {
   _makeFloat(el, st) {
     document.body.appendChild(el);
     el.classList.add('floating');
-    if (st.floatZ) {
-      el.style.zIndex = String(st.floatZ);
-    }
+    el.style.zIndex = String(this._getEffectivePaneZIndex(el.dataset.panelId, st));
     this._snapPanelStateToGrid(el.dataset.panelId, st);
     this._applyFloatPosition(el, st);
 
@@ -1147,15 +1223,17 @@ export const panelManager = {
     const ro = new ResizeObserver(() => {
       const s = this.state.panels[id];
       if (s && s.dock === 'float' && !this._mobile.enabled) {
+        const measured = this._measureFloatPanel(el);
+        if (!measured) return;
         if (this._isPaneGridSnapEnabled()) {
-          const size = this._snapFloatSizeToGrid(id, el.offsetWidth, el.offsetHeight);
+          const size = this._snapFloatSizeToGrid(id, measured.width, measured.height);
           s.floatW = size.width;
           s.floatH = size.height;
-          if (el.offsetWidth !== size.width) el.style.width = size.width + 'px';
-          if (el.offsetHeight !== size.height) el.style.height = size.height + 'px';
+          if (measured.width !== size.width) el.style.width = size.width + 'px';
+          if (measured.height !== size.height) el.style.height = size.height + 'px';
         } else {
-          s.floatW = el.offsetWidth;
-          s.floatH = el.offsetHeight;
+          s.floatW = measured.width;
+          s.floatH = measured.height;
         }
         this.saveState();
         if (id === TERMINAL_PANEL_ID) {
@@ -1170,15 +1248,104 @@ export const panelManager = {
     const st = this.state.panels[id];
     const panel = this.panels[id];
     if (!st || !panel || st.dock !== 'float' || this._mobile.enabled) return;
-    st.floatZ = ++this._topFloatZ;
-    panel.el.style.zIndex = String(st.floatZ);
+    panel.el.style.zIndex = String(this._getFocusedPaneZIndex(id, st));
     if (id !== 'enemy') this._keepEnemyPanelAbove();
-    this.saveState();
   },
 
   _hasActiveEnemy() {
     const enemy = this.gmcpData.enemy;
+    return this._isActiveEnemyData(enemy);
+  },
+
+  _isActiveEnemyData(enemy) {
     return !!(enemy && enemy.enemy_name && enemy.enemy_name !== 'None' && enemy.enemy_name !== '');
+  },
+
+  _normalizeEnemyData(data) {
+    if (!data || typeof data !== 'object') return data;
+    if (Object.prototype.hasOwnProperty.call(data, 'enemy_name')) return data;
+    if (!Object.prototype.hasOwnProperty.call(data, 'name')) return data;
+
+    return {
+      enemy_name: data.name || '',
+      enemy_curhp: data.hp,
+      enemy_maxhp: data.mhp || data.maxhp || 100,
+      enemy_cursp: data.mn || data.mana || data.sp || 0,
+      enemy_maxsp: data.mmn || data.maxmana || data.maxsp || 0,
+      enemy_level: data.level,
+      enemy_image: data.image || data.avatar || '',
+      enemy_hp_string: data.hp_string || '',
+    };
+  },
+
+  _syncEnemyPanelVisibility() {
+    const inCombat = this._hasActiveEnemy();
+    const st = this.state.panels.enemy;
+    if (!st) return;
+
+    if (inCombat) {
+      this._showEnemyPanel();
+      return;
+    }
+
+    this._hideEnemyPanel();
+  },
+
+  _captureFloatPanelGeometry(id) {
+    const st = this.state.panels[id];
+    const panel = this.panels[id];
+    if (!st || !panel || !panel.el || st.dock !== 'float' || this._mobile.enabled) return;
+    const rect = panel.el.getBoundingClientRect();
+    const measured = this._measureFloatPanel(panel.el);
+    if (measured) {
+      st.floatW = measured.width;
+      st.floatH = measured.height;
+    }
+    if (!st.snapLeft && !st.snapRight && Number.isFinite(rect.left)) {
+      st.floatX = Math.round(rect.left);
+    }
+    if (!st.snapTop && !st.snapBottom && Number.isFinite(rect.top)) {
+      st.floatY = Math.round(rect.top);
+    }
+  },
+
+  _showEnemyPanel() {
+    const st = this.state.panels.enemy;
+    if (!st) return;
+    const wasHidden = !st.visible
+      || !this.panels.enemy
+      || (this.panels.enemy.el && this.panels.enemy.el.style.display === 'none');
+
+    st.visible = true;
+    if (!this.panels.enemy) {
+      this.createPanel('enemy');
+    }
+    if (this.panels.enemy && this.panels.enemy.el) {
+      this.panels.enemy.el.style.display = '';
+      if (wasHidden) this._bringPanelToFront('enemy');
+      else this._keepEnemyPanelAbove();
+    }
+    const cb = document.querySelector('#panels-menu input[data-panel-id="enemy"]');
+    if (cb) cb.checked = true;
+    this._renderMobileSheet();
+    this.saveState();
+  },
+
+  _hideEnemyPanel() {
+    const st = this.state.panels.enemy;
+    if (!st) return;
+    this._captureFloatPanelGeometry('enemy');
+    st.visible = false;
+    if (this.panels.enemy && this.panels.enemy.el) {
+      this.panels.enemy.el.style.display = 'none';
+    }
+    const cb = document.querySelector('#panels-menu input[data-panel-id="enemy"]');
+    if (cb) cb.checked = false;
+    if (this._mobile.activePanelId === 'enemy') {
+      this._mobile.activePanelId = this._getDefaultMobileActivePanelId();
+    }
+    this._renderMobileSheet();
+    this.saveState();
   },
 
   _keepEnemyPanelAbove() {
@@ -1191,11 +1358,10 @@ export const panelManager = {
       const current = this.panels[id];
       if (!state || !current || state.dock !== 'float') return max;
       if (current.el.style.display === 'none') return max;
-      return Math.max(max, Number(state.floatZ) || 0);
+      return Math.max(max, Number(current.el.style.zIndex) || this._getEffectivePaneZIndex(id, state));
     }, 0);
-    if ((Number(st.floatZ) || 0) >= highest) return;
-    st.floatZ = ++this._topFloatZ;
-    panel.el.style.zIndex = String(st.floatZ);
+    if ((Number(panel.el.style.zIndex) || this._getEffectivePaneZIndex('enemy', st)) >= highest) return;
+    panel.el.style.zIndex = String(Math.max(highest + 1, this._getFocusedPaneZIndex('enemy', st)));
   },
 
   _getSnapBounds() {
@@ -1511,7 +1677,7 @@ export const panelManager = {
     st.dock = 'float';
     st.floatX = x;
     st.floatY = y;
-    st.floatZ = ++this._topFloatZ;
+    st.floatZ = this._getEffectivePaneZIndex(id, st);
 
     const SNAP = 30;
     const w = st.floatW || p.el.offsetWidth || 280;
@@ -2626,10 +2792,25 @@ export const panelManager = {
   },
 
   registerGmcpHandlers() {
+    // Connection Health panel: fed by lag-monitor via document events (not
+    // GMCP) so the renderer and monitor stay decoupled.
+    document.addEventListener('dw:lag-update', (event) => {
+      this.gmcpData.connection = event.detail;
+      this._renderPanel('connection');
+    });
+    document.addEventListener('dw:lag-open-panel', () => {
+      this.openPanel('connection');
+    });
+
     gmcp.on('Char.Vitals', (data) => {
       this._syncSubscriptionsAfterCharacterData();
       const fullVitals = isFullVitalsPayload(data);
       this.gmcpData.vitals = fullVitals ? data : Object.assign({}, this.gmcpData.vitals || {}, data || {});
+      if (data && Object.prototype.hasOwnProperty.call(data, 'opponent')) {
+        this.gmcpData.enemy = this._normalizeEnemyData(data.opponent);
+        this._syncEnemyPanelVisibility();
+        this._renderPanel('enemy');
+      }
       this._updateAvatarMeter(this.gmcpData.vitals);
       this._renderPanel('vitals');
     });
@@ -2817,17 +2998,8 @@ export const panelManager = {
     });
 
     gmcp.on('Char.Enemy', (data) => {
-      this.gmcpData.enemy = data;
-      const inCombat = data && data.enemy_name && data.enemy_name !== 'None' && data.enemy_name !== '';
-      const wasHidden = !!(this.panels.enemy && this.panels.enemy.el.style.display === 'none');
-      if (inCombat && !this.panels.enemy) {
-        this.openPanel('enemy');
-      }
-      if (this.panels.enemy) {
-        this.panels.enemy.el.style.display = inCombat ? '' : 'none';
-        if (inCombat && wasHidden) this._bringPanelToFront('enemy');
-        else if (inCombat) this._keepEnemyPanelAbove();
-      }
+      this.gmcpData.enemy = this._normalizeEnemyData(data);
+      this._syncEnemyPanelVisibility();
       this._renderPanel('enemy');
     });
 
