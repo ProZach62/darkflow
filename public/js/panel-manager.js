@@ -143,6 +143,7 @@ export const panelManager = {
     }
 
     this._applyDockStateToDom();
+    this.repositionAnchoredPanels();
     loadMapData2();
     this.attachDragHandlers();
     this._attachPersistenceFlushHandlers();
@@ -199,6 +200,7 @@ export const panelManager = {
     this._applyDockStateToDom();
     this._renderMobileSheet();
     if (!this._mobile.enabled) {
+      this.repositionAnchoredPanels();
       this.repositionSnappedPanels();
     }
     this.syncGmcpSubscriptions('visibility-sync', true);
@@ -237,6 +239,7 @@ export const panelManager = {
     this._applyDockStateToDom();
     this._renderMobileSheet();
     if (!this._mobile.enabled) {
+      this.repositionAnchoredPanels();
       this.repositionSnappedPanels();
     }
     this.saveState();
@@ -330,6 +333,13 @@ export const panelManager = {
     if (!st || st.dock !== 'float' || !this._isPaneGridSnapEnabled()) return false;
 
     const size = this._snapFloatSizeToGrid(id, st.floatW || 280, st.floatH || 200);
+    if (st.panelAnchor) {
+      const changed = st.floatW !== size.width || st.floatH !== size.height;
+      st.floatW = size.width;
+      st.floatH = size.height;
+      return changed;
+    }
+
     const pos = this._getGridSnappedFloatPosition(st.floatX || 0, st.floatY || 0,
       size.width, size.height, {
         left: st.snapLeft,
@@ -368,8 +378,12 @@ export const panelManager = {
     }
   },
 
-  setPaneGridSnapEnabled(enabled) {
+  setPaneGridSnapEnabled(enabled, options = {}) {
     if (!enabled || appState.zorkOnlyMode) return;
+    // Never re-sweep saved positions during startup: the layout/CSS may not
+    // have settled yet, and the sweep clamps every floating pane and SAVES the
+    // result. Saved positions were already snapped when the user placed them.
+    if (options.initializing) return;
     this.snapFloatingPanesToGrid();
   },
 
@@ -436,10 +450,47 @@ export const panelManager = {
       const index = fromLeft ? leftCount++ : rightCount++;
       const width = source.floatW || def.defaultFloatW || 280;
       const height = source.floatH || def.defaultFloatH || 200;
-      const x = fromLeft
-        ? 18
-        : Math.max(18, window.innerWidth - width - 18);
-      const y = 58 + (index * 34);
+      const hasFloatSource = source.dock === 'float';
+      let snapLeft = hasFloatSource ? !!source.snapLeft : !!def.defaultSnapLeft;
+      let snapTop = hasFloatSource ? !!source.snapTop : !!def.defaultSnapTop;
+      let snapRight = hasFloatSource ? !!source.snapRight : !!def.defaultSnapRight;
+      let snapBottom = hasFloatSource ? !!source.snapBottom : !!def.defaultSnapBottom;
+      let x;
+      let y;
+
+      if (hasFloatSource && source.floatX !== undefined) {
+        x = source.floatX;
+      } else if (def.defaultFloatX !== undefined) {
+        x = def.defaultFloatX < 0 ? window.innerWidth + def.defaultFloatX : def.defaultFloatX;
+      } else if (def.defaultDock === 'float') {
+        x = Math.round((window.innerWidth - width) / 2);
+      } else {
+        x = fromLeft ? 18 : Math.max(18, window.innerWidth - width - 18);
+        if (!snapLeft && !snapRight) {
+          snapLeft = fromLeft;
+          snapRight = !fromLeft;
+        }
+      }
+
+      if (hasFloatSource && source.floatY !== undefined) {
+        y = source.floatY;
+      } else if (def.defaultFloatY !== undefined) {
+        y = def.defaultFloatY < 0 ? window.innerHeight + def.defaultFloatY : def.defaultFloatY;
+      } else if (def.defaultDock === 'float') {
+        y = Math.round((window.innerHeight - height) / 2);
+      } else {
+        y = 58 + (index * 34);
+      }
+
+      if (!hasFloatSource && def.defaultBelowPanel && profile.panels[def.defaultBelowPanel]) {
+        const refPanel = profile.panels[def.defaultBelowPanel];
+        x = refPanel.floatX;
+        y = refPanel.floatY + refPanel.floatH + 8;
+        snapLeft = !!refPanel.snapLeft;
+        snapRight = !!refPanel.snapRight;
+        snapTop = false;
+        snapBottom = false;
+      }
 
       profile.panels[id] = {
         dock: source.dock === 'float' ? 'float' : 'float',
@@ -448,15 +499,16 @@ export const panelManager = {
         visible: source.visible !== undefined
           ? source.visible
           : (def.defaultVisible !== undefined ? def.defaultVisible : true),
-        floatX: source.dock === 'float' && source.floatX !== undefined ? source.floatX : x,
-        floatY: source.dock === 'float' && source.floatY !== undefined ? source.floatY : y,
+        floatX: x,
+        floatY: y,
         floatW: width,
         floatH: height,
         floatZ: source.floatZ || 1000,
-        snapLeft: source.dock === 'float' ? !!source.snapLeft : fromLeft,
-        snapTop: false,
-        snapRight: source.dock === 'float' ? !!source.snapRight : !fromLeft,
-        snapBottom: source.dock === 'float' ? !!source.snapBottom : false,
+        snapLeft,
+        snapTop,
+        snapRight,
+        snapBottom,
+        panelAnchor: source.panelAnchor,
         font: source.font,
       };
     }
@@ -567,6 +619,7 @@ export const panelManager = {
     this._applyDockStateToDom();
     this._renderMobileSheet();
     if (!this._mobile.enabled) {
+      this.repositionAnchoredPanels();
       this.repositionSnappedPanels();
     }
     this.saveState();
@@ -652,6 +705,7 @@ export const panelManager = {
         snapTop: s.snapTop !== undefined ? !!s.snapTop : defaultSnapTop,
         snapRight: s.snapRight !== undefined ? !!s.snapRight : defaultSnapRight,
         snapBottom: s.snapBottom !== undefined ? !!s.snapBottom : defaultSnapBottom,
+        panelAnchor: this._normalizePanelAnchor(s.panelAnchor),
         font: (s.font && typeof s.font === 'object') ? s.font : undefined,
       };
     }
@@ -1146,13 +1200,22 @@ export const panelManager = {
     const toolbar = document.getElementById('toolbar');
     const statusBar = document.getElementById('status-bar');
     const inputBar = document.getElementById('input-bar');
-    const leftDock = document.getElementById('left-dock');
-    const rightDock = document.getElementById('right-dock');
     const top = toolbar ? toolbar.offsetHeight : 0;
     const bottom = (statusBar ? statusBar.offsetHeight : 0)
       + (!this._isFloatingWorkspace() && inputBar ? inputBar.offsetHeight : 0);
-    const leftEdge = leftDock ? leftDock.getBoundingClientRect().right : 0;
-    let rightEdge = rightDock ? rightDock.getBoundingClientRect().left : window.innerWidth;
+    // In the floating workspace the docks are not layout boundaries. Never
+    // derive the float area from their DOM geometry there: mid-load (hard
+    // refresh, CSS not yet applied) the dock elements can still report a
+    // width, and clamping saved pane positions against that transient box
+    // shifted every pane inward -- and then SAVED the corrupted layout.
+    let leftEdge = 0;
+    let rightEdge = window.innerWidth;
+    if (!this._isFloatingWorkspace()) {
+      const leftDock = document.getElementById('left-dock');
+      const rightDock = document.getElementById('right-dock');
+      leftEdge = leftDock ? leftDock.getBoundingClientRect().right : 0;
+      rightEdge = rightDock ? rightDock.getBoundingClientRect().left : window.innerWidth;
+    }
     rightEdge -= 8;
     return {
       left: leftEdge,
@@ -1190,10 +1253,91 @@ export const panelManager = {
     }
   },
 
+  _normalizePanelAnchor(anchor) {
+    if (!anchor || typeof anchor !== 'object') return undefined;
+    const relation = ['leftOf', 'rightOf', 'above', 'below'].includes(anchor.relation)
+      ? anchor.relation
+      : '';
+    const targetId = typeof anchor.targetId === 'string' ? anchor.targetId : '';
+    if (!targetId || !relation) return undefined;
+    return {
+      targetId,
+      relation,
+      offsetX: Number(anchor.offsetX) || 0,
+      offsetY: Number(anchor.offsetY) || 0,
+      gap: Number(anchor.gap) || 6,
+    };
+  },
+
+  _getAnchoredPosition(st, targetRect) {
+    const anchor = this._normalizePanelAnchor(st && st.panelAnchor);
+    if (!anchor || !targetRect) return null;
+
+    const width = st.floatW || 280;
+    const height = st.floatH || 200;
+    const gap = anchor.gap;
+    let x = st.floatX || 0;
+    let y = st.floatY || 0;
+
+    if (anchor.relation === 'leftOf') {
+      x = targetRect.left - width - gap;
+      y = targetRect.top + anchor.offsetY;
+    } else if (anchor.relation === 'rightOf') {
+      x = targetRect.right + gap;
+      y = targetRect.top + anchor.offsetY;
+    } else if (anchor.relation === 'above') {
+      x = targetRect.left + anchor.offsetX;
+      y = targetRect.top - height - gap;
+    } else if (anchor.relation === 'below') {
+      x = targetRect.left + anchor.offsetX;
+      y = targetRect.bottom + gap;
+    }
+
+    return this._clampGridPosition(x, y, width, height);
+  },
+
+  _resolvePanelAnchor(id) {
+    const st = this.state.panels[id];
+    const panel = this.panels[id];
+    const anchor = st && this._normalizePanelAnchor(st.panelAnchor);
+    if (!st || !panel || st.dock !== 'float' || !anchor || this._mobile.enabled) return false;
+
+    const targetPanel = this.panels[anchor.targetId];
+    if (!targetPanel || !targetPanel.el) return false;
+
+    const targetRect = targetPanel.el.getBoundingClientRect();
+    const pos = this._getAnchoredPosition(st, targetRect);
+    if (!pos) return false;
+
+    const changed = st.floatX !== pos.x || st.floatY !== pos.y;
+    st.floatX = pos.x;
+    st.floatY = pos.y;
+    panel.el.style.left = st.floatX + 'px';
+    panel.el.style.right = 'auto';
+    panel.el.style.top = st.floatY + 'px';
+    panel.el.style.bottom = 'auto';
+    panel.el.style.width = st.floatW + 'px';
+    panel.el.style.height = st.floatH + 'px';
+    return changed;
+  },
+
+  repositionAnchoredPanels() {
+    if (this._mobile.enabled) return;
+    let changed = false;
+    for (const id of Object.keys(this.state.panels)) {
+      changed = this._resolvePanelAnchor(id) || changed;
+    }
+    if (changed) this.saveState();
+  },
+
   repositionSnappedPanels() {
     if (this._mobile.enabled) return;
     for (const [id, st] of Object.entries(this.state.panels)) {
       if (st.dock !== 'float') continue;
+      if (st.panelAnchor) {
+        this._resolvePanelAnchor(id);
+        continue;
+      }
       if (!st.snapRight && !st.snapBottom && !st.snapLeft && !st.snapTop) continue;
       const p = this.panels[id];
       if (!p || !p.el) continue;
@@ -1264,6 +1408,7 @@ export const panelManager = {
       }
     }
     this._applyDockStateToDom();
+    this.repositionAnchoredPanels();
   },
 
   _normalizeStateForMobile() {
@@ -1332,6 +1477,7 @@ export const panelManager = {
 
     st.dock = side;
     st.order = order;
+    delete st.panelAnchor;
     this.state.docks[side] = false;
     this._applyDockStateToDom();
     this._insertIntoDock(id, p.el, side, order);
@@ -1350,7 +1496,7 @@ export const panelManager = {
     if (id === TERMINAL_PANEL_ID) this._notifyOutputLayoutChanged();
   },
 
-  floatPanel(id, x, y) {
+  floatPanel(id, x, y, options = {}) {
     if (appState.zorkOnlyMode) return;
     const st = this.state.panels[id];
     const p = this.panels[id];
@@ -1370,10 +1516,19 @@ export const panelManager = {
     const h = st.floatH || p.el.offsetHeight || 200;
     const bounds = this._getSnapBounds();
 
-    st.snapLeft = x < (bounds.left + SNAP);
-    st.snapTop = y < (bounds.top + SNAP);
-    st.snapRight = (x + w) > (bounds.right - SNAP);
-    st.snapBottom = (y + h) > (bounds.bottom - SNAP);
+    if (options.panelAnchor) {
+      st.panelAnchor = this._normalizePanelAnchor(options.panelAnchor);
+      st.snapLeft = false;
+      st.snapTop = false;
+      st.snapRight = false;
+      st.snapBottom = false;
+    } else {
+      delete st.panelAnchor;
+      st.snapLeft = x < (bounds.left + SNAP);
+      st.snapTop = y < (bounds.top + SNAP);
+      st.snapRight = (x + w) > (bounds.right - SNAP);
+      st.snapBottom = (y + h) > (bounds.bottom - SNAP);
+    }
 
     if (st.snapLeft) st.floatX = bounds.left;
     if (st.snapTop) st.floatY = bounds.top;
@@ -2104,6 +2259,7 @@ export const panelManager = {
       offsetX: 0, offsetY: 0,
       indicator: null,
       snapTargetId: null,
+      panelAnchor: null,
       lastFloatX: 0,
       lastFloatY: 0,
       snapEdges,
@@ -2198,6 +2354,7 @@ export const panelManager = {
       gx = panelSnap.x;
       gy = panelSnap.y;
       this._setPanelSnapTarget(drag, panelSnap.targetId);
+      drag.panelAnchor = panelSnap.panelAnchor || null;
       drag.lastFloatX = gx;
       drag.lastFloatY = gy;
 
@@ -2221,6 +2378,7 @@ export const panelManager = {
       drag.active = false;
       const panelId = drag.panelId;
       const el = this.panels[panelId].el;
+      const panelAnchor = drag.panelAnchor;
 
       if (drag.ghostEl) { drag.ghostEl.remove(); drag.ghostEl = null; }
       el.style.opacity = '';
@@ -2237,13 +2395,15 @@ export const panelManager = {
         this.floatPanel(
           panelId,
           drag.lastFloatX !== undefined ? drag.lastFloatX : e.clientX - drag.offsetX,
-          drag.lastFloatY !== undefined ? drag.lastFloatY : e.clientY - drag.offsetY
+          drag.lastFloatY !== undefined ? drag.lastFloatY : e.clientY - drag.offsetY,
+          { panelAnchor }
         );
       } else {
         this.dockPanel(panelId, drop.target, drop.order);
       }
 
       drag.panelId = null;
+      drag.panelAnchor = null;
     });
   },
 
@@ -2280,6 +2440,7 @@ export const panelManager = {
     let bestX = SNAP + 1;
     let bestY = SNAP + 1;
     let targetId = null;
+    let panelAnchor = null;
 
     for (const [id, panel] of Object.entries(this.panels)) {
       if (id === panelId || !panel || !panel.el) continue;
@@ -2288,14 +2449,30 @@ export const panelManager = {
 
       const rect = panel.el.getBoundingClientRect();
       const candidatesX = [
-        { value: rect.right + GAP, distance: Math.abs(x - (rect.right + GAP)), adjacent: true },
-        { value: rect.left - width - GAP, distance: Math.abs(right - (rect.left - GAP)), adjacent: true },
+        {
+          value: rect.right + GAP,
+          distance: Math.abs(x - (rect.right + GAP)),
+          anchor: { targetId: id, relation: 'rightOf', offsetY: y - rect.top, gap: GAP },
+        },
+        {
+          value: rect.left - width - GAP,
+          distance: Math.abs(right - (rect.left - GAP)),
+          anchor: { targetId: id, relation: 'leftOf', offsetY: y - rect.top, gap: GAP },
+        },
         { value: rect.left, distance: Math.abs(x - rect.left), adjacent: false },
         { value: rect.right - width, distance: Math.abs(right - rect.right), adjacent: false },
       ];
       const candidatesY = [
-        { value: rect.bottom + GAP, distance: Math.abs(y - (rect.bottom + GAP)), adjacent: true },
-        { value: rect.top - height - GAP, distance: Math.abs(bottom - (rect.top - GAP)), adjacent: true },
+        {
+          value: rect.bottom + GAP,
+          distance: Math.abs(y - (rect.bottom + GAP)),
+          anchor: { targetId: id, relation: 'below', offsetX: x - rect.left, gap: GAP },
+        },
+        {
+          value: rect.top - height - GAP,
+          distance: Math.abs(bottom - (rect.top - GAP)),
+          anchor: { targetId: id, relation: 'above', offsetX: x - rect.left, gap: GAP },
+        },
         { value: rect.top, distance: Math.abs(y - rect.top), adjacent: false },
         { value: rect.bottom - height, distance: Math.abs(bottom - rect.bottom), adjacent: false },
       ];
@@ -2306,6 +2483,7 @@ export const panelManager = {
             bestX = candidate.distance;
             snapX = candidate.value;
             targetId = id;
+            if (candidate.anchor) panelAnchor = candidate.anchor;
           }
         }
       }
@@ -2316,12 +2494,13 @@ export const panelManager = {
             bestY = candidate.distance;
             snapY = candidate.value;
             targetId = id;
+            if (candidate.anchor) panelAnchor = candidate.anchor;
           }
         }
       }
     }
 
-    return { x: snapX, y: snapY, targetId };
+    return { x: snapX, y: snapY, targetId, panelAnchor };
   },
 
   _updateDropZone(drop, drag) {

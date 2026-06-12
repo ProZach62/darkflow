@@ -121,7 +121,7 @@ export const settingsManager = {
     setOutputSplitRatio(this._settings.scrollbackSplitRatio);
     setOutputScrollbackPreset(this._settings.outputScrollbackPreset);
     panelManager.setWorkspaceLayout(this._settings.workspaceLayout, { initializing: true });
-    panelManager.setPaneGridSnapEnabled(this._settings.paneGridSnapEnabled);
+    panelManager.setPaneGridSnapEnabled(this._settings.paneGridSnapEnabled, { initializing: true });
     sendTerminalGeometry(false);
     this._applyActiveTheme();
   },
