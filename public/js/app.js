@@ -11,6 +11,7 @@ import { announcementsManager } from './announcements-manager.js';
 import { notificationManager } from './notification-manager.js';
 import { giphyManager } from './giphy-manager.js';
 import { broadcastManager } from './broadcast-manager.js';
+import { linuxRescueManager } from './linux-rescue-manager.js';
 import { soundPanel } from './sound-panel.js';
 import { soundManager } from './sound-manager.js';
 import { settingsManager } from './settings-manager.js';
@@ -367,6 +368,7 @@ announcementsManager.init();
 notificationManager.init();
 giphyManager.init();
 broadcastManager.init();
+linuxRescueManager.init();
 soundPanel.init();
 
 window.soundDebug = {

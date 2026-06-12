@@ -578,6 +578,82 @@ body.zork-only-mode #toolbar-connect-fields {
   overflow-wrap: anywhere;
 }
 
+.linux-rescue-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: none;
+  background: #050805;
+  color: #d8ffd8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.linux-rescue-overlay.open {
+  display: flex;
+}
+
+.linux-rescue-terminal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px 22px;
+  background:
+    radial-gradient(circle at 80% 10%, rgba(40, 120, 40, 0.08), transparent 26%),
+    #050805;
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.82);
+}
+
+.linux-rescue-title {
+  flex: 0 0 auto;
+  margin-bottom: 14px;
+  color: #8cf08c;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.linux-rescue-stream {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 8px;
+  white-space: pre-wrap;
+  scrollbar-color: #2f7c2f #050805;
+}
+
+.linux-rescue-line {
+  min-height: 1.45em;
+}
+
+.linux-rescue-input-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.linux-rescue-prompt {
+  flex: 0 0 auto;
+  color: #8cf08c;
+  white-space: pre;
+}
+
+.linux-rescue-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f2fff2;
+  font: inherit;
+  letter-spacing: 0;
+  caret-color: #d8ffd8;
+}
+
 @media (max-width: 700px) {
   .giphy-overlay {
     left: 50%;
