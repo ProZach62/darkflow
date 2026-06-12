@@ -27,4 +27,5 @@ npm test                          # unit tests against a fake in-process MUD
 - `core/framing.js`, `core/script.js`, `core/config.js`, `core/telnet.js`
 - `mcp-server.js` — standalone entry (`stdio` default, `--http` for remote)
 - `cli.js` — command-line runner (`send` / `state` / `run`)
-- `examples/` — sample test scripts, incl. the `kingdoms/` suite
+- `examples/` — sample one-off scripts
+- `../darkwind-nextgen/tests/` — reusable regression suites, incl. `kingdoms/` and `equipment/`

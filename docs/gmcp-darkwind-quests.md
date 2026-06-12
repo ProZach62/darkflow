@@ -36,7 +36,9 @@ The client stores quest data in memory under `gmcpData.quests` with these keys:
 
 Direction: `Server -> Client`
 
-Replaces the quest list used for the panel summary view.
+Replaces the quest list used for the panel summary view. The server should send
+unfinished accepted quests only; completed quests are retained in game history
+but omitted from the normal quest pane payload.
 
 The client expects an array. The following fields are read by the renderer:
 
@@ -62,7 +64,7 @@ The client expects an array. The following fields are read by the renderer:
 | Field | Type | Required By Client | Notes |
 |-------|------|--------------------|-------|
 | `name` | string | Yes | Display name |
-| `status` | string | Yes | Rendered verbatim; `Finished` gets completed styling |
+| `status` | string | Yes | Rendered verbatim; completed statuses are ignored by the pane as a defensive fallback |
 | `current` | number | No | Progress numerator |
 | `total` | number | No | Progress denominator |
 | `objectives` | array | No | Objective list rendered under the quest row |
