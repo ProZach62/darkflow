@@ -1,6 +1,10 @@
 import { aliasManager } from './alias-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { isKnownSound, soundManager } from './sound-manager.js';
+import {
+  evaluateAutomationCondition,
+  parseAutomationScript,
+} from './automation-script-core.mjs';
 
 function normalizeMode(mode) {
   return mode === 'enable' || mode === 'disable' ? mode : 'toggle';
@@ -113,6 +117,89 @@ function executeTargetIdStep(step, context) {
   return { sent: false, localOnly: true, handled: true };
 }
 
+function refreshScriptVariables(context) {
+  context.templateContext = {
+    ...context.templateContext,
+    variables: aliasManager.getScopeSnapshot(context.scopeKey).variables,
+  };
+}
+
+function warnScriptDiagnostics(context, line, diagnostics) {
+  if (!Array.isArray(diagnostics) || !diagnostics.length) return;
+  diagnostics.forEach((message) => {
+    warn(context.appendMessage, context.source.prefix, 'Script line ' + line + ': ' + message);
+  });
+}
+
+function executeScriptNodes(nodes, context) {
+  let sent = false;
+  let localOnly = false;
+  let handled = false;
+
+  for (const node of nodes || []) {
+    if (!node || typeof node !== 'object') continue;
+
+    if (node.type === 'action') {
+      refreshScriptVariables(context);
+      const result = executeAutomationStep(node.step, {
+        ...context,
+        source: {
+          ...context.source,
+          description: context.source.description + ' script line ' + node.line,
+        },
+      });
+      sent = sent || result.sent;
+      localOnly = localOnly || result.localOnly || result.handled;
+      handled = handled || result.handled;
+      continue;
+    }
+
+    if (node.type === 'if') {
+      let branchTaken = false;
+      for (const branch of node.branches || []) {
+        refreshScriptVariables(context);
+        const condition = evaluateAutomationCondition(
+          branch.condition,
+          context.templateContext,
+          (template, templateContext) => aliasManager.resolveTemplate(template, templateContext)
+        );
+        if (condition.diagnostics.length) {
+          warnScriptDiagnostics(context, branch.line, condition.diagnostics);
+        }
+        if (!condition.value) continue;
+
+        const result = executeScriptNodes(branch.steps, context);
+        sent = sent || result.sent;
+        localOnly = localOnly || result.localOnly || result.handled;
+        handled = handled || result.handled;
+        branchTaken = true;
+        break;
+      }
+
+      if (!branchTaken && Array.isArray(node.elseSteps)) {
+        const result = executeScriptNodes(node.elseSteps, context);
+        sent = sent || result.sent;
+        localOnly = localOnly || result.localOnly || result.handled;
+        handled = handled || result.handled;
+      }
+    }
+  }
+
+  return { sent, localOnly, handled: handled || localOnly || sent };
+}
+
+function executeScriptStep(step, context) {
+  const parsed = parseAutomationScript(step.script || '');
+  if (parsed.diagnostics.length) {
+    parsed.diagnostics.forEach((message) => {
+      warn(context.appendMessage, context.source.prefix, 'Script error in ' + context.source.description + ': ' + message);
+    });
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  return executeScriptNodes(parsed.ast, context);
+}
+
 function executeAutomationStep(step, context) {
   const {
     appendMessage,
@@ -123,6 +210,10 @@ function executeAutomationStep(step, context) {
     aliasContext,
     expandCommandsAsAliases,
   } = context;
+
+  if (step.type === 'script') {
+    return executeScriptStep(step, context);
+  }
 
   if (step.type === 'play_sound') {
     if (!isKnownSound(step.category, step.sound)) {
@@ -319,6 +410,7 @@ export function executeTriggerMatches(matches, scopeKey, options = {}) {
 
 export function getAutomationStepLabel(step) {
   if (!step || typeof step !== 'object') return 'Step';
+  if (step.type === 'script') return 'Run script';
   if (step.type === 'set_variable') return 'Set $' + (step.name || '');
   if (step.type === 'show_message') return 'Show';
   if (step.type === 'set_trigger_enabled') return describeMode(normalizeMode(step.mode)) + ' trigger';

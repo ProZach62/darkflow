@@ -1,5 +1,6 @@
 import { dom } from './state.js';
 import { getSoundCatalog, isKnownSound } from './sound-manager.js';
+import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
 
 const TRIGGER_STORAGE_KEY = 'darkwind-client-triggers-v1';
 
@@ -49,6 +50,10 @@ function normalizeStep(step) {
 
   if (type === 'show_message') {
     return { type, template: String(step.template || '') };
+  }
+
+  if (type === 'script') {
+    return { type, script: String(step.script || '') };
   }
 
   if (type === 'set_alias_enabled') {
@@ -395,6 +400,12 @@ export const triggerManager = {
       if ((step.type === 'send_command' || step.type === 'show_message' || step.type === 'set_variable')
         && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must have content.');
+      }
+      if (step.type === 'script') {
+        const scriptDiagnostics = getAutomationScriptDiagnostics(step.script || '');
+        scriptDiagnostics.forEach((message) => {
+          diagnostics.push('Step ' + (index + 1) + ': ' + message);
+        });
       }
       if (step.type === 'set_alias_enabled'
         && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {

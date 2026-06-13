@@ -3,6 +3,7 @@ import {
   evaluateArithmeticExpression,
   isArithmeticExpressionCandidate,
 } from './alias-expression-core.mjs';
+import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
 
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
 const MAX_ALIAS_DEPTH = 10;
@@ -113,6 +114,10 @@ function normalizeStep(step) {
 
   if (type === 'show_message') {
     return { type, template: String(step.template || '') };
+  }
+
+  if (type === 'script') {
+    return { type, script: String(step.script || '') };
   }
 
   if (type === 'set_trigger_enabled') {
@@ -573,6 +578,12 @@ export const aliasManager = {
         && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must have content.');
       }
+      if (step.type === 'script') {
+        const scriptDiagnostics = getAutomationScriptDiagnostics(step.script || '');
+        scriptDiagnostics.forEach((message) => {
+          diagnostics.push('Step ' + (index + 1) + ': ' + message);
+        });
+      }
       if (step.type === 'set_trigger_enabled'
         && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must select a trigger.');
@@ -588,13 +599,17 @@ export const aliasManager = {
 
     for (const alias of aliases) {
       for (const step of alias.steps || []) {
-        for (const name of collectVariableNamesFromText(step.template)) {
-          const count = usage.get(name) || 0;
-          usage.set(name, count + 1);
-        }
-        for (const name of collectVariableNamesFromText(step.target)) {
-          const count = usage.get(name) || 0;
-          usage.set(name, count + 1);
+      for (const name of collectVariableNamesFromText(step.template)) {
+        const count = usage.get(name) || 0;
+        usage.set(name, count + 1);
+      }
+      for (const name of collectVariableNamesFromText(step.script)) {
+        const count = usage.get(name) || 0;
+        usage.set(name, count + 1);
+      }
+      for (const name of collectVariableNamesFromText(step.target)) {
+        const count = usage.get(name) || 0;
+        usage.set(name, count + 1);
         }
       }
     }
@@ -610,6 +625,7 @@ export const aliasManager = {
       const names = new Set();
       for (const step of alias.steps || []) {
         collectVariableNamesFromText(step.template).forEach((name) => names.add(name));
+        collectVariableNamesFromText(step.script).forEach((name) => names.add(name));
         collectVariableNamesFromText(step.target).forEach((name) => names.add(name));
       }
 
