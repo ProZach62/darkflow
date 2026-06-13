@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Darkflow Automation Scripts</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #111820;
+      --panel-2: #161f2a;
+      --text: #d7dee8;
+      --muted: #8b98a8;
+      --line: #26313d;
+      --accent: #67d4c4;
+      --accent-2: #f0c66e;
+      --danger: #ff7b72;
+      --code: #05080c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 42px 0 64px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 28px;
+      padding-bottom: 24px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.15;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 40px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-top: 34px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin-top: 20px;
+      margin-bottom: 8px;
+      color: var(--accent-2);
+    }
+
+    p {
+      margin: 10px 0;
+    }
+
+    .summary {
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 820px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+      margin: 18px 0;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .card strong {
+      color: var(--accent);
+    }
+
+    code,
+    pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    code {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 5px;
+      padding: 1px 5px;
+    }
+
+    pre {
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: #e6edf3;
+      margin: 12px 0;
+      overflow-x: auto;
+      padding: 14px;
+      white-space: pre;
+    }
+
+    ul {
+      margin-top: 8px;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 14px 0;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-2);
+      color: var(--accent);
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: rgba(103, 212, 196, 0.08);
+      padding: 10px 14px;
+      margin: 16px 0;
+    }
+
+    .warn {
+      border-left-color: var(--danger);
+      background: rgba(255, 123, 114, 0.08);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Darkflow Automation Scripts</h1>
+      <p class="summary">
+        Darkflow aliases and triggers now support text scripts with
+        <code>if</code>, <code>elseif</code>, and <code>else</code> branches,
+        while preserving the existing step-based automation system.
+      </p>
+    </header>
+
+    <section>
+      <h2>What Changed</h2>
+      <div class="grid">
+        <div class="card">
+          <strong>New script step</strong>
+          <p>Aliases and triggers can add a <code>Run script</code> step in the settings automation editor.</p>
+        </div>
+        <div class="card">
+          <strong>Branching logic</strong>
+          <p>Scripts can choose different actions with <code>if</code>, <code>elseif</code>, <code>else</code>, and <code>end</code>.</p>
+        </div>
+        <div class="card">
+          <strong>Same automation engine</strong>
+          <p>Script actions reuse the existing command, variable, alias, trigger, and sound execution paths.</p>
+        </div>
+        <div class="card">
+          <strong>Backward compatible</strong>
+          <p>Existing aliases, triggers, imports, exports, and visual steps continue to work unchanged.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Script Syntax</h2>
+      <p>Scripts are line-oriented. Blank lines and lines starting with <code>#</code> are ignored.</p>
+      <pre><code>if $hp &lt; 50
+  send drink healing potion
+elseif %1 matches /orc|goblin/i
+  run_alias assist %1
+else
+  show No condition matched.
+end</code></pre>
+
+      <h3>Supported Control Flow</h3>
+      <ul>
+        <li><code>if &lt;condition&gt;</code></li>
+        <li><code>elseif &lt;condition&gt;</code></li>
+        <li><code>else</code></li>
+        <li><code>end</code></li>
+        <li>Nested conditionals are supported up to five levels deep.</li>
+      </ul>
+
+      <h3>Supported Actions</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Example</th>
+            <th>Behavior</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>send</code></td>
+            <td><code>send kill %1</code></td>
+            <td>Sends a command to the MUD.</td>
+          </tr>
+          <tr>
+            <td><code>show</code></td>
+            <td><code>show Target is %1</code></td>
+            <td>Prints a local client message.</td>
+          </tr>
+          <tr>
+            <td><code>set</code></td>
+            <td><code>set $target = %1</code></td>
+            <td>Writes a persistent alias variable for the active server scope.</td>
+          </tr>
+          <tr>
+            <td><code>run_alias</code></td>
+            <td><code>run_alias assist %1</code></td>
+            <td>Runs an existing alias, preserving recursion and depth protection.</td>
+          </tr>
+          <tr>
+            <td><code>enable_alias</code>, <code>disable_alias</code>, <code>toggle_alias</code></td>
+            <td><code>disable_alias heal</code></td>
+            <td>Changes an alias by trigger text.</td>
+          </tr>
+          <tr>
+            <td><code>enable_trigger</code>, <code>disable_trigger</code>, <code>toggle_trigger</code></td>
+            <td><code>toggle_trigger You are hungry.</code></td>
+            <td>Changes a trigger by pattern text.</td>
+          </tr>
+          <tr>
+            <td><code>play_sound</code></td>
+            <td><code>play_sound alert/warning 50</code></td>
+            <td>Plays a known Darkflow sound. Volume can be 0-1 or 0-100.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Conditions</h2>
+      <p>
+        Conditions use the same template context as existing automation:
+        <code>$variables</code>, <code>%0</code>, and <code>%1</code> through
+        <code>%9</code>. Regex triggers expose captures as <code>%1</code>
+        onward, while simple aliases use <code>%0</code> for the whole
+        remainder after the alias.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Condition</th>
+            <th>Example</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Exists / empty</td>
+            <td><code>exists $target</code>, <code>not_empty %1</code></td>
+          </tr>
+          <tr>
+            <td>String equality</td>
+            <td><code>$stance == defensive</code>, <code>%1 != goblin</code></td>
+          </tr>
+          <tr>
+            <td>String contains</td>
+            <td><code>%1 contains orc</code>, <code>$mode not_contains quiet</code></td>
+          </tr>
+          <tr>
+            <td>Regex</td>
+            <td><code>%1 matches /orc|goblin/i</code></td>
+          </tr>
+          <tr>
+            <td>Numeric comparison</td>
+            <td><code>$hp &lt; 50</code>, <code>{ $hp / $maxhp * 100 } &lt;= 30</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note">
+        The implementation intentionally does not use JavaScript <code>eval</code>.
+        It parses a small, explicit scripting language to keep player settings safe.
+      </div>
+    </section>
+
+    <section>
+      <h2>How It Is Built</h2>
+      <ul>
+        <li><code>automation-script-core.mjs</code> parses scripts and evaluates conditions.</li>
+        <li><code>automation-executor.js</code> executes script steps through the existing automation step pipeline.</li>
+        <li><code>alias-manager.js</code> and <code>trigger-manager.js</code> preserve script steps and report script diagnostics.</li>
+        <li><code>settings-automation.js</code> adds the <code>Run script</code> editor and preview support.</li>
+        <li>Tests cover parsing, malformed control flow, condition evaluation, alias scripts, trigger scripts, and variable flow.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Validation Performed</h2>
+      <pre><code>node --check public/js/automation-script-core.mjs
+node --check public/js/automation-executor.js
+node --check public/js/settings-automation.js
+node --check public/js/alias-manager.js
+node --check public/js/trigger-manager.js
+
+node --test test/automation-script-core.test.mjs test/automation-executor.test.mjs
+npm test</code></pre>
+      <p>
+        The focused automation tests passed. The full suite passed all client
+        tests except three MCP tests that were blocked by the sandbox from
+        binding <code>127.0.0.1</code>.
+      </p>
+    </section>
+  </main>
+</body>
+</html>

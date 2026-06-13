@@ -327,7 +327,7 @@ test('trigger run_alias executes an enabled alias instead of raw-sending the inv
       trigger: 'assist',
       description: '',
       group: '',
-      steps: [{ type: 'send_command', template: 'kill %1' }],
+      steps: [{ type: 'send_command', template: 'kill %0' }],
     }],
     variables: {},
   });
@@ -570,4 +570,120 @@ test('trigger steps disable aliases by targetId', () => {
 
   assert.equal(aliasManager.findAliasById('alias-heal', SCOPE_KEY).enabled, false);
   assert.match(io.messages.join('\n'), /Alias "Heal up" disabled\./);
+});
+
+test('alias script step runs only the matching branch', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-script',
+      enabled: true,
+      trigger: 'guard',
+      description: 'Scripted guard',
+      group: '',
+      steps: [{
+        type: 'script',
+        script: [
+          'if %1 == low',
+          '  send drink healing potion',
+          'elseif %1 == high',
+          '  send cast bless',
+          'else',
+          '  show No guard action.',
+          'end',
+        ].join('\n'),
+      }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('guard low', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.deepEqual(io.sent, ['drink healing potion']);
+  assert.deepEqual(io.messages, []);
+});
+
+test('trigger script step uses captures and can run aliases', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-assist',
+      enabled: true,
+      trigger: '^assist\\s+(.+)$',
+      isRegex: true,
+      description: 'Assist',
+      group: '',
+      steps: [{ type: 'send_command', template: 'kill %1' }],
+    }],
+    variables: {},
+  });
+  triggerManager.saveScope(SCOPE_KEY, {
+    triggers: [{
+      id: 'trigger-script',
+      enabled: true,
+      pattern: 'You are attacked by *',
+      description: 'Scripted attack response',
+      group: '',
+      gag: false,
+      steps: [{
+        type: 'script',
+        script: [
+          'if %1 matches /orc|goblin/i',
+          '  run_alias assist %1',
+          'else',
+          '  show Unknown attacker: %1',
+          'end',
+        ].join('\n'),
+      }],
+    }],
+  });
+
+  const match = triggerManager.evaluateLine('You are attacked by orc scout', SCOPE_KEY);
+  const io = messagesAndSends();
+  executeTriggerMatches(match.matches, SCOPE_KEY, io);
+
+  assert.deepEqual(io.sent, ['kill orc scout']);
+  assert.deepEqual(io.messages, []);
+});
+
+test('script variables set before later conditions are visible', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-script-vars',
+      enabled: true,
+      trigger: 'mark',
+      description: 'Script variables',
+      group: '',
+      steps: [{
+        type: 'script',
+        script: [
+          'set $target = %0',
+          'if $target contains orc',
+          '  send consider $target',
+          'else',
+          '  send look',
+          'end',
+        ].join('\n'),
+      }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('mark orc captain', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.deepEqual(io.sent, ['consider orc captain']);
+  assert.equal(aliasManager.getVariable('target', SCOPE_KEY), 'orc captain');
 });

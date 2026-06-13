@@ -21,6 +21,10 @@ import { highlightManager } from './highlight-manager.js';
 import { styleToElement } from './ansi.js';
 import { getSoundCatalog, isKnownSound, soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 import { getAutomationStepLabel } from './automation-executor.js';
+import {
+  evaluateAutomationCondition,
+  parseAutomationScript,
+} from './automation-script-core.mjs';
 
 const AUTOMATION_UI_KEY = 'darkwind-settings-automation-ui';
 
@@ -139,6 +143,74 @@ function appendTargetIdPreviewRow(body, step, items, patternOf) {
   body.appendChild(row);
 }
 
+function countScriptActions(nodes) {
+  let count = 0;
+  (nodes || []).forEach((node) => {
+    if (node.type === 'action') count++;
+    if (node.type === 'if') {
+      (node.branches || []).forEach((branch) => { count += countScriptActions(branch.steps); });
+      count += countScriptActions(node.elseSteps);
+    }
+  });
+  return count;
+}
+
+function appendScriptPreviewRows(body, script, templateContext, renderAction) {
+  const parsed = parseAutomationScript(script || '');
+  if (parsed.diagnostics.length) {
+    parsed.diagnostics.forEach((message) => {
+      const row = el('div', 'settings-alias-preview-step warning', 'Script: ' + message);
+      body.appendChild(row);
+    });
+    return;
+  }
+
+  const runNodes = (nodes, depth = 0) => {
+    (nodes || []).forEach((node) => {
+      if (node.type === 'action') {
+        renderAction(node.step, depth);
+        return;
+      }
+
+      if (node.type !== 'if') return;
+
+      let matched = false;
+      for (const branch of node.branches || []) {
+        const result = evaluateAutomationCondition(
+          branch.condition,
+          templateContext,
+          (template, context) => aliasManager.resolveTemplate(template, context)
+        );
+        const row = el('div', 'settings-alias-preview-step',
+          'If ' + branch.condition + ' -> ' + (result.value ? 'true' : 'false'));
+        if (depth) row.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+        if (result.diagnostics.length) {
+          row.classList.add('warning');
+          row.textContent += ' (' + result.diagnostics.join(' ') + ')';
+        }
+        body.appendChild(row);
+        if (result.value) {
+          matched = true;
+          runNodes(branch.steps, depth + 1);
+          break;
+        }
+      }
+
+      if (!matched && Array.isArray(node.elseSteps)) {
+        const row = el('div', 'settings-alias-preview-step', 'Else -> true');
+        if (depth) row.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+        body.appendChild(row);
+        runNodes(node.elseSteps, depth + 1);
+      }
+    });
+  };
+
+  const total = countScriptActions(parsed.ast);
+  body.appendChild(el('div', 'settings-alias-preview-match',
+    'Script: ' + total + ' possible action' + (total === 1 ? '' : 's')));
+  runNodes(parsed.ast);
+}
+
 function appendStepsEditor(container, owner, opts, api) {
   container.appendChild(el('div', 'settings-label', 'Steps'));
 
@@ -175,8 +247,16 @@ function appendStepsEditor(container, owner, opts, api) {
       if (step.type === opts.toggleTargetType && !step.target) step.target = '';
       if (opts.sounds && step.type === 'play_sound') {
         delete step.template;
+        delete step.script;
         opts.sounds.ensure(step);
+      } else if (step.type === 'script') {
+        delete step.template;
+        delete step.category;
+        delete step.sound;
+        delete step.volume;
+        if (!step.script) step.script = '';
       } else {
+        delete step.script;
         delete step.category;
         delete step.sound;
         delete step.volume;
@@ -232,7 +312,16 @@ function appendStepsEditor(container, owner, opts, api) {
       card.appendChild(nameInput);
     }
 
-    if (opts.sounds && step.type === 'play_sound') {
+    if (step.type === 'script') {
+      const scriptInput = el('textarea', 'dw-input settings-alias-template settings-step-template');
+      scriptInput.placeholder = opts.scriptPlaceholder;
+      scriptInput.value = step.script || '';
+      scriptInput.rows = 8;
+      scriptInput.addEventListener('input', () => {
+        step.script = scriptInput.value;
+      });
+      card.appendChild(scriptInput);
+    } else if (opts.sounds && step.type === 'play_sound') {
       opts.sounds.ensure(step);
       const soundRow = el('div', 'settings-step-sound-row');
 
@@ -369,6 +458,10 @@ function appendStepsEditor(container, owner, opts, api) {
     if (selected.mode) step.mode = selected.mode;
     if (selected.type === 'set_variable') step.name = '';
     if (selected.type === opts.toggleTargetType) step.target = '';
+    if (selected.type === 'script') {
+      delete step.template;
+      step.script = '';
+    }
     if (opts.sounds && selected.type === 'play_sound') {
       delete step.template;
       step.category = opts.sounds.first.category;
@@ -439,10 +532,12 @@ function buildConfig(host, kind) {
             { value: 'send_command', type: 'send_command', label: 'Send command' },
             { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
             { value: 'show_message', type: 'show_message', label: 'Show local message' },
+            { value: 'script', type: 'script', label: 'Run script' },
             { value: 'set_trigger_enabled:toggle', type: 'set_trigger_enabled', mode: 'toggle', label: 'Toggle trigger' },
             { value: 'set_trigger_enabled:enable', type: 'set_trigger_enabled', mode: 'enable', label: 'Enable trigger' },
             { value: 'set_trigger_enabled:disable', type: 'set_trigger_enabled', mode: 'disable', label: 'Disable trigger' },
           ],
+          scriptPlaceholder: 'if $pack == mule\n  send give %0 to $pack\nelse\n  show No pack animal set.\nend',
           templatePlaceholder: (step) => (
             step.type === 'show_message' ? 'Pack animal set to: $pack'
               : step.type === 'set_variable' ? '%0'
@@ -450,7 +545,8 @@ function buildConfig(host, kind) {
           ),
           syntaxHelp: 'Simple aliases match command words; %0 is everything after the alias. '
             + 'Regex aliases use JavaScript regular expressions with capture groups as %1-%9. '
-            + 'Templates support $name variables and ${lower:%1} or ${lower:$name} for lowercase.',
+            + 'Templates support $name variables and ${lower:%1} or ${lower:$name} for lowercase. '
+            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, and trigger toggles.',
         }, api);
       },
       preview: {
@@ -478,6 +574,47 @@ function buildConfig(host, kind) {
           const previewTriggers = host._draftTriggerScope.triggers.map((trigger) => ({ ...trigger }));
 
           for (const step of match.alias.steps) {
+            const templateContext = { args: match.args, remainder: match.remainder, variables: previewVariables };
+            const renderPreviewStep = (previewStep) => {
+              if (previewStep.type === 'set_trigger_enabled' && previewStep.targetId) {
+                appendTargetIdPreviewRow(body, previewStep, previewTriggers, (item) => item.pattern);
+                return;
+              }
+
+              const resolved = aliasManager.resolveTemplate(
+                previewStep.type === 'set_trigger_enabled' ? previewStep.target : previewStep.template,
+                { args: match.args, remainder: match.remainder, variables: previewVariables }
+              );
+
+              if (previewStep.type === 'set_trigger_enabled') {
+                const target = resolved.text.trim();
+                const mode = normalizeAutomationMode(previewStep.mode);
+                const trigger = previewTriggers.find((item) => item.pattern === target);
+                const { row, ok } = appendResolvedStepRow(body, getAutomationStepLabel(previewStep), { ...resolved, text: target });
+                if (!ok) return;
+                if (!target || !trigger) {
+                  row.classList.add('warning');
+                  row.textContent += target ? ' (trigger not found)' : ' (empty target)';
+                } else {
+                  trigger.enabled = mode === 'toggle' ? trigger.enabled === false : mode === 'enable';
+                  row.textContent += ' -> ' + (trigger.enabled === false ? 'disabled' : 'enabled');
+                }
+                return;
+              }
+
+              let prefix = 'Send';
+              if (previewStep.type === 'set_variable') prefix = 'Set $' + previewStep.name;
+              if (previewStep.type === 'show_message') prefix = 'Show';
+              if (previewStep.type === 'run_alias') prefix = 'Run alias';
+              const { ok } = appendResolvedStepRow(body, prefix, resolved);
+              if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = resolved.text;
+            };
+
+            if (step.type === 'script') {
+              appendScriptPreviewRows(body, step.script, templateContext, renderPreviewStep);
+              continue;
+            }
+
             if (step.type === 'set_trigger_enabled' && step.targetId) {
               appendTargetIdPreviewRow(body, step, previewTriggers, (item) => item.pattern);
               continue;
@@ -570,12 +707,14 @@ function buildConfig(host, kind) {
             { value: 'send_command', type: 'send_command', label: 'Send command' },
             { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
             { value: 'show_message', type: 'show_message', label: 'Show local message' },
+            { value: 'script', type: 'script', label: 'Run script' },
             { value: 'set_alias_enabled:toggle', type: 'set_alias_enabled', mode: 'toggle', label: 'Toggle alias' },
             { value: 'set_alias_enabled:enable', type: 'set_alias_enabled', mode: 'enable', label: 'Enable alias' },
             { value: 'set_alias_enabled:disable', type: 'set_alias_enabled', mode: 'disable', label: 'Disable alias' },
             { value: 'run_alias', type: 'run_alias', label: 'Run alias' },
             { value: 'play_sound', type: 'play_sound', label: 'Play sound' },
           ],
+          scriptPlaceholder: 'if %1 matches /orc|goblin/i\n  run_alias assist %1\nelseif $hp < 50\n  send drink healing potion\nelse\n  show Trigger matched: %0\nend',
           templatePlaceholder: (step) => (
             step.type === 'show_message' ? 'Attacker: %1'
               : step.type === 'set_variable' ? '%1'
@@ -584,7 +723,8 @@ function buildConfig(host, kind) {
           ),
           syntaxHelp: 'Simple patterns support * or %1-%9 as captures. '
             + 'Regex triggers use JavaScript regular expressions with capture groups as %1-%9. '
-            + 'Templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase.',
+            + 'Templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase. '
+            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, play_sound, and alias toggles.',
         }, api);
       },
       preview: {
@@ -620,6 +760,72 @@ function buildConfig(host, kind) {
               : 'No captures'));
 
             for (const step of match.trigger.steps || []) {
+              const templateContext = { args: match.captures, remainder: match.fullMatch, variables: previewVariables };
+              const renderPreviewStep = (previewStep) => {
+                if (previewStep.type === 'play_sound') {
+                  const row = el('div', 'settings-alias-preview-step',
+                    getAutomationStepLabel(previewStep) + ': ' + sounds.label(previewStep.category, previewStep.sound));
+                  if (!isKnownSound(previewStep.category, previewStep.sound)) {
+                    row.classList.add('warning');
+                    row.textContent += ' (sound not found)';
+                  }
+                  body.appendChild(row);
+                  return;
+                }
+
+                if (previewStep.type === 'set_alias_enabled' && previewStep.targetId) {
+                  appendTargetIdPreviewRow(body, previewStep, previewAliases, (item) => item.trigger);
+                  return;
+                }
+
+                const resolved = aliasManager.resolveTemplate(
+                  previewStep.type === 'set_alias_enabled' ? previewStep.target : previewStep.template,
+                  { args: match.captures, remainder: match.fullMatch, variables: previewVariables }
+                );
+
+                if (previewStep.type === 'set_alias_enabled') {
+                  const target = resolved.text.trim();
+                  const mode = normalizeAutomationMode(previewStep.mode);
+                  const alias = previewAliases.find((item) => (
+                    item.trigger.trim().replace(/\s+/g, ' ').toLowerCase() === target.trim().replace(/\s+/g, ' ').toLowerCase()
+                  ));
+                  const { row, ok } = appendResolvedStepRow(body, getAutomationStepLabel(previewStep), { ...resolved, text: target });
+                  if (!ok) return;
+                  if (!target || !alias) {
+                    row.classList.add('warning');
+                    row.textContent += target ? ' (alias not found)' : ' (empty target)';
+                  } else {
+                    alias.enabled = mode === 'toggle' ? alias.enabled === false : mode === 'enable';
+                    row.textContent += ' -> ' + (alias.enabled === false ? 'disabled' : 'enabled');
+                  }
+                  return;
+                }
+
+                if (previewStep.type === 'run_alias') {
+                  const { row, ok } = appendResolvedStepRow(body, getAutomationStepLabel(previewStep), resolved);
+                  if (!ok) return;
+                  const aliasMatch = aliasManager.matchAliasInAliases(resolved.text, previewAliases);
+                  if (!aliasMatch) {
+                    row.classList.add('warning');
+                    row.textContent += ' (no enabled alias matches)';
+                  } else {
+                    row.textContent += ' -> ' + aliasMatch.alias.trigger;
+                  }
+                  return;
+                }
+
+                let prefix = 'Send';
+                if (previewStep.type === 'set_variable') prefix = 'Set $' + previewStep.name;
+                if (previewStep.type === 'show_message') prefix = 'Show';
+                const { ok } = appendResolvedStepRow(body, prefix, resolved);
+                if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = resolved.text;
+              };
+
+              if (step.type === 'script') {
+                appendScriptPreviewRows(body, step.script, templateContext, renderPreviewStep);
+                continue;
+              }
+
               if (step.type === 'play_sound') {
                 const row = el('div', 'settings-alias-preview-step',
                   getAutomationStepLabel(step) + ': ' + sounds.label(step.category, step.sound));
