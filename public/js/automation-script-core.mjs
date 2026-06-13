@@ -10,6 +10,13 @@ const ACTION_ALIASES = {
   enable_trigger: 'set_trigger_enabled',
   disable_trigger: 'set_trigger_enabled',
   toggle_trigger: 'set_trigger_enabled',
+  enable_timer: 'set_timer_enabled',
+  disable_timer: 'set_timer_enabled',
+  toggle_timer: 'set_timer_enabled',
+  start_timer: 'control_timer',
+  stop_timer: 'control_timer',
+  reset_timer: 'control_timer',
+  set_timer: 'control_timer',
   set: 'set_variable',
   play_sound: 'play_sound',
 };
@@ -69,12 +76,29 @@ function parseAction(text, line) {
     };
   }
 
-  if (type === 'set_alias_enabled' || type === 'set_trigger_enabled') {
+  if (type === 'set_alias_enabled' || type === 'set_trigger_enabled' || type === 'set_timer_enabled') {
     const mode = command.startsWith('enable_') ? 'enable'
       : command.startsWith('disable_') ? 'disable'
         : 'toggle';
     if (!arg.trim()) {
       return { node: null, error: lineDiagnostic(line, commandMatch[1] + ' requires a target.') };
+    }
+    return {
+      node: {
+        type: 'action',
+        line,
+        step: { type, mode, target: arg.trim() },
+      },
+      error: null,
+    };
+  }
+
+  if (type === 'control_timer') {
+    const mode = command.startsWith('stop_') ? 'stop'
+      : command.startsWith('reset_') ? 'reset'
+        : 'start';
+    if (!arg.trim()) {
+      return { node: null, error: lineDiagnostic(line, commandMatch[1] + ' requires a timer name.') };
     }
     return {
       node: {

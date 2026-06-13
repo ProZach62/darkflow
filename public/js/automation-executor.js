@@ -6,6 +6,12 @@ import {
   parseAutomationScript,
 } from './automation-script-core.mjs';
 
+let timerAutomation = null;
+
+export function registerTimerAutomation(manager) {
+  timerAutomation = manager || null;
+}
+
 function normalizeMode(mode) {
   return mode === 'enable' || mode === 'disable' ? mode : 'toggle';
 }
@@ -49,8 +55,19 @@ function describeMode(mode) {
   return 'Toggle';
 }
 
+function describeTimerAction(mode) {
+  if (mode === 'stop') return 'Stop';
+  if (mode === 'reset') return 'Reset';
+  return 'Start';
+}
+
 function getRequiredField(step) {
-  if (step.type === 'set_alias_enabled' || step.type === 'set_trigger_enabled') return 'target';
+  if (step.type === 'set_alias_enabled'
+    || step.type === 'set_trigger_enabled'
+    || step.type === 'set_timer_enabled'
+    || step.type === 'control_timer') {
+    return 'target';
+  }
   return 'template';
 }
 
@@ -97,11 +114,46 @@ function setAutomationEnabledById(manager, id, mode, scopeKey) {
   return manager.toggleEnabledById(id, scopeKey);
 }
 
+function controlTimerById(manager, id, mode, scopeKey) {
+  if (mode === 'stop') return manager.stopTimerById(id, scopeKey);
+  if (mode === 'reset') return manager.resetTimerById(id, scopeKey);
+  return manager.startTimerById(id, scopeKey);
+}
+
+function controlTimerByTarget(manager, target, mode, scopeKey) {
+  if (mode === 'stop') return manager.stopTimerByName(target, scopeKey);
+  if (mode === 'reset') return manager.resetTimerByName(target, scopeKey);
+  return manager.startTimerByName(target, scopeKey);
+}
+
 // Steps written by the picker UI reference their target by id; resolve those
 // directly. Legacy steps (pattern text or templates) fall through to the
 // template-resolution path below.
 function executeTargetIdStep(step, context) {
   const { appendMessage, scopeKey, source } = context;
+  if (step.type === 'set_timer_enabled' || step.type === 'control_timer') {
+    if (!timerAutomation) {
+      warn(appendMessage, source.prefix, 'Timer automation is not available.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+
+    const isEnableStep = step.type === 'set_timer_enabled';
+    const mode = isEnableStep ? normalizeMode(step.mode) : (step.mode === 'stop' || step.mode === 'reset' ? step.mode : 'start');
+    const result = isEnableStep
+      ? setAutomationEnabledById(timerAutomation, step.targetId, mode, scopeKey)
+      : controlTimerById(timerAutomation, step.targetId, mode, scopeKey);
+    if (!result.target) {
+      warn(appendMessage, source.prefix, 'Timer referenced by ' + source.description + ' no longer exists.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    const label = result.target.description || result.target.name;
+    const action = isEnableStep
+      ? (result.enabled ? 'enabled' : 'disabled')
+      : (mode === 'stop' ? 'stopped' : mode === 'reset' ? 'reset' : 'started');
+    notify(appendMessage, source.prefix, 'Timer "' + label + '" ' + action + '.');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
   const isTrigger = step.type === 'set_trigger_enabled';
   const manager = isTrigger ? triggerManager : aliasManager;
   const noun = isTrigger ? 'Trigger' : 'Alias';
@@ -229,6 +281,11 @@ function executeAutomationStep(step, context) {
     return executeTargetIdStep(step, context);
   }
 
+  if ((step.type === 'set_timer_enabled' || step.type === 'control_timer')
+    && String(step.targetId || '')) {
+    return executeTargetIdStep(step, context);
+  }
+
   const { resolved, ok } = getStepResult(step, source, templateContext, appendMessage);
   if (!ok) return { sent: false, localOnly: true, handled: true };
 
@@ -272,6 +329,46 @@ function executeAutomationStep(step, context) {
     return { sent: false, localOnly: true, handled: true };
   }
 
+  if (step.type === 'set_timer_enabled') {
+    if (!timerAutomation) {
+      warn(appendMessage, source.prefix, 'Timer automation is not available.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    const target = resolved.text.trim();
+    if (!target) {
+      warn(appendMessage, source.prefix, 'Timer target is empty in ' + source.description + '.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    const result = setAutomationEnabled(timerAutomation, target, normalizeMode(step.mode), scopeKey);
+    if (!result.target) {
+      warn(appendMessage, source.prefix, 'Timer "' + target + '" is not defined.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    notify(appendMessage, source.prefix, 'Timer "' + target + '" ' + (result.enabled ? 'enabled' : 'disabled') + '.');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  if (step.type === 'control_timer') {
+    if (!timerAutomation) {
+      warn(appendMessage, source.prefix, 'Timer automation is not available.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    const target = resolved.text.trim();
+    const mode = step.mode === 'stop' || step.mode === 'reset' ? step.mode : 'start';
+    if (!target) {
+      warn(appendMessage, source.prefix, 'Timer target is empty in ' + source.description + '.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    const result = controlTimerByTarget(timerAutomation, target, mode, scopeKey);
+    if (!result.target) {
+      warn(appendMessage, source.prefix, 'Timer "' + target + '" is not defined or is disabled.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    notify(appendMessage, source.prefix, 'Timer "' + target + '" '
+      + (mode === 'stop' ? 'stopped' : mode === 'reset' ? 'reset' : 'started') + '.');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
   const command = resolved.text.trim();
   if (!command) return { sent: false, localOnly: false, handled: true };
 
@@ -305,6 +402,21 @@ function executeAutomationStep(step, context) {
   }
 
   return { sent: true, localOnly: false, handled: true };
+}
+
+export function executeAutomationSteps(steps, context = {}) {
+  let sent = false;
+  let localOnly = false;
+  let handled = false;
+
+  for (const step of steps || []) {
+    const result = executeAutomationStep(step, context);
+    sent = sent || result.sent;
+    localOnly = localOnly || result.localOnly || result.handled;
+    handled = handled || result.handled;
+  }
+
+  return { sent, localOnly, handled };
 }
 
 export function executeAliasLine(text, context = {}) {
@@ -415,6 +527,8 @@ export function getAutomationStepLabel(step) {
   if (step.type === 'show_message') return 'Show';
   if (step.type === 'set_trigger_enabled') return describeMode(normalizeMode(step.mode)) + ' trigger';
   if (step.type === 'set_alias_enabled') return describeMode(normalizeMode(step.mode)) + ' alias';
+  if (step.type === 'set_timer_enabled') return describeMode(normalizeMode(step.mode)) + ' timer';
+  if (step.type === 'control_timer') return describeTimerAction(step.mode) + ' timer';
   if (step.type === 'run_alias') return 'Run alias';
   if (step.type === 'play_sound') return 'Play sound';
   return 'Send';

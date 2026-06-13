@@ -5,6 +5,7 @@ import { panelManager } from './panel-manager.js';
 import { windowManager } from './window-manager.js';
 import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
 import { settingsManager } from './settings-manager.js';
+import { timerManager } from './timer-manager.js';
 import { PRODUCT_NAME } from './brand.js';
 import {
   isSocketClosingOrClosed,
@@ -402,6 +403,7 @@ export async function connect() {
         full: true,
         panels: panelManager.getSubscriptionPanels(),
       });
+      timerManager.startAutoTimers();
     };
 
     ws.onmessage = function(event) {
@@ -479,6 +481,7 @@ export async function connect() {
       else msg = 'Closed (code ' + event.code + (event.reason ? ': ' + event.reason : '') + ')';
 
       appendSystemMessage(msg);
+      timerManager.stopAllTimers();
 
       if (!state.userDisconnected && settingsManager.get('autoReconnect')) {
         scheduleReconnect();

@@ -11,6 +11,7 @@ import {
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
+import { timerManager } from './timer-manager.js';
 import { panelManager } from './panel-manager.js';
 import { PRODUCT_NAME } from './brand.js';
 import { soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
@@ -21,6 +22,7 @@ const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
 const HIGHLIGHT_STORAGE_KEY = 'darkwind-client-highlights-v1';
 const TRIGGER_STORAGE_KEY = 'darkwind-client-triggers-v1';
+const TIMER_STORAGE_KEY = 'darkwind-client-timers-v1';
 const MIN_TERMINAL_WIDTH_COLUMNS = 40;
 const MAX_TERMINAL_WIDTH_COLUMNS = 240;
 
@@ -128,6 +130,8 @@ export const settingsManager = {
   _draftHighlightScope: null,
   _triggerScopeKey: '',
   _draftTriggerScope: null,
+  _timerScopeKey: '',
+  _draftTimerScope: null,
   _overlay: null,
   _escHandler: null,
   _dataSyncHandler: null,
@@ -199,6 +203,8 @@ export const settingsManager = {
     this._draftHighlightScope = highlightManager.getScopeSnapshot(this._highlightScopeKey);
     this._triggerScopeKey = triggerManager.getActiveScopeKey();
     this._draftTriggerScope = triggerManager.getScopeSnapshot(this._triggerScopeKey);
+    this._timerScopeKey = timerManager.getActiveScopeKey();
+    this._draftTimerScope = timerManager.getScopeSnapshot(this._timerScopeKey);
     this._settingsSessionBaseline = this._getCurrentSettingsSessionFingerprint();
 
     const overlay = this._buildModal();
@@ -210,6 +216,7 @@ export const settingsManager = {
       let refreshed = false;
       const isHighlightEvent = event && event.type === 'darkwind:highlight-data-changed';
       const isTriggerEvent = event && event.type === 'darkwind:trigger-data-changed';
+      const isTimerEvent = event && event.type === 'darkwind:timer-data-changed';
 
       if (!this._overlay || !this._refreshEditors) return;
       if (isHighlightEvent && (!detail.scopeKey || detail.scopeKey === this._highlightScopeKey)) {
@@ -220,10 +227,15 @@ export const settingsManager = {
         this._draftTriggerScope = triggerManager.getScopeSnapshot(this._triggerScopeKey);
         refreshed = true;
       }
+      if (isTimerEvent && (!detail.scopeKey || detail.scopeKey === this._timerScopeKey)) {
+        this._draftTimerScope = timerManager.getScopeSnapshot(this._timerScopeKey);
+        refreshed = true;
+      }
       if (refreshed) this._refreshEditors();
     };
     window.addEventListener('darkwind:highlight-data-changed', dataSyncHandler);
     window.addEventListener('darkwind:trigger-data-changed', dataSyncHandler);
+    window.addEventListener('darkwind:timer-data-changed', dataSyncHandler);
     document.body.appendChild(overlay);
 
     this._overlay = overlay;
@@ -250,6 +262,7 @@ export const settingsManager = {
     if (this._dataSyncHandler) {
       window.removeEventListener('darkwind:highlight-data-changed', this._dataSyncHandler);
       window.removeEventListener('darkwind:trigger-data-changed', this._dataSyncHandler);
+      window.removeEventListener('darkwind:timer-data-changed', this._dataSyncHandler);
       this._dataSyncHandler = null;
     }
     this._draftSettings = {};
@@ -259,6 +272,8 @@ export const settingsManager = {
     this._highlightScopeKey = '';
     this._draftTriggerScope = null;
     this._triggerScopeKey = '';
+    this._draftTimerScope = null;
+    this._timerScopeKey = '';
     this._refreshEditors = null;
     this._activateTab = null;
     this._clearSettingsSearch = null;
@@ -473,6 +488,7 @@ export const settingsManager = {
     this._syncDraftVariablesFromSteps();
     this._applySettings(this._draftSettings);
     triggerManager.saveScope(this._triggerScopeKey, this._draftTriggerScope);
+    timerManager.saveScope(this._timerScopeKey, this._draftTimerScope);
     highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
     aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
     this._setFooterStatus('Settings applied.');
@@ -491,6 +507,8 @@ export const settingsManager = {
       highlightScope: this._draftHighlightScope,
       triggerScopeKey: this._triggerScopeKey,
       triggerScope: this._draftTriggerScope,
+      timerScopeKey: this._timerScopeKey,
+      timerScope: this._draftTimerScope,
       sound: soundManager.getSettings(),
     };
     return JSON.stringify(sessionState);
@@ -600,6 +618,9 @@ export const settingsManager = {
     if (this._draftTriggerScope && Array.isArray(this._draftTriggerScope.triggers)) {
       stepLists.push(...this._draftTriggerScope.triggers.map((trigger) => trigger.steps || []));
     }
+    if (this._draftTimerScope && Array.isArray(this._draftTimerScope.timers)) {
+      stepLists.push(...this._draftTimerScope.timers.map((timer) => timer.steps || []));
+    }
 
     stepLists.forEach((steps) => {
       steps.forEach((step) => {
@@ -616,6 +637,7 @@ export const settingsManager = {
     const aliasData = JSON.parse(JSON.stringify(aliasManager._data || { scopes: {} }));
     const highlightData = JSON.parse(JSON.stringify(highlightManager._data || { scopes: {} }));
     const triggerData = JSON.parse(JSON.stringify(triggerManager._data || { scopes: {} }));
+    const timerData = JSON.parse(JSON.stringify(timerManager._data || { scopes: {} }));
 
     if (this._aliasScopeKey && this._draftAliasScope) {
       aliasData.scopes = aliasData.scopes || {};
@@ -629,6 +651,10 @@ export const settingsManager = {
       triggerData.scopes = triggerData.scopes || {};
       triggerData.scopes[this._triggerScopeKey] = JSON.parse(JSON.stringify(this._draftTriggerScope));
     }
+    if (this._timerScopeKey && this._draftTimerScope) {
+      timerData.scopes = timerData.scopes || {};
+      timerData.scopes[this._timerScopeKey] = JSON.parse(JSON.stringify(this._draftTimerScope));
+    }
 
     return {
       format: 'darkwind-client-settings-export',
@@ -640,6 +666,7 @@ export const settingsManager = {
         aliases: aliasData,
         highlights: highlightData,
         triggers: triggerData,
+        timers: timerData,
         panels: panelManager.exportState(),
         sound: soundManager.getSettings(),
       },
@@ -686,6 +713,7 @@ export const settingsManager = {
       localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(bundle.data.aliases || { scopes: {} }));
       localStorage.setItem(HIGHLIGHT_STORAGE_KEY, JSON.stringify(bundle.data.highlights || { scopes: {} }));
       localStorage.setItem(TRIGGER_STORAGE_KEY, JSON.stringify(bundle.data.triggers || { scopes: {} }));
+      localStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify(bundle.data.timers || { scopes: {} }));
       soundManager.importSettings(bundle.data.sound || {});
     } catch (error) {
       throw new Error('Unable to write imported client data to local storage.');
@@ -694,10 +722,12 @@ export const settingsManager = {
     aliasManager.init();
     highlightManager.init();
     triggerManager.init();
+    timerManager.init();
 
     window.dispatchEvent(new CustomEvent('darkwind:alias-data-changed', { detail: {} }));
     window.dispatchEvent(new CustomEvent('darkwind:highlight-data-changed', { detail: {} }));
     window.dispatchEvent(new CustomEvent('darkwind:trigger-data-changed', { detail: {} }));
+    window.dispatchEvent(new CustomEvent('darkwind:timer-data-changed', { detail: {} }));
 
     panelManager.applyImportedState(bundle.data.panels || { docks: { left: false, right: false }, panels: {} });
 
@@ -1413,6 +1443,10 @@ export const settingsManager = {
     return createAutomationEditor(this, 'trigger');
   },
 
+  _createTimerEditor() {
+    return createAutomationEditor(this, 'timer');
+  },
+
   _createAboutPanel() {
     const wrapper = document.createElement('div');
     wrapper.className = 'settings-about';
@@ -1767,6 +1801,7 @@ export const settingsManager = {
     addNavGroup('Automation');
     const aliasesSection = createTab('aliases', 'Aliases');
     const triggersSection = createTab('triggers', 'Triggers');
+    const timersSection = createTab('timers', 'Timers');
     const highlightsSection = createTab('highlights', 'Highlights');
     const variablesSection = createTab('variables', 'Variables');
 
@@ -2021,6 +2056,12 @@ export const settingsManager = {
     triggersSection.appendChild(triggersTitle);
     triggersSection.appendChild(this._createTriggerEditor());
 
+    const timersTitle = document.createElement('h3');
+    timersTitle.className = 'dw-heading';
+    timersTitle.textContent = 'Timers';
+    timersSection.appendChild(timersTitle);
+    timersSection.appendChild(this._createTimerEditor());
+
     const highlightsTitle = document.createElement('h3');
     highlightsTitle.className = 'dw-heading';
     highlightsTitle.textContent = 'Highlights';
@@ -2060,6 +2101,13 @@ export const settingsManager = {
       nextTriggersTitle.textContent = 'Triggers';
       triggersSection.appendChild(nextTriggersTitle);
       triggersSection.appendChild(this._createTriggerEditor());
+
+      timersSection.textContent = '';
+      const nextTimersTitle = document.createElement('h3');
+      nextTimersTitle.className = 'dw-heading';
+      nextTimersTitle.textContent = 'Timers';
+      timersSection.appendChild(nextTimersTitle);
+      timersSection.appendChild(this._createTimerEditor());
 
       highlightsSection.textContent = '';
       const nextHighlightsTitle = document.createElement('h3');

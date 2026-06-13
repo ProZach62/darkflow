@@ -56,8 +56,13 @@ function normalizeStep(step) {
     return { type, script: String(step.script || '') };
   }
 
-  if (type === 'set_alias_enabled') {
+  if (type === 'set_alias_enabled' || type === 'set_timer_enabled') {
     const mode = step.mode === 'enable' || step.mode === 'disable' ? step.mode : 'toggle';
+    return { type, mode, target: String(step.target || ''), targetId: String(step.targetId || '') };
+  }
+
+  if (type === 'control_timer') {
+    const mode = step.mode === 'stop' || step.mode === 'reset' ? step.mode : 'start';
     return { type, mode, target: String(step.target || ''), targetId: String(step.targetId || '') };
   }
 
@@ -410,6 +415,10 @@ export const triggerManager = {
       if (step.type === 'set_alias_enabled'
         && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must select an alias.');
+      }
+      if ((step.type === 'set_timer_enabled' || step.type === 'control_timer')
+        && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {
+        diagnostics.push('Step ' + (index + 1) + ' must select a timer.');
       }
       if (step.type === 'run_alias' && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must choose an alias command.');

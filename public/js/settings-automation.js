@@ -1,5 +1,5 @@
-// Shared editor for the three automation screens: Aliases, Triggers and
-// Highlights. All three get the same layout and interaction model so the
+// Shared editor for the automation screens: Aliases, Triggers, Timers and
+// Highlights. They get the same layout and interaction model so the
 // screens stay consistent by construction:
 //
 //   [ search | New <noun> | scope chip ]
@@ -12,11 +12,12 @@
 // reordering stays visually honest.
 //
 // The host argument is the settingsManager object; the editor reads its
-// draft scopes (_draftAliasScope/_draftTriggerScope/_draftHighlightScope)
+// draft scopes (_draftAliasScope/_draftTriggerScope/_draftTimerScope/_draftHighlightScope)
 // and uses its focus helpers so focus survives re-renders.
 
 import { aliasManager } from './alias-manager.js';
 import { triggerManager } from './trigger-manager.js';
+import { timerManager } from './timer-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { styleToElement } from './ansi.js';
 import { getSoundCatalog, isKnownSound, soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
@@ -136,6 +137,11 @@ function appendTargetIdPreviewRow(body, step, items, patternOf) {
     row.classList.add('warning');
     row.textContent += '(target no longer exists)';
   } else {
+    if (step.type === 'control_timer') {
+      row.textContent += ' -> ' + (step.mode === 'stop' ? 'stopped' : step.mode === 'reset' ? 'reset' : 'started');
+      body.appendChild(row);
+      return;
+    }
     const mode = normalizeAutomationMode(step.mode);
     target.enabled = mode === 'toggle' ? target.enabled === false : mode === 'enable';
     row.textContent += ' -> ' + (target.enabled === false ? 'disabled' : 'enabled');
@@ -215,9 +221,20 @@ function appendStepsEditor(container, owner, opts, api) {
   container.appendChild(el('div', 'settings-label', 'Steps'));
 
   const stepList = el('div', 'settings-alias-step-list');
+  const targetConfigFor = (type) => {
+    if (opts.targetConfigs && opts.targetConfigs[type]) return opts.targetConfigs[type];
+    if (type === opts.toggleTargetType) {
+      return {
+        targetNoun: opts.targetNoun,
+        targetItems: opts.targetItems,
+        targetPattern: opts.targetPattern,
+      };
+    }
+    return null;
+  };
   const optionValueFor = (step) => (
-    step.type === opts.toggleTargetType
-      ? opts.toggleTargetType + ':' + normalizeAutomationMode(step.mode)
+    targetConfigFor(step.type) && step.mode
+      ? step.type + ':' + step.mode
       : step.type
   );
 
@@ -240,11 +257,11 @@ function appendStepsEditor(container, owner, opts, api) {
       if (selected.mode) step.mode = selected.mode;
       else delete step.mode;
       if (step.type !== 'set_variable') delete step.name;
-      if (step.type !== opts.toggleTargetType) {
+      if (!targetConfigFor(step.type)) {
         delete step.target;
         delete step.targetId;
       }
-      if (step.type === opts.toggleTargetType && !step.target) step.target = '';
+      if (targetConfigFor(step.type) && !step.target) step.target = '';
       if (opts.sounds && step.type === 'play_sound') {
         delete step.template;
         delete step.script;
@@ -376,36 +393,37 @@ function appendStepsEditor(container, owner, opts, api) {
         soundManager.play(step.category, step.sound, step.volume);
       }));
       card.appendChild(soundRow);
-    } else if (step.type === opts.toggleTargetType) {
+    } else if (targetConfigFor(step.type)) {
+      const targetConfig = targetConfigFor(step.type);
       // Pick the target from a dropdown of existing items, shown by name.
       // The step stores the target's id; legacy steps that stored a pattern
       // are preselected when the pattern still matches an item.
       const targetSelect = el('select', 'dw-select settings-step-target');
       targetSelect.dataset.focusKey = opts.focusPrefix + '-step-' + index + '-target';
-      targetSelect.title = 'Pick the ' + opts.targetNoun + ' this step enables or disables.';
+      targetSelect.title = 'Pick the ' + targetConfig.targetNoun + ' this step controls.';
 
-      const items = opts.targetItems();
+      const items = targetConfig.targetItems();
       const nameCounts = {};
       items.forEach((item) => {
         const name = String(item.description || '').trim();
         if (name) nameCounts[name] = (nameCounts[name] || 0) + 1;
       });
       const legacyMatch = !step.targetId && step.target
-        ? items.find((item) => opts.targetPattern(item) === step.target)
+        ? items.find((item) => targetConfig.targetPattern(item) === step.target)
         : null;
       const selectedId = step.targetId || (legacyMatch ? legacyMatch.id : '');
 
-      const article = opts.targetNoun === 'alias' ? 'an' : 'a';
+      const article = targetConfig.targetNoun === 'alias' ? 'an' : 'a';
       const placeholder = el('option', '', step.target && !selectedId
         ? 'Unresolved: ' + step.target
-        : 'Select ' + article + ' ' + opts.targetNoun + '...');
+        : 'Select ' + article + ' ' + targetConfig.targetNoun + '...');
       placeholder.value = '';
       if (!selectedId) placeholder.selected = true;
       targetSelect.appendChild(placeholder);
 
       items.forEach((item) => {
         const name = String(item.description || '').trim();
-        const pattern = opts.targetPattern(item);
+        const pattern = targetConfig.targetPattern(item);
         let label = name || pattern || '(untitled)';
         if (name && nameCounts[name] > 1) label = name + ' (' + pattern + ')';
         const option = el('option', '', label);
@@ -457,7 +475,7 @@ function appendStepsEditor(container, owner, opts, api) {
     const step = { type: selected.type, template: '' };
     if (selected.mode) step.mode = selected.mode;
     if (selected.type === 'set_variable') step.name = '';
-    if (selected.type === opts.toggleTargetType) step.target = '';
+    if (targetConfigFor(selected.type)) step.target = '';
     if (selected.type === 'script') {
       delete step.template;
       step.script = '';
@@ -526,6 +544,23 @@ function buildConfig(host, kind) {
           targetNoun: 'trigger',
           targetItems: () => host._draftTriggerScope.triggers,
           targetPattern: (item) => item.pattern,
+          targetConfigs: {
+            set_trigger_enabled: {
+              targetNoun: 'trigger',
+              targetItems: () => host._draftTriggerScope.triggers,
+              targetPattern: (item) => item.pattern,
+            },
+            set_timer_enabled: {
+              targetNoun: 'timer',
+              targetItems: () => host._draftTimerScope.timers,
+              targetPattern: (item) => item.name,
+            },
+            control_timer: {
+              targetNoun: 'timer',
+              targetItems: () => host._draftTimerScope.timers,
+              targetPattern: (item) => item.name,
+            },
+          },
           variableNamePlaceholder: 'pack',
           sounds,
           stepTypes: [
@@ -536,6 +571,12 @@ function buildConfig(host, kind) {
             { value: 'set_trigger_enabled:toggle', type: 'set_trigger_enabled', mode: 'toggle', label: 'Toggle trigger' },
             { value: 'set_trigger_enabled:enable', type: 'set_trigger_enabled', mode: 'enable', label: 'Enable trigger' },
             { value: 'set_trigger_enabled:disable', type: 'set_trigger_enabled', mode: 'disable', label: 'Disable trigger' },
+            { value: 'set_timer_enabled:toggle', type: 'set_timer_enabled', mode: 'toggle', label: 'Toggle timer' },
+            { value: 'set_timer_enabled:enable', type: 'set_timer_enabled', mode: 'enable', label: 'Enable timer' },
+            { value: 'set_timer_enabled:disable', type: 'set_timer_enabled', mode: 'disable', label: 'Disable timer' },
+            { value: 'control_timer:start', type: 'control_timer', mode: 'start', label: 'Start timer' },
+            { value: 'control_timer:stop', type: 'control_timer', mode: 'stop', label: 'Stop timer' },
+            { value: 'control_timer:reset', type: 'control_timer', mode: 'reset', label: 'Reset timer' },
           ],
           scriptPlaceholder: 'if $pack == mule\n  send give %0 to $pack\nelse\n  show No pack animal set.\nend',
           templatePlaceholder: (step) => (
@@ -546,7 +587,7 @@ function buildConfig(host, kind) {
           syntaxHelp: 'Simple aliases match command words; %0 is everything after the alias. '
             + 'Regex aliases use JavaScript regular expressions with capture groups as %1-%9. '
             + 'Templates support $name variables and ${lower:%1} or ${lower:$name} for lowercase. '
-            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, and trigger toggles.',
+            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, and trigger/timer controls.',
         }, api);
       },
       preview: {
@@ -572,12 +613,18 @@ function buildConfig(host, kind) {
 
           const previewVariables = { ...host._draftAliasScope.variables };
           const previewTriggers = host._draftTriggerScope.triggers.map((trigger) => ({ ...trigger }));
+          const previewTimers = host._draftTimerScope.timers.map((timer) => ({ ...timer }));
 
           for (const step of match.alias.steps) {
             const templateContext = { args: match.args, remainder: match.remainder, variables: previewVariables };
             const renderPreviewStep = (previewStep) => {
               if (previewStep.type === 'set_trigger_enabled' && previewStep.targetId) {
                 appendTargetIdPreviewRow(body, previewStep, previewTriggers, (item) => item.pattern);
+                return;
+              }
+              if ((previewStep.type === 'set_timer_enabled' || previewStep.type === 'control_timer')
+                && previewStep.targetId) {
+                appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name);
                 return;
               }
 
@@ -615,8 +662,11 @@ function buildConfig(host, kind) {
               continue;
             }
 
-            if (step.type === 'set_trigger_enabled' && step.targetId) {
-              appendTargetIdPreviewRow(body, step, previewTriggers, (item) => item.pattern);
+            if ((step.type === 'set_trigger_enabled' || step.type === 'set_timer_enabled' || step.type === 'control_timer')
+              && step.targetId) {
+              appendTargetIdPreviewRow(body, step,
+                step.type === 'set_trigger_enabled' ? previewTriggers : previewTimers,
+                (item) => step.type === 'set_trigger_enabled' ? item.pattern : item.name);
               continue;
             }
 
@@ -701,6 +751,23 @@ function buildConfig(host, kind) {
           targetNoun: 'alias',
           targetItems: () => host._draftAliasScope.aliases,
           targetPattern: (item) => item.trigger,
+          targetConfigs: {
+            set_alias_enabled: {
+              targetNoun: 'alias',
+              targetItems: () => host._draftAliasScope.aliases,
+              targetPattern: (item) => item.trigger,
+            },
+            set_timer_enabled: {
+              targetNoun: 'timer',
+              targetItems: () => host._draftTimerScope.timers,
+              targetPattern: (item) => item.name,
+            },
+            control_timer: {
+              targetNoun: 'timer',
+              targetItems: () => host._draftTimerScope.timers,
+              targetPattern: (item) => item.name,
+            },
+          },
           variableNamePlaceholder: 'enemy',
           sounds,
           stepTypes: [
@@ -713,6 +780,12 @@ function buildConfig(host, kind) {
             { value: 'set_alias_enabled:disable', type: 'set_alias_enabled', mode: 'disable', label: 'Disable alias' },
             { value: 'run_alias', type: 'run_alias', label: 'Run alias' },
             { value: 'play_sound', type: 'play_sound', label: 'Play sound' },
+            { value: 'set_timer_enabled:toggle', type: 'set_timer_enabled', mode: 'toggle', label: 'Toggle timer' },
+            { value: 'set_timer_enabled:enable', type: 'set_timer_enabled', mode: 'enable', label: 'Enable timer' },
+            { value: 'set_timer_enabled:disable', type: 'set_timer_enabled', mode: 'disable', label: 'Disable timer' },
+            { value: 'control_timer:start', type: 'control_timer', mode: 'start', label: 'Start timer' },
+            { value: 'control_timer:stop', type: 'control_timer', mode: 'stop', label: 'Stop timer' },
+            { value: 'control_timer:reset', type: 'control_timer', mode: 'reset', label: 'Reset timer' },
           ],
           scriptPlaceholder: 'if %1 matches /orc|goblin/i\n  run_alias assist %1\nelseif $hp < 50\n  send drink healing potion\nelse\n  show Trigger matched: %0\nend',
           templatePlaceholder: (step) => (
@@ -724,7 +797,7 @@ function buildConfig(host, kind) {
           syntaxHelp: 'Simple patterns support * or %1-%9 as captures. '
             + 'Regex triggers use JavaScript regular expressions with capture groups as %1-%9. '
             + 'Templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase. '
-            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, play_sound, and alias toggles.',
+            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, play_sound, and alias/timer controls.',
         }, api);
       },
       preview: {
@@ -751,6 +824,7 @@ function buildConfig(host, kind) {
             ...alias,
             steps: alias.steps.map((step) => ({ ...step })),
           }));
+          const previewTimers = host._draftTimerScope.timers.map((timer) => ({ ...timer }));
 
           result.matches.forEach((match) => {
             body.appendChild(el('div', 'settings-alias-preview-match',
@@ -775,6 +849,11 @@ function buildConfig(host, kind) {
 
                 if (previewStep.type === 'set_alias_enabled' && previewStep.targetId) {
                   appendTargetIdPreviewRow(body, previewStep, previewAliases, (item) => item.trigger);
+                  return;
+                }
+                if ((previewStep.type === 'set_timer_enabled' || previewStep.type === 'control_timer')
+                  && previewStep.targetId) {
+                  appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name);
                   return;
                 }
 
@@ -837,8 +916,11 @@ function buildConfig(host, kind) {
                 continue;
               }
 
-              if (step.type === 'set_alias_enabled' && step.targetId) {
-                appendTargetIdPreviewRow(body, step, previewAliases, (item) => item.trigger);
+              if ((step.type === 'set_alias_enabled' || step.type === 'set_timer_enabled' || step.type === 'control_timer')
+                && step.targetId) {
+                appendTargetIdPreviewRow(body, step,
+                  step.type === 'set_alias_enabled' ? previewAliases : previewTimers,
+                  (item) => step.type === 'set_alias_enabled' ? item.trigger : item.name);
                 continue;
               }
 
@@ -886,6 +968,182 @@ function buildConfig(host, kind) {
             }
           });
           return result.matches.length + ' match' + (result.matches.length === 1 ? '' : 'es');
+        },
+      },
+    };
+  }
+
+  if (kind === 'timer') {
+    const formatDuration = (ms) => {
+      const seconds = Math.max(1, Math.round(Number(ms) / 1000));
+      if (seconds < 60) return seconds + 's';
+      const minutes = Math.floor(seconds / 60);
+      const rem = seconds % 60;
+      return minutes + 'm' + (rem ? ' ' + rem + 's' : '');
+    };
+
+    return {
+      kind,
+      noun: 'timer',
+      plural: 'timers',
+      scopeKey: () => host._timerScopeKey,
+      scopeHint: 'Timers are saved separately for each server connection target and run while Darkflow is open and connected.',
+      list: () => host._draftTimerScope.timers,
+      replaceList: (items) => { host._draftTimerScope.timers = items; },
+      create: () => timerManager.createEmptyTimer(),
+      getPattern: (item) => item.name,
+      setPattern: (item, value) => { item.name = value; },
+      patternLabel: 'Timer name',
+      patternPlaceholder: () => 'rebuff',
+      emptyText: 'No timers defined for this scope.',
+      emptyDetailText: 'Create a timer to run client-side automation after a delay.',
+      nameRequired: false,
+      namePlaceholder: 'Optional note shown in the list',
+      haystack: (item) => (item.name + ' ' + item.description + ' ' + (item.group || '')).toLowerCase(),
+      rowMeta: (item) => formatDuration(item.durationMs)
+        + (item.recurring ? ', recurring' : ', once')
+        + (item.autoStart ? ', auto-start' : '')
+        + ' | ' + item.steps.length + ' step' + (item.steps.length === 1 ? '' : 's'),
+      diagnostics: (item) => timerManager.getTimerDiagnostics(host._draftTimerScope, item.id),
+      flags: (item, api) => [
+        createFlagPill('Enabled', 'Disabled timers stay saved but cannot be started.',
+          item.enabled !== false, (checked) => { item.enabled = checked; api.render(); }),
+        createFlagPill('Recurring', 'Run again after each successful firing.',
+          item.recurring === true, (checked) => { item.recurring = checked; api.render(); }),
+        createFlagPill('Auto-start', 'Start this timer automatically when Darkflow connects.',
+          item.autoStart === true, (checked) => { item.autoStart = checked; api.render(); }),
+      ],
+      renderBody: (item, api, container) => {
+        const timingGrid = el('div', 'settings-meta-grid');
+        const secondsField = el('label', 'dw-field');
+        secondsField.appendChild(el('div', 'settings-label', 'Duration seconds'));
+        const secondsInput = el('input', 'dw-input');
+        secondsInput.type = 'number';
+        secondsInput.min = '1';
+        secondsInput.step = '1';
+        secondsInput.value = String(Math.max(1, Math.round(Number(item.durationMs || 60000) / 1000)));
+        secondsInput.addEventListener('input', () => {
+          const seconds = Math.max(1, Math.round(Number(secondsInput.value) || 1));
+          item.durationMs = seconds * 1000;
+          api.renderPreview();
+        });
+        secondsInput.addEventListener('blur', () => api.render());
+        secondsField.appendChild(secondsInput);
+        timingGrid.appendChild(secondsField);
+        container.appendChild(timingGrid);
+
+        appendStepsEditor(container, item, {
+          focusPrefix: 'timer',
+          targetConfigs: {
+            set_alias_enabled: {
+              targetNoun: 'alias',
+              targetItems: () => host._draftAliasScope.aliases,
+              targetPattern: (item) => item.trigger,
+            },
+            set_trigger_enabled: {
+              targetNoun: 'trigger',
+              targetItems: () => host._draftTriggerScope.triggers,
+              targetPattern: (item) => item.pattern,
+            },
+            set_timer_enabled: {
+              targetNoun: 'timer',
+              targetItems: () => host._draftTimerScope.timers,
+              targetPattern: (item) => item.name,
+            },
+            control_timer: {
+              targetNoun: 'timer',
+              targetItems: () => host._draftTimerScope.timers,
+              targetPattern: (item) => item.name,
+            },
+          },
+          variableNamePlaceholder: 'last_timer',
+          stepTypes: [
+            { value: 'send_command', type: 'send_command', label: 'Send command' },
+            { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
+            { value: 'show_message', type: 'show_message', label: 'Show local message' },
+            { value: 'script', type: 'script', label: 'Run script' },
+            { value: 'run_alias', type: 'run_alias', label: 'Run alias' },
+            { value: 'set_alias_enabled:toggle', type: 'set_alias_enabled', mode: 'toggle', label: 'Toggle alias' },
+            { value: 'set_alias_enabled:enable', type: 'set_alias_enabled', mode: 'enable', label: 'Enable alias' },
+            { value: 'set_alias_enabled:disable', type: 'set_alias_enabled', mode: 'disable', label: 'Disable alias' },
+            { value: 'set_trigger_enabled:toggle', type: 'set_trigger_enabled', mode: 'toggle', label: 'Toggle trigger' },
+            { value: 'set_trigger_enabled:enable', type: 'set_trigger_enabled', mode: 'enable', label: 'Enable trigger' },
+            { value: 'set_trigger_enabled:disable', type: 'set_trigger_enabled', mode: 'disable', label: 'Disable trigger' },
+            { value: 'set_timer_enabled:toggle', type: 'set_timer_enabled', mode: 'toggle', label: 'Toggle timer' },
+            { value: 'set_timer_enabled:enable', type: 'set_timer_enabled', mode: 'enable', label: 'Enable timer' },
+            { value: 'set_timer_enabled:disable', type: 'set_timer_enabled', mode: 'disable', label: 'Disable timer' },
+            { value: 'control_timer:start', type: 'control_timer', mode: 'start', label: 'Start timer' },
+            { value: 'control_timer:stop', type: 'control_timer', mode: 'stop', label: 'Stop timer' },
+            { value: 'control_timer:reset', type: 'control_timer', mode: 'reset', label: 'Reset timer' },
+          ],
+          scriptPlaceholder: 'send cast armor\nshow Rebuff timer fired.\nreset_timer rebuff',
+          templatePlaceholder: (step) => (
+            step.type === 'show_message' ? 'Timer %0 fired.'
+              : step.type === 'set_variable' ? '%0'
+                : step.type === 'run_alias' ? 'rebuff'
+                  : 'look'
+          ),
+          syntaxHelp: 'Timer templates use %0 for the timer name plus $name variables. '
+            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, and alias/trigger/timer controls.',
+        }, api);
+      },
+      preview: {
+        title: 'Timer preview',
+        hint: 'Shows the current timer schedule and actions without starting it.',
+        defaultSample: '',
+        makeInput: () => {
+          const note = el('div', 'settings-helper-text', 'Timer steps run when the countdown fires. Use Start timer from this tab or another automation to begin.');
+          return note;
+        },
+        render: (body, sample, selected) => {
+          body.textContent = '';
+          if (!selected) return '';
+          body.appendChild(el('div', 'settings-alias-preview-match',
+            'Runs ' + (selected.recurring ? 'every ' : 'after ') + formatDuration(selected.durationMs)
+            + (selected.autoStart ? ' when connected' : ' when started')));
+          const previewVariables = { ...host._draftAliasScope.variables };
+          const templateContext = {
+            args: [selected.name],
+            remainder: selected.name,
+            variables: previewVariables,
+          };
+          const renderPreviewStep = (step) => {
+            if ((step.type === 'set_alias_enabled'
+              || step.type === 'set_trigger_enabled'
+              || step.type === 'set_timer_enabled'
+              || step.type === 'control_timer') && step.targetId) {
+              const items = step.type === 'set_alias_enabled'
+                ? host._draftAliasScope.aliases
+                : step.type === 'set_trigger_enabled'
+                  ? host._draftTriggerScope.triggers
+                  : host._draftTimerScope.timers;
+              appendTargetIdPreviewRow(body, step, items.map((entry) => ({ ...entry })),
+                (entry) => step.type === 'set_alias_enabled' ? entry.trigger
+                  : step.type === 'set_trigger_enabled' ? entry.pattern
+                    : entry.name);
+              return;
+            }
+            const resolved = aliasManager.resolveTemplate(
+              step.type === 'set_alias_enabled'
+                || step.type === 'set_trigger_enabled'
+                || step.type === 'set_timer_enabled'
+                || step.type === 'control_timer'
+                ? step.target : step.template,
+              templateContext
+            );
+            const label = step.type === 'set_variable' ? 'Set $' + step.name : getAutomationStepLabel(step);
+            appendResolvedStepRow(body, label, resolved);
+            if (step.type === 'set_variable' && step.name) previewVariables[step.name] = resolved.text;
+          };
+
+          for (const step of selected.steps || []) {
+            if (step.type === 'script') {
+              appendScriptPreviewRows(body, step.script, templateContext, renderPreviewStep);
+            } else {
+              renderPreviewStep(step);
+            }
+          }
+          return selected.steps.length + ' step' + (selected.steps.length === 1 ? '' : 's');
         },
       },
     };
@@ -1073,7 +1331,7 @@ export function createAutomationEditor(host, kind) {
   const selectedIndex = () => cfg.list().findIndex((item) => item.id === selectedId);
 
   const renderPreviewBody = () => {
-    const summary = cfg.preview.render(previewResults, sample);
+    const summary = cfg.preview.render(previewResults, sample, ensureSelected());
     previewSummary.textContent = summary || '';
   };
 
