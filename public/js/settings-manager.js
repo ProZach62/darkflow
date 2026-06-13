@@ -145,6 +145,7 @@ export const settingsManager = {
   _activeEditFocusScope: null,
   _settingsSessionBaseline: '',
   _backupClosePromptEl: null,
+  _applyingDraftChanges: false,
 
   init() {
     this._settings = { ...this._defaults };
@@ -219,6 +220,7 @@ export const settingsManager = {
       const isTimerEvent = event && event.type === 'darkwind:timer-data-changed';
 
       if (!this._overlay || !this._refreshEditors) return;
+      if (this._applyingDraftChanges) return;
       if (isHighlightEvent && (!detail.scopeKey || detail.scopeKey === this._highlightScopeKey)) {
         this._draftHighlightScope = highlightManager.getScopeSnapshot(this._highlightScopeKey);
         refreshed = true;
@@ -283,6 +285,7 @@ export const settingsManager = {
     this._activeEditFocusScope = null;
     this._settingsSessionBaseline = '';
     this._backupClosePromptEl = null;
+    this._applyingDraftChanges = false;
     const previous = this._previousFocusEl;
     this._previousFocusEl = null;
     if (previous && document.contains(previous)) {
@@ -485,13 +488,18 @@ export const settingsManager = {
   },
 
   _applyDraftChanges(closeAfterApply = false) {
-    this._syncDraftVariablesFromSteps();
-    this._applySettings(this._draftSettings);
-    triggerManager.saveScope(this._triggerScopeKey, this._draftTriggerScope);
-    timerManager.saveScope(this._timerScopeKey, this._draftTimerScope);
-    highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
-    aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
-    this._setFooterStatus('Settings applied.');
+    this._applyingDraftChanges = true;
+    try {
+      this._syncDraftVariablesFromSteps();
+      this._applySettings(this._draftSettings);
+      triggerManager.saveScope(this._triggerScopeKey, this._draftTriggerScope);
+      timerManager.saveScope(this._timerScopeKey, this._draftTimerScope);
+      highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
+      aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
+      this._setFooterStatus('Settings applied.');
+    } finally {
+      this._applyingDraftChanges = false;
+    }
     if (closeAfterApply) this.close();
   },
 
