@@ -326,6 +326,7 @@ function appendStepsEditor(container, owner, opts, api) {
       nameInput.value = step.name || '';
       nameInput.addEventListener('input', () => {
         step.name = nameInput.value;
+        api.renderDiagnostics();
       });
       card.appendChild(nameInput);
     }
@@ -337,6 +338,8 @@ function appendStepsEditor(container, owner, opts, api) {
       scriptInput.rows = 8;
       scriptInput.addEventListener('input', () => {
         step.script = scriptInput.value;
+        api.renderDiagnostics();
+        api.renderPreview();
       });
       card.appendChild(scriptInput);
     } else if (opts.sounds && step.type === 'play_sound') {
@@ -449,6 +452,8 @@ function appendStepsEditor(container, owner, opts, api) {
       templateInput.value = step.template || '';
       templateInput.addEventListener('input', () => {
         step.template = templateInput.value;
+        api.renderDiagnostics();
+        api.renderPreview();
       });
       card.appendChild(templateInput);
     }
@@ -1035,6 +1040,7 @@ function buildConfig(host, kind) {
         secondsInput.addEventListener('input', () => {
           const seconds = Math.max(1, Math.round(Number(secondsInput.value) || 1));
           item.durationMs = seconds * 1000;
+          api.renderDiagnostics();
           api.renderPreview();
         });
         secondsInput.addEventListener('blur', () => api.render());
@@ -1524,16 +1530,21 @@ export function createAutomationEditor(host, kind) {
     const api = {
       render,
       renderPreview: renderPreviewBody,
+      renderDiagnostics: () => {},
       focus,
       host,
     };
 
-    const diagnostics = cfg.diagnostics(item);
-    if (diagnostics.length) {
-      const warningBox = el('div', 'settings-alias-diagnostics');
+    const warningBox = el('div', 'settings-alias-diagnostics');
+    const renderDiagnostics = () => {
+      const diagnostics = cfg.diagnostics(item);
+      warningBox.textContent = '';
       diagnostics.forEach((message) => warningBox.appendChild(el('div', '', message)));
-      detail.appendChild(warningBox);
-    }
+      warningBox.hidden = !diagnostics.length;
+    };
+    api.renderDiagnostics = renderDiagnostics;
+    renderDiagnostics();
+    detail.appendChild(warningBox);
 
     const patternField = el('label', 'dw-field');
     patternField.appendChild(el('div', 'settings-label', cfg.patternLabel));
@@ -1544,6 +1555,7 @@ export function createAutomationEditor(host, kind) {
     patternInput.value = cfg.getPattern(item);
     patternInput.addEventListener('input', () => {
       cfg.setPattern(item, patternInput.value);
+      renderDiagnostics();
       renderList();
       renderPreviewBody();
     });
@@ -1571,6 +1583,7 @@ export function createAutomationEditor(host, kind) {
       nameInput.addEventListener('input', () => {
         item.description = nameInput.value;
         syncNameValidity();
+        renderDiagnostics();
         renderList();
       });
       syncNameValidity();
