@@ -129,16 +129,17 @@ function appendResolvedStepRow(body, prefix, resolved) {
 
 // Preview row for an enable/disable/toggle step that references its target
 // by id; mutates the preview copy so later steps see the change.
-function appendTargetIdPreviewRow(body, step, items, patternOf) {
+function appendTargetIdPreviewRow(body, step, items, patternOf, options = {}) {
   const target = items.find((item) => item.id === step.targetId);
-  const label = target ? (String(target.description || '').trim() || patternOf(target)) : '';
+  const displayName = options.useDescription === false ? '' : String(target && target.description || '').trim();
+  const label = target ? (displayName || patternOf(target)) : '';
   const row = el('div', 'settings-alias-preview-step', getAutomationStepLabel(step) + ': ' + label);
   if (!target) {
     row.classList.add('warning');
     row.textContent += '(target no longer exists)';
   } else {
     if (step.type === 'control_timer') {
-      row.textContent += ' -> ' + (step.mode === 'stop' ? 'stopped' : step.mode === 'reset' ? 'reset' : 'started');
+      row.textContent += ' -> ' + (step.mode === 'stop' ? 'stopped' : step.mode === 'reset' ? 'reset' : step.mode === 'run' ? 'run now' : 'started');
       body.appendChild(row);
       return;
     }
@@ -405,7 +406,7 @@ function appendStepsEditor(container, owner, opts, api) {
       const items = targetConfig.targetItems();
       const nameCounts = {};
       items.forEach((item) => {
-        const name = String(item.description || '').trim();
+        const name = targetConfig.useDescription === false ? '' : String(item.description || '').trim();
         if (name) nameCounts[name] = (nameCounts[name] || 0) + 1;
       });
       const legacyMatch = !step.targetId && step.target
@@ -422,7 +423,7 @@ function appendStepsEditor(container, owner, opts, api) {
       targetSelect.appendChild(placeholder);
 
       items.forEach((item) => {
-        const name = String(item.description || '').trim();
+        const name = targetConfig.useDescription === false ? '' : String(item.description || '').trim();
         const pattern = targetConfig.targetPattern(item);
         let label = name || pattern || '(untitled)';
         if (name && nameCounts[name] > 1) label = name + ' (' + pattern + ')';
@@ -554,11 +555,13 @@ function buildConfig(host, kind) {
               targetNoun: 'timer',
               targetItems: () => host._draftTimerScope.timers,
               targetPattern: (item) => item.name,
+              useDescription: false,
             },
             control_timer: {
               targetNoun: 'timer',
               targetItems: () => host._draftTimerScope.timers,
               targetPattern: (item) => item.name,
+              useDescription: false,
             },
           },
           variableNamePlaceholder: 'pack',
@@ -577,6 +580,7 @@ function buildConfig(host, kind) {
             { value: 'control_timer:start', type: 'control_timer', mode: 'start', label: 'Start timer' },
             { value: 'control_timer:stop', type: 'control_timer', mode: 'stop', label: 'Stop timer' },
             { value: 'control_timer:reset', type: 'control_timer', mode: 'reset', label: 'Reset timer' },
+            { value: 'control_timer:run', type: 'control_timer', mode: 'run', label: 'Run timer now' },
           ],
           scriptPlaceholder: 'if $pack == mule\n  send give %0 to $pack\nelse\n  show No pack animal set.\nend',
           templatePlaceholder: (step) => (
@@ -624,7 +628,7 @@ function buildConfig(host, kind) {
               }
               if ((previewStep.type === 'set_timer_enabled' || previewStep.type === 'control_timer')
                 && previewStep.targetId) {
-                appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name);
+                appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name, { useDescription: false });
                 return;
               }
 
@@ -666,7 +670,8 @@ function buildConfig(host, kind) {
               && step.targetId) {
               appendTargetIdPreviewRow(body, step,
                 step.type === 'set_trigger_enabled' ? previewTriggers : previewTimers,
-                (item) => step.type === 'set_trigger_enabled' ? item.pattern : item.name);
+                (item) => step.type === 'set_trigger_enabled' ? item.pattern : item.name,
+                step.type === 'set_trigger_enabled' ? {} : { useDescription: false });
               continue;
             }
 
@@ -761,11 +766,13 @@ function buildConfig(host, kind) {
               targetNoun: 'timer',
               targetItems: () => host._draftTimerScope.timers,
               targetPattern: (item) => item.name,
+              useDescription: false,
             },
             control_timer: {
               targetNoun: 'timer',
               targetItems: () => host._draftTimerScope.timers,
               targetPattern: (item) => item.name,
+              useDescription: false,
             },
           },
           variableNamePlaceholder: 'enemy',
@@ -786,6 +793,7 @@ function buildConfig(host, kind) {
             { value: 'control_timer:start', type: 'control_timer', mode: 'start', label: 'Start timer' },
             { value: 'control_timer:stop', type: 'control_timer', mode: 'stop', label: 'Stop timer' },
             { value: 'control_timer:reset', type: 'control_timer', mode: 'reset', label: 'Reset timer' },
+            { value: 'control_timer:run', type: 'control_timer', mode: 'run', label: 'Run timer now' },
           ],
           scriptPlaceholder: 'if %1 matches /orc|goblin/i\n  run_alias assist %1\nelseif $hp < 50\n  send drink healing potion\nelse\n  show Trigger matched: %0\nend',
           templatePlaceholder: (step) => (
@@ -853,7 +861,7 @@ function buildConfig(host, kind) {
                 }
                 if ((previewStep.type === 'set_timer_enabled' || previewStep.type === 'control_timer')
                   && previewStep.targetId) {
-                  appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name);
+                  appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name, { useDescription: false });
                   return;
                 }
 
@@ -920,7 +928,8 @@ function buildConfig(host, kind) {
                 && step.targetId) {
                 appendTargetIdPreviewRow(body, step,
                   step.type === 'set_alias_enabled' ? previewAliases : previewTimers,
-                  (item) => step.type === 'set_alias_enabled' ? item.trigger : item.name);
+                  (item) => step.type === 'set_alias_enabled' ? item.trigger : item.name,
+                  step.type === 'set_alias_enabled' ? {} : { useDescription: false });
                 continue;
               }
 
@@ -997,9 +1006,10 @@ function buildConfig(host, kind) {
       patternPlaceholder: () => 'rebuff',
       emptyText: 'No timers defined for this scope.',
       emptyDetailText: 'Create a timer to run client-side automation after a delay.',
+      showNameField: false,
       nameRequired: false,
       namePlaceholder: 'Optional note shown in the list',
-      haystack: (item) => (item.name + ' ' + item.description + ' ' + (item.group || '')).toLowerCase(),
+      haystack: (item) => (item.name + ' ' + (item.group || '')).toLowerCase(),
       rowMeta: (item) => formatDuration(item.durationMs)
         + (item.recurring ? ', recurring' : ', once')
         + (item.autoStart ? ', auto-start' : '')
@@ -1032,6 +1042,28 @@ function buildConfig(host, kind) {
         timingGrid.appendChild(secondsField);
         container.appendChild(timingGrid);
 
+        const controlRow = el('div', 'settings-timer-control-row');
+        const status = el('span', 'settings-helper-text', '');
+        const showResult = (result, action) => {
+          if (!result || !result.target) {
+            status.textContent = 'Apply settings before controlling this timer.';
+            return;
+          }
+          status.textContent = 'Timer "' + result.target.name + '" ' + action + '.';
+        };
+        const controlButton = (label, action, fn) => {
+          const btn = smallButton(label, label + ' this timer', () => {
+            showResult(fn(item.id, host._timerScopeKey), action);
+          });
+          return btn;
+        };
+        controlRow.appendChild(controlButton('Start', 'started', (id, scopeKey) => timerManager.startTimerById(id, scopeKey)));
+        controlRow.appendChild(controlButton('Stop', 'stopped', (id, scopeKey) => timerManager.stopTimerById(id, scopeKey)));
+        controlRow.appendChild(controlButton('Reset', 'reset', (id, scopeKey) => timerManager.resetTimerById(id, scopeKey)));
+        controlRow.appendChild(controlButton('Run now', 'run', (id, scopeKey) => timerManager.runTimerById(id, scopeKey)));
+        controlRow.appendChild(status);
+        container.appendChild(controlRow);
+
         appendStepsEditor(container, item, {
           focusPrefix: 'timer',
           targetConfigs: {
@@ -1049,11 +1081,13 @@ function buildConfig(host, kind) {
               targetNoun: 'timer',
               targetItems: () => host._draftTimerScope.timers,
               targetPattern: (item) => item.name,
+              useDescription: false,
             },
             control_timer: {
               targetNoun: 'timer',
               targetItems: () => host._draftTimerScope.timers,
               targetPattern: (item) => item.name,
+              useDescription: false,
             },
           },
           variableNamePlaceholder: 'last_timer',
@@ -1075,6 +1109,7 @@ function buildConfig(host, kind) {
             { value: 'control_timer:start', type: 'control_timer', mode: 'start', label: 'Start timer' },
             { value: 'control_timer:stop', type: 'control_timer', mode: 'stop', label: 'Stop timer' },
             { value: 'control_timer:reset', type: 'control_timer', mode: 'reset', label: 'Reset timer' },
+            { value: 'control_timer:run', type: 'control_timer', mode: 'run', label: 'Run timer now' },
           ],
           scriptPlaceholder: 'send cast armor\nshow Rebuff timer fired.\nreset_timer rebuff',
           templatePlaceholder: (step) => (
@@ -1120,7 +1155,9 @@ function buildConfig(host, kind) {
               appendTargetIdPreviewRow(body, step, items.map((entry) => ({ ...entry })),
                 (entry) => step.type === 'set_alias_enabled' ? entry.trigger
                   : step.type === 'set_trigger_enabled' ? entry.pattern
-                    : entry.name);
+                    : entry.name,
+                step.type === 'set_timer_enabled' || step.type === 'control_timer'
+                  ? { useDescription: false } : {});
               return;
             }
             const resolved = aliasManager.resolveTemplate(
@@ -1450,7 +1487,7 @@ export function createAutomationEditor(host, kind) {
       });
 
       const copy = el('div', 'settings-copy');
-      const itemName = String(item.description || '').trim();
+      const itemName = cfg.showNameField === false ? '' : String(item.description || '').trim();
       copy.appendChild(el('div', 'settings-label', itemName || cfg.getPattern(item) || '(untitled)'));
 
       const meta = el('div', 'settings-alias-list-meta');
@@ -1519,25 +1556,27 @@ export function createAutomationEditor(host, kind) {
     detail.appendChild(flagRow);
 
     const metaGrid = el('div', 'settings-meta-grid');
-    const nameField = el('label', 'dw-field');
-    nameField.appendChild(el('div', 'settings-label', cfg.nameRequired ? 'Name (required)' : 'Name'));
-    const nameInput = el('input', 'dw-input');
-    nameInput.type = 'text';
-    nameInput.dataset.focusKey = cfg.kind + '-name';
-    nameInput.placeholder = cfg.namePlaceholder;
-    nameInput.value = item.description || '';
-    const syncNameValidity = () => {
-      nameInput.classList.toggle('settings-input-invalid',
-        Boolean(cfg.nameRequired) && !nameInput.value.trim());
-    };
-    nameInput.addEventListener('input', () => {
-      item.description = nameInput.value;
+    if (cfg.showNameField !== false) {
+      const nameField = el('label', 'dw-field');
+      nameField.appendChild(el('div', 'settings-label', cfg.nameRequired ? 'Name (required)' : 'Name'));
+      const nameInput = el('input', 'dw-input');
+      nameInput.type = 'text';
+      nameInput.dataset.focusKey = cfg.kind + '-name';
+      nameInput.placeholder = cfg.namePlaceholder;
+      nameInput.value = item.description || '';
+      const syncNameValidity = () => {
+        nameInput.classList.toggle('settings-input-invalid',
+          Boolean(cfg.nameRequired) && !nameInput.value.trim());
+      };
+      nameInput.addEventListener('input', () => {
+        item.description = nameInput.value;
+        syncNameValidity();
+        renderList();
+      });
       syncNameValidity();
-      renderList();
-    });
-    syncNameValidity();
-    nameField.appendChild(nameInput);
-    metaGrid.appendChild(nameField);
+      nameField.appendChild(nameInput);
+      metaGrid.appendChild(nameField);
+    }
 
     const groupField = el('label', 'dw-field');
     groupField.appendChild(el('div', 'settings-label', 'Group'));

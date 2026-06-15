@@ -29,7 +29,7 @@ function normalizeMode(mode) {
 }
 
 function normalizeTimerControlMode(mode) {
-  return mode === 'stop' || mode === 'reset' ? mode : 'start';
+  return mode === 'stop' || mode === 'reset' || mode === 'run' ? mode : 'start';
 }
 
 function normalizeVolume(value) {
@@ -147,7 +147,7 @@ function cloneTimer(timer) {
 }
 
 function formatTimerName(timer) {
-  return String(timer && (timer.description || timer.name) || '').trim();
+  return String(timer && timer.name || '').trim();
 }
 
 export const timerManager = {
@@ -239,7 +239,6 @@ export const timerManager = {
     if (!normalized) return null;
     return this._ensureScope(scopeKey).timers.find((timer) => (
       normalizeWhitespace(timer.name).toLowerCase() === normalized
-      || normalizeWhitespace(timer.description).toLowerCase() === normalized
     )) || null;
   },
 
@@ -302,6 +301,14 @@ export const timerManager = {
     const timer = this.findTimerById(timerId, scopeKey);
     if (!timer || timer.enabled === false) return;
 
+    this._executeTimer(scopeKey, timer);
+
+    if (timer.recurring && timer.enabled !== false) {
+      this._scheduleTimer(scopeKey, timer);
+    }
+  },
+
+  _executeTimer(scopeKey, timer) {
     executeAutomationSteps(timer.steps, {
       appendMessage: this._appendMessage,
       sendCommand: this._sendCommand,
@@ -320,10 +327,6 @@ export const timerManager = {
         trail: [],
       },
     });
-
-    if (timer.recurring && timer.enabled !== false) {
-      this._scheduleTimer(scopeKey, timer);
-    }
   },
 
   startTimerById(id, scopeKey = this.getActiveScopeKey()) {
@@ -361,6 +364,22 @@ export const timerManager = {
     const timer = this.findTimerByName(name, scopeKey);
     if (!timer || timer.enabled === false) return { target: timer || null, running: false };
     return this.resetTimerById(timer.id, scopeKey);
+  },
+
+  runTimerById(id, scopeKey = this.getActiveScopeKey()) {
+    const timer = this.findTimerById(id, scopeKey);
+    if (!timer || timer.enabled === false) return { target: timer || null, running: false };
+    this._executeTimer(scopeKey, timer);
+    return {
+      target: timer,
+      running: Boolean(this._runtimeScope(scopeKey).get(timer.id)),
+    };
+  },
+
+  runTimerByName(name, scopeKey = this.getActiveScopeKey()) {
+    const timer = this.findTimerByName(name, scopeKey);
+    if (!timer || timer.enabled === false) return { target: timer || null, running: false };
+    return this.runTimerById(timer.id, scopeKey);
   },
 
   startAutoTimers(scopeKey = this.getActiveScopeKey()) {

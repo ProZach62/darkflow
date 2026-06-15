@@ -146,6 +146,7 @@ export const settingsManager = {
   _settingsSessionBaseline: '',
   _backupClosePromptEl: null,
   _applyingDraftChanges: false,
+  _footerStatusTimer: null,
 
   init() {
     this._settings = { ...this._defaults };
@@ -280,6 +281,10 @@ export const settingsManager = {
     this._activateTab = null;
     this._clearSettingsSearch = null;
     this._pendingAliasSelection = null;
+    if (this._footerStatusTimer) {
+      clearTimeout(this._footerStatusTimer);
+      this._footerStatusTimer = null;
+    }
     this._footerStatusEl = null;
     this._modalKeyHandler = null;
     this._activeEditFocusScope = null;
@@ -344,10 +349,23 @@ export const settingsManager = {
     this._save();
   },
 
-  _setFooterStatus(message, isError = false) {
+  _setFooterStatus(message, isError = false, autoClearMs = 0) {
+    if (this._footerStatusTimer) {
+      clearTimeout(this._footerStatusTimer);
+      this._footerStatusTimer = null;
+    }
     if (!this._footerStatusEl) return;
     this._footerStatusEl.textContent = message || '';
     this._footerStatusEl.classList.toggle('error', Boolean(message) && isError);
+    if (message && !isError && autoClearMs > 0) {
+      this._footerStatusTimer = setTimeout(() => {
+        this._footerStatusTimer = null;
+        if (!this._footerStatusEl) return;
+        if (this._footerStatusEl.textContent !== message) return;
+        this._footerStatusEl.textContent = '';
+        this._footerStatusEl.classList.remove('error');
+      }, autoClearMs);
+    }
   },
 
   _getFocusableSettingsControls() {
@@ -496,7 +514,7 @@ export const settingsManager = {
       timerManager.saveScope(this._timerScopeKey, this._draftTimerScope);
       highlightManager.saveScope(this._highlightScopeKey, this._draftHighlightScope);
       aliasManager.saveScope(this._aliasScopeKey, this._draftAliasScope);
-      this._setFooterStatus('Settings applied.');
+      this._setFooterStatus('Settings applied.', false, 10000);
     } finally {
       this._applyingDraftChanges = false;
     }

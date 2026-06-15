@@ -1567,6 +1567,17 @@ body.zork-only-mode #toolbar-connect-fields {
   min-width: 80px;
 }
 
+.settings-timer-control-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-timer-control-row .settings-helper-text {
+  min-width: 160px;
+}
+
 .settings-step-template {
   min-height: 44px;
 }

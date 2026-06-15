@@ -58,6 +58,7 @@ function describeMode(mode) {
 function describeTimerAction(mode) {
   if (mode === 'stop') return 'Stop';
   if (mode === 'reset') return 'Reset';
+  if (mode === 'run') return 'Run';
   return 'Start';
 }
 
@@ -117,12 +118,14 @@ function setAutomationEnabledById(manager, id, mode, scopeKey) {
 function controlTimerById(manager, id, mode, scopeKey) {
   if (mode === 'stop') return manager.stopTimerById(id, scopeKey);
   if (mode === 'reset') return manager.resetTimerById(id, scopeKey);
+  if (mode === 'run') return manager.runTimerById(id, scopeKey);
   return manager.startTimerById(id, scopeKey);
 }
 
 function controlTimerByTarget(manager, target, mode, scopeKey) {
   if (mode === 'stop') return manager.stopTimerByName(target, scopeKey);
   if (mode === 'reset') return manager.resetTimerByName(target, scopeKey);
+  if (mode === 'run') return manager.runTimerByName(target, scopeKey);
   return manager.startTimerByName(target, scopeKey);
 }
 
@@ -138,7 +141,8 @@ function executeTargetIdStep(step, context) {
     }
 
     const isEnableStep = step.type === 'set_timer_enabled';
-    const mode = isEnableStep ? normalizeMode(step.mode) : (step.mode === 'stop' || step.mode === 'reset' ? step.mode : 'start');
+    const mode = isEnableStep ? normalizeMode(step.mode)
+      : (step.mode === 'stop' || step.mode === 'reset' || step.mode === 'run' ? step.mode : 'start');
     const result = isEnableStep
       ? setAutomationEnabledById(timerAutomation, step.targetId, mode, scopeKey)
       : controlTimerById(timerAutomation, step.targetId, mode, scopeKey);
@@ -146,10 +150,12 @@ function executeTargetIdStep(step, context) {
       warn(appendMessage, source.prefix, 'Timer referenced by ' + source.description + ' no longer exists.');
       return { sent: false, localOnly: true, handled: true };
     }
-    const label = result.target.description || result.target.name;
+    const label = step.type === 'set_timer_enabled' || step.type === 'control_timer'
+      ? result.target.name
+      : result.target.description || result.target.name;
     const action = isEnableStep
       ? (result.enabled ? 'enabled' : 'disabled')
-      : (mode === 'stop' ? 'stopped' : mode === 'reset' ? 'reset' : 'started');
+      : (mode === 'stop' ? 'stopped' : mode === 'reset' ? 'reset' : mode === 'run' ? 'run' : 'started');
     notify(appendMessage, source.prefix, 'Timer "' + label + '" ' + action + '.');
     return { sent: false, localOnly: true, handled: true };
   }
@@ -354,7 +360,7 @@ function executeAutomationStep(step, context) {
       return { sent: false, localOnly: true, handled: true };
     }
     const target = resolved.text.trim();
-    const mode = step.mode === 'stop' || step.mode === 'reset' ? step.mode : 'start';
+    const mode = step.mode === 'stop' || step.mode === 'reset' || step.mode === 'run' ? step.mode : 'start';
     if (!target) {
       warn(appendMessage, source.prefix, 'Timer target is empty in ' + source.description + '.');
       return { sent: false, localOnly: true, handled: true };
@@ -365,7 +371,7 @@ function executeAutomationStep(step, context) {
       return { sent: false, localOnly: true, handled: true };
     }
     notify(appendMessage, source.prefix, 'Timer "' + target + '" '
-      + (mode === 'stop' ? 'stopped' : mode === 'reset' ? 'reset' : 'started') + '.');
+      + (mode === 'stop' ? 'stopped' : mode === 'reset' ? 'reset' : mode === 'run' ? 'run' : 'started') + '.');
     return { sent: false, localOnly: true, handled: true };
   }
 

@@ -749,8 +749,8 @@ test('alias steps can enable and start timers by target id', async () => {
 
   assert.equal(timerManager.findTimerById('timer-rebuff', SCOPE_KEY).enabled, true);
   assert.deepEqual(sent, ['cast armor']);
-  assert.match(messages.join('\n'), /Timer "Rebuff" enabled\./);
-  assert.match(messages.join('\n'), /Timer "Rebuff" started\./);
+  assert.match(messages.join('\n'), /Timer "rebuff" enabled\./);
+  assert.match(messages.join('\n'), /Timer "rebuff" started\./);
 });
 
 test('scripts can toggle timers by name', () => {
@@ -789,4 +789,51 @@ test('scripts can toggle timers by name', () => {
 
   assert.equal(timerManager.findTimerByName('loot', SCOPE_KEY).enabled, false);
   assert.deepEqual(io.messages, ['Alias: Timer "loot" disabled.']);
+});
+
+test('scripts can run timers immediately without starting their countdown', () => {
+  resetManagers();
+  const sent = [];
+  timerManager.configureRuntime({
+    sendCommand(command) {
+      sent.push(command);
+      return true;
+    },
+    appendMessage() {},
+  });
+  timerManager.saveScope(SCOPE_KEY, {
+    timers: [{
+      id: 'timer-scan',
+      enabled: true,
+      name: 'scan',
+      description: 'Scan',
+      group: '',
+      durationMs: 1000,
+      recurring: false,
+      autoStart: false,
+      steps: [{ type: 'send_command', template: 'look' }],
+    }],
+  });
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-run-timer',
+      enabled: true,
+      trigger: 'runtimer',
+      description: 'Run timer',
+      group: '',
+      steps: [{ type: 'script', script: 'run_timer scan' }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('runtimer', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+  });
+
+  assert.deepEqual(sent, ['look']);
+  assert.equal(timerManager.getRuntimeState(SCOPE_KEY)['timer-scan'], undefined);
+  assert.deepEqual(io.messages, ['Alias: Timer "scan" run.']);
 });

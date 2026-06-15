@@ -16,6 +16,7 @@ const ACTION_ALIASES = {
   start_timer: 'control_timer',
   stop_timer: 'control_timer',
   reset_timer: 'control_timer',
+  run_timer: 'control_timer',
   set_timer: 'control_timer',
   set: 'set_variable',
   play_sound: 'play_sound',
@@ -96,6 +97,7 @@ function parseAction(text, line) {
   if (type === 'control_timer') {
     const mode = command.startsWith('stop_') ? 'stop'
       : command.startsWith('reset_') ? 'reset'
+        : command.startsWith('run_') ? 'run'
         : 'start';
     if (!arg.trim()) {
       return { node: null, error: lineDiagnostic(line, commandMatch[1] + ' requires a timer name.') };
