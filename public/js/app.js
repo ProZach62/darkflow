@@ -1,6 +1,6 @@
 import { state, dom, initDom } from './state.js';
 import { gmcp } from './gmcp.js';
-import { initOutput } from './output.js';
+import { appendSystemMessage, initOutput } from './output.js';
 import { panelManager } from './panel-manager.js';
 import { connect, getWsDebugSnapshot } from './connection.js';
 import { loadHistory, saveHistory, saveHistoryNow, initInput } from './input.js';
@@ -20,6 +20,7 @@ import { flushPendingMapSave } from './map-data-v2.js';
 import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
+import { timerManager } from './timer-manager.js';
 import { sendAutomaticCommand } from './input.js';
 import { PRODUCT_NAME, gameTitle } from './brand.js';
 import { initRfc2549Debug } from './rfc2549-debug.js';
@@ -320,6 +321,11 @@ settingsManager.init();
 aliasManager.init();
 highlightManager.init();
 triggerManager.init();
+timerManager.init();
+timerManager.configureRuntime({
+  sendCommand: (command) => sendAutomaticCommand(command),
+  appendMessage: appendSystemMessage,
+});
 state.tabObservability.currentState = getTabObservabilityState();
 
 // Load server config, then apply URL param overrides
@@ -443,6 +449,12 @@ window.triggerDebug = {
   data: function() {
     return triggerManager.getScopeSnapshot();
   },
+};
+
+window.timerDebug = {
+  scope: () => timerManager.getActiveScopeKey(),
+  snapshot: () => timerManager.getScopeSnapshot(),
+  runtime: () => timerManager.getRuntimeState(),
 };
 
 window.addEventListener('beforeunload', function() {
