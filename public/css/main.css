@@ -1475,6 +1475,15 @@ body.zork-only-mode #toolbar-connect-fields {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.settings-automation-list-actions .dw-button {
+  min-height: 28px;
+  pointer-events: auto;
 }
 
 .settings-automation-detail {
