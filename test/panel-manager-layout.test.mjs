@@ -159,6 +159,12 @@ test('ide pane defaults to a hidden large floating panel', () => {
   assert.equal(panelManager._getEffectivePaneZIndex('ide', { zLayer: undefined }), 1050);
 });
 
+test('xp monitor pane defaults to a visible left dock panel', () => {
+  assert.equal(PANEL_DEFS.xpmon.title, 'XP Monitor');
+  assert.equal(PANEL_DEFS.xpmon.defaultDock, 'left');
+  assert.equal(PANEL_DEFS.xpmon.defaultOrder, 8);
+});
+
 test('panel close handlers can block pane removal for dirty editors', () => {
   let removed = 0;
   let saved = 0;

@@ -599,6 +599,47 @@ export const panelRenderers = {
       '<div class="status-row"><span class="status-key">Bank</span><span>' + bank + '</span></div>';
   },
 
+  xpmon(bodyEl, data) {
+    const active = !!(data && data.active);
+    const button = (command, label, kind) =>
+      '<button type="button" class="xpmon-btn xpmon-btn-' + kind + '" data-command="' +
+      escHtml(command) + '">' + escHtml(label) + '</button>';
+
+    if (!active) {
+      bodyEl.innerHTML = '<div class="xpmon-panel xpmon-panel-off">' +
+        '<div class="placeholder">XP monitor is off</div>' +
+        '<div class="xpmon-actions">' + button('xpmon on', 'On', 'primary') + '</div>' +
+        '</div>';
+    } else {
+      const xp = formatInt(Number(data.xp) || 0);
+      const gold = formatInt(Number(data.gold) || 0);
+      const elapsedSeconds = Number(data.elapsed_seconds) || 0;
+      const xpPerHour = formatInt(Number(data.xp_per_hour) || 0);
+      const goldPerHour = formatInt(Number(data.gold_per_hour) || 0);
+
+      bodyEl.innerHTML = '<div class="xpmon-panel">' +
+        '<div class="xpmon-total xpmon-xp"><span>' + xp + '</span><small>XP gained</small></div>' +
+        '<div class="xpmon-total xpmon-gold"><span>' + gold + '</span><small>Gold gained</small></div>' +
+        '<div class="status-row"><span class="status-key">Elapsed</span><span>' +
+          escHtml(formatDuration(elapsedSeconds)) + '</span></div>' +
+        '<div class="status-row"><span class="status-key">XP/hour</span><span>' +
+          escHtml(xpPerHour) + '</span></div>' +
+        '<div class="status-row"><span class="status-key">Gold/hour</span><span>' +
+          escHtml(goldPerHour) + '</span></div>' +
+        '<div class="xpmon-actions">' +
+          button('xpmon reset', 'Reset', 'secondary') +
+          button('xpmon off', 'Off', 'danger') +
+        '</div>' +
+        '</div>';
+    }
+
+    if (typeof bodyEl.querySelectorAll === 'function') {
+      bodyEl.querySelectorAll('.xpmon-btn').forEach((btn) => {
+        btn.addEventListener('click', () => sendCommandText(btn.dataset.command));
+      });
+    }
+  },
+
   buffs(bodyEl, data) {
     if (!Array.isArray(data) || data.length === 0) {
       bodyEl.innerHTML = '<div class="placeholder">No active buffs</div>';

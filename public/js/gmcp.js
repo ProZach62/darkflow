@@ -130,6 +130,7 @@ export const gmcp = {
       'Darkwind.Divine 1',
       'Darkwind.Sky 1',
       'Darkwind.GuildVitals 1',
+      'Darkwind.XPMon 1',
       'Darkwind.Client.Subscriptions 1',
       'Darkwind.Client.NAWS 1',
       'Darkwind.Window 1',

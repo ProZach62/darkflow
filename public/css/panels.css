@@ -886,6 +886,63 @@ body.zork-only-mode #panels-menu {
 .badge-sitting { background: #484f5833; color: var(--df-muted); }
 .badge-viking { background: #bc8cff33; color: #bc8cff; }
 
+/* ── XP monitor panel ───────────────────────────────────────────────── */
+.xpmon-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.xpmon-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 7px;
+  border: 1px solid var(--df-border);
+  border-radius: 4px;
+  background: var(--df-panel);
+}
+.xpmon-total span {
+  font-size: calc(16px * var(--pane-font-scale, 1));
+  font-weight: 700;
+}
+.xpmon-total small {
+  color: var(--df-muted);
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  text-transform: uppercase;
+}
+.xpmon-xp span { color: var(--df-accent-blue); }
+.xpmon-gold span { color: var(--df-warn); }
+.xpmon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+.xpmon-btn {
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid var(--df-border);
+  border-radius: 4px;
+  background: var(--df-panel-2);
+  color: var(--df-text);
+  font-size: calc(11px * var(--pane-font-scale, 1));
+  font-weight: 700;
+  cursor: pointer;
+}
+.xpmon-btn:hover {
+  border-color: var(--df-accent);
+  color: var(--df-accent);
+}
+.xpmon-btn-primary {
+  border-color: var(--df-accent);
+  background: rgba(78, 201, 176, 0.16);
+}
+.xpmon-btn-danger:hover {
+  border-color: var(--df-err);
+  color: var(--df-err);
+}
+
 /* ── Buffs panel ────────────────────────────────────────────────────── */
 .buff-list {
   display: flex;

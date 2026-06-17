@@ -11,6 +11,7 @@ test('canonicalizes common GMCP package names case-insensitively', () => {
   assert.equal(canonicalPackageName('room.info'), 'Room.Info');
   assert.equal(canonicalPackageName('CHAR.VITALS'), 'Char.Vitals');
   assert.equal(canonicalPackageName('Comm.Channel'), 'Comm.Channel');
+  assert.equal(canonicalPackageName('darkwind.xpmon'), 'Darkwind.XPMon');
 });
 
 test('normalizes supports payload package names', () => {

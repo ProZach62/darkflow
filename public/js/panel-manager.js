@@ -14,7 +14,7 @@ import {
 } from './map-data-v2.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
-const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
+const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'xpmon', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
 const AVATAR_CHARGE_TICK_MS = 2000;
 const PANEL_STORAGE_VERSION = 2;
 const TERMINAL_PANEL_ID = 'terminal';
@@ -2838,6 +2838,12 @@ export const panelManager = {
       this._syncSubscriptionsAfterCharacterData();
       this.gmcpData.guildVitals = data || {};
       this._renderPanel('guildVitals');
+    });
+
+    gmcp.on('Darkwind.XPMon', (data) => {
+      this._syncSubscriptionsAfterCharacterData();
+      this.gmcpData.xpmon = data || {};
+      this._renderPanel('xpmon');
     });
 
     gmcp.on('Darkwind.Divine', (data) => {
