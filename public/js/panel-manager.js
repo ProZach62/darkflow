@@ -103,6 +103,8 @@ export const panelManager = {
   // Server-provided full active duration, with old-server fallback in _updateAvatarMeter.
   _avatarActiveMaxSec: 0,
   _avatarChargeSync: null,
+  _draggingEnemyPanel: false,
+  _syncEnemyPanelAfterDrag: false,
   _pendingPanelRenders: new Set(),
   _panelRenderFrame: null,
   _mobile: {
@@ -1280,6 +1282,11 @@ export const panelManager = {
   },
 
   _syncEnemyPanelVisibility() {
+    if (this._draggingEnemyPanel) {
+      this._syncEnemyPanelAfterDrag = true;
+      return;
+    }
+
     const inCombat = this._hasActiveEnemy();
     const st = this.state.panels.enemy;
     if (!st) return;
@@ -2473,6 +2480,10 @@ export const panelManager = {
       if (!panelId || !this.panels[panelId]) return;
 
       drag.panelId = panelId;
+      if (panelId === 'enemy') {
+        this._draggingEnemyPanel = true;
+        this._syncEnemyPanelAfterDrag = false;
+      }
       drag.startX = e.clientX;
       drag.startY = e.clientY;
 
@@ -2556,6 +2567,13 @@ export const panelManager = {
       pointerStarted = false;
 
       if (!drag.active) {
+        if (drag.panelId === 'enemy') {
+          this._draggingEnemyPanel = false;
+          if (this._syncEnemyPanelAfterDrag) {
+            this._syncEnemyPanelAfterDrag = false;
+            this._syncEnemyPanelVisibility();
+          }
+        }
         drag.panelId = null;
         this._clearPanelSnapTarget(drag);
         return;
@@ -2592,6 +2610,13 @@ export const panelManager = {
       }
 
       drag.panelId = null;
+      if (panelId === 'enemy') {
+        this._draggingEnemyPanel = false;
+        if (this._syncEnemyPanelAfterDrag) {
+          this._syncEnemyPanelAfterDrag = false;
+          this._syncEnemyPanelVisibility();
+        }
+      }
     });
   },
 
