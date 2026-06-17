@@ -1832,11 +1832,14 @@ export function createAutomationEditor(host, kind) {
       const diagnostics = cfg.diagnostics(item);
       warningBox.textContent = '';
       diagnostics.forEach((message) => warningBox.appendChild(el('div', '', message)));
-      warningBox.hidden = !diagnostics.length;
+      if (diagnostics.length) {
+        if (!warningBox.parentElement) detail.insertBefore(warningBox, detail.firstChild);
+      } else {
+        warningBox.remove();
+      }
     };
     api.renderDiagnostics = renderDiagnostics;
     renderDiagnostics();
-    detail.appendChild(warningBox);
 
     const patternField = el('label', 'dw-field');
     patternField.appendChild(el('div', 'settings-label', cfg.patternLabel));
