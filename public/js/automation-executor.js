@@ -3,11 +3,16 @@ import { triggerManager } from './trigger-manager.js';
 import { functionManager } from './function-manager.js';
 import { isKnownSound, soundManager } from './sound-manager.js';
 import {
+  evaluateArithmeticExpression,
+  isArithmeticExpressionCandidate,
+} from './alias-expression-core.mjs';
+import {
   evaluateAutomationCondition,
   parseAutomationScript,
 } from './automation-script-core.mjs';
 
 let timerAutomation = null;
+const MAX_WHILE_ITERATIONS = 100;
 
 export function registerTimerAutomation(manager) {
   timerAutomation = manager || null;
@@ -104,6 +109,22 @@ function getStepResult(step, source, templateContext, appendMessage) {
   return { resolved, ok: true };
 }
 
+function maybeEvaluateSetValue(step, resolved, templateContext) {
+  if (step.type !== 'set_variable') return resolved;
+  const expression = String(resolved.text || '').trim();
+  if (!isArithmeticExpressionCandidate(expression)) return resolved;
+
+  const result = evaluateArithmeticExpression(expression, {
+    ...templateContext,
+    variables: {},
+  });
+  return {
+    ...resolved,
+    text: result.text,
+    errors: [...resolved.errors, ...result.errors],
+  };
+}
+
 function setAutomationEnabled(manager, target, mode, scopeKey) {
   if (mode === 'enable') return manager.setEnabledByTarget(target, true, scopeKey);
   if (mode === 'disable') return manager.setEnabledByTarget(target, false, scopeKey);
@@ -194,9 +215,14 @@ function executeScriptNodes(nodes, context) {
   let sent = false;
   let localOnly = false;
   let handled = false;
+  let control = null;
 
   for (const node of nodes || []) {
     if (!node || typeof node !== 'object') continue;
+
+    if (node.type === 'break' || node.type === 'continue') {
+      return { sent, localOnly: true, handled: true, control: node.type };
+    }
 
     if (node.type === 'action') {
       refreshScriptVariables(context);
@@ -210,6 +236,9 @@ function executeScriptNodes(nodes, context) {
       sent = sent || result.sent;
       localOnly = localOnly || result.localOnly || result.handled;
       handled = handled || result.handled;
+      if (result.control) {
+        return { sent, localOnly, handled: handled || localOnly || sent, control: result.control };
+      }
       continue;
     }
 
@@ -231,6 +260,9 @@ function executeScriptNodes(nodes, context) {
         sent = sent || result.sent;
         localOnly = localOnly || result.localOnly || result.handled;
         handled = handled || result.handled;
+        if (result.control) {
+          return { sent, localOnly, handled: handled || localOnly || sent, control: result.control };
+        }
         branchTaken = true;
         break;
       }
@@ -240,6 +272,47 @@ function executeScriptNodes(nodes, context) {
         sent = sent || result.sent;
         localOnly = localOnly || result.localOnly || result.handled;
         handled = handled || result.handled;
+        if (result.control) {
+          return { sent, localOnly, handled: handled || localOnly || sent, control: result.control };
+        }
+      }
+      continue;
+    }
+
+    if (node.type === 'while') {
+      let iterations = 0;
+      while (true) {
+        refreshScriptVariables(context);
+        const condition = evaluateAutomationCondition(
+          node.condition,
+          context.templateContext,
+          (template, templateContext) => aliasManager.resolveTemplate(template, templateContext)
+        );
+        if (condition.diagnostics.length) {
+          warnScriptDiagnostics(context, node.line, condition.diagnostics);
+          handled = true;
+          break;
+        }
+        if (!condition.value) break;
+
+        iterations++;
+        if (iterations > MAX_WHILE_ITERATIONS) {
+          warn(
+            context.appendMessage,
+            context.source.prefix,
+            'While loop iteration limit of ' + MAX_WHILE_ITERATIONS + ' reached in ' + context.source.description + '.'
+          );
+          return { sent, localOnly: true, handled: true, control: 'abort' };
+        }
+
+        const result = executeScriptNodes(node.steps, context);
+        sent = sent || result.sent;
+        localOnly = localOnly || result.localOnly || result.handled;
+        handled = handled || result.handled;
+        control = result.control || null;
+        if (control === 'break') break;
+        if (control === 'continue') continue;
+        if (control) return { sent, localOnly, handled: handled || localOnly || sent, control };
       }
     }
   }
@@ -375,8 +448,13 @@ function executeAutomationStep(step, context) {
     return executeTargetIdStep(step, context);
   }
 
-  const { resolved, ok } = getStepResult(step, source, templateContext, appendMessage);
+  let { resolved, ok } = getStepResult(step, source, templateContext, appendMessage);
   if (!ok) return { sent: false, localOnly: true, handled: true };
+  resolved = maybeEvaluateSetValue(step, resolved, templateContext);
+  if (resolved.errors.length) {
+    warn(appendMessage, source.prefix, 'Template error in ' + source.description + ': ' + resolved.errors.join(' '));
+    return { sent: false, localOnly: true, handled: true };
+  }
 
   if (step.type === 'set_variable') {
     const didSet = aliasManager.setVariable(step.name, resolved.text, scopeKey);

@@ -24,6 +24,10 @@ import { styleToElement } from './ansi.js';
 import { getSoundCatalog, isKnownSound, soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 import { getAutomationStepLabel } from './automation-executor.js';
 import {
+  evaluateArithmeticExpression,
+  isArithmeticExpressionCandidate,
+} from './alias-expression-core.mjs';
+import {
   evaluateAutomationCondition,
   parseAutomationScript,
 } from './automation-script-core.mjs';
@@ -128,6 +132,18 @@ function appendResolvedStepRow(body, prefix, resolved) {
   return { row, ok };
 }
 
+function maybeEvaluateSetPreview(step, resolved) {
+  if (step.type !== 'set_variable') return resolved;
+  const expression = String(resolved.text || '').trim();
+  if (!isArithmeticExpressionCandidate(expression)) return resolved;
+  const result = evaluateArithmeticExpression(expression, { args: [], remainder: '', variables: {} });
+  return {
+    ...resolved,
+    text: result.text,
+    errors: [...resolved.errors, ...result.errors],
+  };
+}
+
 // Preview row for an enable/disable/toggle step that references its target
 // by id; mutates the preview copy so later steps see the change.
 function appendTargetIdPreviewRow(body, step, items, patternOf, options = {}) {
@@ -176,10 +192,13 @@ function appendFunctionPreviewRow(body, step, functions, templateContext) {
 function countScriptActions(nodes) {
   let count = 0;
   (nodes || []).forEach((node) => {
-    if (node.type === 'action') count++;
+    if (node.type === 'action' || node.type === 'break' || node.type === 'continue') count++;
     if (node.type === 'if') {
       (node.branches || []).forEach((branch) => { count += countScriptActions(branch.steps); });
       count += countScriptActions(node.elseSteps);
+    }
+    if (node.type === 'while') {
+      count += countScriptActions(node.steps);
     }
   });
   return count;
@@ -196,13 +215,59 @@ function appendScriptPreviewRows(body, script, templateContext, renderAction) {
   }
 
   const runNodes = (nodes, depth = 0) => {
-    (nodes || []).forEach((node) => {
+    for (const node of nodes || []) {
       if (node.type === 'action') {
         renderAction(node.step, depth);
-        return;
+        continue;
       }
 
-      if (node.type !== 'if') return;
+      if (node.type === 'break' || node.type === 'continue') {
+        const row = el('div', 'settings-alias-preview-step', node.type === 'break' ? 'Break' : 'Continue');
+        if (depth) row.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+        body.appendChild(row);
+        return node.type;
+      }
+
+      if (node.type === 'while') {
+        for (let iteration = 1; iteration <= 10; iteration++) {
+          const result = evaluateAutomationCondition(
+            node.condition,
+            templateContext,
+            (template, context) => aliasManager.resolveTemplate(template, context)
+          );
+          const row = el('div', 'settings-alias-preview-step',
+            'While ' + node.condition + ' -> ' + (result.value ? 'true' : 'false') + ' #' + iteration);
+          if (depth) row.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+          if (result.diagnostics.length) {
+            row.classList.add('warning');
+            row.textContent += ' (' + result.diagnostics.join(' ') + ')';
+          }
+          body.appendChild(row);
+          if (!result.value || result.diagnostics.length) break;
+
+          const control = runNodes(node.steps, depth + 1);
+          if (control === 'break') break;
+          if (control === 'continue') {
+            if (iteration === 10) {
+              const truncated = el('div', 'settings-alias-preview-step warning',
+                'While preview stopped after 10 iterations.');
+              if (depth) truncated.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+              body.appendChild(truncated);
+            }
+            continue;
+          }
+          if (control) return control;
+          if (iteration === 10) {
+            const truncated = el('div', 'settings-alias-preview-step warning',
+              'While preview stopped after 10 iterations.');
+            if (depth) truncated.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+            body.appendChild(truncated);
+          }
+        }
+        continue;
+      }
+
+      if (node.type !== 'if') continue;
 
       let matched = false;
       for (const branch of node.branches || []) {
@@ -221,7 +286,8 @@ function appendScriptPreviewRows(body, script, templateContext, renderAction) {
         body.appendChild(row);
         if (result.value) {
           matched = true;
-          runNodes(branch.steps, depth + 1);
+          const control = runNodes(branch.steps, depth + 1);
+          if (control) return control;
           break;
         }
       }
@@ -230,9 +296,11 @@ function appendScriptPreviewRows(body, script, templateContext, renderAction) {
         const row = el('div', 'settings-alias-preview-step', 'Else -> true');
         if (depth) row.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
         body.appendChild(row);
-        runNodes(node.elseSteps, depth + 1);
+        const control = runNodes(node.elseSteps, depth + 1);
+        if (control) return control;
       }
-    });
+    }
+    return null;
   };
 
   const total = countScriptActions(parsed.ast);
@@ -754,7 +822,7 @@ function buildConfig(host, kind) {
             { value: 'control_timer:reset', type: 'control_timer', mode: 'reset', label: 'Reset timer' },
             { value: 'control_timer:run', type: 'control_timer', mode: 'run', label: 'Run timer now' },
           ],
-          scriptPlaceholder: 'if $pack == mule\n  send give %0 to $pack\nelse\n  show No pack animal set.\nend',
+          scriptPlaceholder: 'while $charges > 0\n  send use wand\n  set $charges = {$charges - 1}\nend',
           templatePlaceholder: (step) => (
             step.type === 'show_message' ? 'Pack animal set to: $pack'
               : step.type === 'set_variable' ? '%0'
@@ -763,7 +831,7 @@ function buildConfig(host, kind) {
           syntaxHelp: 'Simple aliases match command words; %0 is everything after the alias. '
             + 'Regex aliases use JavaScript regular expressions with capture groups as %1-%9. '
             + 'Templates support $name variables and ${lower:%1} or ${lower:$name} for lowercase. '
-            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, call, and trigger/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, and trigger/timer controls.',
         }, api);
       },
       preview: {
@@ -829,8 +897,9 @@ function buildConfig(host, kind) {
               if (previewStep.type === 'set_variable') prefix = 'Set $' + previewStep.name;
               if (previewStep.type === 'show_message') prefix = 'Show';
               if (previewStep.type === 'run_alias') prefix = 'Run alias';
-              const { ok } = appendResolvedStepRow(body, prefix, resolved);
-              if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = resolved.text;
+              const displayResolved = maybeEvaluateSetPreview(previewStep, resolved);
+              const { ok } = appendResolvedStepRow(body, prefix, displayResolved);
+              if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = displayResolved.text;
             };
 
             if (step.type === 'script') {
@@ -875,9 +944,10 @@ function buildConfig(host, kind) {
             let prefix = 'Send';
             if (step.type === 'set_variable') prefix = 'Set $' + step.name;
             if (step.type === 'show_message') prefix = 'Show';
-            const { row, ok } = appendResolvedStepRow(body, prefix, resolved);
+            const displayResolved = maybeEvaluateSetPreview(step, resolved);
+            const { row, ok } = appendResolvedStepRow(body, prefix, displayResolved);
             if (!ok) continue;
-            if (step.type === 'set_variable' && step.name) previewVariables[step.name] = resolved.text;
+            if (step.type === 'set_variable' && step.name) previewVariables[step.name] = displayResolved.text;
           }
           return 'matches ' + match.alias.trigger;
         },
@@ -986,7 +1056,7 @@ function buildConfig(host, kind) {
           syntaxHelp: 'Simple patterns support * or %1-%9 as captures. '
             + 'Regex triggers use JavaScript regular expressions with capture groups as %1-%9. '
             + 'Templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase. '
-            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, call, play_sound, and alias/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, play_sound, and alias/timer controls.',
         }, api);
       },
       preview: {
@@ -1089,8 +1159,9 @@ function buildConfig(host, kind) {
                 let prefix = 'Send';
                 if (previewStep.type === 'set_variable') prefix = 'Set $' + previewStep.name;
                 if (previewStep.type === 'show_message') prefix = 'Show';
-                const { ok } = appendResolvedStepRow(body, prefix, resolved);
-                if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = resolved.text;
+                const displayResolved = maybeEvaluateSetPreview(previewStep, resolved);
+                const { ok } = appendResolvedStepRow(body, prefix, displayResolved);
+                if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = displayResolved.text;
               };
 
               if (step.type === 'script') {
@@ -1161,8 +1232,9 @@ function buildConfig(host, kind) {
               let prefix = 'Send';
               if (step.type === 'set_variable') prefix = 'Set $' + step.name;
               if (step.type === 'show_message') prefix = 'Show';
-              const { ok } = appendResolvedStepRow(body, prefix, resolved);
-              if (step.type === 'set_variable' && step.name) previewVariables[step.name] = resolved.text;
+              const displayResolved = maybeEvaluateSetPreview(step, resolved);
+              const { ok } = appendResolvedStepRow(body, prefix, displayResolved);
+              if (ok && step.type === 'set_variable' && step.name) previewVariables[step.name] = displayResolved.text;
             }
           });
           return result.matches.length + ' match' + (result.matches.length === 1 ? '' : 'es');
@@ -1314,7 +1386,7 @@ function buildConfig(host, kind) {
                   : 'look'
           ),
           syntaxHelp: 'Timer templates use %0 for the timer name plus $name variables. '
-            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, call, and alias/trigger/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, and alias/trigger/timer controls.',
         }, api);
       },
       preview: {
@@ -1368,8 +1440,9 @@ function buildConfig(host, kind) {
               templateContext
             );
             const label = step.type === 'set_variable' ? 'Set $' + step.name : getAutomationStepLabel(step);
-            appendResolvedStepRow(body, label, resolved);
-            if (step.type === 'set_variable' && step.name) previewVariables[step.name] = resolved.text;
+            const displayResolved = maybeEvaluateSetPreview(step, resolved);
+            const { ok } = appendResolvedStepRow(body, label, displayResolved);
+            if (ok && step.type === 'set_variable' && step.name) previewVariables[step.name] = displayResolved.text;
           };
 
           for (const step of selected.steps || []) {
@@ -1431,7 +1504,7 @@ function buildConfig(host, kind) {
         help.appendChild(el('summary', '', 'Function script syntax'));
         help.appendChild(el('p', 'dw-paragraph',
           'Functions receive arguments from the caller as %1-%9 and %0. '
-          + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, call, play_sound, and alias/trigger/timer controls.'));
+          + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, play_sound, and alias/trigger/timer controls.'));
         container.appendChild(help);
       },
       preview: {
@@ -1471,8 +1544,9 @@ function buildConfig(host, kind) {
               templateContext
             );
             const label = step.type === 'set_variable' ? 'Set $' + step.name : getAutomationStepLabel(step);
-            appendResolvedStepRow(body, label, resolved);
-            if (step.type === 'set_variable' && step.name) previewVariables[step.name] = resolved.text;
+            const displayResolved = maybeEvaluateSetPreview(step, resolved);
+            const { ok } = appendResolvedStepRow(body, label, displayResolved);
+            if (ok && step.type === 'set_variable' && step.name) previewVariables[step.name] = displayResolved.text;
           };
           appendScriptPreviewRows(body, selected.script, templateContext, renderPreviewStep);
           const parsed = parseAutomationScript(selected.script || '');

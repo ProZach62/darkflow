@@ -920,3 +920,231 @@ test('scripts can run timers immediately without starting their countdown', () =
   assert.equal(timerManager.getRuntimeState(SCOPE_KEY)['timer-scan'], undefined);
   assert.deepEqual(io.messages, ['Alias: Timer "scan" run.']);
 });
+
+test('scripts can loop while a condition remains true', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-while-count',
+      enabled: true,
+      trigger: 'countup',
+      description: 'Count up',
+      group: '',
+      steps: [{ type: 'script', script: [
+        'set $i = 0',
+        'while $i < 3',
+        '  send say $i',
+        '  set $i = {$i + 1}',
+        'end',
+        'send say done',
+      ].join('\n') }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('countup', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.deepEqual(io.sent, ['say 0', 'say 1', 'say 2', 'say done']);
+});
+
+test('break exits the nearest while loop', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-break-loop',
+      enabled: true,
+      trigger: 'breakloop',
+      description: 'Break loop',
+      group: '',
+      steps: [{ type: 'script', script: [
+        'set $i = 0',
+        'while $i < 5',
+        '  if $i == 2',
+        '    break',
+        '  end',
+        '  send say $i',
+        '  set $i = {$i + 1}',
+        'end',
+        'send say after',
+      ].join('\n') }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('breakloop', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.deepEqual(io.sent, ['say 0', 'say 1', 'say after']);
+});
+
+test('continue skips the rest of the current while iteration', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-continue-loop',
+      enabled: true,
+      trigger: 'continueloop',
+      description: 'Continue loop',
+      group: '',
+      steps: [{ type: 'script', script: [
+        'set $i = 0',
+        'while $i < 3',
+        '  set $i = {$i + 1}',
+        '  if $i == 2',
+        '    continue',
+        '  end',
+        '  send say $i',
+        'end',
+        'send say after',
+      ].join('\n') }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('continueloop', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.deepEqual(io.sent, ['say 1', 'say 3', 'say after']);
+});
+
+test('while loops abort at the safety limit and skip later script actions', () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-infinite-loop',
+      enabled: true,
+      trigger: 'forever',
+      description: 'Forever',
+      group: '',
+      steps: [{ type: 'script', script: [
+        'while 1 == 1',
+        '  send say loop',
+        'end',
+        'send say after',
+      ].join('\n') }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('forever', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.equal(io.sent.length, 100);
+  assert.equal(io.sent.every((command) => command === 'say loop'), true);
+  assert.deepEqual(io.messages, ['Alias: While loop iteration limit of 100 reached in alias "forever".']);
+});
+
+test('functions can use while loops', () => {
+  resetManagers();
+  functionManager.saveScope(SCOPE_KEY, {
+    functions: [{
+      id: 'function-loop-hit',
+      enabled: true,
+      name: 'loop_hit',
+      description: '',
+      group: '',
+      script: [
+        'set $i = 0',
+        'while $i < 2',
+        '  send hit %1',
+        '  set $i = {$i + 1}',
+        'end',
+      ].join('\n'),
+    }],
+  });
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-call-loop',
+      enabled: true,
+      trigger: 'loophit',
+      description: 'Loop hit',
+      group: '',
+      steps: [{ type: 'script', script: 'call loop_hit goblin' }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('loophit', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.deepEqual(io.sent, ['hit goblin', 'hit goblin']);
+});
+
+test('set variable steps evaluate plain arithmetic expressions in loops', () => {
+  resetManagers();
+  functionManager.saveScope(SCOPE_KEY, {
+    functions: [{
+      id: 'function-count-loop',
+      enabled: true,
+      name: 'count_loop',
+      description: '',
+      group: '',
+      script: [
+        'while $count <= 10',
+        '  show count is $count!',
+        '  set $count = $count + 1',
+        'end',
+      ].join('\n'),
+    }],
+  });
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-count-loop',
+      enabled: true,
+      trigger: 'countloop',
+      description: 'Count loop',
+      group: '',
+      steps: [{ type: 'script', script: 'call count_loop' }],
+    }],
+    variables: { count: '0' },
+  });
+
+  const io = messagesAndSends();
+  executeAliasLine('countloop', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.deepEqual(io.messages, [
+    'count is 0!',
+    'count is 1!',
+    'count is 2!',
+    'count is 3!',
+    'count is 4!',
+    'count is 5!',
+    'count is 6!',
+    'count is 7!',
+    'count is 8!',
+    'count is 9!',
+    'count is 10!',
+  ]);
+  assert.equal(aliasManager.getVariable('count', SCOPE_KEY), '11');
+});
