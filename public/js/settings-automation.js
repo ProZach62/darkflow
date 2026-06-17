@@ -1663,6 +1663,10 @@ export function createAutomationEditor(host, kind) {
   toolbar.appendChild(scopeChip);
   wrapper.appendChild(toolbar);
 
+  const groupFilters = el('div', 'settings-automation-group-filters');
+  groupFilters.hidden = true;
+  wrapper.appendChild(groupFilters);
+
   // ---- layout --------------------------------------------------------
   const layout = el('div', 'settings-automation-layout');
   const listPane = el('div', 'settings-automation-list-pane');
@@ -1724,6 +1728,8 @@ export function createAutomationEditor(host, kind) {
   const initialPending = cfg.initialSelectedId ? cfg.initialSelectedId() : null;
   let selectedId = initialPending || (cfg.list()[0] ? cfg.list()[0].id : null);
   let searchTerm = '';
+  const checkedGroupKeys = new Set();
+  const seenGroupKeys = new Set();
 
   const ensureSelected = () => {
     const items = cfg.list();
@@ -1742,6 +1748,85 @@ export function createAutomationEditor(host, kind) {
   const renderPreviewBody = () => {
     const summary = cfg.preview.render(previewResults, sample, ensureSelected());
     previewSummary.textContent = summary || '';
+  };
+
+  const groupLabelFor = (item) => {
+    const group = String(item && item.group ? item.group : '').trim();
+    return group || 'Ungrouped';
+  };
+
+  const groupKeyForLabel = (label) => label.toLowerCase();
+
+  const deriveGroupFilters = () => {
+    const groups = new Map();
+    cfg.list().forEach((item) => {
+      const label = groupLabelFor(item);
+      const key = groupKeyForLabel(label);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        groups.set(key, { key, label, count: 1 });
+      }
+    });
+
+    return Array.from(groups.values()).sort((left, right) =>
+      left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }));
+  };
+
+  const syncCheckedGroups = (groups) => {
+    const current = new Set(groups.map((group) => group.key));
+    Array.from(checkedGroupKeys).forEach((key) => {
+      if (!current.has(key)) checkedGroupKeys.delete(key);
+    });
+    Array.from(seenGroupKeys).forEach((key) => {
+      if (!current.has(key)) seenGroupKeys.delete(key);
+    });
+    groups.forEach((group) => {
+      if (seenGroupKeys.has(group.key)) return;
+      seenGroupKeys.add(group.key);
+      checkedGroupKeys.add(group.key);
+    });
+  };
+
+  const groupFilterIsActive = (groups) => groups.some((group) => !checkedGroupKeys.has(group.key));
+
+  const itemMatchesFilters = (item) => {
+    const groupKey = groupKeyForLabel(groupLabelFor(item));
+    const query = searchTerm.trim().toLowerCase();
+
+    return checkedGroupKeys.has(groupKey) && cfg.haystack(item).includes(query);
+  };
+
+  const renderGroupFilters = () => {
+    const groups = deriveGroupFilters();
+    syncCheckedGroups(groups);
+
+    groupFilters.textContent = '';
+    if (!groups.length) {
+      groupFilters.hidden = true;
+      return groups;
+    }
+
+    groupFilters.hidden = false;
+    groups.forEach((group) => {
+      const checked = checkedGroupKeys.has(group.key);
+      const pill = el('label', 'settings-flag-pill' + (checked ? ' on' : ''));
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = checked;
+      input.addEventListener('change', () => {
+        if (input.checked) checkedGroupKeys.add(group.key);
+        else checkedGroupKeys.delete(group.key);
+        pill.classList.toggle('on', input.checked);
+        renderList();
+      });
+      pill.appendChild(input);
+      pill.appendChild(document.createTextNode(group.label + ' (' + group.count + ')'));
+      groupFilters.appendChild(pill);
+    });
+
+    return groups;
   };
 
   // ---- list -------------------------------------------------------------
@@ -1804,7 +1889,9 @@ export function createAutomationEditor(host, kind) {
     const previousScrollTop = list.scrollTop;
     list.textContent = '';
 
-    const filtered = cfg.list().filter((item) => cfg.haystack(item).includes(searchTerm.trim().toLowerCase()));
+    const groups = renderGroupFilters();
+    const items = cfg.list();
+    const filtered = items.filter((item) => itemMatchesFilters(item));
 
     const focusByOffset = (index, offset) => {
       if (!filtered.length) return;
@@ -1875,8 +1962,9 @@ export function createAutomationEditor(host, kind) {
     });
 
     if (!filtered.length) {
-      list.appendChild(el('div', 'settings-alias-empty', searchTerm
-        ? 'No ' + cfg.plural + ' match this filter.'
+      const filtersActive = Boolean(searchTerm.trim()) || groupFilterIsActive(groups);
+      list.appendChild(el('div', 'settings-alias-empty', items.length && filtersActive
+        ? 'No ' + cfg.plural + ' match the current filters.'
         : cfg.emptyText));
     }
 
@@ -1968,6 +2056,7 @@ export function createAutomationEditor(host, kind) {
     groupInput.value = item.group || '';
     groupInput.addEventListener('input', () => {
       item.group = groupInput.value;
+      renderGroupFilters();
       renderList();
     });
     groupField.appendChild(groupInput);

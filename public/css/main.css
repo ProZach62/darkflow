@@ -1421,6 +1421,17 @@ body.zork-only-mode #toolbar-connect-fields {
   min-width: 0;
 }
 
+.settings-automation-group-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.settings-automation-group-filters[hidden] {
+  display: none;
+}
+
 .settings-scope-chip {
   font-size: 11px;
   color: var(--df-muted);
