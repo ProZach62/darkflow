@@ -35,6 +35,10 @@ export const PANEL_DEFS = {
                defaultFloatW: 340, defaultFloatH: 330,
                defaultSnapLeft: true, defaultSnapBottom: true,
                defaultVisible: false },
+  ide:       { title: 'IDE',       defaultDock: 'float', defaultOrder: 3,
+               defaultFloatW: 900, defaultFloatH: 620,
+               defaultLayer: 5,
+               defaultVisible: false },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';

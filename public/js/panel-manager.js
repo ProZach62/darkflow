@@ -95,6 +95,7 @@ export const panelManager = {
   _subscriptionTimer: null,
   _characterSubscriptionSyncSent: false,
   _commChannelPlayersRequested: false,
+  _panelCloseHandlers: {},
   _buffTimer: null,
   _skyTimer: null,
   _avatarMeterTicker: null,
@@ -1737,7 +1738,14 @@ export const panelManager = {
 
   closePanel(id) {
     if (appState.zorkOnlyMode) return;
+    const closeHandler = this._panelCloseHandlers[id];
+    if (closeHandler && closeHandler() === false) return;
+    this._closePanelNow(id);
+  },
+
+  _closePanelNow(id) {
     const st = this.state.panels[id];
+    if (!st) return;
     st.visible = false;
     const p = this.panels[id];
     if (p) {
@@ -1755,6 +1763,17 @@ export const panelManager = {
     if (id === 'areaMap') exitMapData2Browse();
     this.saveState();
     this.syncGmcpSubscriptions('panel-close', false);
+  },
+
+  registerPanelCloseHandler(id, handler) {
+    if (!id || typeof handler !== 'function') return;
+    this._panelCloseHandlers[id] = handler;
+  },
+
+  unregisterPanelCloseHandler(id, handler) {
+    if (!id) return;
+    if (handler && this._panelCloseHandlers[id] !== handler) return;
+    delete this._panelCloseHandlers[id];
   },
 
   openPanel(id) {

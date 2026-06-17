@@ -703,7 +703,7 @@ function isBlockedEditableTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
   if (target === dom.commandInput) return false;
   if (target.closest('.dw-modal-overlay, .dw-modal')) return true;
-  if (target.closest('.ide-overlay, .cm-editor, .cm-content')) return true;
+  if (target.closest('.gmcp-panel-widget[data-panel-id="ide"], .cm-editor, .cm-content')) return true;
   if (target.closest('.linux-rescue-overlay')) return true;
   if (target.isContentEditable) return true;
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';

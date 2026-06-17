@@ -1,17 +1,47 @@
-/* ide.css - In-browser code editor styles */
+/* ide.css - In-browser code editor pane styles */
 
-.ide-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 3100;
+.gmcp-panel-widget[data-panel-id="ide"] {
+  display: flex;
+  flex-direction: column;
+  min-width: 420px;
+  min-height: 300px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 72px);
+}
+
+.gmcp-panel-widget[data-panel-id="ide"].floating {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gmcp-panel-widget[data-panel-id="ide"] .panel-header {
+  flex: 0 0 auto;
+}
+
+.gmcp-panel-widget[data-panel-id="ide"] .panel-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ide-pane {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   background: var(--df-bg);
 }
 
 .ide-modal {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
 }
 
 /* Header */
