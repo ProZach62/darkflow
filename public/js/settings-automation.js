@@ -34,6 +34,15 @@ import {
 
 const AUTOMATION_UI_KEY = 'darkwind-settings-automation-ui';
 
+function draftAutomationVariables(host) {
+  return {
+    ...aliasManager.getAutomationVariables(host._aliasScopeKey),
+    ...(host._draftAliasScope && host._draftAliasScope.variables
+      ? host._draftAliasScope.variables
+      : {}),
+  };
+}
+
 function normalizeAutomationMode(mode) {
   return mode === 'enable' || mode === 'disable' ? mode : 'toggle';
 }
@@ -855,7 +864,7 @@ function buildConfig(host, kind) {
           }
           body.appendChild(el('div', 'settings-alias-preview-match', 'Matches: ' + match.alias.trigger));
 
-          const previewVariables = { ...host._draftAliasScope.variables };
+          const previewVariables = draftAutomationVariables(host);
           const previewTriggers = host._draftTriggerScope.triggers.map((trigger) => ({ ...trigger }));
           const previewTimers = host._draftTimerScope.timers.map((timer) => ({ ...timer }));
 
@@ -1078,7 +1087,7 @@ function buildConfig(host, kind) {
             return 'no match';
           }
 
-          const previewVariables = { ...host._draftAliasScope.variables };
+          const previewVariables = draftAutomationVariables(host);
           const previewAliases = host._draftAliasScope.aliases.map((alias) => ({
             ...alias,
             steps: alias.steps.map((step) => ({ ...step })),
@@ -1403,7 +1412,7 @@ function buildConfig(host, kind) {
           body.appendChild(el('div', 'settings-alias-preview-match',
             'Runs ' + (selected.recurring ? 'every ' : 'after ') + formatDuration(selected.durationMs)
             + (selected.autoStart ? ' when connected' : ' when started')));
-          const previewVariables = { ...host._draftAliasScope.variables };
+          const previewVariables = draftAutomationVariables(host);
           const templateContext = {
             args: [selected.name],
             remainder: selected.name,
@@ -1524,7 +1533,7 @@ function buildConfig(host, kind) {
           const args = String(sample || '').trim()
             ? String(sample || '').trim().split(/\s+/)
             : [];
-          const previewVariables = { ...host._draftAliasScope.variables };
+          const previewVariables = draftAutomationVariables(host);
           const templateContext = {
             args,
             remainder: String(sample || '').trim(),

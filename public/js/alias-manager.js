@@ -4,6 +4,7 @@ import {
   isArithmeticExpressionCandidate,
 } from './alias-expression-core.mjs';
 import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
+import { getGmcpVariables } from './gmcp-variables.js';
 
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
 const MAX_ALIAS_DEPTH = 10;
@@ -320,6 +321,14 @@ export const aliasManager = {
 
   listVariableNames(scopeKey = this.getActiveScopeKey()) {
     return Object.keys(this._ensureScope(scopeKey).variables).sort((a, b) => a.localeCompare(b));
+  },
+
+  getAutomationVariables(scopeKey = this.getActiveScopeKey()) {
+    const scopeVariables = this._ensureScope(scopeKey).variables;
+    return {
+      ...getGmcpVariables(),
+      ...scopeVariables,
+    };
   },
 
   getVariable(name, scopeKey = this.getActiveScopeKey()) {

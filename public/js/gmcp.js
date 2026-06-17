@@ -4,6 +4,7 @@ import { sendSocketPayload } from './connection.js';
 import { PRODUCT_NAME } from './brand.js';
 import { isSocketOpen } from './socket-state.js';
 import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from './gmcp-normalizer.js';
+import { registerGmcpVariables, resetGmcpVariables } from './gmcp-variables.js';
 
 const GMCP_CLIENT_NAME = PRODUCT_NAME;
 const GMCP_MEDIA_REFRESH_PACKAGE = 'Darkwind.Client.RefreshMedia';
@@ -81,6 +82,8 @@ export const gmcp = {
       for (const name of Object.keys(removed)) delete this.serverSupports[name];
     }
 
+    registerGmcpVariables(packageName, data);
+
     if (this.handlers['*']) {
       this.handlers['*'].forEach(cb => cb(packageName, data));
     }
@@ -155,6 +158,7 @@ export const gmcp = {
     this.enabled = false;
     this.serverSupports = {};
     this.subscriptions = normalizeSubscriptionPayload();
+    resetGmcpVariables();
     if (this.handlers['Core.Supports.Set']) {
       this.handlers['Core.Supports.Set'].forEach(cb => cb({}, 'Core.Supports.Set'));
     }

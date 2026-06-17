@@ -200,7 +200,7 @@ function executeTargetIdStep(step, context) {
 function refreshScriptVariables(context) {
   context.templateContext = {
     ...context.templateContext,
-    variables: aliasManager.getScopeSnapshot(context.scopeKey).variables,
+    variables: aliasManager.getAutomationVariables(context.scopeKey),
   };
 }
 
@@ -397,7 +397,7 @@ function executeFunctionStep(step, context) {
     templateContext: {
       args,
       remainder: argText,
-      variables: aliasManager.getScopeSnapshot(scopeKey).variables,
+      variables: aliasManager.getAutomationVariables(scopeKey),
     },
     source: {
       prefix: source.prefix,
@@ -628,7 +628,7 @@ export function executeAliasLine(text, context = {}) {
   }
 
   for (const step of match.alias.steps) {
-    const variables = aliasManager.getScopeSnapshot(scopeKey).variables;
+    const variables = aliasManager.getAutomationVariables(scopeKey);
     const result = executeAutomationStep(step, {
       appendMessage,
       sendCommand,
@@ -664,7 +664,7 @@ export function executeTriggerMatches(matches, scopeKey, options = {}) {
 
   for (const match of matches) {
     for (const step of match.trigger.steps || []) {
-      const variables = aliasManager.getScopeSnapshot(scopeKey).variables;
+      const variables = aliasManager.getAutomationVariables(scopeKey);
       executeAutomationStep(step, {
         appendMessage,
         sendCommand,

@@ -325,7 +325,7 @@ export const timerManager = {
       templateContext: {
         args: [timer.name],
         remainder: timer.name,
-        variables: aliasManager.getScopeSnapshot(scopeKey).variables,
+        variables: aliasManager.getAutomationVariables(scopeKey),
       },
       source: {
         prefix: 'Timer',

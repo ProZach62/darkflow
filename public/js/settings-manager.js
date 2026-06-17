@@ -18,6 +18,7 @@ import { PRODUCT_NAME } from './brand.js';
 import { soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 import { applyTheme, convertVsCodeTheme, BUILTIN_THEMES, DEFAULT_THEME_KEY } from './theme-manager.js';
 import { createAutomationEditor } from './settings-automation.js';
+import { listGmcpVariables } from './gmcp-variables.js';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
@@ -141,6 +142,7 @@ export const settingsManager = {
   _dataSyncHandler: null,
   _refreshEditors: null,
   _activateTab: null,
+  _currentSettingsTab: 'connection',
   _clearSettingsSearch: null,
   _pendingAliasSelection: null,
   _footerStatusEl: null,
@@ -226,9 +228,13 @@ export const settingsManager = {
       const isTriggerEvent = event && event.type === 'darkwind:trigger-data-changed';
       const isTimerEvent = event && event.type === 'darkwind:timer-data-changed';
       const isFunctionEvent = event && event.type === 'darkwind:function-data-changed';
+      const isGmcpVariableEvent = event && event.type === 'darkwind:gmcp-variables-changed';
 
       if (!this._overlay || !this._refreshEditors) return;
       if (this._applyingDraftChanges) return;
+      if (isGmcpVariableEvent && this._currentSettingsTab === 'variables') {
+        refreshed = true;
+      }
       if (isHighlightEvent && (!detail.scopeKey || detail.scopeKey === this._highlightScopeKey)) {
         this._draftHighlightScope = highlightManager.getScopeSnapshot(this._highlightScopeKey);
         refreshed = true;
@@ -251,6 +257,7 @@ export const settingsManager = {
     window.addEventListener('darkwind:trigger-data-changed', dataSyncHandler);
     window.addEventListener('darkwind:timer-data-changed', dataSyncHandler);
     window.addEventListener('darkwind:function-data-changed', dataSyncHandler);
+    window.addEventListener('darkwind:gmcp-variables-changed', dataSyncHandler);
     document.body.appendChild(overlay);
 
     this._overlay = overlay;
@@ -279,6 +286,7 @@ export const settingsManager = {
       window.removeEventListener('darkwind:trigger-data-changed', this._dataSyncHandler);
       window.removeEventListener('darkwind:timer-data-changed', this._dataSyncHandler);
       window.removeEventListener('darkwind:function-data-changed', this._dataSyncHandler);
+      window.removeEventListener('darkwind:gmcp-variables-changed', this._dataSyncHandler);
       this._dataSyncHandler = null;
     }
     this._draftSettings = {};
@@ -294,6 +302,7 @@ export const settingsManager = {
     this._functionScopeKey = '';
     this._refreshEditors = null;
     this._activateTab = null;
+    this._currentSettingsTab = 'connection';
     this._clearSettingsSearch = null;
     this._pendingAliasSelection = null;
     if (this._footerStatusTimer) {
@@ -1336,6 +1345,71 @@ export const settingsManager = {
     variableCard.dataset.editFocusScope = 'variables-editor';
     wrapper.appendChild(variableCard);
 
+    const gmcpVariableCard = document.createElement('div');
+    gmcpVariableCard.className = 'settings-mapper-editor settings-alias-variable-card';
+    wrapper.appendChild(gmcpVariableCard);
+
+    const renderGmcpVariables = () => {
+      gmcpVariableCard.textContent = '';
+
+      const title = document.createElement('div');
+      title.className = 'settings-label';
+      title.textContent = 'GMCP variables';
+
+      const hint = document.createElement('p');
+      hint.className = 'dw-paragraph settings-helper-text';
+      hint.textContent = 'Live runtime variables from GMCP messages. They are available to automations, clear on reconnect, and are not saved.';
+
+      gmcpVariableCard.appendChild(title);
+      gmcpVariableCard.appendChild(hint);
+
+      const entries = listGmcpVariables();
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'settings-alias-empty settings-alias-variable-empty';
+        empty.textContent = 'No GMCP variables have been received yet.';
+        gmcpVariableCard.appendChild(empty);
+        return;
+      }
+
+      const list = document.createElement('div');
+      list.className = 'settings-alias-variable-list';
+
+      entries.slice(0, 200).forEach(({ name, value }) => {
+        const rowWrap = document.createElement('div');
+        rowWrap.className = 'settings-alias-variable-row-wrap';
+
+        const row = document.createElement('div');
+        row.className = 'settings-alias-variable-row';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'dw-input';
+        nameInput.value = name;
+        nameInput.readOnly = true;
+
+        const valueInput = document.createElement('input');
+        valueInput.type = 'text';
+        valueInput.className = 'dw-input';
+        valueInput.value = value;
+        valueInput.readOnly = true;
+
+        row.appendChild(nameInput);
+        row.appendChild(valueInput);
+        rowWrap.appendChild(row);
+        list.appendChild(rowWrap);
+      });
+
+      gmcpVariableCard.appendChild(list);
+
+      if (entries.length > 200) {
+        const clipped = document.createElement('p');
+        clipped.className = 'dw-paragraph settings-helper-text';
+        clipped.textContent = 'Showing first 200 of ' + entries.length + ' live GMCP variables.';
+        gmcpVariableCard.appendChild(clipped);
+      }
+    };
+
     const render = () => {
       this._syncDraftVariablesFromSteps();
       variableCard.textContent = '';
@@ -1385,6 +1459,7 @@ export const settingsManager = {
         empty.appendChild(openAliasesBtn);
         variableCard.appendChild(empty);
         variableCard.appendChild(actions);
+        renderGmcpVariables();
         return;
       }
 
@@ -1482,6 +1557,7 @@ export const settingsManager = {
       entries.forEach(([name, value]) => addVariableRow(name, value));
       variableCard.appendChild(list);
       variableCard.appendChild(actions);
+      renderGmcpVariables();
     };
 
     render();
@@ -1777,6 +1853,7 @@ export const settingsManager = {
         restoreSectionRows();
       }
       currentTabKey = key;
+      this._currentSettingsTab = key;
       saveSettingsWindowState({ tab: key });
       if (key === 'aliases' && renderAliasesSection) renderAliasesSection();
       if (key === 'functions' && renderFunctionsSection) renderFunctionsSection();
