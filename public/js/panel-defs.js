@@ -7,7 +7,8 @@ export const PANEL_DEFS = {
   omens:     { title: 'Omens',     defaultDock: 'left',  defaultOrder: 5 },
   buffs:     { title: 'Buffs',     defaultDock: 'left',  defaultOrder: 6 },
   worth:     { title: 'Worth',     defaultDock: 'left',  defaultOrder: 7 },
-  stats:     { title: 'Stats',     defaultDock: 'left',  defaultOrder: 8 },
+  xpmon:     { title: 'XP Monitor', defaultDock: 'left', defaultOrder: 8 },
+  stats:     { title: 'Stats',     defaultDock: 'left',  defaultOrder: 9 },
   room:      { title: 'Room',      defaultDock: 'right', defaultOrder: 0 },
   group:     { title: 'Group',     defaultDock: 'right', defaultOrder: 1 },
   inventory: { title: 'Inventory', defaultDock: 'right', defaultOrder: 2 },
@@ -34,6 +35,10 @@ export const PANEL_DEFS = {
   connection: { title: 'Connection', defaultDock: 'float', defaultOrder: 2,
                defaultFloatW: 340, defaultFloatH: 330,
                defaultSnapLeft: true, defaultSnapBottom: true,
+               defaultVisible: false },
+  ide:       { title: 'IDE',       defaultDock: 'float', defaultOrder: 3,
+               defaultFloatW: 900, defaultFloatH: 620,
+               defaultLayer: 5,
                defaultVisible: false },
 };
 

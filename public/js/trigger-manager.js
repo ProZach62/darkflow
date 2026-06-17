@@ -79,6 +79,15 @@ function normalizeStep(step) {
     return { type, template: String(step.template || '') };
   }
 
+  if (type === 'call_function') {
+    return {
+      type,
+      target: String(step.target || ''),
+      targetId: String(step.targetId || ''),
+      template: String(step.template || ''),
+    };
+  }
+
   return { type: 'send_command', template: String(step.template || '') };
 }
 
@@ -422,6 +431,10 @@ export const triggerManager = {
       }
       if (step.type === 'run_alias' && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must choose an alias command.');
+      }
+      if (step.type === 'call_function'
+        && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {
+        diagnostics.push('Step ' + (index + 1) + ' must select a function.');
       }
       if (step.type === 'play_sound') {
         if (!String(step.category || '').trim() || !String(step.sound || '').trim()) {

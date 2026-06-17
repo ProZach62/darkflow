@@ -4,6 +4,8 @@ const ACTION_ALIASES = {
   send: 'send_command',
   show: 'show_message',
   run_alias: 'run_alias',
+  call: 'call_function',
+  call_function: 'call_function',
   enable_alias: 'set_alias_enabled',
   disable_alias: 'set_alias_enabled',
   toggle_alias: 'set_alias_enabled',
@@ -135,6 +137,21 @@ function parseAction(text, line) {
     };
   }
 
+  if (type === 'call_function') {
+    const callMatch = arg.trim().match(/^([A-Za-z_][A-Za-z0-9_-]*)(?:\s+([\s\S]*))?$/);
+    if (!callMatch) {
+      return { node: null, error: lineDiagnostic(line, commandMatch[1] + ' requires a function name.') };
+    }
+    return {
+      node: {
+        type: 'action',
+        line,
+        step: { type, target: callMatch[1], template: callMatch[2] || '' },
+      },
+      error: null,
+    };
+  }
+
   if (!arg.trim()) {
     return { node: null, error: lineDiagnostic(line, commandMatch[1] + ' requires content.') };
   }
@@ -155,6 +172,10 @@ function currentSteps(stack) {
   return frame.activeSteps;
 }
 
+function inLoop(stack) {
+  return stack.some((frame) => frame.kind === 'while');
+}
+
 export function parseAutomationScript(script) {
   const diagnostics = [];
   const root = { kind: 'root', steps: [] };
@@ -168,9 +189,43 @@ export function parseAutomationScript(script) {
 
     if (!text) return;
 
+    if ((match = text.match(/^while\s+([\s\S]+)$/i))) {
+      if (stack.length > MAX_SCRIPT_NESTING) {
+        diagnostics.push(lineDiagnostic(line, 'Script nesting is limited to ' + MAX_SCRIPT_NESTING + ' levels.'));
+        return;
+      }
+      const node = {
+        type: 'while',
+        line,
+        condition: match[1].trim(),
+        steps: [],
+      };
+      currentSteps(stack).push(node);
+      stack.push({ kind: 'while', node, activeSteps: node.steps });
+      return;
+    }
+
+    if (/^break$/i.test(text)) {
+      if (!inLoop(stack)) {
+        diagnostics.push(lineDiagnostic(line, 'break without a matching while.'));
+        return;
+      }
+      currentSteps(stack).push({ type: 'break', line });
+      return;
+    }
+
+    if (/^continue$/i.test(text)) {
+      if (!inLoop(stack)) {
+        diagnostics.push(lineDiagnostic(line, 'continue without a matching while.'));
+        return;
+      }
+      currentSteps(stack).push({ type: 'continue', line });
+      return;
+    }
+
     if ((match = text.match(/^if\s+([\s\S]+)$/i))) {
       if (stack.length > MAX_SCRIPT_NESTING) {
-        diagnostics.push(lineDiagnostic(line, 'Conditional nesting is limited to ' + MAX_SCRIPT_NESTING + ' levels.'));
+        diagnostics.push(lineDiagnostic(line, 'Script nesting is limited to ' + MAX_SCRIPT_NESTING + ' levels.'));
         return;
       }
       const node = {
@@ -218,7 +273,7 @@ export function parseAutomationScript(script) {
 
     if (/^end$/i.test(text)) {
       if (stack.length === 1) {
-        diagnostics.push(lineDiagnostic(line, 'end without a matching if.'));
+        diagnostics.push(lineDiagnostic(line, 'end without a matching block.'));
         return;
       }
       stack.pop();
@@ -231,7 +286,7 @@ export function parseAutomationScript(script) {
   });
 
   for (let index = stack.length - 1; index > 0; index--) {
-    diagnostics.push(lineDiagnostic(stack[index].node.line, 'Missing end for if block.'));
+    diagnostics.push(lineDiagnostic(stack[index].node.line, 'Missing end for ' + stack[index].kind + ' block.'));
   }
 
   if (!root.steps.length && !diagnostics.length) {

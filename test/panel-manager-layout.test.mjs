@@ -46,6 +46,7 @@ globalThis.ResizeObserver = class ResizeObserver {
 };
 
 const { panelManager } = await import('../public/js/panel-manager.js');
+const { PANEL_DEFS } = await import('../public/js/panel-defs.js');
 
 test('initial floating layout preserves map and room image placement metadata', () => {
   const envelope = panelManager._createPanelStorageEnvelope(null);
@@ -146,6 +147,60 @@ test('focused panes cannot jump above a higher saved layer', () => {
 test('enemy pane defaults to layer one', () => {
   assert.equal(panelManager._defaultPaneLayer('enemy'), 1);
   assert.equal(panelManager._getEffectivePaneZIndex('enemy', { zLayer: undefined }), 1010);
+});
+
+test('ide pane defaults to a hidden large floating panel', () => {
+  assert.equal(PANEL_DEFS.ide.title, 'IDE');
+  assert.equal(PANEL_DEFS.ide.defaultDock, 'float');
+  assert.equal(PANEL_DEFS.ide.defaultVisible, false);
+  assert.equal(PANEL_DEFS.ide.defaultFloatW, 900);
+  assert.equal(PANEL_DEFS.ide.defaultFloatH, 620);
+  assert.equal(panelManager._defaultPaneLayer('ide'), 5);
+  assert.equal(panelManager._getEffectivePaneZIndex('ide', { zLayer: undefined }), 1050);
+});
+
+test('xp monitor pane defaults to a visible left dock panel', () => {
+  assert.equal(PANEL_DEFS.xpmon.title, 'XP Monitor');
+  assert.equal(PANEL_DEFS.xpmon.defaultDock, 'left');
+  assert.equal(PANEL_DEFS.xpmon.defaultOrder, 8);
+});
+
+test('panel close handlers can block pane removal for dirty editors', () => {
+  let removed = 0;
+  let saved = 0;
+  const originalRenderMobileSheet = panelManager._renderMobileSheet;
+  const originalSaveState = panelManager.saveState;
+  const originalSyncGmcpSubscriptions = panelManager.syncGmcpSubscriptions;
+
+  try {
+    panelManager._mobile.activePanelId = null;
+    panelManager._mobile.enabled = false;
+    panelManager.state.panels = {
+      ide: { dock: 'float', visible: true },
+    };
+    panelManager.panels = {
+      ide: { el: { remove() { removed++; } } },
+    };
+    panelManager._renderMobileSheet = () => {};
+    panelManager.saveState = () => { saved++; };
+    panelManager.syncGmcpSubscriptions = () => {};
+
+    panelManager.registerPanelCloseHandler('ide', () => false);
+    panelManager.closePanel('ide');
+    assert.equal(panelManager.state.panels.ide.visible, true);
+    assert.equal(removed, 0);
+
+    panelManager.unregisterPanelCloseHandler('ide');
+    panelManager.closePanel('ide');
+    assert.equal(panelManager.state.panels.ide.visible, false);
+    assert.equal(removed, 1);
+    assert.equal(saved, 1);
+  } finally {
+    panelManager.unregisterPanelCloseHandler('ide');
+    panelManager._renderMobileSheet = originalRenderMobileSheet;
+    panelManager.saveState = originalSaveState;
+    panelManager.syncGmcpSubscriptions = originalSyncGmcpSubscriptions;
+  }
 });
 
 test('enemy pane opens for combat and closes when combat clears', () => {

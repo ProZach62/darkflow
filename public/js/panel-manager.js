@@ -14,7 +14,7 @@ import {
 } from './map-data-v2.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
-const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
+const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'xpmon', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
 const AVATAR_CHARGE_TICK_MS = 2000;
 const PANEL_STORAGE_VERSION = 2;
 const TERMINAL_PANEL_ID = 'terminal';
@@ -95,6 +95,7 @@ export const panelManager = {
   _subscriptionTimer: null,
   _characterSubscriptionSyncSent: false,
   _commChannelPlayersRequested: false,
+  _panelCloseHandlers: {},
   _buffTimer: null,
   _skyTimer: null,
   _avatarMeterTicker: null,
@@ -102,6 +103,8 @@ export const panelManager = {
   // Server-provided full active duration, with old-server fallback in _updateAvatarMeter.
   _avatarActiveMaxSec: 0,
   _avatarChargeSync: null,
+  _draggingEnemyPanel: false,
+  _syncEnemyPanelAfterDrag: false,
   _pendingPanelRenders: new Set(),
   _panelRenderFrame: null,
   _mobile: {
@@ -1279,6 +1282,11 @@ export const panelManager = {
   },
 
   _syncEnemyPanelVisibility() {
+    if (this._draggingEnemyPanel) {
+      this._syncEnemyPanelAfterDrag = true;
+      return;
+    }
+
     const inCombat = this._hasActiveEnemy();
     const st = this.state.panels.enemy;
     if (!st) return;
@@ -1737,7 +1745,14 @@ export const panelManager = {
 
   closePanel(id) {
     if (appState.zorkOnlyMode) return;
+    const closeHandler = this._panelCloseHandlers[id];
+    if (closeHandler && closeHandler() === false) return;
+    this._closePanelNow(id);
+  },
+
+  _closePanelNow(id) {
     const st = this.state.panels[id];
+    if (!st) return;
     st.visible = false;
     const p = this.panels[id];
     if (p) {
@@ -1755,6 +1770,17 @@ export const panelManager = {
     if (id === 'areaMap') exitMapData2Browse();
     this.saveState();
     this.syncGmcpSubscriptions('panel-close', false);
+  },
+
+  registerPanelCloseHandler(id, handler) {
+    if (!id || typeof handler !== 'function') return;
+    this._panelCloseHandlers[id] = handler;
+  },
+
+  unregisterPanelCloseHandler(id, handler) {
+    if (!id) return;
+    if (handler && this._panelCloseHandlers[id] !== handler) return;
+    delete this._panelCloseHandlers[id];
   },
 
   openPanel(id) {
@@ -2454,6 +2480,10 @@ export const panelManager = {
       if (!panelId || !this.panels[panelId]) return;
 
       drag.panelId = panelId;
+      if (panelId === 'enemy') {
+        this._draggingEnemyPanel = true;
+        this._syncEnemyPanelAfterDrag = false;
+      }
       drag.startX = e.clientX;
       drag.startY = e.clientY;
 
@@ -2537,6 +2567,13 @@ export const panelManager = {
       pointerStarted = false;
 
       if (!drag.active) {
+        if (drag.panelId === 'enemy') {
+          this._draggingEnemyPanel = false;
+          if (this._syncEnemyPanelAfterDrag) {
+            this._syncEnemyPanelAfterDrag = false;
+            this._syncEnemyPanelVisibility();
+          }
+        }
         drag.panelId = null;
         this._clearPanelSnapTarget(drag);
         return;
@@ -2573,6 +2610,13 @@ export const panelManager = {
       }
 
       drag.panelId = null;
+      if (panelId === 'enemy') {
+        this._draggingEnemyPanel = false;
+        if (this._syncEnemyPanelAfterDrag) {
+          this._syncEnemyPanelAfterDrag = false;
+          this._syncEnemyPanelVisibility();
+        }
+      }
     });
   },
 
@@ -2819,6 +2863,12 @@ export const panelManager = {
       this._syncSubscriptionsAfterCharacterData();
       this.gmcpData.guildVitals = data || {};
       this._renderPanel('guildVitals');
+    });
+
+    gmcp.on('Darkwind.XPMon', (data) => {
+      this._syncSubscriptionsAfterCharacterData();
+      this.gmcpData.xpmon = data || {};
+      this._renderPanel('xpmon');
     });
 
     gmcp.on('Darkwind.Divine', (data) => {

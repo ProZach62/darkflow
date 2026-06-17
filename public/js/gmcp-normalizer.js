@@ -25,6 +25,7 @@ const CANONICAL_PACKAGES = new Map([
   ['game', 'Game'],
   ['core.ping', 'Core.Ping'],
   ['darkwind.lag.status', 'Darkwind.Lag.Status'],
+  ['darkwind.xpmon', 'Darkwind.XPMon'],
 ]);
 
 function isObject(value) {

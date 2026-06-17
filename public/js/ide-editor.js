@@ -66,7 +66,8 @@ function isEditableValue(value) {
 
 export const ideEditor = {
   view: null,
-  overlay: null,
+  root: null,
+  hostEl: null,
   callbacks: null,
   originalContent: '',
   currentPath: '',
@@ -75,6 +76,8 @@ export const ideEditor = {
   errorPanel: null,
   errorList: null,
   errorTitle: null,
+  filepathEl: null,
+  cursorPosEl: null,
   saveBtn: null,
   closeBtn: null,
   statusText: null,
@@ -85,23 +88,28 @@ export const ideEditor = {
     await loadCodeMirror();
   },
 
-  open(data, callbacks) {
-    // Remove any existing overlay before assigning callbacks; close(true)
+  open(data, callbacks, hostEl) {
+    if (!hostEl) throw new Error('IDE host element is required.');
+
+    // Remove any existing editor view before assigning callbacks; close(true)
     // clears callback state for the previous editor instance.
-    if (this.overlay) this.close(true);
+    if (this.root || this.view) this.close(true);
 
     this.callbacks = callbacks;
+    this.hostEl = hostEl;
     this.currentPath = data.path || '';
     this.originalContent = data.content || '';
     this.readOnly = isEditableValue(data.editable) ? false : isReadOnlyValue(data.readOnly);
     this.saveBtn = null;
     this.closeBtn = null;
+    this.filepathEl = null;
+    this.cursorPosEl = null;
 
     this.lintCompartment = new cm.Compartment();
 
     // Build DOM
-    this.overlay = document.createElement('div');
-    this.overlay.className = 'ide-overlay';
+    this.root = document.createElement('div');
+    this.root.className = 'ide-pane';
 
     const modal = document.createElement('div');
     modal.className = 'ide-modal';
@@ -113,6 +121,7 @@ export const ideEditor = {
     const filepath = document.createElement('div');
     filepath.className = 'ide-filepath';
     filepath.textContent = data.title || data.path || 'untitled';
+    this.filepathEl = filepath;
     if (this.readOnly) {
       const badge = document.createElement('span');
       badge.className = 'ide-readonly-badge';
@@ -170,8 +179,8 @@ export const ideEditor = {
 
     const posInfo = document.createElement('span');
     posInfo.className = 'ide-status-pos';
-    posInfo.id = 'ide-cursor-pos';
     posInfo.textContent = 'Ln 1, Col 1';
+    this.cursorPosEl = posInfo;
 
     this.statusBar.appendChild(this.statusText);
     this.statusBar.appendChild(posInfo);
@@ -181,8 +190,9 @@ export const ideEditor = {
     modal.appendChild(editorContainer);
     modal.appendChild(this.errorPanel);
     modal.appendChild(this.statusBar);
-    this.overlay.appendChild(modal);
-    document.body.appendChild(this.overlay);
+    this.root.appendChild(modal);
+    hostEl.textContent = '';
+    hostEl.appendChild(this.root);
 
     // Create CodeMirror
     const extensions = [
@@ -239,7 +249,7 @@ export const ideEditor = {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        this.tryClose({ confirmDirty: false });
+        this.tryClose();
       }
     };
     document.addEventListener('keydown', this._keyHandler, true);
@@ -263,6 +273,7 @@ export const ideEditor = {
   },
 
   handleSaveResult(data) {
+    if (!this.view) return;
     this.clearSaveTimeout();
     if (this.saveBtn) this.saveBtn.disabled = false;
 
@@ -282,6 +293,7 @@ export const ideEditor = {
   },
 
   handleTransferFailure(message) {
+    if (!this.view) return;
     this.clearSaveTimeout();
     if (this.saveBtn) this.saveBtn.disabled = false;
     this.updateStatus('Save failed');
@@ -303,6 +315,7 @@ export const ideEditor = {
   },
 
   showErrors(errors, message) {
+    if (!this.errorPanel || !this.errorList || !this.errorTitle) return;
     if (!errors.length && !message) {
       this.clearErrors();
       return;
@@ -353,6 +366,7 @@ export const ideEditor = {
   },
 
   clearErrors() {
+    if (!this.errorPanel || !this.errorList) return;
     this.errorPanel.style.display = 'none';
     this.errorList.innerHTML = '';
     if (this.view && this.lintCompartment) {
@@ -378,14 +392,13 @@ export const ideEditor = {
     const pos = this.view.state.selection.main.head;
     const line = this.view.state.doc.lineAt(pos);
     const col = pos - line.from + 1;
-    const el = document.getElementById('ide-cursor-pos');
-    if (el) el.textContent = 'Ln ' + line.number + ', Col ' + col;
+    if (this.cursorPosEl) this.cursorPosEl.textContent = 'Ln ' + line.number + ', Col ' + col;
   },
 
   updateModified() {
     const current = this.view ? this.view.state.doc.toString() : '';
     const modified = current !== this.originalContent;
-    const el = document.querySelector('.ide-filepath');
+    const el = this.filepathEl;
     if (el) {
       const existing = el.querySelector('.ide-modified-dot');
       if (modified && !existing) {
@@ -411,22 +424,23 @@ export const ideEditor = {
       if (current !== this.originalContent) {
         if (!confirmDirty) {
           this.updateStatus('Unsaved changes');
-          return;
+          return false;
         }
-        if (!confirm('You have unsaved changes. Close anyway?')) return;
+        if (!confirm('You have unsaved changes. Close anyway?')) return false;
       }
     }
     this.close(false);
+    return true;
   },
 
   close(silent) {
-    if (this.overlay) {
-      if (this._keyHandler) {
-        document.removeEventListener('keydown', this._keyHandler, true);
-        this._keyHandler = null;
-      }
-      this.overlay.remove();
-      this.overlay = null;
+    if (this._keyHandler) {
+      document.removeEventListener('keydown', this._keyHandler, true);
+      this._keyHandler = null;
+    }
+    if (this.root) {
+      this.root.remove();
+      this.root = null;
     }
     this.clearSaveTimeout();
     if (this.view) {
@@ -435,9 +449,16 @@ export const ideEditor = {
     }
     this.saveBtn = null;
     this.closeBtn = null;
+    this.filepathEl = null;
+    this.cursorPosEl = null;
+    this.statusBar = null;
+    this.errorPanel = null;
+    this.errorList = null;
+    this.errorTitle = null;
     if (!silent && this.callbacks) {
       this.callbacks.onClose(this.currentPath);
     }
     this.callbacks = null;
+    this.hostEl = null;
   },
 };

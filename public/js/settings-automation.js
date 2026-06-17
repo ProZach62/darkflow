@@ -19,15 +19,29 @@ import { aliasManager } from './alias-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { timerManager } from './timer-manager.js';
 import { highlightManager } from './highlight-manager.js';
+import { functionManager } from './function-manager.js';
 import { styleToElement } from './ansi.js';
 import { getSoundCatalog, isKnownSound, soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 import { getAutomationStepLabel } from './automation-executor.js';
+import {
+  evaluateArithmeticExpression,
+  isArithmeticExpressionCandidate,
+} from './alias-expression-core.mjs';
 import {
   evaluateAutomationCondition,
   parseAutomationScript,
 } from './automation-script-core.mjs';
 
 const AUTOMATION_UI_KEY = 'darkwind-settings-automation-ui';
+
+function draftAutomationVariables(host) {
+  return {
+    ...aliasManager.getAutomationVariables(host._aliasScopeKey),
+    ...(host._draftAliasScope && host._draftAliasScope.variables
+      ? host._draftAliasScope.variables
+      : {}),
+  };
+}
 
 function normalizeAutomationMode(mode) {
   return mode === 'enable' || mode === 'disable' ? mode : 'toggle';
@@ -127,6 +141,18 @@ function appendResolvedStepRow(body, prefix, resolved) {
   return { row, ok };
 }
 
+function maybeEvaluateSetPreview(step, resolved) {
+  if (step.type !== 'set_variable') return resolved;
+  const expression = String(resolved.text || '').trim();
+  if (!isArithmeticExpressionCandidate(expression)) return resolved;
+  const result = evaluateArithmeticExpression(expression, { args: [], remainder: '', variables: {} });
+  return {
+    ...resolved,
+    text: result.text,
+    errors: [...resolved.errors, ...result.errors],
+  };
+}
+
 // Preview row for an enable/disable/toggle step that references its target
 // by id; mutates the preview copy so later steps see the change.
 function appendTargetIdPreviewRow(body, step, items, patternOf, options = {}) {
@@ -150,13 +176,38 @@ function appendTargetIdPreviewRow(body, step, items, patternOf, options = {}) {
   body.appendChild(row);
 }
 
+function appendFunctionPreviewRow(body, step, functions, templateContext) {
+  const target = step.targetId
+    ? functions.find((item) => item.id === step.targetId)
+    : functions.find((item) => item.name === String(step.target || '').trim().toLowerCase());
+  const resolved = aliasManager.resolveTemplate(step.template || '', templateContext);
+  const label = target ? target.name : String(step.target || '').trim();
+  const row = el('div', 'settings-alias-preview-step', 'Call function: ' + (label || '(none)'));
+  if (!target) {
+    row.classList.add('warning');
+    row.textContent += ' (function not found)';
+  } else if (resolved.missingVariables.length) {
+    row.classList.add('warning');
+    row.textContent += ' (missing ' + resolved.missingVariables.map((name) => '$' + name).join(', ') + ')';
+  } else if (resolved.errors.length) {
+    row.classList.add('warning');
+    row.textContent += ' (' + resolved.errors.join(' ') + ')';
+  } else if (resolved.text.trim()) {
+    row.textContent += ' ' + resolved.text.trim();
+  }
+  body.appendChild(row);
+}
+
 function countScriptActions(nodes) {
   let count = 0;
   (nodes || []).forEach((node) => {
-    if (node.type === 'action') count++;
+    if (node.type === 'action' || node.type === 'break' || node.type === 'continue') count++;
     if (node.type === 'if') {
       (node.branches || []).forEach((branch) => { count += countScriptActions(branch.steps); });
       count += countScriptActions(node.elseSteps);
+    }
+    if (node.type === 'while') {
+      count += countScriptActions(node.steps);
     }
   });
   return count;
@@ -173,13 +224,59 @@ function appendScriptPreviewRows(body, script, templateContext, renderAction) {
   }
 
   const runNodes = (nodes, depth = 0) => {
-    (nodes || []).forEach((node) => {
+    for (const node of nodes || []) {
       if (node.type === 'action') {
         renderAction(node.step, depth);
-        return;
+        continue;
       }
 
-      if (node.type !== 'if') return;
+      if (node.type === 'break' || node.type === 'continue') {
+        const row = el('div', 'settings-alias-preview-step', node.type === 'break' ? 'Break' : 'Continue');
+        if (depth) row.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+        body.appendChild(row);
+        return node.type;
+      }
+
+      if (node.type === 'while') {
+        for (let iteration = 1; iteration <= 10; iteration++) {
+          const result = evaluateAutomationCondition(
+            node.condition,
+            templateContext,
+            (template, context) => aliasManager.resolveTemplate(template, context)
+          );
+          const row = el('div', 'settings-alias-preview-step',
+            'While ' + node.condition + ' -> ' + (result.value ? 'true' : 'false') + ' #' + iteration);
+          if (depth) row.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+          if (result.diagnostics.length) {
+            row.classList.add('warning');
+            row.textContent += ' (' + result.diagnostics.join(' ') + ')';
+          }
+          body.appendChild(row);
+          if (!result.value || result.diagnostics.length) break;
+
+          const control = runNodes(node.steps, depth + 1);
+          if (control === 'break') break;
+          if (control === 'continue') {
+            if (iteration === 10) {
+              const truncated = el('div', 'settings-alias-preview-step warning',
+                'While preview stopped after 10 iterations.');
+              if (depth) truncated.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+              body.appendChild(truncated);
+            }
+            continue;
+          }
+          if (control) return control;
+          if (iteration === 10) {
+            const truncated = el('div', 'settings-alias-preview-step warning',
+              'While preview stopped after 10 iterations.');
+            if (depth) truncated.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
+            body.appendChild(truncated);
+          }
+        }
+        continue;
+      }
+
+      if (node.type !== 'if') continue;
 
       let matched = false;
       for (const branch of node.branches || []) {
@@ -198,7 +295,8 @@ function appendScriptPreviewRows(body, script, templateContext, renderAction) {
         body.appendChild(row);
         if (result.value) {
           matched = true;
-          runNodes(branch.steps, depth + 1);
+          const control = runNodes(branch.steps, depth + 1);
+          if (control) return control;
           break;
         }
       }
@@ -207,9 +305,11 @@ function appendScriptPreviewRows(body, script, templateContext, renderAction) {
         const row = el('div', 'settings-alias-preview-step', 'Else -> true');
         if (depth) row.style.marginLeft = String(Math.min(depth, 5) * 14) + 'px';
         body.appendChild(row);
-        runNodes(node.elseSteps, depth + 1);
+        const control = runNodes(node.elseSteps, depth + 1);
+        if (control) return control;
       }
-    });
+    }
+    return null;
   };
 
   const total = countScriptActions(parsed.ast);
@@ -222,6 +322,34 @@ function appendStepsEditor(container, owner, opts, api) {
   container.appendChild(el('div', 'settings-label', 'Steps'));
 
   const stepList = el('div', 'settings-alias-step-list');
+  const itemLabel = (item, patternFor, useDescription) => {
+    const name = useDescription === false ? '' : String(item.description || '').trim();
+    const pattern = patternFor(item);
+    return name ? name + ' (' + pattern + ')' : pattern || '(untitled)';
+  };
+  const splitAliasInvocation = (template, items, patternFor) => {
+    const text = String(template || '').trim();
+    let match = null;
+
+    items.forEach((item) => {
+      const pattern = String(patternFor(item) || '').trim();
+      if (!pattern) return;
+      if (text === pattern || text.startsWith(pattern + ' ')) {
+        if (!match || pattern.length > String(patternFor(match) || '').length) {
+          match = item;
+        }
+      }
+    });
+
+    if (!match) return { item: null, args: '', unresolved: text };
+
+    const pattern = String(patternFor(match) || '').trim();
+    return {
+      item: match,
+      args: text.slice(pattern.length).trim(),
+      unresolved: '',
+    };
+  };
   const targetConfigFor = (type) => {
     if (opts.targetConfigs && opts.targetConfigs[type]) return opts.targetConfigs[type];
     if (type === opts.toggleTargetType) {
@@ -233,6 +361,7 @@ function appendStepsEditor(container, owner, opts, api) {
     }
     return null;
   };
+  const isFunctionCallStep = (type) => type === 'call_function';
   const optionValueFor = (step) => (
     targetConfigFor(step.type) && step.mode
       ? step.type + ':' + step.mode
@@ -258,11 +387,12 @@ function appendStepsEditor(container, owner, opts, api) {
       if (selected.mode) step.mode = selected.mode;
       else delete step.mode;
       if (step.type !== 'set_variable') delete step.name;
-      if (!targetConfigFor(step.type)) {
+      if (!targetConfigFor(step.type) && !isFunctionCallStep(step.type)) {
         delete step.target;
         delete step.targetId;
       }
       if (targetConfigFor(step.type) && !step.target) step.target = '';
+      if (isFunctionCallStep(step.type) && !step.target) step.target = '';
       if (opts.sounds && step.type === 'play_sound') {
         delete step.template;
         delete step.script;
@@ -326,6 +456,7 @@ function appendStepsEditor(container, owner, opts, api) {
       nameInput.value = step.name || '';
       nameInput.addEventListener('input', () => {
         step.name = nameInput.value;
+        api.renderDiagnostics();
       });
       card.appendChild(nameInput);
     }
@@ -337,6 +468,8 @@ function appendStepsEditor(container, owner, opts, api) {
       scriptInput.rows = 8;
       scriptInput.addEventListener('input', () => {
         step.script = scriptInput.value;
+        api.renderDiagnostics();
+        api.renderPreview();
       });
       card.appendChild(scriptInput);
     } else if (opts.sounds && step.type === 'play_sound') {
@@ -394,6 +527,114 @@ function appendStepsEditor(container, owner, opts, api) {
         soundManager.play(step.category, step.sound, step.volume);
       }));
       card.appendChild(soundRow);
+    } else if (step.type === 'run_alias') {
+      const items = opts.runAliasItems ? opts.runAliasItems() : [];
+      const patternFor = opts.runAliasPattern || ((item) => item.trigger);
+      const selected = splitAliasInvocation(step.template, items, patternFor);
+      const aliasRow = el('div', 'settings-step-sound-row');
+
+      const aliasSelect = el('select', 'dw-select settings-step-target');
+      aliasSelect.dataset.focusKey = opts.focusPrefix + '-step-' + index + '-alias';
+      aliasSelect.title = 'Pick the alias this step runs.';
+
+      const placeholder = el('option', '', selected.unresolved
+        ? 'Unresolved: ' + selected.unresolved
+        : 'Select an alias...');
+      placeholder.value = '';
+      if (!selected.item) placeholder.selected = true;
+      aliasSelect.appendChild(placeholder);
+      let argsInput;
+
+      items.forEach((item) => {
+        const option = el('option', '', itemLabel(item, patternFor));
+        option.value = String(patternFor(item) || '');
+        if (selected.item && item.id === selected.item.id) option.selected = true;
+        aliasSelect.appendChild(option);
+      });
+
+      aliasSelect.addEventListener('change', () => {
+        const alias = aliasSelect.value.trim();
+        const args = argsInput ? argsInput.value.trim() : selected.args;
+        step.template = alias
+          ? alias + (args ? ' ' + args : '')
+          : '';
+        api.render();
+        api.focus(opts.focusPrefix + '-step-' + index + '-alias');
+      });
+      aliasRow.appendChild(aliasSelect);
+
+      argsInput = el('input', 'dw-input');
+      argsInput.type = 'text';
+      argsInput.placeholder = 'Arguments, e.g. %1';
+      argsInput.title = 'Optional arguments passed to the selected alias.';
+      argsInput.value = selected.args;
+      argsInput.disabled = !selected.item;
+      argsInput.addEventListener('input', () => {
+        const alias = aliasSelect.value.trim();
+        step.template = alias
+          ? alias + (argsInput.value.trim() ? ' ' + argsInput.value.trim() : '')
+          : '';
+        api.renderDiagnostics();
+        api.renderPreview();
+      });
+      aliasRow.appendChild(argsInput);
+
+      card.appendChild(aliasRow);
+    } else if (step.type === 'call_function') {
+      const items = opts.functionItems ? opts.functionItems() : [];
+      const patternFor = opts.functionPattern || ((item) => item.name);
+      const selectedId = step.targetId || '';
+      const selectedByName = !selectedId && step.target
+        ? items.find((item) => patternFor(item) === step.target)
+        : null;
+      const selected = selectedId
+        ? items.find((item) => item.id === selectedId)
+        : selectedByName;
+      const functionRow = el('div', 'settings-step-sound-row');
+
+      const functionSelect = el('select', 'dw-select settings-step-target');
+      functionSelect.dataset.focusKey = opts.focusPrefix + '-step-' + index + '-function';
+      functionSelect.title = 'Pick the function this step calls.';
+
+      const placeholder = el('option', '', step.target && !selected
+        ? 'Unresolved: ' + step.target
+        : 'Select a function...');
+      placeholder.value = '';
+      if (!selected) placeholder.selected = true;
+      functionSelect.appendChild(placeholder);
+
+      items.forEach((item) => {
+        const option = el('option', '', itemLabel(item, patternFor));
+        option.value = item.id;
+        if (selected && item.id === selected.id) option.selected = true;
+        functionSelect.appendChild(option);
+      });
+
+      let argsInput;
+      functionSelect.addEventListener('change', () => {
+        const fn = items.find((item) => item.id === functionSelect.value);
+        step.targetId = functionSelect.value;
+        step.target = fn ? patternFor(fn) : '';
+        step.template = argsInput ? argsInput.value : '';
+        api.render();
+        api.focus(opts.focusPrefix + '-step-' + index + '-function');
+      });
+      functionRow.appendChild(functionSelect);
+
+      argsInput = el('input', 'dw-input');
+      argsInput.type = 'text';
+      argsInput.placeholder = 'Arguments, e.g. %1 $target';
+      argsInput.title = 'Optional arguments passed to the selected function.';
+      argsInput.value = step.template || '';
+      argsInput.disabled = !selected;
+      argsInput.addEventListener('input', () => {
+        step.template = argsInput.value;
+        api.renderDiagnostics();
+        api.renderPreview();
+      });
+      functionRow.appendChild(argsInput);
+
+      card.appendChild(functionRow);
     } else if (targetConfigFor(step.type)) {
       const targetConfig = targetConfigFor(step.type);
       // Pick the target from a dropdown of existing items, shown by name.
@@ -449,6 +690,8 @@ function appendStepsEditor(container, owner, opts, api) {
       templateInput.value = step.template || '';
       templateInput.addEventListener('input', () => {
         step.template = templateInput.value;
+        api.renderDiagnostics();
+        api.renderPreview();
       });
       card.appendChild(templateInput);
     }
@@ -477,6 +720,7 @@ function appendStepsEditor(container, owner, opts, api) {
     if (selected.mode) step.mode = selected.mode;
     if (selected.type === 'set_variable') step.name = '';
     if (targetConfigFor(selected.type)) step.target = '';
+    if (selected.type === 'call_function') step.target = '';
     if (selected.type === 'script') {
       delete step.template;
       step.script = '';
@@ -564,6 +808,10 @@ function buildConfig(host, kind) {
               useDescription: false,
             },
           },
+          runAliasItems: () => host._draftAliasScope.aliases,
+          runAliasPattern: (item) => item.trigger,
+          functionItems: () => host._draftFunctionScope.functions,
+          functionPattern: (item) => item.name,
           variableNamePlaceholder: 'pack',
           sounds,
           stepTypes: [
@@ -571,6 +819,7 @@ function buildConfig(host, kind) {
             { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
             { value: 'show_message', type: 'show_message', label: 'Show local message' },
             { value: 'script', type: 'script', label: 'Run script' },
+            { value: 'call_function', type: 'call_function', label: 'Call function' },
             { value: 'set_trigger_enabled:toggle', type: 'set_trigger_enabled', mode: 'toggle', label: 'Toggle trigger' },
             { value: 'set_trigger_enabled:enable', type: 'set_trigger_enabled', mode: 'enable', label: 'Enable trigger' },
             { value: 'set_trigger_enabled:disable', type: 'set_trigger_enabled', mode: 'disable', label: 'Disable trigger' },
@@ -582,7 +831,7 @@ function buildConfig(host, kind) {
             { value: 'control_timer:reset', type: 'control_timer', mode: 'reset', label: 'Reset timer' },
             { value: 'control_timer:run', type: 'control_timer', mode: 'run', label: 'Run timer now' },
           ],
-          scriptPlaceholder: 'if $pack == mule\n  send give %0 to $pack\nelse\n  show No pack animal set.\nend',
+          scriptPlaceholder: 'while $charges > 0\n  send use wand\n  set $charges = {$charges - 1}\nend',
           templatePlaceholder: (step) => (
             step.type === 'show_message' ? 'Pack animal set to: $pack'
               : step.type === 'set_variable' ? '%0'
@@ -591,7 +840,7 @@ function buildConfig(host, kind) {
           syntaxHelp: 'Simple aliases match command words; %0 is everything after the alias. '
             + 'Regex aliases use JavaScript regular expressions with capture groups as %1-%9. '
             + 'Templates support $name variables and ${lower:%1} or ${lower:$name} for lowercase. '
-            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, and trigger/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, and trigger/timer controls.',
         }, api);
       },
       preview: {
@@ -615,7 +864,7 @@ function buildConfig(host, kind) {
           }
           body.appendChild(el('div', 'settings-alias-preview-match', 'Matches: ' + match.alias.trigger));
 
-          const previewVariables = { ...host._draftAliasScope.variables };
+          const previewVariables = draftAutomationVariables(host);
           const previewTriggers = host._draftTriggerScope.triggers.map((trigger) => ({ ...trigger }));
           const previewTimers = host._draftTimerScope.timers.map((timer) => ({ ...timer }));
 
@@ -657,8 +906,9 @@ function buildConfig(host, kind) {
               if (previewStep.type === 'set_variable') prefix = 'Set $' + previewStep.name;
               if (previewStep.type === 'show_message') prefix = 'Show';
               if (previewStep.type === 'run_alias') prefix = 'Run alias';
-              const { ok } = appendResolvedStepRow(body, prefix, resolved);
-              if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = resolved.text;
+              const displayResolved = maybeEvaluateSetPreview(previewStep, resolved);
+              const { ok } = appendResolvedStepRow(body, prefix, displayResolved);
+              if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = displayResolved.text;
             };
 
             if (step.type === 'script') {
@@ -672,6 +922,10 @@ function buildConfig(host, kind) {
                 step.type === 'set_trigger_enabled' ? previewTriggers : previewTimers,
                 (item) => step.type === 'set_trigger_enabled' ? item.pattern : item.name,
                 step.type === 'set_trigger_enabled' ? {} : { useDescription: false });
+              continue;
+            }
+            if (step.type === 'call_function') {
+              appendFunctionPreviewRow(body, step, host._draftFunctionScope.functions, templateContext);
               continue;
             }
 
@@ -699,9 +953,10 @@ function buildConfig(host, kind) {
             let prefix = 'Send';
             if (step.type === 'set_variable') prefix = 'Set $' + step.name;
             if (step.type === 'show_message') prefix = 'Show';
-            const { row, ok } = appendResolvedStepRow(body, prefix, resolved);
+            const displayResolved = maybeEvaluateSetPreview(step, resolved);
+            const { row, ok } = appendResolvedStepRow(body, prefix, displayResolved);
             if (!ok) continue;
-            if (step.type === 'set_variable' && step.name) previewVariables[step.name] = resolved.text;
+            if (step.type === 'set_variable' && step.name) previewVariables[step.name] = displayResolved.text;
           }
           return 'matches ' + match.alias.trigger;
         },
@@ -775,6 +1030,10 @@ function buildConfig(host, kind) {
               useDescription: false,
             },
           },
+          runAliasItems: () => host._draftAliasScope.aliases,
+          runAliasPattern: (item) => item.trigger,
+          functionItems: () => host._draftFunctionScope.functions,
+          functionPattern: (item) => item.name,
           variableNamePlaceholder: 'enemy',
           sounds,
           stepTypes: [
@@ -782,6 +1041,7 @@ function buildConfig(host, kind) {
             { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
             { value: 'show_message', type: 'show_message', label: 'Show local message' },
             { value: 'script', type: 'script', label: 'Run script' },
+            { value: 'call_function', type: 'call_function', label: 'Call function' },
             { value: 'set_alias_enabled:toggle', type: 'set_alias_enabled', mode: 'toggle', label: 'Toggle alias' },
             { value: 'set_alias_enabled:enable', type: 'set_alias_enabled', mode: 'enable', label: 'Enable alias' },
             { value: 'set_alias_enabled:disable', type: 'set_alias_enabled', mode: 'disable', label: 'Disable alias' },
@@ -805,7 +1065,7 @@ function buildConfig(host, kind) {
           syntaxHelp: 'Simple patterns support * or %1-%9 as captures. '
             + 'Regex triggers use JavaScript regular expressions with capture groups as %1-%9. '
             + 'Templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase. '
-            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, play_sound, and alias/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, play_sound, and alias/timer controls.',
         }, api);
       },
       preview: {
@@ -827,7 +1087,7 @@ function buildConfig(host, kind) {
             return 'no match';
           }
 
-          const previewVariables = { ...host._draftAliasScope.variables };
+          const previewVariables = draftAutomationVariables(host);
           const previewAliases = host._draftAliasScope.aliases.map((alias) => ({
             ...alias,
             steps: alias.steps.map((step) => ({ ...step })),
@@ -862,6 +1122,10 @@ function buildConfig(host, kind) {
                 if ((previewStep.type === 'set_timer_enabled' || previewStep.type === 'control_timer')
                   && previewStep.targetId) {
                   appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name, { useDescription: false });
+                  return;
+                }
+                if (previewStep.type === 'call_function') {
+                  appendFunctionPreviewRow(body, previewStep, host._draftFunctionScope.functions, templateContext);
                   return;
                 }
 
@@ -904,8 +1168,9 @@ function buildConfig(host, kind) {
                 let prefix = 'Send';
                 if (previewStep.type === 'set_variable') prefix = 'Set $' + previewStep.name;
                 if (previewStep.type === 'show_message') prefix = 'Show';
-                const { ok } = appendResolvedStepRow(body, prefix, resolved);
-                if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = resolved.text;
+                const displayResolved = maybeEvaluateSetPreview(previewStep, resolved);
+                const { ok } = appendResolvedStepRow(body, prefix, displayResolved);
+                if (ok && previewStep.type === 'set_variable' && previewStep.name) previewVariables[previewStep.name] = displayResolved.text;
               };
 
               if (step.type === 'script') {
@@ -930,6 +1195,10 @@ function buildConfig(host, kind) {
                   step.type === 'set_alias_enabled' ? previewAliases : previewTimers,
                   (item) => step.type === 'set_alias_enabled' ? item.trigger : item.name,
                   step.type === 'set_alias_enabled' ? {} : { useDescription: false });
+                continue;
+              }
+              if (step.type === 'call_function') {
+                appendFunctionPreviewRow(body, step, host._draftFunctionScope.functions, templateContext);
                 continue;
               }
 
@@ -972,8 +1241,9 @@ function buildConfig(host, kind) {
               let prefix = 'Send';
               if (step.type === 'set_variable') prefix = 'Set $' + step.name;
               if (step.type === 'show_message') prefix = 'Show';
-              const { ok } = appendResolvedStepRow(body, prefix, resolved);
-              if (step.type === 'set_variable' && step.name) previewVariables[step.name] = resolved.text;
+              const displayResolved = maybeEvaluateSetPreview(step, resolved);
+              const { ok } = appendResolvedStepRow(body, prefix, displayResolved);
+              if (ok && step.type === 'set_variable' && step.name) previewVariables[step.name] = displayResolved.text;
             }
           });
           return result.matches.length + ' match' + (result.matches.length === 1 ? '' : 'es');
@@ -1035,6 +1305,7 @@ function buildConfig(host, kind) {
         secondsInput.addEventListener('input', () => {
           const seconds = Math.max(1, Math.round(Number(secondsInput.value) || 1));
           item.durationMs = seconds * 1000;
+          api.renderDiagnostics();
           api.renderPreview();
         });
         secondsInput.addEventListener('blur', () => api.render());
@@ -1090,6 +1361,10 @@ function buildConfig(host, kind) {
               useDescription: false,
             },
           },
+          runAliasItems: () => host._draftAliasScope.aliases,
+          runAliasPattern: (item) => item.trigger,
+          functionItems: () => host._draftFunctionScope.functions,
+          functionPattern: (item) => item.name,
           variableNamePlaceholder: 'last_timer',
           stepTypes: [
             { value: 'send_command', type: 'send_command', label: 'Send command' },
@@ -1097,6 +1372,7 @@ function buildConfig(host, kind) {
             { value: 'show_message', type: 'show_message', label: 'Show local message' },
             { value: 'script', type: 'script', label: 'Run script' },
             { value: 'run_alias', type: 'run_alias', label: 'Run alias' },
+            { value: 'call_function', type: 'call_function', label: 'Call function' },
             { value: 'set_alias_enabled:toggle', type: 'set_alias_enabled', mode: 'toggle', label: 'Toggle alias' },
             { value: 'set_alias_enabled:enable', type: 'set_alias_enabled', mode: 'enable', label: 'Enable alias' },
             { value: 'set_alias_enabled:disable', type: 'set_alias_enabled', mode: 'disable', label: 'Disable alias' },
@@ -1119,7 +1395,7 @@ function buildConfig(host, kind) {
                   : 'look'
           ),
           syntaxHelp: 'Timer templates use %0 for the timer name plus $name variables. '
-            + 'Scripts support if/elseif/else/end, send, show, set $name = value, run_alias, and alias/trigger/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, and alias/trigger/timer controls.',
         }, api);
       },
       preview: {
@@ -1136,7 +1412,7 @@ function buildConfig(host, kind) {
           body.appendChild(el('div', 'settings-alias-preview-match',
             'Runs ' + (selected.recurring ? 'every ' : 'after ') + formatDuration(selected.durationMs)
             + (selected.autoStart ? ' when connected' : ' when started')));
-          const previewVariables = { ...host._draftAliasScope.variables };
+          const previewVariables = draftAutomationVariables(host);
           const templateContext = {
             args: [selected.name],
             remainder: selected.name,
@@ -1160,6 +1436,10 @@ function buildConfig(host, kind) {
                   ? { useDescription: false } : {});
               return;
             }
+            if (step.type === 'call_function') {
+              appendFunctionPreviewRow(body, step, host._draftFunctionScope.functions, templateContext);
+              return;
+            }
             const resolved = aliasManager.resolveTemplate(
               step.type === 'set_alias_enabled'
                 || step.type === 'set_trigger_enabled'
@@ -1169,8 +1449,9 @@ function buildConfig(host, kind) {
               templateContext
             );
             const label = step.type === 'set_variable' ? 'Set $' + step.name : getAutomationStepLabel(step);
-            appendResolvedStepRow(body, label, resolved);
-            if (step.type === 'set_variable' && step.name) previewVariables[step.name] = resolved.text;
+            const displayResolved = maybeEvaluateSetPreview(step, resolved);
+            const { ok } = appendResolvedStepRow(body, label, displayResolved);
+            if (ok && step.type === 'set_variable' && step.name) previewVariables[step.name] = displayResolved.text;
           };
 
           for (const step of selected.steps || []) {
@@ -1181,6 +1462,106 @@ function buildConfig(host, kind) {
             }
           }
           return selected.steps.length + ' step' + (selected.steps.length === 1 ? '' : 's');
+        },
+      },
+    };
+  }
+
+  if (kind === 'function') {
+    return {
+      kind,
+      noun: 'function',
+      plural: 'functions',
+      scopeKey: () => host._functionScopeKey,
+      scopeHint: 'Functions are saved separately for each server connection target and can be called from aliases, triggers, timers, and scripts.',
+      list: () => host._draftFunctionScope.functions,
+      replaceList: (items) => { host._draftFunctionScope.functions = items; },
+      create: () => functionManager.createEmptyFunction(),
+      getPattern: (item) => item.name,
+      setPattern: (item, value) => { item.name = String(value || '').trim().toLowerCase(); },
+      patternLabel: 'Function name',
+      patternPlaceholder: () => 'assist_target',
+      emptyText: 'No functions defined for this scope.',
+      emptyDetailText: 'Create a function to reuse script logic from aliases, triggers, and timers.',
+      nameRequired: false,
+      namePlaceholder: 'Optional note shown in the list',
+      haystack: (item) => (item.name + ' ' + item.description + ' ' + (item.group || '') + ' ' + item.script).toLowerCase(),
+      rowMeta: (item) => {
+        const parsed = parseAutomationScript(item.script || '');
+        if (parsed.diagnostics.length) return parsed.diagnostics.length + ' script issue' + (parsed.diagnostics.length === 1 ? '' : 's');
+        return countScriptActions(parsed.ast) + ' action' + (countScriptActions(parsed.ast) === 1 ? '' : 's');
+      },
+      diagnostics: (item) => functionManager.getFunctionDiagnostics(host._draftFunctionScope, item.id),
+      flags: (item, api) => [
+        createFlagPill('Enabled', 'Disabled functions stay saved but cannot be called.',
+          item.enabled !== false, (checked) => { item.enabled = checked; api.render(); }),
+      ],
+      renderBody: (item, api, container) => {
+        container.appendChild(el('div', 'settings-label', 'Script'));
+        const scriptInput = el('textarea', 'dw-input settings-alias-template settings-step-template');
+        scriptInput.placeholder = 'send kill %1\nif $stance == defensive\n  show Using defensive follow-up.\nend';
+        scriptInput.value = item.script || '';
+        scriptInput.rows = 12;
+        scriptInput.addEventListener('input', () => {
+          item.script = scriptInput.value;
+          api.renderDiagnostics();
+          api.renderPreview();
+        });
+        container.appendChild(scriptInput);
+
+        const help = el('details', 'settings-syntax-help');
+        help.appendChild(el('summary', '', 'Function script syntax'));
+        help.appendChild(el('p', 'dw-paragraph',
+          'Functions receive arguments from the caller as %1-%9 and %0. '
+          + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, play_sound, and alias/trigger/timer controls.'));
+        container.appendChild(help);
+      },
+      preview: {
+        title: 'Function preview',
+        hint: 'Enter sample arguments to see what this function would run.',
+        defaultSample: '',
+        makeInput: (onInput) => {
+          const input = el('input', 'dw-input');
+          input.type = 'text';
+          input.placeholder = 'Sample args: orc shield';
+          input.addEventListener('input', () => onInput(input.value));
+          return input;
+        },
+        render: (body, sample, selected) => {
+          body.textContent = '';
+          if (!selected) return '';
+          const args = String(sample || '').trim()
+            ? String(sample || '').trim().split(/\s+/)
+            : [];
+          const previewVariables = draftAutomationVariables(host);
+          const templateContext = {
+            args,
+            remainder: String(sample || '').trim(),
+            variables: previewVariables,
+          };
+          const renderPreviewStep = (step) => {
+            if (step.type === 'call_function') {
+              appendFunctionPreviewRow(body, step, host._draftFunctionScope.functions, templateContext);
+              return;
+            }
+            const resolved = aliasManager.resolveTemplate(
+              step.type === 'set_alias_enabled'
+                || step.type === 'set_trigger_enabled'
+                || step.type === 'set_timer_enabled'
+                || step.type === 'control_timer'
+                ? step.target : step.template,
+              templateContext
+            );
+            const label = step.type === 'set_variable' ? 'Set $' + step.name : getAutomationStepLabel(step);
+            const displayResolved = maybeEvaluateSetPreview(step, resolved);
+            const { ok } = appendResolvedStepRow(body, label, displayResolved);
+            if (ok && step.type === 'set_variable' && step.name) previewVariables[step.name] = displayResolved.text;
+          };
+          appendScriptPreviewRows(body, selected.script, templateContext, renderPreviewStep);
+          const parsed = parseAutomationScript(selected.script || '');
+          if (parsed.diagnostics.length) return parsed.diagnostics.length + ' issue' + (parsed.diagnostics.length === 1 ? '' : 's');
+          const total = countScriptActions(parsed.ast);
+          return total + ' action' + (total === 1 ? '' : 's');
         },
       },
     };
@@ -1291,6 +1672,10 @@ export function createAutomationEditor(host, kind) {
   toolbar.appendChild(scopeChip);
   wrapper.appendChild(toolbar);
 
+  const groupFilters = el('div', 'settings-automation-group-filters');
+  groupFilters.hidden = true;
+  wrapper.appendChild(groupFilters);
+
   // ---- layout --------------------------------------------------------
   const layout = el('div', 'settings-automation-layout');
   const listPane = el('div', 'settings-automation-list-pane');
@@ -1352,6 +1737,8 @@ export function createAutomationEditor(host, kind) {
   const initialPending = cfg.initialSelectedId ? cfg.initialSelectedId() : null;
   let selectedId = initialPending || (cfg.list()[0] ? cfg.list()[0].id : null);
   let searchTerm = '';
+  const checkedGroupKeys = new Set();
+  const seenGroupKeys = new Set();
 
   const ensureSelected = () => {
     const items = cfg.list();
@@ -1370,6 +1757,85 @@ export function createAutomationEditor(host, kind) {
   const renderPreviewBody = () => {
     const summary = cfg.preview.render(previewResults, sample, ensureSelected());
     previewSummary.textContent = summary || '';
+  };
+
+  const groupLabelFor = (item) => {
+    const group = String(item && item.group ? item.group : '').trim();
+    return group || 'Ungrouped';
+  };
+
+  const groupKeyForLabel = (label) => label.toLowerCase();
+
+  const deriveGroupFilters = () => {
+    const groups = new Map();
+    cfg.list().forEach((item) => {
+      const label = groupLabelFor(item);
+      const key = groupKeyForLabel(label);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        groups.set(key, { key, label, count: 1 });
+      }
+    });
+
+    return Array.from(groups.values()).sort((left, right) =>
+      left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }));
+  };
+
+  const syncCheckedGroups = (groups) => {
+    const current = new Set(groups.map((group) => group.key));
+    Array.from(checkedGroupKeys).forEach((key) => {
+      if (!current.has(key)) checkedGroupKeys.delete(key);
+    });
+    Array.from(seenGroupKeys).forEach((key) => {
+      if (!current.has(key)) seenGroupKeys.delete(key);
+    });
+    groups.forEach((group) => {
+      if (seenGroupKeys.has(group.key)) return;
+      seenGroupKeys.add(group.key);
+      checkedGroupKeys.add(group.key);
+    });
+  };
+
+  const groupFilterIsActive = (groups) => groups.some((group) => !checkedGroupKeys.has(group.key));
+
+  const itemMatchesFilters = (item) => {
+    const groupKey = groupKeyForLabel(groupLabelFor(item));
+    const query = searchTerm.trim().toLowerCase();
+
+    return checkedGroupKeys.has(groupKey) && cfg.haystack(item).includes(query);
+  };
+
+  const renderGroupFilters = () => {
+    const groups = deriveGroupFilters();
+    syncCheckedGroups(groups);
+
+    groupFilters.textContent = '';
+    if (!groups.length) {
+      groupFilters.hidden = true;
+      return groups;
+    }
+
+    groupFilters.hidden = false;
+    groups.forEach((group) => {
+      const checked = checkedGroupKeys.has(group.key);
+      const pill = el('label', 'settings-flag-pill' + (checked ? ' on' : ''));
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = checked;
+      input.addEventListener('change', () => {
+        if (input.checked) checkedGroupKeys.add(group.key);
+        else checkedGroupKeys.delete(group.key);
+        pill.classList.toggle('on', input.checked);
+        renderList();
+      });
+      pill.appendChild(input);
+      pill.appendChild(document.createTextNode(group.label + ' (' + group.count + ')'));
+      groupFilters.appendChild(pill);
+    });
+
+    return groups;
   };
 
   // ---- list -------------------------------------------------------------
@@ -1432,7 +1898,9 @@ export function createAutomationEditor(host, kind) {
     const previousScrollTop = list.scrollTop;
     list.textContent = '';
 
-    const filtered = cfg.list().filter((item) => cfg.haystack(item).includes(searchTerm.trim().toLowerCase()));
+    const groups = renderGroupFilters();
+    const items = cfg.list();
+    const filtered = items.filter((item) => itemMatchesFilters(item));
 
     const focusByOffset = (index, offset) => {
       if (!filtered.length) return;
@@ -1503,8 +1971,9 @@ export function createAutomationEditor(host, kind) {
     });
 
     if (!filtered.length) {
-      list.appendChild(el('div', 'settings-alias-empty', searchTerm
-        ? 'No ' + cfg.plural + ' match this filter.'
+      const filtersActive = Boolean(searchTerm.trim()) || groupFilterIsActive(groups);
+      list.appendChild(el('div', 'settings-alias-empty', items.length && filtersActive
+        ? 'No ' + cfg.plural + ' match the current filters.'
         : cfg.emptyText));
     }
 
@@ -1524,16 +1993,24 @@ export function createAutomationEditor(host, kind) {
     const api = {
       render,
       renderPreview: renderPreviewBody,
+      renderDiagnostics: () => {},
       focus,
       host,
     };
 
-    const diagnostics = cfg.diagnostics(item);
-    if (diagnostics.length) {
-      const warningBox = el('div', 'settings-alias-diagnostics');
+    const warningBox = el('div', 'settings-alias-diagnostics');
+    const renderDiagnostics = () => {
+      const diagnostics = cfg.diagnostics(item);
+      warningBox.textContent = '';
       diagnostics.forEach((message) => warningBox.appendChild(el('div', '', message)));
-      detail.appendChild(warningBox);
-    }
+      if (diagnostics.length) {
+        if (!warningBox.parentElement) detail.insertBefore(warningBox, detail.firstChild);
+      } else {
+        warningBox.remove();
+      }
+    };
+    api.renderDiagnostics = renderDiagnostics;
+    renderDiagnostics();
 
     const patternField = el('label', 'dw-field');
     patternField.appendChild(el('div', 'settings-label', cfg.patternLabel));
@@ -1544,6 +2021,7 @@ export function createAutomationEditor(host, kind) {
     patternInput.value = cfg.getPattern(item);
     patternInput.addEventListener('input', () => {
       cfg.setPattern(item, patternInput.value);
+      renderDiagnostics();
       renderList();
       renderPreviewBody();
     });
@@ -1571,6 +2049,7 @@ export function createAutomationEditor(host, kind) {
       nameInput.addEventListener('input', () => {
         item.description = nameInput.value;
         syncNameValidity();
+        renderDiagnostics();
         renderList();
       });
       syncNameValidity();
@@ -1586,6 +2065,7 @@ export function createAutomationEditor(host, kind) {
     groupInput.value = item.group || '';
     groupInput.addEventListener('input', () => {
       item.group = groupInput.value;
+      renderGroupFilters();
       renderList();
     });
     groupField.appendChild(groupInput);

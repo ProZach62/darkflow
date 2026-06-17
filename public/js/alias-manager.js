@@ -4,6 +4,7 @@ import {
   isArithmeticExpressionCandidate,
 } from './alias-expression-core.mjs';
 import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
+import { getGmcpVariables } from './gmcp-variables.js';
 
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
 const MAX_ALIAS_DEPTH = 10;
@@ -132,6 +133,15 @@ function normalizeStep(step) {
 
   if (type === 'run_alias') {
     return { type, template: String(step.template || '') };
+  }
+
+  if (type === 'call_function') {
+    return {
+      type,
+      target: String(step.target || ''),
+      targetId: String(step.targetId || ''),
+      template: String(step.template || ''),
+    };
   }
 
   return { type: 'send_command', template: String(step.template || '') };
@@ -311,6 +321,14 @@ export const aliasManager = {
 
   listVariableNames(scopeKey = this.getActiveScopeKey()) {
     return Object.keys(this._ensureScope(scopeKey).variables).sort((a, b) => a.localeCompare(b));
+  },
+
+  getAutomationVariables(scopeKey = this.getActiveScopeKey()) {
+    const scopeVariables = this._ensureScope(scopeKey).variables;
+    return {
+      ...getGmcpVariables(),
+      ...scopeVariables,
+    };
   },
 
   getVariable(name, scopeKey = this.getActiveScopeKey()) {
@@ -600,6 +618,10 @@ export const aliasManager = {
       if ((step.type === 'set_timer_enabled' || step.type === 'control_timer')
         && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must select a timer.');
+      }
+      if (step.type === 'call_function'
+        && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {
+        diagnostics.push('Step ' + (index + 1) + ' must select a function.');
       }
     }
 

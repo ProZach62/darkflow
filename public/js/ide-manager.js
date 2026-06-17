@@ -3,6 +3,7 @@
 
 import { gmcp } from './gmcp.js';
 import { state } from './state.js';
+import { panelManager } from './panel-manager.js';
 
 const DW_IDE_OPEN = 'Darkwind.IDE.Open';
 const DW_IDE_OPEN_START = 'Darkwind.IDE.OpenStart';
@@ -62,6 +63,7 @@ export const ideManager = {
   openTransfers: new Map(),
 
   init() {
+    panelManager.registerPanelCloseHandler('ide', () => this.handlePaneClose());
     gmcp.on(DW_IDE_OPEN, (data) => this.handleOpen(data));
     gmcp.on(DW_IDE_OPEN_START, (data) => this.handleOpenStart(data));
     gmcp.on(DW_IDE_OPEN_CHUNK, (data) => this.handleOpenChunk(data));
@@ -88,6 +90,26 @@ export const ideManager = {
     }
   },
 
+  ensurePane() {
+    if (panelManager.state.panels.ide && panelManager.state.panels.ide.collapsed) {
+      panelManager.state.panels.ide.collapsed = false;
+    }
+    panelManager.openPanel('ide');
+    const panel = panelManager.panels.ide;
+    if (panelManager._bringPanelToFront) panelManager._bringPanelToFront('ide');
+    return panel && panel.bodyEl ? panel.bodyEl : null;
+  },
+
+  handlePaneClose() {
+    if (!this.editor || !this.editor.view) return true;
+    this.editor.tryClose();
+    return false;
+  },
+
+  closePane() {
+    if (panelManager._closePanelNow) panelManager._closePanelNow('ide');
+  },
+
   async handleOpen(data) {
     let editor;
     try {
@@ -96,14 +118,18 @@ export const ideManager = {
       return;
     }
 
+    const hostEl = this.ensurePane();
+    if (!hostEl) return;
+
     editor.open(data, {
       onSave: (path, content) => this.sendSave(path, content),
       onClose: (path) => {
         gmcp.send(DW_IDE_CLOSE, { path });
+        this.closePane();
         const input = document.getElementById('command-input');
         if (input) input.focus();
       },
-    });
+    }, hostEl);
   },
 
   handleOpenStart(data) {

@@ -33,6 +33,44 @@ test('parses if elseif else script blocks', () => {
   assert.equal(parsed.ast[0].elseSteps.length, 1);
 });
 
+test('parses while blocks and loop controls', () => {
+  const parsed = parseAutomationScript(`
+    while $count < 3
+      send count $count
+      if $count == 2
+        break
+      else
+        continue
+      end
+    end
+  `);
+
+  assert.deepEqual(parsed.diagnostics, []);
+  assert.equal(parsed.ast.length, 1);
+  assert.equal(parsed.ast[0].type, 'while');
+  assert.equal(parsed.ast[0].condition, '$count < 3');
+  assert.equal(parsed.ast[0].steps.length, 2);
+  assert.equal(parsed.ast[0].steps[1].type, 'if');
+  assert.equal(parsed.ast[0].steps[1].branches[0].steps[0].type, 'break');
+  assert.equal(parsed.ast[0].steps[1].elseSteps[0].type, 'continue');
+});
+
+test('reports malformed while control flow', () => {
+  const parsed = parseAutomationScript(`
+    break
+    continue
+    while $count < 3
+      send count
+    else
+      send impossible
+  `);
+
+  assert.match(parsed.diagnostics.join('\n'), /break without a matching while/);
+  assert.match(parsed.diagnostics.join('\n'), /continue without a matching while/);
+  assert.match(parsed.diagnostics.join('\n'), /else without a matching if/);
+  assert.match(parsed.diagnostics.join('\n'), /Missing end for while block/);
+});
+
 test('reports malformed script control flow', () => {
   const parsed = parseAutomationScript(`
     if $hp < 50

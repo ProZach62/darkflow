@@ -1,12 +1,18 @@
-import { aliasManager } from './alias-manager.js';
+import { aliasManager, tokenizeInput } from './alias-manager.js';
 import { triggerManager } from './trigger-manager.js';
+import { functionManager } from './function-manager.js';
 import { isKnownSound, soundManager } from './sound-manager.js';
+import {
+  evaluateArithmeticExpression,
+  isArithmeticExpressionCandidate,
+} from './alias-expression-core.mjs';
 import {
   evaluateAutomationCondition,
   parseAutomationScript,
 } from './automation-script-core.mjs';
 
 let timerAutomation = null;
+const MAX_WHILE_ITERATIONS = 100;
 
 export function registerTimerAutomation(manager) {
   timerAutomation = manager || null;
@@ -103,6 +109,22 @@ function getStepResult(step, source, templateContext, appendMessage) {
   return { resolved, ok: true };
 }
 
+function maybeEvaluateSetValue(step, resolved, templateContext) {
+  if (step.type !== 'set_variable') return resolved;
+  const expression = String(resolved.text || '').trim();
+  if (!isArithmeticExpressionCandidate(expression)) return resolved;
+
+  const result = evaluateArithmeticExpression(expression, {
+    ...templateContext,
+    variables: {},
+  });
+  return {
+    ...resolved,
+    text: result.text,
+    errors: [...resolved.errors, ...result.errors],
+  };
+}
+
 function setAutomationEnabled(manager, target, mode, scopeKey) {
   if (mode === 'enable') return manager.setEnabledByTarget(target, true, scopeKey);
   if (mode === 'disable') return manager.setEnabledByTarget(target, false, scopeKey);
@@ -178,7 +200,7 @@ function executeTargetIdStep(step, context) {
 function refreshScriptVariables(context) {
   context.templateContext = {
     ...context.templateContext,
-    variables: aliasManager.getScopeSnapshot(context.scopeKey).variables,
+    variables: aliasManager.getAutomationVariables(context.scopeKey),
   };
 }
 
@@ -193,9 +215,14 @@ function executeScriptNodes(nodes, context) {
   let sent = false;
   let localOnly = false;
   let handled = false;
+  let control = null;
 
   for (const node of nodes || []) {
     if (!node || typeof node !== 'object') continue;
+
+    if (node.type === 'break' || node.type === 'continue') {
+      return { sent, localOnly: true, handled: true, control: node.type };
+    }
 
     if (node.type === 'action') {
       refreshScriptVariables(context);
@@ -209,6 +236,9 @@ function executeScriptNodes(nodes, context) {
       sent = sent || result.sent;
       localOnly = localOnly || result.localOnly || result.handled;
       handled = handled || result.handled;
+      if (result.control) {
+        return { sent, localOnly, handled: handled || localOnly || sent, control: result.control };
+      }
       continue;
     }
 
@@ -230,6 +260,9 @@ function executeScriptNodes(nodes, context) {
         sent = sent || result.sent;
         localOnly = localOnly || result.localOnly || result.handled;
         handled = handled || result.handled;
+        if (result.control) {
+          return { sent, localOnly, handled: handled || localOnly || sent, control: result.control };
+        }
         branchTaken = true;
         break;
       }
@@ -239,6 +272,47 @@ function executeScriptNodes(nodes, context) {
         sent = sent || result.sent;
         localOnly = localOnly || result.localOnly || result.handled;
         handled = handled || result.handled;
+        if (result.control) {
+          return { sent, localOnly, handled: handled || localOnly || sent, control: result.control };
+        }
+      }
+      continue;
+    }
+
+    if (node.type === 'while') {
+      let iterations = 0;
+      while (true) {
+        refreshScriptVariables(context);
+        const condition = evaluateAutomationCondition(
+          node.condition,
+          context.templateContext,
+          (template, templateContext) => aliasManager.resolveTemplate(template, templateContext)
+        );
+        if (condition.diagnostics.length) {
+          warnScriptDiagnostics(context, node.line, condition.diagnostics);
+          handled = true;
+          break;
+        }
+        if (!condition.value) break;
+
+        iterations++;
+        if (iterations > MAX_WHILE_ITERATIONS) {
+          warn(
+            context.appendMessage,
+            context.source.prefix,
+            'While loop iteration limit of ' + MAX_WHILE_ITERATIONS + ' reached in ' + context.source.description + '.'
+          );
+          return { sent, localOnly: true, handled: true, control: 'abort' };
+        }
+
+        const result = executeScriptNodes(node.steps, context);
+        sent = sent || result.sent;
+        localOnly = localOnly || result.localOnly || result.handled;
+        handled = handled || result.handled;
+        control = result.control || null;
+        if (control === 'break') break;
+        if (control === 'continue') continue;
+        if (control) return { sent, localOnly, handled: handled || localOnly || sent, control };
       }
     }
   }
@@ -258,6 +332,84 @@ function executeScriptStep(step, context) {
   return executeScriptNodes(parsed.ast, context);
 }
 
+function executeFunctionStep(step, context) {
+  const {
+    appendMessage,
+    scopeKey,
+    templateContext,
+    source,
+    functionContext,
+  } = context;
+  const targetId = String(step.targetId || '');
+  let fn = targetId ? functionManager.findFunctionById(targetId, scopeKey) : null;
+  let targetName = String(step.target || '').trim();
+
+  if (!fn && targetName) {
+    const resolvedTarget = resolveAutomationValue(targetName, templateContext, { preservePositionalTokens: true });
+    if (resolvedTarget.missingVariables.length || resolvedTarget.errors.length) {
+      warn(appendMessage, source.prefix, 'Unable to resolve function target in ' + source.description + '.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    targetName = resolvedTarget.text.trim();
+    fn = functionManager.findFunctionByName(targetName, scopeKey);
+  }
+
+  if (!fn) {
+    warn(appendMessage, source.prefix, 'Function "' + (targetName || targetId || 'unknown') + '" is not defined.');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  if (fn.enabled === false) {
+    warn(appendMessage, source.prefix, 'Function "' + fn.name + '" is disabled.');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  const currentFunctionContext = functionContext || { depth: 0, trail: [] };
+  const depth = currentFunctionContext.depth || 0;
+  const trail = Array.isArray(currentFunctionContext.trail) ? currentFunctionContext.trail : [];
+  if (depth >= functionManager.getMaxFunctionDepth()) {
+    warn(appendMessage, source.prefix, 'Function depth limit reached while calling "' + fn.name + '".');
+    return { sent: false, localOnly: true, handled: true };
+  }
+  if (trail.includes(fn.id)) {
+    warn(appendMessage, source.prefix, 'Function recursion detected for "' + fn.name + '".');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  const resolvedArgs = resolveAutomationValue(step.template || '', templateContext);
+  if (resolvedArgs.missingVariables.length || resolvedArgs.errors.length) {
+    warn(appendMessage, source.prefix, 'Template error in function call "' + fn.name + '".');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  const argText = resolvedArgs.text.trim();
+  const args = tokenizeInput(argText).map((token) => token.value);
+  const parsed = parseAutomationScript(fn.script || '');
+  if (parsed.diagnostics.length) {
+    parsed.diagnostics.forEach((message) => {
+      warn(appendMessage, source.prefix, 'Script error in function "' + fn.name + '": ' + message);
+    });
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  return executeScriptNodes(parsed.ast, {
+    ...context,
+    templateContext: {
+      args,
+      remainder: argText,
+      variables: aliasManager.getAutomationVariables(scopeKey),
+    },
+    source: {
+      prefix: source.prefix,
+      description: 'function "' + fn.name + '"',
+    },
+    functionContext: {
+      depth: depth + 1,
+      trail: [...trail, fn.id],
+    },
+  });
+}
+
 function executeAutomationStep(step, context) {
   const {
     appendMessage,
@@ -271,6 +423,10 @@ function executeAutomationStep(step, context) {
 
   if (step.type === 'script') {
     return executeScriptStep(step, context);
+  }
+
+  if (step.type === 'call_function') {
+    return executeFunctionStep(step, context);
   }
 
   if (step.type === 'play_sound') {
@@ -292,8 +448,13 @@ function executeAutomationStep(step, context) {
     return executeTargetIdStep(step, context);
   }
 
-  const { resolved, ok } = getStepResult(step, source, templateContext, appendMessage);
+  let { resolved, ok } = getStepResult(step, source, templateContext, appendMessage);
   if (!ok) return { sent: false, localOnly: true, handled: true };
+  resolved = maybeEvaluateSetValue(step, resolved, templateContext);
+  if (resolved.errors.length) {
+    warn(appendMessage, source.prefix, 'Template error in ' + source.description + ': ' + resolved.errors.join(' '));
+    return { sent: false, localOnly: true, handled: true };
+  }
 
   if (step.type === 'set_variable') {
     const didSet = aliasManager.setVariable(step.name, resolved.text, scopeKey);
@@ -467,7 +628,7 @@ export function executeAliasLine(text, context = {}) {
   }
 
   for (const step of match.alias.steps) {
-    const variables = aliasManager.getScopeSnapshot(scopeKey).variables;
+    const variables = aliasManager.getAutomationVariables(scopeKey);
     const result = executeAutomationStep(step, {
       appendMessage,
       sendCommand,
@@ -503,7 +664,7 @@ export function executeTriggerMatches(matches, scopeKey, options = {}) {
 
   for (const match of matches) {
     for (const step of match.trigger.steps || []) {
-      const variables = aliasManager.getScopeSnapshot(scopeKey).variables;
+      const variables = aliasManager.getAutomationVariables(scopeKey);
       executeAutomationStep(step, {
         appendMessage,
         sendCommand,
@@ -536,6 +697,7 @@ export function getAutomationStepLabel(step) {
   if (step.type === 'set_timer_enabled') return describeMode(normalizeMode(step.mode)) + ' timer';
   if (step.type === 'control_timer') return describeTimerAction(step.mode) + ' timer';
   if (step.type === 'run_alias') return 'Run alias';
+  if (step.type === 'call_function') return 'Call function';
   if (step.type === 'play_sound') return 'Play sound';
   return 'Send';
 }
