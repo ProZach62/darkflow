@@ -1247,11 +1247,36 @@ body.zork-only-mode #panels-menu {
 }
 
 /* ── Chat panel ─────────────────────────────────────────────────────── */
+[data-panel-id="chat"].gmcp-panel-widget {
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+}
+
+[data-panel-id="chat"].gmcp-panel-widget.floating {
+  overflow: hidden;
+}
+
+[data-panel-id="chat"] .panel-header {
+  flex: 0 0 auto;
+}
+
+#panel-body-chat {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .chat-meta {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 6px;
+  min-width: 0;
 }
 .chat-chip {
   border: 1px solid var(--df-border);
@@ -1265,8 +1290,20 @@ body.zork-only-mode #panels-menu {
   border-color: var(--df-ok);
   color: var(--df-text);
 }
-.chat-log { max-height: 250px; overflow-y: auto; }
-.chat-entry { font-size: calc(11px * var(--pane-font-scale, 1)); padding: 1px 0; word-wrap: break-word; }
+.chat-log {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.chat-entry {
+  font-size: calc(11px * var(--pane-font-scale, 1));
+  padding: 1px 0;
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+}
 .chat-channel { font-weight: 600; }
 .chat-talker { color: var(--df-muted); }
 
