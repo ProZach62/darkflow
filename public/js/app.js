@@ -21,6 +21,7 @@ import { aliasManager } from './alias-manager.js';
 import { highlightManager } from './highlight-manager.js';
 import { triggerManager } from './trigger-manager.js';
 import { timerManager } from './timer-manager.js';
+import { functionManager } from './function-manager.js';
 import { sendAutomaticCommand } from './input.js';
 import { PRODUCT_NAME, gameTitle } from './brand.js';
 import { initRfc2549Debug } from './rfc2549-debug.js';
@@ -322,6 +323,7 @@ aliasManager.init();
 highlightManager.init();
 triggerManager.init();
 timerManager.init();
+functionManager.init();
 timerManager.configureRuntime({
   sendCommand: (command) => sendAutomaticCommand(command),
   appendMessage: appendSystemMessage,

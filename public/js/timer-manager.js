@@ -88,6 +88,15 @@ function normalizeStep(step) {
     return { type, template: String(step.template || '') };
   }
 
+  if (type === 'call_function') {
+    return {
+      type,
+      target: String(step.target || ''),
+      targetId: String(step.targetId || ''),
+      template: String(step.template || ''),
+    };
+  }
+
   if (type === 'play_sound') {
     return {
       type,
@@ -480,6 +489,10 @@ export const timerManager = {
       }
       if (step.type === 'run_alias' && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must choose an alias command.');
+      }
+      if (step.type === 'call_function'
+        && !String(step.targetId || '').trim() && !String(step.target || '').trim()) {
+        diagnostics.push('Step ' + (index + 1) + ' must select a function.');
       }
     }
 

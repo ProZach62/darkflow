@@ -66,6 +66,7 @@ const { dom } = await import('../public/js/state.js');
 const { aliasManager } = await import('../public/js/alias-manager.js');
 const { triggerManager } = await import('../public/js/trigger-manager.js');
 const { timerManager } = await import('../public/js/timer-manager.js');
+const { functionManager } = await import('../public/js/function-manager.js');
 const { soundManager } = await import('../public/js/sound-manager.js');
 const {
   executeAliasLine,
@@ -85,6 +86,7 @@ function resetManagers() {
   timerManager._data = { scopes: {} };
   timerManager._sendCommand = null;
   timerManager._appendMessage = null;
+  functionManager._data = { scopes: {} };
 }
 
 function messagesAndSends() {
@@ -150,6 +152,87 @@ test('alias steps can toggle triggers by pattern', () => {
     'Alias: Trigger "incoming *" enabled.',
   ]);
   assert.deepEqual(io.sent, []);
+});
+
+test('alias steps can call reusable functions with arguments', () => {
+  resetManagers();
+  functionManager.saveScope(SCOPE_KEY, {
+    functions: [{
+      id: 'function-assist',
+      enabled: true,
+      name: 'assist_target',
+      description: '',
+      group: '',
+      script: 'send assist %1\nshow assisting %1',
+    }],
+  });
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-call-function',
+      enabled: true,
+      trigger: 'assistme',
+      description: 'Assist target',
+      group: '',
+      steps: [{ type: 'call_function', targetId: 'function-assist', target: 'assist_target', template: '%1' }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  const result = executeAliasLine('assistme orc', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.equal(result.handled, true);
+  assert.deepEqual(io.sent, ['assist orc']);
+  assert.deepEqual(io.messages, ['assisting orc']);
+});
+
+test('scripts can call functions and function recursion is blocked', () => {
+  resetManagers();
+  functionManager.saveScope(SCOPE_KEY, {
+    functions: [{
+      id: 'function-wrapper',
+      enabled: true,
+      name: 'wrapper',
+      description: '',
+      group: '',
+      script: 'call recurse %1',
+    }, {
+      id: 'function-recurse',
+      enabled: true,
+      name: 'recurse',
+      description: '',
+      group: '',
+      script: 'call recurse %1',
+    }],
+  });
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-wrapper',
+      enabled: true,
+      trigger: 'wrap',
+      description: 'Wrapper',
+      group: '',
+      steps: [{ type: 'script', script: 'call wrapper %1' }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  const result = executeAliasLine('wrap goblin', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.equal(result.handled, true);
+  assert.deepEqual(io.sent, []);
+  assert.deepEqual(io.messages, ['Alias: Function recursion detected for "recurse".']);
 });
 
 test('alias toggle trigger preserves trigger capture tokens in target pattern', () => {

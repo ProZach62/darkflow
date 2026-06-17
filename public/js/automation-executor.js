@@ -1,5 +1,6 @@
-import { aliasManager } from './alias-manager.js';
+import { aliasManager, tokenizeInput } from './alias-manager.js';
 import { triggerManager } from './trigger-manager.js';
+import { functionManager } from './function-manager.js';
 import { isKnownSound, soundManager } from './sound-manager.js';
 import {
   evaluateAutomationCondition,
@@ -258,6 +259,84 @@ function executeScriptStep(step, context) {
   return executeScriptNodes(parsed.ast, context);
 }
 
+function executeFunctionStep(step, context) {
+  const {
+    appendMessage,
+    scopeKey,
+    templateContext,
+    source,
+    functionContext,
+  } = context;
+  const targetId = String(step.targetId || '');
+  let fn = targetId ? functionManager.findFunctionById(targetId, scopeKey) : null;
+  let targetName = String(step.target || '').trim();
+
+  if (!fn && targetName) {
+    const resolvedTarget = resolveAutomationValue(targetName, templateContext, { preservePositionalTokens: true });
+    if (resolvedTarget.missingVariables.length || resolvedTarget.errors.length) {
+      warn(appendMessage, source.prefix, 'Unable to resolve function target in ' + source.description + '.');
+      return { sent: false, localOnly: true, handled: true };
+    }
+    targetName = resolvedTarget.text.trim();
+    fn = functionManager.findFunctionByName(targetName, scopeKey);
+  }
+
+  if (!fn) {
+    warn(appendMessage, source.prefix, 'Function "' + (targetName || targetId || 'unknown') + '" is not defined.');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  if (fn.enabled === false) {
+    warn(appendMessage, source.prefix, 'Function "' + fn.name + '" is disabled.');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  const currentFunctionContext = functionContext || { depth: 0, trail: [] };
+  const depth = currentFunctionContext.depth || 0;
+  const trail = Array.isArray(currentFunctionContext.trail) ? currentFunctionContext.trail : [];
+  if (depth >= functionManager.getMaxFunctionDepth()) {
+    warn(appendMessage, source.prefix, 'Function depth limit reached while calling "' + fn.name + '".');
+    return { sent: false, localOnly: true, handled: true };
+  }
+  if (trail.includes(fn.id)) {
+    warn(appendMessage, source.prefix, 'Function recursion detected for "' + fn.name + '".');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  const resolvedArgs = resolveAutomationValue(step.template || '', templateContext);
+  if (resolvedArgs.missingVariables.length || resolvedArgs.errors.length) {
+    warn(appendMessage, source.prefix, 'Template error in function call "' + fn.name + '".');
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  const argText = resolvedArgs.text.trim();
+  const args = tokenizeInput(argText).map((token) => token.value);
+  const parsed = parseAutomationScript(fn.script || '');
+  if (parsed.diagnostics.length) {
+    parsed.diagnostics.forEach((message) => {
+      warn(appendMessage, source.prefix, 'Script error in function "' + fn.name + '": ' + message);
+    });
+    return { sent: false, localOnly: true, handled: true };
+  }
+
+  return executeScriptNodes(parsed.ast, {
+    ...context,
+    templateContext: {
+      args,
+      remainder: argText,
+      variables: aliasManager.getScopeSnapshot(scopeKey).variables,
+    },
+    source: {
+      prefix: source.prefix,
+      description: 'function "' + fn.name + '"',
+    },
+    functionContext: {
+      depth: depth + 1,
+      trail: [...trail, fn.id],
+    },
+  });
+}
+
 function executeAutomationStep(step, context) {
   const {
     appendMessage,
@@ -271,6 +350,10 @@ function executeAutomationStep(step, context) {
 
   if (step.type === 'script') {
     return executeScriptStep(step, context);
+  }
+
+  if (step.type === 'call_function') {
+    return executeFunctionStep(step, context);
   }
 
   if (step.type === 'play_sound') {
@@ -536,6 +619,7 @@ export function getAutomationStepLabel(step) {
   if (step.type === 'set_timer_enabled') return describeMode(normalizeMode(step.mode)) + ' timer';
   if (step.type === 'control_timer') return describeTimerAction(step.mode) + ' timer';
   if (step.type === 'run_alias') return 'Run alias';
+  if (step.type === 'call_function') return 'Call function';
   if (step.type === 'play_sound') return 'Play sound';
   return 'Send';
 }

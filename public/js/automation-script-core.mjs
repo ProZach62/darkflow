@@ -4,6 +4,8 @@ const ACTION_ALIASES = {
   send: 'send_command',
   show: 'show_message',
   run_alias: 'run_alias',
+  call: 'call_function',
+  call_function: 'call_function',
   enable_alias: 'set_alias_enabled',
   disable_alias: 'set_alias_enabled',
   toggle_alias: 'set_alias_enabled',
@@ -130,6 +132,21 @@ function parseAction(text, line) {
           sound: soundMatch[2],
           volume: Math.max(0, Math.min(1, volume)),
         },
+      },
+      error: null,
+    };
+  }
+
+  if (type === 'call_function') {
+    const callMatch = arg.trim().match(/^([A-Za-z_][A-Za-z0-9_-]*)(?:\s+([\s\S]*))?$/);
+    if (!callMatch) {
+      return { node: null, error: lineDiagnostic(line, commandMatch[1] + ' requires a function name.') };
+    }
+    return {
+      node: {
+        type: 'action',
+        line,
+        step: { type, target: callMatch[1], template: callMatch[2] || '' },
       },
       error: null,
     };
