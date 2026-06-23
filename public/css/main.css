@@ -1432,6 +1432,10 @@ body.zork-only-mode #toolbar-connect-fields {
   display: none;
 }
 
+.settings-group-filter-action + .settings-flag-pill {
+  margin-left: 4px;
+}
+
 .settings-scope-chip {
   font-size: 11px;
   color: var(--df-muted);
@@ -2084,6 +2088,28 @@ body.zork-only-mode #toolbar-connect-fields {
   min-height: 60px;
 }
 #gmcp-panel.open { display: block; }
+#gmcp-panel.gmcp-panel-floating {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  padding: 0;
+  border-top: 0;
+  overflow: hidden;
+  font-size: calc(11px * var(--pane-font-scale, 1));
+}
+.gmcp-panel-floating .gmcp-toolbar {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--df-border);
+}
+.gmcp-panel-floating .gmcp-entries {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
 .gmcp-toolbar {
   position: sticky;
   top: 0;

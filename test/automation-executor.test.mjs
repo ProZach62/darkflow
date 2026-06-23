@@ -69,6 +69,7 @@ const { timerManager } = await import('../public/js/timer-manager.js');
 const { functionManager } = await import('../public/js/function-manager.js');
 const { soundManager } = await import('../public/js/sound-manager.js');
 const {
+  executeAutomationSteps,
   executeAliasLine,
   executeTriggerMatches,
 } = await import('../public/js/automation-executor.js');
@@ -951,6 +952,56 @@ test('scripts can loop while a condition remains true', () => {
   });
 
   assert.deepEqual(io.sent, ['say 0', 'say 1', 'say 2', 'say done']);
+});
+
+test('automation wait step pauses before continuing through later steps', async () => {
+  resetManagers();
+  const io = messagesAndSends();
+  const result = executeAutomationSteps([
+    { type: 'send_command', template: 'first' },
+    { type: 'wait', seconds: 0.02 },
+    { type: 'send_command', template: 'second' },
+  ], {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    templateContext: { args: [], remainder: '', variables: {} },
+    source: { prefix: 'Test', description: 'test automation' },
+    aliasContext: { depth: 0, trail: [] },
+  });
+
+  assert.equal(result.pending, true);
+  assert.deepEqual(io.sent, ['first']);
+  await result.completion;
+  assert.deepEqual(io.sent, ['first', 'second']);
+});
+
+test('script wait action pauses before later script actions', async () => {
+  resetManagers();
+  aliasManager.saveScope(SCOPE_KEY, {
+    aliases: [{
+      id: 'alias-wait-script',
+      enabled: true,
+      trigger: 'waitscript',
+      description: '',
+      group: '',
+      steps: [{ type: 'script', script: 'send first\nwait 0.02\nsend second' }],
+    }],
+    variables: {},
+  });
+
+  const io = messagesAndSends();
+  const result = executeAliasLine('waitscript', {
+    scopeKey: SCOPE_KEY,
+    appendMessage: io.appendMessage,
+    sendCommand: io.sendCommand,
+    isRoot: true,
+  });
+
+  assert.equal(result.pending, true);
+  assert.deepEqual(io.sent, ['first']);
+  await result.completion;
+  assert.deepEqual(io.sent, ['first', 'second']);
 });
 
 test('break exits the nearest while loop', () => {

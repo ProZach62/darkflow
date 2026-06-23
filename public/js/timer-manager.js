@@ -9,6 +9,7 @@ import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
 const TIMER_STORAGE_KEY = 'darkwind-client-timers-v1';
 const MIN_TIMER_MS = 1000;
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
+const MAX_WAIT_SECONDS = 24 * 60 * 60;
 
 function createId() {
   return 'timer-' + Math.random().toString(36).slice(2, 10);
@@ -22,6 +23,12 @@ function normalizeDurationMs(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 60 * 1000;
   return Math.max(MIN_TIMER_MS, Math.min(MAX_TIMER_MS, Math.round(number)));
+}
+
+function normalizeWaitSeconds(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 1;
+  return Math.max(0, Math.min(MAX_WAIT_SECONDS, number));
 }
 
 function normalizeMode(mode) {
@@ -62,6 +69,10 @@ function normalizeStep(step) {
 
   if (type === 'script') {
     return { type, script: String(step.script || '') };
+  }
+
+  if (type === 'wait') {
+    return { type, seconds: normalizeWaitSeconds(step.seconds) };
   }
 
   if (type === 'set_alias_enabled'
@@ -310,15 +321,18 @@ export const timerManager = {
     const timer = this.findTimerById(timerId, scopeKey);
     if (!timer || timer.enabled === false) return;
 
-    this._executeTimer(scopeKey, timer);
-
-    if (timer.recurring && timer.enabled !== false) {
-      this._scheduleTimer(scopeKey, timer);
-    }
+    const result = this._executeTimer(scopeKey, timer);
+    const reschedule = () => {
+      if (timer.recurring && timer.enabled !== false) {
+        this._scheduleTimer(scopeKey, timer);
+      }
+    };
+    if (result && result.completion) result.completion.finally(reschedule);
+    else reschedule();
   },
 
   _executeTimer(scopeKey, timer) {
-    executeAutomationSteps(timer.steps, {
+    return executeAutomationSteps(timer.steps, {
       appendMessage: this._appendMessage,
       sendCommand: this._sendCommand,
       scopeKey,
@@ -473,6 +487,12 @@ export const timerManager = {
       if ((step.type === 'send_command' || step.type === 'show_message' || step.type === 'set_variable')
         && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must have content.');
+      }
+      if (step.type === 'wait') {
+        const seconds = Number(step.seconds);
+        if (!Number.isFinite(seconds) || seconds < 0) {
+          diagnostics.push('Step ' + (index + 1) + ' wait time must be 0 seconds or more.');
+        }
       }
       if (step.type === 'script') {
         const scriptDiagnostics = getAutomationScriptDiagnostics(step.script || '');
