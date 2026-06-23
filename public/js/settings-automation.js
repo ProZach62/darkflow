@@ -2156,12 +2156,15 @@ export function createAutomationEditor(host, kind) {
     groupField.appendChild(el('div', 'settings-label', 'Group'));
     const groupInput = el('input', 'dw-input');
     groupInput.type = 'text';
+    groupInput.dataset.focusKey = cfg.kind + '-group';
     groupInput.placeholder = 'Travel, Combat, Loot';
     groupInput.value = item.group || '';
     groupInput.addEventListener('input', () => {
       item.group = groupInput.value;
-      render();
+      renderList();
+      renderPreviewBody();
     });
+    groupInput.addEventListener('blur', () => render());
     groupField.appendChild(groupInput);
     metaGrid.appendChild(groupField);
     detail.appendChild(metaGrid);
