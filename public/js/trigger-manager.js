@@ -3,6 +3,7 @@ import { getSoundCatalog, isKnownSound } from './sound-manager.js';
 import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
 
 const TRIGGER_STORAGE_KEY = 'darkwind-client-triggers-v1';
+const MAX_WAIT_SECONDS = 24 * 60 * 60;
 
 function createId() {
   return 'trigger-' + Math.random().toString(36).slice(2, 10);
@@ -10,6 +11,12 @@ function createId() {
 
 function normalizeWhitespace(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeWaitSeconds(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 1;
+  return Math.max(0, Math.min(MAX_WAIT_SECONDS, number));
 }
 
 function normalizeTriggerMatchText(value) {
@@ -54,6 +61,10 @@ function normalizeStep(step) {
 
   if (type === 'script') {
     return { type, script: String(step.script || '') };
+  }
+
+  if (type === 'wait') {
+    return { type, seconds: normalizeWaitSeconds(step.seconds) };
   }
 
   if (type === 'set_alias_enabled' || type === 'set_timer_enabled') {
@@ -414,6 +425,12 @@ export const triggerManager = {
       if ((step.type === 'send_command' || step.type === 'show_message' || step.type === 'set_variable')
         && !String(step.template || '').trim()) {
         diagnostics.push('Step ' + (index + 1) + ' must have content.');
+      }
+      if (step.type === 'wait') {
+        const seconds = Number(step.seconds);
+        if (!Number.isFinite(seconds) || seconds < 0) {
+          diagnostics.push('Step ' + (index + 1) + ' wait time must be 0 seconds or more.');
+        }
       }
       if (step.type === 'script') {
         const scriptDiagnostics = getAutomationScriptDiagnostics(step.script || '');

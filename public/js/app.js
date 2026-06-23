@@ -90,6 +90,102 @@ setInterval(function() {
 // ── GMCP Debug Panel ────────────────────────────────────────────────
 const gmcpEntries = [];
 const GMCP_ENTRY_LIMIT = 200;
+const GMCP_DEBUG_PANEL_ID = 'gmcp-debug';
+const gmcpPanelAnchor = {
+  parent: dom.gmcpPanel.parentNode,
+  nextSibling: dom.gmcpPanel.nextSibling,
+};
+let gmcpDebugVisible = false;
+
+function isGmcpDebugFloatingLayout() {
+  if (typeof panelManager.isFloatingWorkspace === 'function') {
+    return panelManager.isFloatingWorkspace();
+  }
+  return state.settings && state.settings.workspaceLayout === 'floating';
+}
+
+function scrollGmcpDebugToBottom() {
+  window.requestAnimationFrame(function() {
+    const target = dom.gmcpPanel.classList.contains('gmcp-panel-floating')
+      ? gmcpEntriesEl
+      : dom.gmcpPanel;
+    target.scrollTop = target.scrollHeight;
+  });
+}
+
+function restoreGmcpDebugClassicHost() {
+  const parent = gmcpPanelAnchor.parent;
+  if (!parent) return;
+
+  const nextSibling = gmcpPanelAnchor.nextSibling &&
+    gmcpPanelAnchor.nextSibling.parentNode === parent
+    ? gmcpPanelAnchor.nextSibling
+    : null;
+
+  if (dom.gmcpPanel.parentNode !== parent) {
+    parent.insertBefore(dom.gmcpPanel, nextSibling);
+  }
+  dom.gmcpPanel.classList.remove('gmcp-panel-floating');
+}
+
+function closeGmcpDebugFloatingPane() {
+  restoreGmcpDebugClassicHost();
+  panelManager.removeDynamicPanel(GMCP_DEBUG_PANEL_ID, { preserveState: true });
+}
+
+function ensureGmcpDebugFloatingHost() {
+  const body = panelManager.createDynamicPanel(
+    GMCP_DEBUG_PANEL_ID,
+    'GMCP Debug',
+    'float',
+    999,
+    function() {
+      gmcpDebugVisible = false;
+      dom.gmcpToggle.style.color = '#8b949e';
+      dom.gmcpPanel.classList.remove('open');
+      closeGmcpDebugFloatingPane();
+    },
+    {
+      defaultFloatW: 520,
+      defaultFloatH: 320,
+      defaultFloatX: Math.max(16, window.innerWidth - 552),
+      defaultFloatY: 64,
+      paneSettings: true,
+    }
+  );
+  if (!body) return;
+
+  if (dom.gmcpPanel.parentNode !== body) {
+    body.appendChild(dom.gmcpPanel);
+  }
+  dom.gmcpPanel.classList.add('gmcp-panel-floating');
+}
+
+function syncGmcpDebugLayout() {
+  if (!gmcpDebugVisible) return;
+
+  dom.gmcpPanel.classList.add('open');
+  if (isGmcpDebugFloatingLayout()) {
+    ensureGmcpDebugFloatingHost();
+  } else {
+    closeGmcpDebugFloatingPane();
+  }
+  renderGmcpEntries();
+  scrollGmcpDebugToBottom();
+}
+
+function setGmcpDebugVisible(visible) {
+  gmcpDebugVisible = !!visible;
+  dom.gmcpToggle.style.color = gmcpDebugVisible ? '#58a6ff' : '#8b949e';
+
+  if (!gmcpDebugVisible) {
+    dom.gmcpPanel.classList.remove('open');
+    closeGmcpDebugFloatingPane();
+    return;
+  }
+
+  syncGmcpDebugLayout();
+}
 
 function renderGmcpEntries() {
   gmcpEntriesEl.textContent = '';
@@ -109,21 +205,16 @@ function pushGmcpEntry(line) {
     gmcpEntries.splice(0, gmcpEntries.length - GMCP_ENTRY_LIMIT);
   }
 
-  if (!gmcpDebugEnabled && !dom.gmcpPanel.classList.contains('open')) {
+  if (!gmcpDebugEnabled && !gmcpDebugVisible) {
     return;
   }
 
   renderGmcpEntries();
-  dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
+  scrollGmcpDebugToBottom();
 }
 
 dom.gmcpToggle.addEventListener('click', function() {
-  const visible = dom.gmcpPanel.classList.toggle('open');
-  dom.gmcpToggle.style.color = visible ? '#58a6ff' : '#8b949e';
-  if (visible) {
-    renderGmcpEntries();
-    dom.gmcpPanel.scrollTop = dom.gmcpPanel.scrollHeight;
-  }
+  setGmcpDebugVisible(!gmcpDebugVisible);
 });
 
 const gmcpToolbar = document.createElement('div');
@@ -177,6 +268,12 @@ gmcpToolbar.appendChild(mapClearBtn);
 gmcpToolbar.appendChild(gmcpCopyBtn);
 dom.gmcpPanel.appendChild(gmcpToolbar);
 dom.gmcpPanel.appendChild(gmcpEntriesEl);
+
+window.addEventListener('darkflow:workspace-layout-changed', syncGmcpDebugLayout);
+
+if (gmcpDebugEnabled) {
+  setGmcpDebugVisible(true);
+}
 
 gmcp.on('*', function(packageName, data) {
   if (wsDebugEnabled) {

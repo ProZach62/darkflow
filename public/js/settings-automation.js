@@ -396,18 +396,28 @@ function appendStepsEditor(container, owner, opts, api) {
       if (opts.sounds && step.type === 'play_sound') {
         delete step.template;
         delete step.script;
+        delete step.seconds;
         opts.sounds.ensure(step);
       } else if (step.type === 'script') {
         delete step.template;
         delete step.category;
         delete step.sound;
         delete step.volume;
+        delete step.seconds;
         if (!step.script) step.script = '';
+      } else if (step.type === 'wait') {
+        delete step.template;
+        delete step.script;
+        delete step.category;
+        delete step.sound;
+        delete step.volume;
+        if (!Number.isFinite(Number(step.seconds))) step.seconds = 1;
       } else {
         delete step.script;
         delete step.category;
         delete step.sound;
         delete step.volume;
+        delete step.seconds;
         if (!step.template) step.template = '';
       }
       api.render();
@@ -472,6 +482,25 @@ function appendStepsEditor(container, owner, opts, api) {
         api.renderPreview();
       });
       card.appendChild(scriptInput);
+    } else if (step.type === 'wait') {
+      const waitRow = el('div', 'settings-step-sound-row');
+      const secondsInput = el('input', 'dw-input settings-step-target');
+      secondsInput.type = 'number';
+      secondsInput.min = '0';
+      secondsInput.max = String(24 * 60 * 60);
+      secondsInput.step = '0.1';
+      secondsInput.placeholder = 'Seconds';
+      secondsInput.title = 'Seconds to wait before continuing with the next step.';
+      secondsInput.value = String(Number.isFinite(Number(step.seconds)) ? step.seconds : 1);
+      secondsInput.dataset.focusKey = opts.focusPrefix + '-step-' + index + '-wait';
+      secondsInput.addEventListener('input', () => {
+        step.seconds = secondsInput.value;
+        api.renderDiagnostics();
+        api.renderPreview();
+      });
+      waitRow.appendChild(secondsInput);
+      waitRow.appendChild(el('span', 'settings-helper-text', 'seconds'));
+      card.appendChild(waitRow);
     } else if (opts.sounds && step.type === 'play_sound') {
       opts.sounds.ensure(step);
       const soundRow = el('div', 'settings-step-sound-row');
@@ -721,6 +750,10 @@ function appendStepsEditor(container, owner, opts, api) {
     if (selected.type === 'set_variable') step.name = '';
     if (targetConfigFor(selected.type)) step.target = '';
     if (selected.type === 'call_function') step.target = '';
+    if (selected.type === 'wait') {
+      delete step.template;
+      step.seconds = 1;
+    }
     if (selected.type === 'script') {
       delete step.template;
       step.script = '';
@@ -818,6 +851,7 @@ function buildConfig(host, kind) {
             { value: 'send_command', type: 'send_command', label: 'Send command' },
             { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
             { value: 'show_message', type: 'show_message', label: 'Show local message' },
+            { value: 'wait', type: 'wait', label: 'Wait' },
             { value: 'script', type: 'script', label: 'Run script' },
             { value: 'call_function', type: 'call_function', label: 'Call function' },
             { value: 'set_trigger_enabled:toggle', type: 'set_trigger_enabled', mode: 'toggle', label: 'Toggle trigger' },
@@ -840,7 +874,7 @@ function buildConfig(host, kind) {
           syntaxHelp: 'Simple aliases match command words; %0 is everything after the alias. '
             + 'Regex aliases use JavaScript regular expressions with capture groups as %1-%9. '
             + 'Templates support $name variables and ${lower:%1} or ${lower:$name} for lowercase. '
-            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, and trigger/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, wait <seconds>, set $name = value, run_alias, call, and trigger/timer controls.',
         }, api);
       },
       preview: {
@@ -878,6 +912,14 @@ function buildConfig(host, kind) {
               if ((previewStep.type === 'set_timer_enabled' || previewStep.type === 'control_timer')
                 && previewStep.targetId) {
                 appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name, { useDescription: false });
+                return;
+              }
+              if (previewStep.type === 'wait') {
+                appendResolvedStepRow(body, getAutomationStepLabel(previewStep), {
+                  text: String(previewStep.seconds || 0) + 's',
+                  missingVariables: [],
+                  errors: [],
+                });
                 return;
               }
 
@@ -926,6 +968,14 @@ function buildConfig(host, kind) {
             }
             if (step.type === 'call_function') {
               appendFunctionPreviewRow(body, step, host._draftFunctionScope.functions, templateContext);
+              continue;
+            }
+            if (step.type === 'wait') {
+              appendResolvedStepRow(body, getAutomationStepLabel(step), {
+                text: String(step.seconds || 0) + 's',
+                missingVariables: [],
+                errors: [],
+              });
               continue;
             }
 
@@ -1040,6 +1090,7 @@ function buildConfig(host, kind) {
             { value: 'send_command', type: 'send_command', label: 'Send command' },
             { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
             { value: 'show_message', type: 'show_message', label: 'Show local message' },
+            { value: 'wait', type: 'wait', label: 'Wait' },
             { value: 'script', type: 'script', label: 'Run script' },
             { value: 'call_function', type: 'call_function', label: 'Call function' },
             { value: 'set_alias_enabled:toggle', type: 'set_alias_enabled', mode: 'toggle', label: 'Toggle alias' },
@@ -1065,7 +1116,7 @@ function buildConfig(host, kind) {
           syntaxHelp: 'Simple patterns support * or %1-%9 as captures. '
             + 'Regex triggers use JavaScript regular expressions with capture groups as %1-%9. '
             + 'Templates support %0 for the full match, $name variables, and ${lower:%1} or ${lower:$name} for lowercase. '
-            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, play_sound, and alias/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, wait <seconds>, set $name = value, run_alias, call, play_sound, and alias/timer controls.',
         }, api);
       },
       preview: {
@@ -1122,6 +1173,14 @@ function buildConfig(host, kind) {
                 if ((previewStep.type === 'set_timer_enabled' || previewStep.type === 'control_timer')
                   && previewStep.targetId) {
                   appendTargetIdPreviewRow(body, previewStep, previewTimers, (item) => item.name, { useDescription: false });
+                  return;
+                }
+                if (previewStep.type === 'wait') {
+                  appendResolvedStepRow(body, getAutomationStepLabel(previewStep), {
+                    text: String(previewStep.seconds || 0) + 's',
+                    missingVariables: [],
+                    errors: [],
+                  });
                   return;
                 }
                 if (previewStep.type === 'call_function') {
@@ -1199,6 +1258,14 @@ function buildConfig(host, kind) {
               }
               if (step.type === 'call_function') {
                 appendFunctionPreviewRow(body, step, host._draftFunctionScope.functions, templateContext);
+                continue;
+              }
+              if (step.type === 'wait') {
+                appendResolvedStepRow(body, getAutomationStepLabel(step), {
+                  text: String(step.seconds || 0) + 's',
+                  missingVariables: [],
+                  errors: [],
+                });
                 continue;
               }
 
@@ -1370,6 +1437,7 @@ function buildConfig(host, kind) {
             { value: 'send_command', type: 'send_command', label: 'Send command' },
             { value: 'set_variable', type: 'set_variable', label: 'Set variable' },
             { value: 'show_message', type: 'show_message', label: 'Show local message' },
+            { value: 'wait', type: 'wait', label: 'Wait' },
             { value: 'script', type: 'script', label: 'Run script' },
             { value: 'run_alias', type: 'run_alias', label: 'Run alias' },
             { value: 'call_function', type: 'call_function', label: 'Call function' },
@@ -1395,7 +1463,7 @@ function buildConfig(host, kind) {
                   : 'look'
           ),
           syntaxHelp: 'Timer templates use %0 for the timer name plus $name variables. '
-            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, and alias/trigger/timer controls.',
+            + 'Scripts support if/elseif/else/while/end, break, continue, send, show, wait <seconds>, set $name = value, run_alias, call, and alias/trigger/timer controls.',
         }, api);
       },
       preview: {
@@ -1438,6 +1506,14 @@ function buildConfig(host, kind) {
             }
             if (step.type === 'call_function') {
               appendFunctionPreviewRow(body, step, host._draftFunctionScope.functions, templateContext);
+              return;
+            }
+            if (step.type === 'wait') {
+              appendResolvedStepRow(body, getAutomationStepLabel(step), {
+                text: String(step.seconds || 0) + 's',
+                missingVariables: [],
+                errors: [],
+              });
               return;
             }
             const resolved = aliasManager.resolveTemplate(
@@ -1513,7 +1589,7 @@ function buildConfig(host, kind) {
         help.appendChild(el('summary', '', 'Function script syntax'));
         help.appendChild(el('p', 'dw-paragraph',
           'Functions receive arguments from the caller as %1-%9 and %0. '
-          + 'Scripts support if/elseif/else/while/end, break, continue, send, show, set $name = value, run_alias, call, play_sound, and alias/trigger/timer controls.'));
+          + 'Scripts support if/elseif/else/while/end, break, continue, send, show, wait <seconds>, set $name = value, run_alias, call, play_sound, and alias/trigger/timer controls.'));
         container.appendChild(help);
       },
       preview: {
@@ -1542,6 +1618,14 @@ function buildConfig(host, kind) {
           const renderPreviewStep = (step) => {
             if (step.type === 'call_function') {
               appendFunctionPreviewRow(body, step, host._draftFunctionScope.functions, templateContext);
+              return;
+            }
+            if (step.type === 'wait') {
+              appendResolvedStepRow(body, getAutomationStepLabel(step), {
+                text: String(step.seconds || 0) + 's',
+                missingVariables: [],
+                errors: [],
+              });
               return;
             }
             const resolved = aliasManager.resolveTemplate(

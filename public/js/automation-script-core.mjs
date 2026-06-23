@@ -22,6 +22,7 @@ const ACTION_ALIASES = {
   set_timer: 'control_timer',
   set: 'set_variable',
   play_sound: 'play_sound',
+  wait: 'wait',
 };
 
 function lineDiagnostic(line, message) {
@@ -132,6 +133,21 @@ function parseAction(text, line) {
           sound: soundMatch[2],
           volume: Math.max(0, Math.min(1, volume)),
         },
+      },
+      error: null,
+    };
+  }
+
+  if (type === 'wait') {
+    const seconds = Number(arg.trim());
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return { node: null, error: lineDiagnostic(line, 'wait must look like "wait <seconds>".') };
+    }
+    return {
+      node: {
+        type: 'action',
+        line,
+        step: { type, seconds },
       },
       error: null,
     };
