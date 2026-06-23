@@ -1432,6 +1432,10 @@ body.zork-only-mode #toolbar-connect-fields {
   display: none;
 }
 
+.settings-group-filter-action + .settings-flag-pill {
+  margin-left: 4px;
+}
+
 .settings-scope-chip {
   font-size: 11px;
   color: var(--df-muted);

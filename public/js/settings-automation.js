@@ -1904,6 +1904,25 @@ export function createAutomationEditor(host, kind) {
     }
 
     groupFilters.hidden = false;
+    if (groups.length >= 3) {
+      const selectedCount = groups.filter((group) => checkedGroupKeys.has(group.key)).length;
+      const selectAllBtn = smallButton('Select all', 'Show every group', () => {
+        groups.forEach((group) => checkedGroupKeys.add(group.key));
+        render();
+      });
+      selectAllBtn.classList.add('settings-group-filter-action');
+      selectAllBtn.disabled = selectedCount === groups.length;
+      groupFilters.appendChild(selectAllBtn);
+
+      const unselectAllBtn = smallButton('Unselect all', 'Hide every group', () => {
+        groups.forEach((group) => checkedGroupKeys.delete(group.key));
+        render();
+      });
+      unselectAllBtn.classList.add('settings-group-filter-action');
+      unselectAllBtn.disabled = selectedCount === 0;
+      groupFilters.appendChild(unselectAllBtn);
+    }
+
     groups.forEach((group) => {
       const checked = checkedGroupKeys.has(group.key);
       const pill = el('label', 'settings-flag-pill' + (checked ? ' on' : ''));
