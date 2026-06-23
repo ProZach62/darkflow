@@ -1,0 +1,1446 @@
+{
+  "format": "darkwind-client-settings-export",
+  "formatVersion": 1,
+  "exportedAt": "2026-06-18T04:17:00.227Z",
+  "clientVersion": "1.2.1",
+  "data": {
+    "settings": {
+      "autoReconnect": true,
+      "repeatLastCommand": true,
+      "keyMapperEnabled": false,
+      "keyMappings": [],
+      "aliasTabCompletionEnabled": true,
+      "historyTabCompletionEnabled": false,
+      "lagMonitorEnabled": true,
+      "scrollbackBehavior": "pause",
+      "scrollbackSplitRatio": 0.6,
+      "outputScrollbackPreset": "normal",
+      "tabObservabilityEnabled": false,
+      "screenReaderMode": false,
+      "terminalWidthColumns": null,
+      "workspaceLayout": "floating",
+      "paneGridSnapEnabled": true,
+      "settingsBackupPromptEnabled": false,
+      "theme": "dracula",
+      "customThemes": {}
+    },
+    "aliases": {
+      "scopes": {
+        "ws://tdome.nukefire.org:4000": {
+          "aliases": [
+            {
+              "id": "alias-1o600s68",
+              "enabled": true,
+              "trigger": "powerup",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "powerup!",
+              "group": "Class",
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "grow arms"
+                },
+                {
+                  "type": "send_command",
+                  "template": "grow fingers"
+                },
+                {
+                  "type": "send_command",
+                  "template": "grow muscle"
+                },
+                {
+                  "type": "send_command",
+                  "template": "grow body"
+                },
+                {
+                  "type": "send_command",
+                  "template": "grow claws"
+                },
+                {
+                  "type": "send_command",
+                  "template": "grow eyes"
+                },
+                {
+                  "type": "send_command",
+                  "template": "grow shell"
+                },
+                {
+                  "type": "show_message",
+                  "template": "[[[ *** POWERED UP! *** ]]]"
+                }
+              ]
+            },
+            {
+              "id": "alias-n6l0enci",
+              "enabled": true,
+              "trigger": "getarea",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "get area",
+              "group": "Area",
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "gps find halloween town"
+                }
+              ]
+            },
+            {
+              "id": "alias-xp6bxqb3",
+              "enabled": true,
+              "trigger": "goarea",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "go to area",
+              "group": "area",
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "gps set $areaid"
+                },
+                {
+                  "type": "send_command",
+                  "template": "run remaining"
+                }
+              ]
+            },
+            {
+              "id": "alias-wqnos1eg",
+              "enabled": true,
+              "trigger": "startkilling",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Start Killing",
+              "group": "area",
+              "steps": [
+                {
+                  "type": "set_trigger_enabled",
+                  "mode": "enable",
+                  "target": "",
+                  "targetId": "trigger-l7ur0gw3"
+                },
+                {
+                  "type": "send_command",
+                  "template": "north"
+                }
+              ]
+            },
+            {
+              "id": "alias-2osqx1tx",
+              "enabled": true,
+              "trigger": "findmove",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Resolve movement",
+              "group": "",
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "if $lastdir == 'north'"
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-alias-start",
+              "enabled": true,
+              "trigger": "auto start",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Start the timer-driven automation loop.",
+              "group": "Auto Loop",
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_mode = hunting\nset $auto_last_action = start\nset $auto_in_combat = 0\nstart_timer main_loop\nshow Auto loop started. Target=$auto_target; panic=$auto_panic_pct%; heal=$auto_heal_pct%; rest=$auto_rest_pct%."
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-alias-stop",
+              "enabled": true,
+              "trigger": "auto stop",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Stop the automation loop and pause behavior.",
+              "group": "Auto Loop",
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_mode = paused\nset $auto_last_action = stop\nstop_timer main_loop\nshow Auto loop stopped."
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-alias-status",
+              "enabled": true,
+              "trigger": "auto status",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Show current automation variables.",
+              "group": "Auto Loop",
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "show Auto mode=$auto_mode target=$auto_target hp=$auto_hp_pct combat=$auto_in_combat route=$auto_route_index/$auto_route_size last=$auto_last_action loot=$auto_loot_enabled."
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-alias-target",
+              "enabled": true,
+              "trigger": "auto target",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Set the hunt target from the rest of the command.",
+              "group": "Auto Loop",
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_target = %0\nshow Auto target set to $auto_target."
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-alias-route-reset",
+              "enabled": true,
+              "trigger": "auto route reset",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Reset route index to the first configured route slot.",
+              "group": "Auto Loop",
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_route_index = 0\nset $auto_last_action = route_reset\nshow Auto route reset."
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-alias-loot-on",
+              "enabled": true,
+              "trigger": "auto loot on",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Enable automatic corpse loot trigger.",
+              "group": "Auto Loop",
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_loot_enabled = 1\nshow Auto loot enabled."
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-alias-loot-off",
+              "enabled": true,
+              "trigger": "auto loot off",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Disable automatic corpse loot trigger.",
+              "group": "Auto Loop",
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_loot_enabled = 0\nshow Auto loot disabled."
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-alias-panic",
+              "enabled": true,
+              "trigger": "auto panic",
+              "isRegex": false,
+              "ignoreCase": true,
+              "description": "Force the panic behavior immediately.",
+              "group": "Auto Loop",
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "call panic"
+                }
+              ]
+            }
+          ],
+          "variables": {
+            "areaid": "34",
+            "level": "",
+            "attack1": "emit",
+            "attack2": "spew",
+            "attack3": "psionicwave",
+            "attack4": "psiattack",
+            "attack5": "psiblast",
+            "attack6": "rend",
+            "attack7": "mindcrush",
+            "attack8": "radblast",
+            "lastdir": "notarealdir",
+            "mode": "",
+            "auto_mode": "paused",
+            "auto_target": "rat",
+            "auto_in_combat": "0",
+            "auto_hp_pct": "100",
+            "auto_panic_pct": "20",
+            "auto_heal_pct": "45",
+            "auto_rest_pct": "85",
+            "auto_route_index": "0",
+            "auto_route_size": "4",
+            "auto_route_0": "north",
+            "auto_route_1": "east",
+            "auto_route_2": "south",
+            "auto_route_3": "west",
+            "auto_route_4": "",
+            "auto_route_5": "",
+            "auto_route_6": "",
+            "auto_route_7": "",
+            "auto_combat_command": "kill",
+            "auto_heal_command": "quaff potion",
+            "auto_rest_command": "rest",
+            "auto_stand_command": "stand",
+            "auto_loot_command": "get all corpse",
+            "auto_after_loot_command": "bury corpse",
+            "auto_loot_enabled": "1",
+            "auto_last_action": "idle"
+          }
+        }
+      }
+    },
+    "highlights": {
+      "scopes": {
+        "ws://tdome.nukefire.org:4000": {
+          "rules": []
+        }
+      }
+    },
+    "triggers": {
+      "scopes": {
+        "ws://tdome.nukefire.org:4000": {
+          "triggers": [
+            {
+              "id": "trigger-ggh0f5f3",
+              "enabled": true,
+              "pattern": "Your extra arms suck back into your body!",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "arms done",
+              "group": "Class",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "grow arms"
+                }
+              ]
+            },
+            {
+              "id": "trigger-ht7a115c",
+              "enabled": true,
+              "pattern": "Your fingers droop back to their stubby selves.",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "fingers done",
+              "group": "Class",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "grow fingers"
+                }
+              ]
+            },
+            {
+              "id": "trigger-96t4pj56",
+              "enabled": true,
+              "pattern": "Your muscles are no longer quite so impressive!",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "muscles done",
+              "group": "Class",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "grow muscle"
+                }
+              ]
+            },
+            {
+              "id": "trigger-9kzi69sk",
+              "enabled": true,
+              "pattern": "Your limbs are no longer quite so long.",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "body done",
+              "group": "Class",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "grow body"
+                }
+              ]
+            },
+            {
+              "id": "trigger-ar6zm521",
+              "enabled": true,
+              "pattern": "You no longer have sharp claws!",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "claws done",
+              "group": "Class",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "grow claws"
+                }
+              ]
+            },
+            {
+              "id": "trigger-kh8dqpao",
+              "enabled": true,
+              "pattern": "Your eyes sink back into your face!",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "eyes done",
+              "group": "Class",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "grow eyes"
+                }
+              ]
+            },
+            {
+              "id": "trigger-ewwaz0za",
+              "enabled": true,
+              "pattern": "Your scaly shell slowly shrinks back into your skin.",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "shell done",
+              "group": "Class",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "grow shell"
+                }
+              ]
+            },
+            {
+              "id": "trigger-q2t5gn2x",
+              "enabled": true,
+              "pattern": "<\\s*(\\d+)>\\s*(.+?)\\s*\\((.+?)\\)",
+              "isRegex": true,
+              "ignoreCase": false,
+              "description": "get area id",
+              "group": "Area",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "set_variable",
+                  "name": "areaid",
+                  "template": "%1"
+                },
+                {
+                  "type": "show_message",
+                  "template": "[[[ *** AREA ID IS $areaid *** ]]]"
+                }
+              ]
+            },
+            {
+              "id": "trigger-l7ur0gw3",
+              "enabled": false,
+              "pattern": "Lvl\\s+(\\d+),\\s*EXP to next:\\s*([\\d,]+)",
+              "isRegex": true,
+              "ignoreCase": false,
+              "description": "attack mob",
+              "group": "combat",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "set_variable",
+                  "name": "level",
+                  "template": "%1"
+                },
+                {
+                  "type": "send_command",
+                  "template": "if $level >= 45 \n  send $attack8\nelseif $level >= 40\n  send $attack7\nelseif $level >= 25\n  send $attack5\nelseif $level >= 15\n  send $attack4\nelseif $level >= 13\n  send $attack3\nelseif $level >=- 10\n  send $attack2\nelse\n  send $attack1\nendif"
+                }
+              ]
+            },
+            {
+              "id": "trigger-h2590acn",
+              "enabled": true,
+              "pattern": "receive ([\\d,]+) experience",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "Keep attacking after death",
+              "group": "",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "devour corpse"
+                },
+                {
+                  "type": "send_command",
+                  "template": "look"
+                }
+              ]
+            },
+            {
+              "id": "trigger-6ay308l9",
+              "enabled": true,
+              "pattern": "Use (.+) on whom\\?",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "Time to move",
+              "group": "",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "run_alias",
+                  "template": "findmove"
+                }
+              ]
+            },
+            {
+              "id": "trigger-sjx6ij63",
+              "enabled": true,
+              "pattern": "Alas, you cannot go that way...",
+              "isRegex": false,
+              "ignoreCase": false,
+              "description": "New direction!",
+              "group": "",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": "if $lastdir == north\n  send south\nelseif $lastdir == south\n  send north\nelseif $lastdir == east\n  send west\nelseif $lastdir == west\n  send east\nelseif $lastdirt == northeast\n  send southwest\nelseif $lastdir == southwest\n  send northeast\nelseif $lastdir = northwest\n  send southeast\nelseif $lastdir == southeast\n  send northwest\nelse\n  show [[[ UNABLE TO RESOLVE NEXT STEPS ]]]\nend"
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-trigger-combat-start",
+              "enabled": true,
+              "pattern": "(?:^You attack|^You are attacked|starts? attacking you|^You are now fighting|^You engage)",
+              "isRegex": true,
+              "ignoreCase": true,
+              "description": "Mark the auto loop as in combat.",
+              "group": "Auto Loop",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_in_combat = 1\nset $auto_last_action = combat_start"
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-trigger-combat-end",
+              "enabled": true,
+              "pattern": "(?:^You (?:killed|have slain)|\\bis dead\\b|\\bdies\\b|^You receive .* experience|^You gain .* experience|receive ([\\d,]+) experience)",
+              "isRegex": true,
+              "ignoreCase": true,
+              "description": "Mark combat finished and loot if enabled.",
+              "group": "Auto Loop",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_in_combat = 0\nset $auto_last_action = combat_done\nif $auto_loot_enabled == 1\n  send $auto_loot_command\n  if not_empty $auto_after_loot_command\n    send $auto_after_loot_command\n  end\nend"
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-trigger-route-blocked",
+              "enabled": true,
+              "pattern": "(?:Alas, you cannot go that way|Alas, you cannot go that way\\.\\.\\.|You cannot go that way|There is no exit|You can't go that way)",
+              "isRegex": true,
+              "ignoreCase": true,
+              "description": "Reset the route when a movement step is blocked.",
+              "group": "Auto Loop",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_route_index = 0\nset $auto_last_action = route_blocked\nshow Auto route was blocked; route index reset."
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-trigger-danger-stop",
+              "enabled": true,
+              "pattern": "(?:You are DEAD|You have died|You flee|You ran away)",
+              "isRegex": true,
+              "ignoreCase": true,
+              "description": "Pause the loop after death or fleeing.",
+              "group": "Auto Loop",
+              "gag": false,
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "set $auto_in_combat = 0\nset $auto_mode = paused\nset $auto_last_action = danger_stop\nstop_timer main_loop\nshow Auto loop paused after danger/flee/death text."
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "timers": {
+      "scopes": {
+        "ws://tdome.nukefire.org:4000": {
+          "timers": [
+            {
+              "id": "timer-zewj1sqb",
+              "enabled": true,
+              "name": "Game loop",
+              "description": "",
+              "group": "Automation",
+              "durationMs": 1000,
+              "recurring": true,
+              "autoStart": true,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": ""
+                }
+              ]
+            },
+            {
+              "id": "timer-e8fyu3ms",
+              "enabled": true,
+              "name": "Game loop",
+              "description": "",
+              "group": "Automation",
+              "durationMs": 1000,
+              "recurring": true,
+              "autoStart": true,
+              "steps": [
+                {
+                  "type": "send_command",
+                  "template": ""
+                }
+              ]
+            },
+            {
+              "id": "auto-loop-timer-main",
+              "enabled": true,
+              "name": "main_loop",
+              "description": "Two-second automation heartbeat. Start with auto start; stop with auto stop.",
+              "group": "Auto Loop",
+              "durationMs": 2000,
+              "recurring": true,
+              "autoStart": false,
+              "steps": [
+                {
+                  "type": "script",
+                  "script": "call tick"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "functions": {
+      "scopes": {
+        "ws://tdome.nukefire.org:4000": {
+          "functions": [
+            {
+              "id": "auto-loop-function-tick",
+              "enabled": true,
+              "name": "tick",
+              "description": "Main state-machine tick for the automation timer.",
+              "group": "Auto Loop",
+              "script": "set $auto_hp_pct = ($gmcp_char_vitals_hp * 100) / $gmcp_char_vitals_mhp\nif $auto_mode == paused\n  show Auto loop is paused.\nelseif $auto_hp_pct <= $auto_panic_pct\n  call panic\nelseif $auto_in_combat == 1\n  call combat_tick\nelseif $auto_mode == recovering\n  call recovery_tick\nelseif $auto_mode == hunting\n  call hunt_tick\nelse\n  show Unknown auto mode $auto_mode; pausing.\n  set $auto_mode = paused\n  stop_timer main_loop\nend"
+            },
+            {
+              "id": "auto-loop-function-panic",
+              "enabled": true,
+              "name": "panic",
+              "description": "Emergency stop behavior when health crosses the panic threshold.",
+              "group": "Auto Loop",
+              "script": "set $auto_mode = paused\nset $auto_in_combat = 0\nset $auto_last_action = panic\nstop_timer main_loop\nsend flee\nshow Auto panic fired at $auto_hp_pct% hp. Timer stopped."
+            },
+            {
+              "id": "auto-loop-function-combat-tick",
+              "enabled": true,
+              "name": "combat_tick",
+              "description": "Per-tick behavior while combat is active.",
+              "group": "Auto Loop",
+              "script": "set $auto_last_action = combat\nif $auto_hp_pct <= $auto_heal_pct\n  send $auto_heal_command\nelse\n  send $auto_combat_command $auto_target\nend"
+            },
+            {
+              "id": "auto-loop-function-recovery-tick",
+              "enabled": true,
+              "name": "recovery_tick",
+              "description": "Rest until health reaches the configured rest threshold.",
+              "group": "Auto Loop",
+              "script": "set $auto_last_action = recovering\nif $auto_hp_pct >= $auto_rest_pct\n  set $auto_mode = hunting\n  set $auto_last_action = recovery_done\n  send $auto_stand_command\nelse\n  send $auto_rest_command\nend"
+            },
+            {
+              "id": "auto-loop-function-hunt-tick",
+              "enabled": true,
+              "name": "hunt_tick",
+              "description": "Look for the target, recover if needed, otherwise advance the route.",
+              "group": "Auto Loop",
+              "script": "if $auto_hp_pct <= $auto_heal_pct\n  set $auto_mode = recovering\n  set $auto_last_action = low_hp_recover\n  send $auto_rest_command\nelse\n  call find_or_move\nend"
+            },
+            {
+              "id": "auto-loop-function-find-or-move",
+              "enabled": true,
+              "name": "find_or_move",
+              "description": "Alternate between trying the target and moving along the configured route.",
+              "group": "Auto Loop",
+              "script": "if $auto_last_action == seek\n  call move_route\n  set $auto_last_action = move\nelse\n  send $auto_combat_command $auto_target\n  set $auto_last_action = seek\nend"
+            },
+            {
+              "id": "auto-loop-function-move-route",
+              "enabled": true,
+              "name": "move_route",
+              "description": "Move through auto_route_0 through auto_route_7 according to auto_route_size.",
+              "group": "Auto Loop",
+              "script": "if $auto_route_index >= $auto_route_size\n  set $auto_route_index = 0\nend\nif $auto_route_index == 0\n  if not_empty $auto_route_0\n    send $auto_route_0\n  else\n    show Auto auto_route_0 is empty.\n  end\nelseif $auto_route_index == 1\n  if not_empty $auto_route_1\n    send $auto_route_1\n  else\n    show Auto auto_route_1 is empty.\n  end\nelseif $auto_route_index == 2\n  if not_empty $auto_route_2\n    send $auto_route_2\n  else\n    show Auto auto_route_2 is empty.\n  end\nelseif $auto_route_index == 3\n  if not_empty $auto_route_3\n    send $auto_route_3\n  else\n    show Auto auto_route_3 is empty.\n  end\nelseif $auto_route_index == 4\n  if not_empty $auto_route_4\n    send $auto_route_4\n  else\n    show Auto auto_route_4 is empty.\n  end\nelseif $auto_route_index == 5\n  if not_empty $auto_route_5\n    send $auto_route_5\n  else\n    show Auto auto_route_5 is empty.\n  end\nelseif $auto_route_index == 6\n  if not_empty $auto_route_6\n    send $auto_route_6\n  else\n    show Auto auto_route_6 is empty.\n  end\nelseif $auto_route_index == 7\n  if not_empty $auto_route_7\n    send $auto_route_7\n  else\n    show Auto auto_route_7 is empty.\n  end\nelse\n  set $auto_route_index = 0\nend\nset $auto_route_index = $auto_route_index + 1\nif $auto_route_index >= $auto_route_size\n  set $auto_route_index = 0\nend"
+            }
+          ]
+        }
+      }
+    },
+    "panels": {
+      "version": 2,
+      "profiles": {
+        "classic": {
+          "docks": {
+            "left": false,
+            "right": false
+          },
+          "panels": {
+            "avatar": {
+              "dock": "left",
+              "order": 0,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "status": {
+              "dock": "left",
+              "order": 1,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "vitals": {
+              "dock": "left",
+              "order": 2,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "guildVitals": {
+              "dock": "left",
+              "order": 3,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 756,
+              "floatY": 601,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "sky": {
+              "dock": "left",
+              "order": 4,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 756,
+              "floatY": 601,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "omens": {
+              "dock": "left",
+              "order": 3,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "buffs": {
+              "dock": "left",
+              "order": 4,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "worth": {
+              "dock": "left",
+              "order": 5,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "stats": {
+              "dock": "left",
+              "order": 6,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "room": {
+              "dock": "right",
+              "order": 0,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "group": {
+              "dock": "right",
+              "order": 1,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "inventory": {
+              "dock": "right",
+              "order": 2,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "enemy": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 662,
+              "floatY": 587,
+              "floatW": 380,
+              "floatH": 131,
+              "floatZ": 1010,
+              "zLayer": 1,
+              "snapLeft": false,
+              "snapTop": true,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "chat": {
+              "dock": "right",
+              "order": 3,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 477,
+              "floatY": 467,
+              "floatW": 750,
+              "floatH": 370,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": true,
+              "snapBottom": true
+            },
+            "map": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 652,
+              "floatY": 477,
+              "floatW": 400,
+              "floatH": 350,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": true,
+              "snapRight": true,
+              "snapBottom": false
+            },
+            "areaMap": {
+              "dock": "float",
+              "order": 1,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 696,
+              "floatY": 526,
+              "floatW": 400,
+              "floatH": 350,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": true,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "roomImage": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 652,
+              "floatY": 835,
+              "floatW": 400,
+              "floatH": 225,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": true,
+              "snapBottom": false
+            },
+            "quests": {
+              "dock": "right",
+              "order": 3,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "achievements": {
+              "dock": "right",
+              "order": 4,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 712,
+              "floatY": 552,
+              "floatW": 280,
+              "floatH": 200,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "connection": {
+              "dock": "float",
+              "order": 2,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 733,
+              "floatY": 536,
+              "floatW": 340,
+              "floatH": 330,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": true
+            }
+          }
+        },
+        "floating": {
+          "docks": {
+            "left": true,
+            "right": true
+          },
+          "panels": {
+            "terminal": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 272,
+              "floatY": 42,
+              "floatW": 1024,
+              "floatH": 960,
+              "floatZ": 1100,
+              "zLayer": 10,
+              "snapLeft": false,
+              "snapTop": true,
+              "snapRight": false,
+              "snapBottom": false,
+              "font": {
+                "size": "14"
+              }
+            },
+            "avatar": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 18,
+              "floatY": 64,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "status": {
+              "dock": "float",
+              "order": 1,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 0,
+              "floatY": 42,
+              "floatW": 256,
+              "floatH": 112,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": true,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "vitals": {
+              "dock": "float",
+              "order": 2,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 0,
+              "floatY": 304,
+              "floatW": 256,
+              "floatH": 144,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "guildVitals": {
+              "dock": "float",
+              "order": 3,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 18,
+              "floatY": 160,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "sky": {
+              "dock": "float",
+              "order": 4,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 18,
+              "floatY": 192,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "omens": {
+              "dock": "float",
+              "order": 3,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 18,
+              "floatY": 224,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "buffs": {
+              "dock": "float",
+              "order": 4,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 18,
+              "floatY": 256,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "worth": {
+              "dock": "float",
+              "order": 5,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 0,
+              "floatY": 160,
+              "floatW": 256,
+              "floatH": 128,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "xpmon": {
+              "dock": "float",
+              "order": 8,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 1744,
+              "floatY": 96,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "stats": {
+              "dock": "float",
+              "order": 6,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 0,
+              "floatY": 416,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "room": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 1328,
+              "floatY": 42,
+              "floatW": 320,
+              "floatH": 256,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": true,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "group": {
+              "dock": "float",
+              "order": 1,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 1328,
+              "floatY": 304,
+              "floatW": 320,
+              "floatH": 240,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "inventory": {
+              "dock": "float",
+              "order": 2,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 1493,
+              "floatY": 128,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": true,
+              "snapBottom": false
+            },
+            "enemy": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 768,
+              "floatY": 112,
+              "floatW": 384,
+              "floatH": 128,
+              "floatZ": 1010,
+              "zLayer": 1,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            },
+            "chat": {
+              "dock": "float",
+              "order": 3,
+              "collapsed": false,
+              "visible": true,
+              "floatX": 272,
+              "floatY": 1023,
+              "floatW": 1024,
+              "floatH": 320,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": true,
+              "font": {
+                "size": "16"
+              }
+            },
+            "map": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 652,
+              "floatY": 480,
+              "floatW": 400,
+              "floatH": 352,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": true,
+              "snapBottom": false
+            },
+            "areaMap": {
+              "dock": "float",
+              "order": 1,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 1373,
+              "floatY": 256,
+              "floatW": 400,
+              "floatH": 352,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": true,
+              "snapBottom": false
+            },
+            "roomImage": {
+              "dock": "float",
+              "order": 0,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 652,
+              "floatY": 832,
+              "floatW": 400,
+              "floatH": 224,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": true,
+              "snapBottom": false
+            },
+            "quests": {
+              "dock": "float",
+              "order": 3,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 1493,
+              "floatY": 336,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": true,
+              "snapBottom": false
+            },
+            "achievements": {
+              "dock": "float",
+              "order": 4,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 1493,
+              "floatY": 368,
+              "floatW": 288,
+              "floatH": 208,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": true,
+              "snapBottom": false
+            },
+            "connection": {
+              "dock": "float",
+              "order": 2,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 1074,
+              "floatY": 536,
+              "floatW": 336,
+              "floatH": 336,
+              "floatZ": 1000,
+              "zLayer": 0,
+              "snapLeft": true,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": true
+            },
+            "ide": {
+              "dock": "float",
+              "order": 3,
+              "collapsed": false,
+              "visible": false,
+              "floatX": 928,
+              "floatY": 352,
+              "floatW": 896,
+              "floatH": 624,
+              "floatZ": 1050,
+              "zLayer": 5,
+              "snapLeft": false,
+              "snapTop": false,
+              "snapRight": false,
+              "snapBottom": false
+            }
+          }
+        }
+      }
+    },
+    "sound": {
+      "enabled": true,
+      "volume": 0.7,
+      "categoryEnabled": {
+        "combat": true,
+        "spell": true,
+        "skill": true,
+        "potion": true,
+        "quest": true,
+        "celebration": true,
+        "discussion": true,
+        "alert": true,
+        "ambient": true,
+        "ui": true
+      },
+      "audioUnlocked": true,
+      "pendingCount": 0
+    }
+  }
+}
