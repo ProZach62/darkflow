@@ -1,5 +1,5 @@
 import { gmcp } from './gmcp.js';
-import { state } from './state.js';
+import { dom, state } from './state.js';
 import { panelManager } from './panel-manager.js';
 import { renderLayout, collectFormData, updateElements } from './window-renderer.js';
 import { socketReadyStateName, isSocketOpen } from './socket-state.js';
@@ -40,7 +40,9 @@ export const windowManager = {
 
     const content = renderLayout(data.layout, buttonHandler);
 
-    if (data.type === 'panel') {
+    if (data.type === 'npc_dialogue') {
+      this._openNpcDialogue(data, content);
+    } else if (data.type === 'panel') {
       this._openPanel(data, content);
     } else {
       this._openModal(data, content);
@@ -273,6 +275,43 @@ export const windowManager = {
     };
   },
 
+  _openNpcDialogue(data, content) {
+    const host = dom.outputShell || document.body;
+    const overlay = document.createElement('div');
+    overlay.className = 'dw-npc-dialogue-overlay';
+    overlay.setAttribute('data-dw-window', data.id);
+
+    const frame = document.createElement('div');
+    frame.className = 'dw-npc-dialogue-frame';
+
+    const body = document.createElement('div');
+    body.className = 'dw-npc-dialogue-body';
+    body.appendChild(content);
+
+    if (data.closable !== false) {
+      const closeBtn = document.createElement('button');
+      const portrait = body.querySelector('.dw-npc-dialogue-portrait');
+      closeBtn.type = 'button';
+      closeBtn.className = 'dw-npc-dialogue-close';
+      closeBtn.innerHTML = '&#x2715;';
+      closeBtn.setAttribute('aria-label', 'Close dialogue');
+      closeBtn.addEventListener('click', () => this._userClose(data.id));
+      (portrait || frame).appendChild(closeBtn);
+    }
+
+    frame.appendChild(body);
+    overlay.appendChild(frame);
+    host.appendChild(overlay);
+
+    this.windows[data.id] = {
+      id: data.id,
+      sourceId: data.sourceId || data.id,
+      type: 'npc_dialogue',
+      el: overlay,
+      containerEl: body,
+    };
+  },
+
   updateWindow(data) {
     if (!data || !data.id) return;
     const win = this.windows[data.id];
@@ -289,6 +328,8 @@ export const windowManager = {
 
     if (win.type === 'modal') {
       if (win.escHandler) document.removeEventListener('keydown', win.escHandler);
+      if (win.el) win.el.remove();
+    } else if (win.type === 'npc_dialogue') {
       if (win.el) win.el.remove();
     } else if (win.type === 'panel' && win.panelId) {
       panelManager.removeDynamicPanel(win.panelId);

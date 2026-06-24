@@ -29,7 +29,7 @@ function renderNode(schema, buttonHandler) {
   }
   if (LAYOUT_TYPES.has(schema.type)) return renderContainer(schema, buttonHandler);
   if (INPUT_TYPES.has(schema.type)) return renderInput(schema, buttonHandler);
-  if (DISPLAY_TYPES.has(schema.type)) return renderDisplay(schema);
+  if (DISPLAY_TYPES.has(schema.type)) return renderDisplay(schema, buttonHandler);
 
   const span = document.createElement('span');
   span.textContent = '[' + schema.type + ']';
@@ -58,8 +58,10 @@ function renderContainer(schema, buttonHandler) {
 }
 
 // ── Display elements ────────────────────────────────────────────────
-function renderDisplay(schema) {
+function renderDisplay(schema, buttonHandler) {
   switch (schema.type) {
+    case 'npc_dialogue':
+      return renderNpcDialogue(schema, buttonHandler);
     case 'player_row':
       return renderPlayerRow(schema);
     case 'finger_profile':
@@ -165,6 +167,70 @@ function renderDisplay(schema) {
       return el;
     }
   }
+}
+
+function renderNpcDialogue(schema, buttonHandler) {
+  const npc = schema.npc && typeof schema.npc === 'object' ? schema.npc : {};
+  const choices = Array.isArray(schema.choices) ? schema.choices : [];
+  const wrap = document.createElement('div');
+  wrap.className = 'dw-npc-dialogue';
+  setAttr(wrap, schema);
+
+  const portraitWrap = document.createElement('div');
+  portraitWrap.className = 'dw-npc-dialogue-portrait';
+  portraitWrap.setAttribute('data-dw-id', 'npc_portrait');
+  const img = document.createElement('img');
+  img.alt = npc.name ? npc.name + ' portrait' : 'NPC portrait';
+  img.draggable = false;
+  img.src = npc.image || '/assets/avatar-ghost.svg';
+  img.addEventListener('error', () => {
+    if (!img.src.endsWith('/assets/avatar-ghost.svg')) img.src = '/assets/avatar-ghost.svg';
+  });
+  portraitWrap.appendChild(img);
+
+  const bubble = document.createElement('div');
+  bubble.className = 'dw-npc-dialogue-bubble';
+
+  const name = document.createElement('div');
+  name.className = 'dw-npc-dialogue-name';
+  name.textContent = npc.name || schema.title || 'Someone';
+  bubble.appendChild(name);
+
+  const text = document.createElement('div');
+  text.className = 'dw-npc-dialogue-text';
+  text.textContent = schema.text || '...';
+  bubble.appendChild(text);
+
+  if (choices.length) {
+    const choiceWrap = document.createElement('div');
+    choiceWrap.className = 'dw-npc-dialogue-choices';
+    for (const choice of choices) {
+      if (!choice || typeof choice !== 'object') continue;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'dw-npc-dialogue-choice';
+      button.dataset.choiceId = choice.id || String(choice.index || '');
+      const label = document.createElement('span');
+      label.className = 'dw-npc-dialogue-choice-label';
+      label.textContent = choice.label || choice.text || choice.id || 'Continue';
+      button.appendChild(label);
+      if (choice.description) {
+        const description = document.createElement('span');
+        description.className = 'dw-npc-dialogue-choice-description';
+        description.textContent = String(choice.description);
+        button.appendChild(description);
+      }
+      button.addEventListener('click', () => {
+        if (buttonHandler) buttonHandler(button.dataset.choiceId, 'action');
+      });
+      choiceWrap.appendChild(button);
+    }
+    bubble.appendChild(choiceWrap);
+  }
+
+  wrap.appendChild(portraitWrap);
+  wrap.appendChild(bubble);
+  return wrap;
 }
 
 function renderAnsiText(schema) {
@@ -639,6 +705,17 @@ export function updateElements(container, updates) {
       if (upd.alt) img.alt = upd.alt;
       const spinner = el.querySelector('.dw-image-loading');
       if (spinner) spinner.remove();
+    }
+
+    if (upd.src !== undefined && el.classList.contains('dw-npc-dialogue-portrait')) {
+      let img = el.querySelector('img');
+      if (!img) {
+        img = document.createElement('img');
+        img.draggable = false;
+        el.appendChild(img);
+      }
+      img.src = upd.src;
+      if (upd.alt) img.alt = upd.alt;
     }
 
     if (upd.src !== undefined && el.classList.contains('dw-youtube-embed')) {

@@ -18,6 +18,7 @@ export const DISPLAY_TYPES = new Set([
   'progress',
   'image',
   'youtube_embed',
+  'npc_dialogue',
   'player_row',
   'finger_profile',
 ]);
