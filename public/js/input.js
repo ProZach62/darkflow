@@ -129,7 +129,7 @@ function closeBatchDrawer() {
   }
   batchTextarea = null;
   batchSubmitButton = null;
-  dom.commandInput.focus();
+  if (dom.commandInput) dom.commandInput.focus();
 }
 
 function sendBatchCommands(commands, index = 0) {
@@ -199,8 +199,22 @@ function openBatchDrawer(commands) {
   drawer.appendChild(textarea);
   drawer.appendChild(actions);
 
-  cancelButton.addEventListener('click', closeBatchDrawer);
-  submitButton.addEventListener('click', submitBatchDrawer);
+  drawer.addEventListener('pointerdown', event => {
+    event.stopPropagation();
+  });
+  drawer.addEventListener('click', event => {
+    event.stopPropagation();
+  });
+  cancelButton.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeBatchDrawer();
+  });
+  submitButton.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    submitBatchDrawer();
+  });
   textarea.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       event.preventDefault();
