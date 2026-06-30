@@ -3,6 +3,13 @@ import { state as appState } from './state.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { openPaneFontSettings } from './pane-settings.js';
 import { panelRenderers } from './panel-renderers.js';
+import { parseAnsiText } from './ansi.js';
+import {
+  findFirstImageUrlFromFragments,
+  imagePreviewLabel,
+  openFirstImagePreviewFromText,
+  openImagePreviewPane,
+} from './image-preview.js';
 import {
   processCurrent as processMapData2Current,
   mergeServerAreaData as mergeMapData2Area,
@@ -2065,6 +2072,10 @@ export const panelManager = {
     if (!last || chatMessageKey(last) !== key) {
       chat.messages.push(message);
       if (chat.messages.length > 200) chat.messages.shift();
+      if (!openFirstImagePreviewFromText(message.text || '')) {
+        const href = findFirstImageUrlFromFragments(parseAnsiText(message.text || ''), message.text || '');
+        if (href) openImagePreviewPane(href, { title: imagePreviewLabel(href) });
+      }
     }
     this._renderPanel('chat');
   },
