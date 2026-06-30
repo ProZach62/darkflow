@@ -1363,6 +1363,27 @@ body.zork-only-mode #panels-menu {
 }
 .chat-channel { font-weight: 600; }
 .chat-talker { color: var(--df-muted); }
+.chat-image-preview-trigger {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-image-preview-trigger:hover {
+  filter: brightness(1.15);
+}
+
+.chat-image-preview-trigger:focus-visible {
+  outline: 1px solid var(--df-accent-blue);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 
 /* ── Map Panel ──────────────────────────────────────────────────────── */
 [data-panel-id="map"].gmcp-panel-widget {

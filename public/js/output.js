@@ -6,6 +6,14 @@ import { giphyManager } from './giphy-manager.js';
 import { sendSocketPayload } from './connection.js';
 import { executeTriggerMatches } from './automation-executor.js';
 import {
+  findFirstImageUrlFromFragments,
+  imagePreviewActionLabel,
+  imagePreviewLabel,
+  isImageFileUrl,
+  openFirstImagePreviewFromText,
+  openImagePreviewPane,
+} from './image-preview.js';
+import {
   DEFAULT_OUTPUT_SCROLLBACK_PRESET,
   OUTPUT_OVERSCAN_LINES,
   OUTPUT_SCROLLBACK_PRESETS,
@@ -29,6 +37,8 @@ const OSC8_DEBUG_PREFIX = 'https://gist.github.com/jasona/a03aa3851dce07b5c701c7
 const GMCP_TERMINAL_SIZE_PACKAGE = 'Darkwind.Client.NAWS';
 const SCREEN_READER_ANNOUNCE_DELAY_MS = 180;
 const SCREEN_READER_ANNOUNCE_MAX_LINES = 6;
+const DUPLICATE_IMAGE_LINE_SUPPRESSION_MS = 5000;
+const IMAGE_PREVIEW_DEBUG_STORAGE_KEY = 'darkflow-debug-image-preview';
 const terminalGeometryTextEncoder = new TextEncoder();
 
 let isScrollLocked = false;
@@ -55,6 +65,16 @@ let screenReaderAnnounceTimer = null;
 let screenReaderAnnounceQueue = [];
 const screenReaderAnnouncedLines = new Map();
 const lineObservers = new Set();
+const recentImageOnlyOutputLines = new Map();
+const recentImageOutputLabels = new Map();
+
+try {
+  if (typeof window !== 'undefined') {
+    window.__darkflowImagePreviewDiagnosticsLoaded = '2026-06-30-image-preview-debug-v2';
+  }
+} catch (error) {
+  // Ignore diagnostics marker failures in embedded browsers.
+}
 
 const panes = {
   main: createPaneState(),
@@ -88,10 +108,45 @@ function shouldDebugOsc8(text) {
   return value.includes(OSC8_DEBUG_URL) || value.includes(OSC8_DEBUG_PREFIX);
 }
 
+function shouldDebugImagePreview(text) {
+  try {
+    if (typeof localStorage === 'undefined' || localStorage.getItem(IMAGE_PREVIEW_DEBUG_STORAGE_KEY) !== '1') {
+      return false;
+    }
+  } catch (error) {
+    return false;
+  }
+  const value = String(text || '').toLowerCase();
+  return value.includes('image.png') || value.includes('discordapp.net') || value.includes('format=webp');
+}
+
 function debugOsc8Output(stage, payload) {
   try {
     // eslint-disable-next-line no-console
     console.debug('[osc8-gossip-debug]', stage, payload);
+  } catch (error) {
+    // Ignore console failures in embedded browsers.
+  }
+}
+
+function debugImagePreviewOutput(stage, payload) {
+  try {
+    const entry = {
+      at: new Date().toISOString(),
+      stage,
+      payload,
+    };
+    if (typeof window !== 'undefined') {
+      if (!Array.isArray(window.__darkflowImagePreviewDebug)) {
+        window.__darkflowImagePreviewDebug = [];
+      }
+      window.__darkflowImagePreviewDebug.push(entry);
+      if (window.__darkflowImagePreviewDebug.length > 80) {
+        window.__darkflowImagePreviewDebug.splice(0, window.__darkflowImagePreviewDebug.length - 80);
+      }
+    }
+    // eslint-disable-next-line no-console
+    console.warn('[image-preview-debug]', stage, payload);
   } catch (error) {
     // Ignore console failures in embedded browsers.
   }
@@ -330,6 +385,92 @@ function createLine(text, cssClass, fragments) {
   };
 }
 
+function normalizeImageLineText(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pruneRecentImageOnlyOutputLines(now) {
+  for (const [url, timestamp] of recentImageOnlyOutputLines.entries()) {
+    if (now - timestamp > DUPLICATE_IMAGE_LINE_SUPPRESSION_MS) {
+      recentImageOnlyOutputLines.delete(url);
+    }
+  }
+  for (const [label, timestamp] of recentImageOutputLabels.entries()) {
+    if (now - timestamp > DUPLICATE_IMAGE_LINE_SUPPRESSION_MS) {
+      recentImageOutputLabels.delete(label);
+    }
+  }
+}
+
+function getLineImageUrl(line) {
+  if (!line) return null;
+  return findFirstImageUrlFromFragments(line.fragments, line.text);
+}
+
+function getImageFilenameLabel(text) {
+  const value = normalizeImageLineText(text);
+  const match = value.match(/(?:^|[\s:])([^\s:/\\]+\.(?:apng|avif|bmp|gif|ico|jpe?g|png|svg|tiff?|webp))(?:$|[\s.,!?;:)\]}>])/i);
+  return match ? match[1] : null;
+}
+
+function isRenderedImageLabelOnly(text, renderedImages) {
+  if (!renderedImages || !renderedImages.labels.size) return false;
+  const value = normalizeImageLineText(text);
+  return value ? renderedImages.labels.has(value) : false;
+}
+
+function isImageOnlyLine(line, url) {
+  if (!line || !url) return false;
+  const text = normalizeImageLineText(line.text);
+  return text === imagePreviewLabel(url) || text === url;
+}
+
+function isImageHrefContinuationLine(line, url) {
+  if (!line || !url || !Array.isArray(line.fragments) || !line.fragments.length) return false;
+  let hasText = false;
+  for (const fragment of line.fragments) {
+    const text = String(fragment && fragment.text || '').trim();
+    if (!text) continue;
+    hasText = true;
+    if (fragment.href !== url) return false;
+  }
+  return hasText;
+}
+
+function shouldSuppressDuplicateImageOnlyLine(line, url) {
+  const now = Date.now();
+  pruneRecentImageOnlyOutputLines(now);
+  const label = getImageFilenameLabel(line && line.text);
+  const text = normalizeImageLineText(line && line.text);
+
+  if (label && text !== label) {
+    recentImageOutputLabels.set(label, now);
+  }
+
+  if (label && text === label) {
+    if (recentImageOutputLabels.has(label)) return true;
+    recentImageOutputLabels.set(label, now);
+  }
+
+  if (!url) {
+    if (!text) return false;
+    for (const recentUrl of recentImageOnlyOutputLines.keys()) {
+      if (text === imagePreviewLabel(recentUrl)) return true;
+    }
+    return false;
+  }
+  if (recentImageOnlyOutputLines.has(url) && isImageHrefContinuationLine(line, url)) return true;
+  if (!isImageOnlyLine(line, url)) {
+    recentImageOnlyOutputLines.set(url, now);
+    return false;
+  }
+  if (recentImageOnlyOutputLines.has(url)) return true;
+  recentImageOnlyOutputLines.set(url, now);
+  return false;
+}
+
 function stylesEqual(a, b) {
   const left = a || {};
   const right = b || {};
@@ -496,6 +637,21 @@ function createUrlLink(text, style, href) {
   return link;
 }
 
+function createImagePreviewLink(text, style, href) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'output-inline-link terminal-url-link image-preview-trigger';
+  button.title = 'Open image preview';
+  button.dataset.imageUrl = href;
+  applyStyledTextAppearance(button, imagePreviewActionLabel(href || text), style);
+  button.addEventListener('click', function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    openImagePreviewPane(href || text, { title: imagePreviewLabel(href || text) });
+  });
+  return button;
+}
+
 function trimTrailingUrlPunctuation(urlText) {
   let end = urlText.length;
   while (end > 0 && /[.,!?;:)\]}>]$/.test(urlText.slice(end - 1, end))) {
@@ -507,9 +663,10 @@ function trimTrailingUrlPunctuation(urlText) {
   };
 }
 
-function appendFragmentWithLinks(container, text, style) {
+function appendFragmentWithLinks(container, text, style, renderedImages = null) {
   const value = String(text || '');
   if (!value) return;
+  if (isRenderedImageLabelOnly(value, renderedImages)) return;
 
   let lastIndex = 0;
   let match;
@@ -525,7 +682,18 @@ function appendFragmentWithLinks(container, text, style) {
       appendStyledText(container, value.slice(lastIndex, start), style);
     }
 
-    container.appendChild(createUrlLink(trimmed.url, style, trimmed.url));
+    if (isImageFileUrl(trimmed.url)) {
+      const label = imagePreviewLabel(trimmed.url);
+      if (!renderedImages || (!renderedImages.urls.has(trimmed.url) && !renderedImages.labels.has(label))) {
+        container.appendChild(createImagePreviewLink(trimmed.url, style, trimmed.url));
+        if (renderedImages) {
+          renderedImages.urls.add(trimmed.url);
+          renderedImages.labels.add(label);
+        }
+      }
+    } else {
+      container.appendChild(createUrlLink(trimmed.url, style, trimmed.url));
+    }
     if (trimmed.trailing) {
       appendStyledText(container, trimmed.trailing, style);
     }
@@ -551,28 +719,66 @@ function createLineElement(line) {
     return div;
   }
 
+  const renderedImages = {
+    urls: new Set(),
+    labels: new Set(),
+  };
+
   if (line.giphyReplay) {
     const { parts, replay } = line.giphyReplay;
-    for (const part of parts) {
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
       if (part.type === 'link') {
         div.appendChild(createReplayLink(part.text, part.style, () => giphyManager.replay(replay)));
         continue;
       }
       if (part.href) {
+        if (isImageFileUrl(part.href)) {
+          while (i + 1 < parts.length && parts[i + 1].href === part.href) i++;
+          const label = imagePreviewLabel(part.href);
+          if (!renderedImages.urls.has(part.href) && !renderedImages.labels.has(label)) {
+            div.appendChild(createImagePreviewLink(part.text, part.style, part.href));
+            renderedImages.urls.add(part.href);
+            renderedImages.labels.add(label);
+          }
+          continue;
+        }
         div.appendChild(createUrlLink(part.text, part.style, part.href));
         continue;
       }
-      appendFragmentWithLinks(div, part.text, part.style);
+      appendFragmentWithLinks(div, part.text, part.style, renderedImages);
     }
     return div;
   }
 
-  for (const frag of line.fragments) {
+  for (let i = 0; i < line.fragments.length; i++) {
+    const frag = line.fragments[i];
     if (frag.href) {
+      if (isImageFileUrl(frag.href)) {
+        while (i + 1 < line.fragments.length && line.fragments[i + 1].href === frag.href) i++;
+        const label = imagePreviewLabel(frag.href);
+        if (!renderedImages.urls.has(frag.href) && !renderedImages.labels.has(label)) {
+          div.appendChild(createImagePreviewLink(frag.text, frag.style, frag.href));
+          renderedImages.urls.add(frag.href);
+          renderedImages.labels.add(label);
+        }
+        continue;
+      }
       div.appendChild(createUrlLink(frag.text, frag.style, frag.href));
       continue;
     }
-    appendFragmentWithLinks(div, frag.text, frag.style);
+    appendFragmentWithLinks(div, frag.text, frag.style, renderedImages);
+  }
+
+  if (shouldDebugImagePreview(line.text)) {
+    debugImagePreviewOutput('createLineElement rendered', {
+      id: line.id,
+      text: escapeDebugText(line.text),
+      childCount: div.childNodes.length,
+      renderedImageLabels: Array.from(renderedImages.labels),
+      renderedImageUrls: Array.from(renderedImages.urls),
+      childText: Array.from(div.childNodes).map((node) => node.textContent || ''),
+    });
   }
 
   return div;
@@ -1395,10 +1601,24 @@ export function flashOutputLine(lineId) {
 }
 
 export function appendOutput(text, cssClass) {
+  const debugImagePreview = shouldDebugImagePreview(text);
+  if (debugImagePreview) {
+    debugImagePreviewOutput('appendOutput raw', {
+      cssClass: cssClass || '',
+      raw: escapeDebugText(text),
+    });
+  }
   if (shouldDebugOsc8(text)) {
     debugOsc8Output('appendOutput raw', escapeDebugText(text));
   }
   const fragments = parseAnsi(text);
+  if (debugImagePreview) {
+    debugImagePreviewOutput('parseAnsi fragments', fragments.map((fragment) => ({
+      text: escapeDebugText(fragment.text),
+      href: fragment.href || null,
+      style: fragment.style || {},
+    })));
+  }
   if (shouldDebugOsc8(text)) {
     debugOsc8Output('parseAnsi fragments', fragments.map((fragment) => ({
       text: escapeDebugText(fragment.text),
@@ -1407,6 +1627,26 @@ export function appendOutput(text, cssClass) {
     })));
   }
   const { completedLines, trailingLine } = splitFragmentsIntoLines(fragments);
+  if (debugImagePreview) {
+    debugImagePreviewOutput('splitFragmentsIntoLines', {
+      completedLines: completedLines.map((lineFragments) => ({
+        text: escapeDebugText(lineFragments.map((fragment) => fragment.text).join('')),
+        fragments: lineFragments.map((fragment) => ({
+          text: escapeDebugText(fragment.text),
+          href: fragment.href || null,
+          style: fragment.style || {},
+        })),
+      })),
+      trailingLine: {
+        text: escapeDebugText(trailingLine.map((fragment) => fragment.text).join('')),
+        fragments: trailingLine.map((fragment) => ({
+          text: escapeDebugText(fragment.text),
+          href: fragment.href || null,
+          style: fragment.style || {},
+        })),
+      },
+    });
+  }
   if (shouldDebugOsc8(text)) {
     debugOsc8Output('splitFragmentsIntoLines lines', completedLines.map((lineFragments) => ({
       text: escapeDebugText(lineFragments.map((fragment) => fragment.text).join('')),
@@ -1446,11 +1686,37 @@ export function appendOutput(text, cssClass) {
       syncLine(line, highlightedLine);
     }
 
+    const imageUrl = getLineImageUrl(line);
+    const suppressDuplicateImageLine = shouldSuppressDuplicateImageOnlyLine(line, imageUrl);
+    if (debugImagePreview || shouldDebugImagePreview(line.text)) {
+      debugImagePreviewOutput('completed line decision', {
+        id: line.id,
+        text: escapeDebugText(line.text),
+        fragments: line.fragments.map((fragment) => ({
+          text: escapeDebugText(fragment.text),
+          href: fragment.href || null,
+          style: fragment.style || {},
+        })),
+        imageUrl,
+        suppressDuplicateImageLine,
+        recentImageLabels: Array.from(recentImageOutputLabels.keys()),
+        recentImageUrls: Array.from(recentImageOnlyOutputLines.keys()),
+      });
+    }
+    if (suppressDuplicateImageLine) {
+      removeLine(line);
+      invalidateRender();
+      continue;
+    }
+
     if (reusedOpenLine) {
       requestLiveBottomSnapIfAtBottom();
       invalidateRender();
     } else {
       visibleLines.push(line);
+    }
+    if (!openFirstImagePreviewFromText(line.text)) {
+      if (imageUrl) openImagePreviewPane(imageUrl, { title: imagePreviewLabel(imageUrl) });
     }
     notifyLineObservers(line);
   }
@@ -1463,11 +1729,46 @@ export function appendOutput(text, cssClass) {
       notifyLineObservers(openOutputLine);
     } else {
       openOutputLine = createLineFromFragments(trailingLine, cssClass);
-      visibleLines.push(openOutputLine);
-      notifyLineObservers(openOutputLine);
+      const imageUrl = getLineImageUrl(openOutputLine);
+      const suppressDuplicateImageLine = shouldSuppressDuplicateImageOnlyLine(openOutputLine, imageUrl);
+      if (debugImagePreview || shouldDebugImagePreview(openOutputLine.text)) {
+        debugImagePreviewOutput('trailing line decision', {
+          id: openOutputLine.id,
+          text: escapeDebugText(openOutputLine.text),
+          fragments: openOutputLine.fragments.map((fragment) => ({
+            text: escapeDebugText(fragment.text),
+            href: fragment.href || null,
+            style: fragment.style || {},
+          })),
+          imageUrl,
+          suppressDuplicateImageLine,
+          recentImageLabels: Array.from(recentImageOutputLabels.keys()),
+          recentImageUrls: Array.from(recentImageOnlyOutputLines.keys()),
+        });
+      }
+      if (suppressDuplicateImageLine) {
+        openOutputLine = null;
+      } else {
+        visibleLines.push(openOutputLine);
+        if (!openFirstImagePreviewFromText(openOutputLine.text)) {
+          if (imageUrl) openImagePreviewPane(imageUrl, { title: imagePreviewLabel(imageUrl) });
+        }
+        notifyLineObservers(openOutputLine);
+      }
     }
   }
 
+  if (debugImagePreview) {
+    debugImagePreviewOutput('queueLines', visibleLines.map((line) => ({
+      id: line.id,
+      text: escapeDebugText(line.text),
+      fragments: line.fragments.map((fragment) => ({
+        text: escapeDebugText(fragment.text),
+        href: fragment.href || null,
+        style: fragment.style || {},
+      })),
+    })));
+  }
   queueLines(visibleLines);
 }
 

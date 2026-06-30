@@ -4,9 +4,16 @@ import { browseSource } from './map-data-v2.js';
 import { sendCommandText } from './input.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
 import { sparklinePoints } from './lag-core.mjs';
+import {
+  imagePreviewActionLabel,
+  imagePreviewLabel,
+  isImageFileUrl,
+  openImagePreviewPane,
+} from './image-preview.js';
 
 let roomImageModal = null;
 let roomImageModalKeyHandler = null;
+const URL_PATTERN = /https?:\/\/[^\s<>"'\x00-\x1f\x7f]+/gi;
 
 export function escHtml(str) {
   if (!str) return '';
@@ -63,6 +70,102 @@ function trimLeadingFragments(fragments, charCount) {
     trimmed.push(fragment);
   }
   return trimmed;
+}
+
+function trimTrailingUrlPunctuation(urlText) {
+  let end = urlText.length;
+  while (end > 0 && /[.,!?;:)\]}>]$/.test(urlText.slice(end - 1, end))) {
+    end--;
+  }
+  return {
+    url: urlText.slice(0, end),
+    trailing: urlText.slice(end),
+  };
+}
+
+function appendStyledText(container, text, style) {
+  if (!text) return;
+  const node = styleToElement(text, style || {});
+  if (node) container.appendChild(node);
+}
+
+function createChatImagePreviewButton(url) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'chat-image-preview-trigger image-preview-trigger';
+  button.title = 'Open image preview';
+  button.textContent = imagePreviewActionLabel(url);
+  button.addEventListener('click', function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    openImagePreviewPane(url, { title: imagePreviewLabel(url) });
+  });
+  return button;
+}
+
+function normalizeImagePreviewText(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isRenderedImageLabelOnly(text, renderedImages) {
+  if (!renderedImages || !renderedImages.labels.size) return false;
+  const value = normalizeImagePreviewText(text);
+  return value ? renderedImages.labels.has(value) : false;
+}
+
+function appendFragmentWithImagePreviews(container, text, style, href = null, renderedImages = null) {
+  if (href && isImageFileUrl(href)) {
+    const label = imagePreviewLabel(href);
+    if (!renderedImages || (!renderedImages.urls.has(href) && !renderedImages.labels.has(label))) {
+      container.appendChild(createChatImagePreviewButton(href));
+      if (renderedImages) {
+        renderedImages.urls.add(href);
+        renderedImages.labels.add(label);
+      }
+    }
+    return;
+  }
+
+  const value = String(text || '');
+  if (isRenderedImageLabelOnly(value, renderedImages)) return;
+  let lastIndex = 0;
+  let match;
+
+  URL_PATTERN.lastIndex = 0;
+  while ((match = URL_PATTERN.exec(value)) !== null) {
+    const matched = match[0];
+    const start = match.index;
+    const trimmed = trimTrailingUrlPunctuation(matched);
+
+    if (!trimmed.url) continue;
+    if (start > lastIndex) {
+      appendStyledText(container, value.slice(lastIndex, start), style);
+    }
+
+    if (isImageFileUrl(trimmed.url)) {
+      const label = imagePreviewLabel(trimmed.url);
+      if (!renderedImages || (!renderedImages.urls.has(trimmed.url) && !renderedImages.labels.has(label))) {
+        container.appendChild(createChatImagePreviewButton(trimmed.url));
+        if (renderedImages) {
+          renderedImages.urls.add(trimmed.url);
+          renderedImages.labels.add(label);
+        }
+      }
+    } else {
+      appendStyledText(container, trimmed.url, style);
+    }
+    if (trimmed.trailing) {
+      appendStyledText(container, trimmed.trailing, style);
+    }
+
+    lastIndex = start + matched.length;
+  }
+
+  if (lastIndex < value.length) {
+    appendStyledText(container, value.slice(lastIndex), style);
+  }
 }
 
 function skyBoundarySeconds(value, scale) {
@@ -1088,9 +1191,18 @@ export const panelRenderers = {
       entry.appendChild(talkerEl);
       entry.appendChild(document.createTextNode(' '));
 
-      for (const fragment of fragments) {
-        const node = styleToElement(fragment.text, fragment.style || {});
-        if (node) entry.appendChild(node);
+      const renderedImages = {
+        urls: new Set(),
+        labels: new Set(),
+      };
+      for (let i = 0; i < fragments.length; i++) {
+        const fragment = fragments[i];
+        if (fragment.href && isImageFileUrl(fragment.href)) {
+          while (i + 1 < fragments.length && fragments[i + 1].href === fragment.href) i++;
+          appendFragmentWithImagePreviews(entry, fragment.text, fragment.style || {}, fragment.href, renderedImages);
+          continue;
+        }
+        appendFragmentWithImagePreviews(entry, fragment.text, fragment.style || {}, fragment.href, renderedImages);
       }
       log.appendChild(entry);
     }
