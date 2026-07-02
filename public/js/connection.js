@@ -157,7 +157,9 @@ function loggedIntoCharacter() {
 // mid-restart when the sweep reached a lower rung). Probe the preferred
 // transport in the background and, if it answers, reconnect through it
 // -- but never yank a session that has already logged into a character.
-function scheduleUpgradeProbe(forWs, delayMs) {
+// connectedVia is the rung this session actually opened on; it must be
+// captured by the caller BEFORE the ladder is reset.
+function scheduleUpgradeProbe(forWs, delayMs, connectedVia) {
   cancelUpgradeProbe();
   upgradeProbeTimer = setTimeout(function() {
     upgradeProbeTimer = null;
@@ -167,7 +169,7 @@ function scheduleUpgradeProbe(forWs, delayMs) {
     const selected = dom.protocolSelect.value || 'wss';
     const ladder = buildTransportLadder(selected);
     const top = ladder[0];
-    if (!top || top === currentTransport()) return;
+    if (!top || top === connectedVia) return;
     if (top !== 'ws' && top !== 'wss') return;
 
     const host = dom.host.value || 'localhost';
@@ -176,7 +178,7 @@ function scheduleUpgradeProbe(forWs, delayMs) {
     try {
       probe = new WebSocket(top + '://' + host + ':' + port + '/');
     } catch (error) {
-      scheduleUpgradeProbe(forWs, UPGRADE_PROBE_RETRY_MS);
+      scheduleUpgradeProbe(forWs, UPGRADE_PROBE_RETRY_MS, connectedVia);
       return;
     }
     upgradeProbeSocket = probe;
@@ -186,7 +188,7 @@ function scheduleUpgradeProbe(forWs, delayMs) {
       if (upgradeProbeSocket === probe) upgradeProbeSocket = null;
       if (state.ws !== forWs || !isSocketOpen(state.ws)) return;
       if (loggedIntoCharacter()) return;
-      pushWsEvent('transport-upgrade', { to: top });
+      pushWsEvent('transport-upgrade', { from: connectedVia, to: top });
       appendSystemMessage('Preferred transport is back; reconnecting via ' + top + '...');
       resetTransportLadder();
       forceReconnect('upgrading to ' + top);
@@ -194,7 +196,7 @@ function scheduleUpgradeProbe(forWs, delayMs) {
     probe.onerror = function() {
       if (upgradeProbeSocket === probe) upgradeProbeSocket = null;
       if (state.ws === forWs && isSocketOpen(state.ws) && !loggedIntoCharacter()) {
-        scheduleUpgradeProbe(forWs, UPGRADE_PROBE_RETRY_MS);
+        scheduleUpgradeProbe(forWs, UPGRADE_PROBE_RETRY_MS, connectedVia);
       }
     };
   }, delayMs || UPGRADE_PROBE_DELAY_MS);
@@ -671,8 +673,10 @@ export async function connect() {
       // arrives, tear down and let the cycle try again.
       expectInboundWithin(10000, 'no server traffic after connect');
       scheduleHandshakeGuard(ws);
-      if (currentTransport() !== (buildTransportLadder(dom.protocolSelect.value || 'wss')[0])) {
-        scheduleUpgradeProbe(ws);
+      // sel is the rung this socket opened on -- checked against the
+      // ladder top BEFORE resetTransportLadder() zeroed the index.
+      if (sel !== buildTransportLadder(selected)[0]) {
+        scheduleUpgradeProbe(ws, UPGRADE_PROBE_DELAY_MS, sel);
       }
       dom.statusConnection.textContent = 'Connected [' + state.activeTransport + ']: 0s';
       dom.commandInput.focus();
