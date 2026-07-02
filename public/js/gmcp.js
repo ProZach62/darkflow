@@ -84,11 +84,25 @@ export const gmcp = {
 
     registerGmcpVariables(packageName, data);
 
+    // Isolate handler failures: one throwing subscriber must not starve
+    // later subscribers (notifications, mention roster) of the same frame.
     if (this.handlers['*']) {
-      this.handlers['*'].forEach(cb => cb(packageName, data));
+      this.handlers['*'].forEach(cb => {
+        try {
+          cb(packageName, data);
+        } catch (err) {
+          console.error(`GMCP wildcard handler failed for ${packageName}`, err);
+        }
+      });
     }
     if (this.handlers[packageName]) {
-      this.handlers[packageName].forEach(cb => cb(data, packageName));
+      this.handlers[packageName].forEach(cb => {
+        try {
+          cb(data, packageName);
+        } catch (err) {
+          console.error(`GMCP handler failed for ${packageName}`, err);
+        }
+      });
     }
   },
 
@@ -121,6 +135,10 @@ export const gmcp = {
       'Char.Vitals 1',
       'Char.Status 1',
       'Char.StatusVars 1',
+      'Char.Stats 1',
+      'Char.RealStats 1',
+      'Char.Worth 1',
+      'Char.Enemy 1',
       'Char.Items 1',
       'Char.Defences 1',
       'Room 1',

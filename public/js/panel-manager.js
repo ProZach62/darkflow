@@ -161,6 +161,11 @@ export const panelManager = {
     this._attachResizeHandler();
     this._syncResponsiveMode(true);
     this._applyPaneFont(TERMINAL_PANEL_ID);
+    document.addEventListener('dw:connectionstate', (event) => {
+      const connected = event.detail && event.detail.state === 'connected';
+      if (connected) this._armSubscriptionSyncFallback();
+      else this._clearSubscriptionSyncFallback();
+    });
     this._initialized = true;
     this._notifyWorkspaceLayoutChanged();
   },
@@ -2033,12 +2038,34 @@ export const panelManager = {
   _syncSubscriptionsAfterCharacterData() {
     if (this._characterSubscriptionSyncSent) return;
     this._characterSubscriptionSyncSent = true;
+    this._clearSubscriptionSyncFallback();
     gmcp.sendSubscriptions({
       reason: 'character-login',
       full: true,
       panels: this.getSubscriptionPanels(),
     });
     this._requestCommChannelPlayers();
+  },
+
+  // The character-login sync above normally triggers off the first
+  // Char.Vitals/Char.Status/GuildVitals/XPMon frame. If none of those
+  // arrive (login race, unusual character state), fall back to syncing
+  // a few seconds after the connection comes up so panels are never
+  // left unsubscribed for the whole session.
+  _armSubscriptionSyncFallback() {
+    this._clearSubscriptionSyncFallback();
+    this._subscriptionSyncFallbackTimer = setTimeout(() => {
+      this._subscriptionSyncFallbackTimer = null;
+      if (this._characterSubscriptionSyncSent) return;
+      this._syncSubscriptionsAfterCharacterData();
+    }, 6000);
+  },
+
+  _clearSubscriptionSyncFallback() {
+    if (this._subscriptionSyncFallbackTimer) {
+      clearTimeout(this._subscriptionSyncFallbackTimer);
+      this._subscriptionSyncFallbackTimer = null;
+    }
   },
 
   _requestCommChannelPlayers() {
