@@ -6,6 +6,7 @@ const url = process.argv[2] || 'ws://localhost:4242/';
 const submitLogin = process.argv.includes('--submit');
 const delayHandshakeMs = Number((process.argv.find(a => a.startsWith('--delay-handshake=')) || '').split('=')[1] || 0);
 const runForMs = Number((process.argv.find(a => a.startsWith('--run-for=')) || '').split('=')[1] || 15000);
+const submitDelayMs = Number((process.argv.find(a => a.startsWith('--submit-delay=')) || '').split('=')[1] || 800);
 
 const t0 = Date.now();
 const ts = () => String(Date.now() - t0).padStart(6) + 'ms';
@@ -72,7 +73,7 @@ ws.on('message', (data, isBinary) => {
             id: 'login', button: 'login',
             data: { username: 'remorttest', password: 'Test12345!' },
           });
-        }, 800);
+        }, submitDelayMs);
       } else if (win.id === 'login') {
         sawLoginWindow = true;
       }
