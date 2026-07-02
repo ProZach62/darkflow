@@ -37,6 +37,7 @@ let transportIndex = 0;
 let activeLadder = null;
 let ladderSelection = null;
 let inboundExpectTimer = null;
+let cycleRungsTried = 0;
 
 function getHealth() {
   return state.wsHealth;
@@ -102,11 +103,16 @@ function currentTransport() {
   return activeLadder[transportIndex % activeLadder.length];
 }
 
+// A "cycle" is one walk down the ladder: every scheduled reconnect
+// attempt starts back at the top (wss) and only falls through the rungs
+// when that specific rung fails before opening. This way a server
+// outage -- where every rung fails -- never strands the client on a
+// telnet rung once the server comes back.
 function nextTransport(selected) {
-  if (!activeLadder || ladderSelection !== selected) {
+  if (!activeLadder || ladderSelection !== selected || cycleRungsTried === 0) {
     activeLadder = buildTransportLadder(selected);
     ladderSelection = selected;
-    transportIndex = 0;
+    if (cycleRungsTried === 0) transportIndex = 0;
   }
   return activeLadder[transportIndex % activeLadder.length];
 }
@@ -120,6 +126,32 @@ function advanceTransport(reason) {
 
 function resetTransportLadder() {
   transportIndex = 0;
+  cycleRungsTried = 0;
+}
+
+// A rung failed before opening. Fall through to the next rung almost
+// immediately while there are untried rungs in this cycle; once the
+// whole ladder has failed, hand control back to the caller so the
+// normal backoff applies between cycles.
+function handleRungFailure(reason) {
+  cycleRungsTried++;
+  if (activeLadder && cycleRungsTried < activeLadder.length) {
+    advanceTransport(reason);
+    emitReconnectStatus({
+      status: 'scheduled',
+      delayMs: WS_FORCE_RECONNECT_DELAY_MS,
+      nextAttemptAt: Date.now() + WS_FORCE_RECONNECT_DELAY_MS,
+      reason,
+    });
+    if (state.reconnectTimer) clearTimeout(state.reconnectTimer);
+    state.reconnectTimer = setTimeout(function() {
+      state.reconnectTimer = null;
+      connect();
+    }, WS_FORCE_RECONNECT_DELAY_MS);
+    return true;
+  }
+  cycleRungsTried = 0;
+  return false;
 }
 
 function recordBufferedAmount() {
@@ -496,8 +528,8 @@ export async function connect() {
         url,
         message: error && error.message ? error.message : String(error),
       });
-      advanceTransport('constructor failure');
       setConnectionState('disconnected');
+      if (handleRungFailure('constructor failure')) return;
       if (!state.userDisconnected && settingsManager.get('autoReconnect')) {
         scheduleReconnect();
       } else {
@@ -528,6 +560,11 @@ export async function connect() {
       pushWsEvent('open', { url });
       emitReconnectStatus({ status: 'connected', transport: sel, url });
       appendSystemMessage('Connected to ' + connectionLabel);
+      // A socket accepted during server startup can open and then never
+      // speak (the game is not driving logins yet). Every healthy
+      // connection produces traffic immediately; if nothing at all
+      // arrives, tear down and let the cycle try again.
+      expectInboundWithin(10000, 'no server traffic after connect');
       dom.statusConnection.textContent = 'Connected: 0s';
       dom.commandInput.focus();
       startWatchdog();
@@ -607,13 +644,17 @@ export async function connect() {
 
       if (state.ws !== ws) return;
 
-      // Failed before ever opening: this transport is not reachable
-      // right now, so the next attempt tries the next rung.
-      if (!attemptOpened) {
-        advanceTransport('failed before open (code ' + event.code + ')');
-      }
-
       finalizeDisconnect();
+
+      // Failed before ever opening: this rung is unreachable right now.
+      // Fall through the remaining rungs quickly; only when the whole
+      // ladder has failed does the normal backoff apply.
+      if (!attemptOpened && !state.userDisconnected &&
+        settingsManager.get('autoReconnect') &&
+        handleRungFailure('failed before open (code ' + event.code + ')')) {
+        timerManager.stopAllTimers();
+        return;
+      }
 
       let msg;
       if (event.code === 1000) msg = 'Disconnected';
