@@ -393,6 +393,11 @@ export const windowManager = {
     if (!win) return;
     this._saveSharedVideoGeometry(win);
 
+    if (win.revalidateTimer) {
+      clearTimeout(win.revalidateTimer);
+      win.revalidateTimer = null;
+    }
+
     if (win.type === 'modal') {
       if (win.escHandler) document.removeEventListener('keydown', win.escHandler);
       if (win.el) win.el.remove();
@@ -471,6 +476,19 @@ export const windowManager = {
     const buttons = win.containerEl ? win.containerEl.querySelectorAll('button') : [];
     for (const button of buttons) {
       button.disabled = !connected;
+    }
+
+    // A kept modal is only trustworthy if the new connection re-opens
+    // it (same id, replacing this record). If that has not happened
+    // shortly after reconnect, the server is running a different login
+    // flow and this window is a zombie -- close it so the player sees
+    // what the server is actually doing instead of a dead form.
+    if (connected && win.keptFromPreviousConnection && !win.revalidateTimer) {
+      win.revalidateTimer = setTimeout(() => {
+        if (this.windows[id] === win) {
+          this.closeWindow(id, true);
+        }
+      }, 8000);
     }
 
     if (win.connStripEl) {
@@ -583,6 +601,10 @@ export const windowManager = {
         this.windows[id].type === 'modal') {
         // Keep the auth modal alive across a drop; its connection strip
         // reports the reconnect and the next login window replaces it.
+        // Mark it stale: if the next connection does not re-open it,
+        // it is a zombie (the server is not listening to that window)
+        // and must not sit there swallowing the player's credentials.
+        this.windows[id].keptFromPreviousConnection = true;
         this._syncWindowConnectionState(id);
         continue;
       }
