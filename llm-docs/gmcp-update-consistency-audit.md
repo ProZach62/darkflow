@@ -139,3 +139,19 @@ Follow-on work in `connection.js` / `window-manager.js` / `connection-overlay.js
   strip). `window 'online'` events skip the remaining backoff.
 - Debug hook: `window.connDebug.drop()` simulates a connection drop;
   `connDebug.retryNow()` / `connDebug.ensureConnected()` drive recovery.
+
+### 6.1 The dead login modal (root-caused 2026-07-02)
+
+Reproduced with `scripts/darkflow-probe.mjs`: the server's
+`check_gui_login` (login.c) waited ~2s for the client's
+`Darkwind.Window` declaration, then fell back to text login and stopped
+watching. A reconnect that lands while the server is booting gets its
+GMCP frames processed after that window closes: the session is stranded
+in text mode, and any login modal still on screen is a zombie whose
+`Window.Submit`s the server silently drops. Fixes: (server,
+darkwind-nextgen `cc3b1ff82`) the text fallback keeps polling for
+Window support for 60s and upgrades to the GUI window when the
+handshake lands; (client `fdd063a`) a kept auth modal that is not
+re-opened by the new connection within 8s is closed. Wire-verified:
+handshake delayed 7s → text prompt at 3.5s → window arrives 0.8s after
+the late handshake → submit logs in.
