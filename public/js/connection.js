@@ -29,6 +29,10 @@ const LOST_TRANSMISSION_RECOVERY_COOLDOWN_MS = 30000;
 // fails before ever opening advances to the next rung; a successful open
 // resets to the top so we always prefer the best transport next time.
 const TRANSPORT_LADDER = ['wss', 'ws', 'telnets', 'telnet'];
+const TRANSPORT_SHORT = { wss: 'wss', ws: 'ws', telnets: 'ts', telnet: 't' };
+const UPGRADE_PROBE_DELAY_MS = 4000;
+const UPGRADE_PROBE_RETRY_MS = 15000;
+const HANDSHAKE_RESEND_DELAY_MS = 3000;
 
 let watchdogTimer = null;
 let lostTransmissionRecoveryTimer = null;
@@ -38,6 +42,9 @@ let activeLadder = null;
 let ladderSelection = null;
 let inboundExpectTimer = null;
 let cycleRungsTried = 0;
+let upgradeProbeTimer = null;
+let upgradeProbeSocket = null;
+let handshakeResendTimer = null;
 
 function getHealth() {
   return state.wsHealth;
@@ -129,6 +136,97 @@ function resetTransportLadder() {
   cycleRungsTried = 0;
 }
 
+function cancelUpgradeProbe() {
+  if (upgradeProbeTimer) {
+    clearTimeout(upgradeProbeTimer);
+    upgradeProbeTimer = null;
+  }
+  if (upgradeProbeSocket) {
+    try { upgradeProbeSocket.close(1000, 'probe-cancel'); } catch (error) {}
+    upgradeProbeSocket = null;
+  }
+}
+
+function loggedIntoCharacter() {
+  // Char.Vitals only flows once a character body is loaded; login,
+  // charselect, and newchar screens never send it.
+  return !!(panelManager.gmcpData && panelManager.gmcpData.vitals);
+}
+
+// Connected on a rung below the top (usually because the server was
+// mid-restart when the sweep reached a lower rung). Probe the preferred
+// transport in the background and, if it answers, reconnect through it
+// -- but never yank a session that has already logged into a character.
+function scheduleUpgradeProbe(forWs, delayMs) {
+  cancelUpgradeProbe();
+  upgradeProbeTimer = setTimeout(function() {
+    upgradeProbeTimer = null;
+    if (state.ws !== forWs || !isSocketOpen(state.ws)) return;
+    if (loggedIntoCharacter()) return;
+
+    const selected = dom.protocolSelect.value || 'wss';
+    const ladder = buildTransportLadder(selected);
+    const top = ladder[0];
+    if (!top || top === currentTransport()) return;
+    if (top !== 'ws' && top !== 'wss') return;
+
+    const host = dom.host.value || 'localhost';
+    const port = dom.port.value || '4242';
+    let probe;
+    try {
+      probe = new WebSocket(top + '://' + host + ':' + port + '/');
+    } catch (error) {
+      scheduleUpgradeProbe(forWs, UPGRADE_PROBE_RETRY_MS);
+      return;
+    }
+    upgradeProbeSocket = probe;
+
+    probe.onopen = function() {
+      try { probe.close(1000, 'upgrade-probe'); } catch (error) {}
+      if (upgradeProbeSocket === probe) upgradeProbeSocket = null;
+      if (state.ws !== forWs || !isSocketOpen(state.ws)) return;
+      if (loggedIntoCharacter()) return;
+      pushWsEvent('transport-upgrade', { to: top });
+      appendSystemMessage('Preferred transport is back; reconnecting via ' + top + '...');
+      resetTransportLadder();
+      forceReconnect('upgrading to ' + top);
+    };
+    probe.onerror = function() {
+      if (upgradeProbeSocket === probe) upgradeProbeSocket = null;
+      if (state.ws === forWs && isSocketOpen(state.ws) && !loggedIntoCharacter()) {
+        scheduleUpgradeProbe(forWs, UPGRADE_PROBE_RETRY_MS);
+      }
+    };
+  }, delayMs || UPGRADE_PROBE_DELAY_MS);
+}
+
+// If text is flowing but not a single GMCP frame arrived after the
+// handshake, the handshake very likely raced the server-side login
+// object (fresh server boot) and was dropped -- the server then treats
+// us as a plain telnet-ish client and text-prompts the login. Re-send
+// the handshake once; the server tolerates a repeated Core.Hello.
+function scheduleHandshakeGuard(forWs) {
+  if (handshakeResendTimer) clearTimeout(handshakeResendTimer);
+  handshakeResendTimer = setTimeout(function() {
+    handshakeResendTimer = null;
+    if (state.ws !== forWs || !isSocketOpen(state.ws)) return;
+    const health = getHealth();
+    const openAt = health.lastOpenAt || 0;
+    const gmcpAt = health.lastInboundGmcpAt || 0;
+    if (gmcpAt >= openAt) return;
+    pushWsEvent('handshake-resend', {
+      msSinceOpen: Date.now() - openAt,
+      hadText: (health.lastInboundTextAt || 0) >= openAt,
+    });
+    gmcp.sendHandshake();
+    gmcp.sendSubscriptions({
+      reason: 'handshake-retry',
+      full: true,
+      panels: panelManager.getSubscriptionPanels(),
+    });
+  }, HANDSHAKE_RESEND_DELAY_MS);
+}
+
 // A rung failed before opening. Fall through to the next rung almost
 // immediately while there are untried rungs in this cycle; once the
 // whole ladder has failed, hand control back to the caller so the
@@ -174,8 +272,14 @@ function resetSocketState() {
     clearTimeout(lostTransmissionRecoveryTimer);
     lostTransmissionRecoveryTimer = null;
   }
+  if (handshakeResendTimer) {
+    clearTimeout(handshakeResendTimer);
+    handshakeResendTimer = null;
+  }
+  cancelUpgradeProbe();
   state.ws = null;
   state.connectTime = null;
+  state.activeTransport = null;
   health.currentUrl = null;
   health.stalledAt = null;
   health.recentCommandTimes = [];
@@ -557,15 +661,20 @@ export async function connect() {
       health.lastOpenAt = Date.now();
       health.stalledAt = null;
       recordBufferedAmount();
-      pushWsEvent('open', { url });
+      state.activeTransport = TRANSPORT_SHORT[sel] || sel;
+      pushWsEvent('open', { url, transport: sel });
       emitReconnectStatus({ status: 'connected', transport: sel, url });
-      appendSystemMessage('Connected to ' + connectionLabel);
+      appendSystemMessage('Connected to ' + connectionLabel + ' [' + state.activeTransport + ']');
       // A socket accepted during server startup can open and then never
       // speak (the game is not driving logins yet). Every healthy
       // connection produces traffic immediately; if nothing at all
       // arrives, tear down and let the cycle try again.
       expectInboundWithin(10000, 'no server traffic after connect');
-      dom.statusConnection.textContent = 'Connected: 0s';
+      scheduleHandshakeGuard(ws);
+      if (currentTransport() !== (buildTransportLadder(dom.protocolSelect.value || 'wss')[0])) {
+        scheduleUpgradeProbe(ws);
+      }
+      dom.statusConnection.textContent = 'Connected [' + state.activeTransport + ']: 0s';
       dom.commandInput.focus();
       startWatchdog();
       panelManager.resetData();

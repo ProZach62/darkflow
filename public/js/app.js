@@ -83,7 +83,9 @@ function formatBytes(n) {
 
 setInterval(function() {
   if (state.connectTime) {
-    dom.statusConnection.textContent = 'Connected: ' + formatDuration(Date.now() - state.connectTime);
+    const transportTag = state.activeTransport ? ' [' + state.activeTransport + ']' : '';
+    dom.statusConnection.textContent = 'Connected' + transportTag + ': ' +
+      formatDuration(Date.now() - state.connectTime);
     dom.statusConnection.title = 'Sent: ' + formatBytes(state.bytesSent) + ' / Recv: ' + formatBytes(state.bytesReceived);
   }
 }, 1000);
