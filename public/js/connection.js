@@ -25,9 +25,18 @@ const LOST_TRANSMISSION_PATTERN = /\*\*\* Text lost in transmission \*\*\*/;
 const LOST_TRANSMISSION_RECOVERY_DELAY_MS = 750;
 const LOST_TRANSMISSION_RECOVERY_COOLDOWN_MS = 30000;
 
+// Transport fallback ladder, in priority order. A connect attempt that
+// fails before ever opening advances to the next rung; a successful open
+// resets to the top so we always prefer the best transport next time.
+const TRANSPORT_LADDER = ['wss', 'ws', 'telnets', 'telnet'];
+
 let watchdogTimer = null;
 let lostTransmissionRecoveryTimer = null;
 let lastLostTransmissionRecoveryAt = 0;
+let transportIndex = 0;
+let activeLadder = null;
+let ladderSelection = null;
+let inboundExpectTimer = null;
 
 function getHealth() {
   return state.wsHealth;
@@ -60,6 +69,57 @@ function emitConnectionState(connState) {
       reconnectAttempts: state.reconnectAttempts,
     },
   }));
+}
+
+// Reconnect lifecycle events for the connection overlay and the auth
+// modal's connection strip. status: 'connecting' | 'scheduled' |
+// 'connected' | 'idle' (no automatic retry pending).
+function emitReconnectStatus(detail) {
+  if (typeof document === 'undefined') return;
+  document.dispatchEvent(new CustomEvent('dw:reconnectstatus', {
+    detail: {
+      attempt: state.reconnectAttempts,
+      transport: currentTransport(),
+      ...detail,
+    },
+  }));
+}
+
+export function buildTransportLadder(selected) {
+  // Pages served over https cannot open plain ws:// (mixed content);
+  // skip that rung so the ladder never wastes an attempt on it.
+  let ladder = TRANSPORT_LADDER.filter(
+    (t) => !(location.protocol === 'https:' && t === 'ws')
+  );
+  if (ladder.includes(selected)) {
+    ladder = [selected].concat(ladder.filter((t) => t !== selected));
+  }
+  return ladder;
+}
+
+function currentTransport() {
+  if (!activeLadder || !activeLadder.length) return null;
+  return activeLadder[transportIndex % activeLadder.length];
+}
+
+function nextTransport(selected) {
+  if (!activeLadder || ladderSelection !== selected) {
+    activeLadder = buildTransportLadder(selected);
+    ladderSelection = selected;
+    transportIndex = 0;
+  }
+  return activeLadder[transportIndex % activeLadder.length];
+}
+
+function advanceTransport(reason) {
+  if (!activeLadder || activeLadder.length < 2) return;
+  const from = currentTransport();
+  transportIndex = (transportIndex + 1) % activeLadder.length;
+  pushWsEvent('transport-fallback', { from, to: currentTransport(), reason });
+}
+
+function resetTransportLadder() {
+  transportIndex = 0;
 }
 
 function recordBufferedAmount() {
@@ -95,7 +155,11 @@ function finalizeDisconnect() {
   gmcp.reset();
   state.tabObservability.lastSentState = null;
   panelManager.resetData();
-  windowManager.resetAll();
+  // Keep auth windows (login/charselect/newchar) alive across a drop:
+  // their connection strip shows the reconnect progress, and the fresh
+  // login window from the next connection replaces them in place
+  // instead of yanking a half-filled form away.
+  windowManager.resetAll({ keepAuth: true });
   setConnectionState('disconnected');
   const brandText = dom.toolbarBrand ? dom.toolbarBrand.querySelector('span') : null;
   if (brandText) {
@@ -109,7 +173,7 @@ function finalizeDisconnect() {
   dom.statusUptime.textContent = '';
 }
 
-function forceReconnect(reason) {
+export function forceReconnect(reason) {
   const ws = state.ws;
   const health = getHealth();
 
@@ -130,10 +194,55 @@ function forceReconnect(reason) {
   if (state.reconnectTimer) {
     clearTimeout(state.reconnectTimer);
   }
+  emitReconnectStatus({
+    status: 'scheduled',
+    delayMs: WS_FORCE_RECONNECT_DELAY_MS,
+    nextAttemptAt: Date.now() + WS_FORCE_RECONNECT_DELAY_MS,
+    reason,
+  });
   state.reconnectTimer = setTimeout(function() {
     state.reconnectTimer = null;
     connect();
   }, WS_FORCE_RECONNECT_DELAY_MS);
+}
+
+// Watch for a server response after a send that must be answered (an
+// auth-window submit). A half-dead TCP connection keeps readyState OPEN
+// for minutes, so sends "succeed" into the void and none of the other
+// stall detectors fire (auth submits are not command bursts). If nothing
+// inbound arrives within the window, treat the socket as dead.
+export function expectInboundWithin(ms, reason) {
+  const health = getHealth();
+  const since = health.lastInboundAt || 0;
+
+  if (inboundExpectTimer) clearTimeout(inboundExpectTimer);
+  inboundExpectTimer = setTimeout(function() {
+    inboundExpectTimer = null;
+    if (!isSocketOpen(state.ws)) return;
+    if ((getHealth().lastInboundAt || 0) > since) return;
+    forceReconnect(reason || 'no response to client request');
+  }, ms);
+}
+
+// Make sure a connection attempt is in flight: used by the auth modal
+// and the reconnect overlay so a dead session always works its way back
+// to connected without the player touching the toolbar.
+export function ensureConnected() {
+  if (state.userDisconnected) state.userDisconnected = false;
+  if (isSocketOpen(state.ws) || isSocketConnecting(state.ws)) return;
+  if (state.connectionPending || state.reconnectTimer) return;
+  connect();
+}
+
+// Skip the backoff and try again right now.
+export function retryNow() {
+  if (state.reconnectTimer) {
+    clearTimeout(state.reconnectTimer);
+    state.reconnectTimer = null;
+  }
+  state.userDisconnected = false;
+  if (isSocketOpen(state.ws) || isSocketConnecting(state.ws)) return;
+  connect();
 }
 
 function evaluateSocketHealth() {
@@ -321,7 +430,11 @@ function scheduleReconnect() {
   if (state.reconnectTimer) return;
   state.reconnectAttempts++;
   const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, state.reconnectAttempts - 1), RECONNECT_MAX_MS);
-  appendSystemMessage('Reconnecting in ' + (delay / 1000).toFixed(0) + 's...');
+  emitReconnectStatus({
+    status: 'scheduled',
+    delayMs: delay,
+    nextAttemptAt: Date.now() + delay,
+  });
   state.reconnectTimer = setTimeout(function() {
     state.reconnectTimer = null;
     connect();
@@ -350,7 +463,8 @@ export async function connect() {
     }
 
     state.userDisconnected = false;
-    const sel = dom.protocolSelect.value || 'wss';
+    const selected = dom.protocolSelect.value || 'wss';
+    const sel = nextTransport(selected);
     const host = dom.host.value || 'localhost';
     const port = dom.port.value || '4242';
 
@@ -371,27 +485,48 @@ export async function connect() {
     const connectionLabel = state.zorkOnlyMode ? 'Darkwind' : url;
 
     setConnectionState('connecting');
-    appendSystemMessage('Connecting to ' + connectionLabel + '...');
+    emitReconnectStatus({ status: 'connecting', transport: sel, url });
 
-    const ws = new WebSocket(url);
+    let ws;
+    let attemptOpened = false;
+    try {
+      ws = new WebSocket(url);
+    } catch (error) {
+      pushWsEvent('connect-error', {
+        url,
+        message: error && error.message ? error.message : String(error),
+      });
+      advanceTransport('constructor failure');
+      setConnectionState('disconnected');
+      if (!state.userDisconnected && settingsManager.get('autoReconnect')) {
+        scheduleReconnect();
+      } else {
+        emitReconnectStatus({ status: 'idle' });
+      }
+      return;
+    }
     state.ws = ws;
     health.currentUrl = url;
-    pushWsEvent('connect-attempt', { url });
+    pushWsEvent('connect-attempt', { url, transport: sel });
     state.connectionPending = false;
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = function() {
       if (state.ws !== ws) return;
+      attemptOpened = true;
       const wasReconnect = state.reconnectAttempts > 0;
       setConnectionState('connected');
       state.connectTime = Date.now();
+      state.everConnected = true;
       state.bytesSent = 0;
       state.bytesReceived = 0;
       state.reconnectAttempts = 0;
+      resetTransportLadder();
       health.lastOpenAt = Date.now();
       health.stalledAt = null;
       recordBufferedAmount();
       pushWsEvent('open', { url });
+      emitReconnectStatus({ status: 'connected', transport: sel, url });
       appendSystemMessage('Connected to ' + connectionLabel);
       dom.statusConnection.textContent = 'Connected: 0s';
       dom.commandInput.focus();
@@ -472,6 +607,12 @@ export async function connect() {
 
       if (state.ws !== ws) return;
 
+      // Failed before ever opening: this transport is not reachable
+      // right now, so the next attempt tries the next rung.
+      if (!attemptOpened) {
+        advanceTransport('failed before open (code ' + event.code + ')');
+      }
+
       finalizeDisconnect();
 
       let msg;
@@ -485,11 +626,25 @@ export async function connect() {
 
       if (!state.userDisconnected && settingsManager.get('autoReconnect')) {
         scheduleReconnect();
+      } else {
+        emitReconnectStatus({ status: 'idle' });
       }
     };
   } finally {
     state.connectionPending = false;
   }
+}
+
+// When the browser regains network, do not sit out the rest of a long
+// backoff window; try immediately.
+if (typeof window !== 'undefined' &&
+  typeof window.addEventListener === 'function') {
+  window.addEventListener('online', function() {
+    if (state.userDisconnected) return;
+    if (isSocketOpen(state.ws) || isSocketConnecting(state.ws)) return;
+    if (!settingsManager.get('autoReconnect') && !state.reconnectTimer) return;
+    retryNow();
+  });
 }
 
 export function disconnect() {
@@ -498,6 +653,7 @@ export function disconnect() {
     clearTimeout(state.reconnectTimer);
     state.reconnectTimer = null;
   }
+  emitReconnectStatus({ status: 'idle', userDisconnected: true });
   if (state.ws) {
     state.ws.close(1000, 'User disconnect');
   }

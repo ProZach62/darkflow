@@ -2,7 +2,8 @@ import { gmcp } from './gmcp.js';
 import { dom, state } from './state.js';
 import { panelManager } from './panel-manager.js';
 import { renderLayout, collectFormData, updateElements } from './window-renderer.js';
-import { socketReadyStateName, isSocketOpen } from './socket-state.js';
+import { socketReadyStateName, isSocketOpen, isSocketConnecting } from './socket-state.js';
+import { ensureConnected, expectInboundWithin } from './connection.js';
 import {
   DW_WINDOW_OPEN, DW_WINDOW_UPDATE, DW_WINDOW_CLOSE,
   DW_WINDOW_SUBMIT, DW_WINDOW_ACTION, DW_WINDOW_CLOSED,
@@ -11,6 +12,7 @@ import {
 
 const AUTH_WINDOW_IDS = new Set(['login', 'newchar', 'charselect']);
 const SHARED_VIDEO_GEOMETRY_KEY = 'darkwind-shared-video-window-geometry';
+const AUTH_RESPONSE_TIMEOUT_MS = 8000;
 let videoWindowCounter = 0;
 
 export const windowManager = {
@@ -29,6 +31,17 @@ export const windowManager = {
     if (state.zorkOnlyMode && this._isZorkOnlySuppressedWindow(data.id)) return;
     data = this._instanceSharedVideoWindow(data);
 
+    // A reconnect replaces an auth window that may hold a half-typed
+    // form; carry the values into the replacement so the player does
+    // not start over.
+    let preservedForm = null;
+    if (this.windows[data.id] && AUTH_WINDOW_IDS.has(data.id)) {
+      const existing = this.windows[data.id];
+      if (existing.containerEl) {
+        preservedForm = collectFormData(existing.containerEl);
+      }
+    }
+
     // Close existing window with same id
     if (this.windows[data.id]) {
       this.closeWindow(data.id, true);
@@ -46,6 +59,38 @@ export const windowManager = {
       this._openPanel(data, content);
     } else {
       this._openModal(data, content);
+    }
+
+    if (preservedForm) {
+      this._restoreFormValues(data.id, preservedForm);
+    }
+    if (AUTH_WINDOW_IDS.has(data.id)) {
+      this._emitAuthWindowChange();
+    }
+  },
+
+  hasAuthWindow() {
+    for (const id of Object.keys(this.windows)) {
+      if (AUTH_WINDOW_IDS.has(id) && this.windows[id].type === 'modal') return true;
+    }
+    return false;
+  },
+
+  _emitAuthWindowChange() {
+    document.dispatchEvent(new CustomEvent('dw:authwindowchange', {
+      detail: { open: this.hasAuthWindow() },
+    }));
+  },
+
+  _restoreFormValues(id, saved) {
+    const win = this.windows[id];
+    if (!win || !win.containerEl || !saved) return;
+    for (const [fieldId, value] of Object.entries(saved)) {
+      if (value === '' || value === null || value === undefined) continue;
+      const input = win.containerEl.querySelector('[data-dw-input="' + fieldId + '"]');
+      if (!input) continue;
+      if (input.type === 'checkbox') input.checked = !!value;
+      else input.value = value;
     }
   },
 
@@ -246,6 +291,28 @@ export const windowManager = {
       containerEl: bodyContainer,
       escHandler,
     };
+
+    // Auth windows carry a live connection strip so the player can see
+    // whether the modal is actually backed by a working connection.
+    if (AUTH_WINDOW_IDS.has(data.id) && bodyContainer) {
+      const strip = document.createElement('div');
+      strip.className = 'dw-conn-strip';
+
+      const stripDot = document.createElement('span');
+      stripDot.className = 'dw-conn-strip-dot';
+      const stripSpinner = document.createElement('span');
+      stripSpinner.className = 'dw-spinner dw-spinner-small';
+      const stripLabel = document.createElement('span');
+      stripLabel.className = 'dw-conn-strip-label';
+
+      strip.appendChild(stripDot);
+      strip.appendChild(stripSpinner);
+      strip.appendChild(stripLabel);
+      bodyContainer.prepend(strip);
+      this.windows[data.id].connStripEl = strip;
+      this.windows[data.id].connStripLabelEl = stripLabel;
+    }
+
     this._syncWindowConnectionState(data.id);
   },
 
@@ -336,6 +403,9 @@ export const windowManager = {
     }
 
     delete this.windows[id];
+    if (AUTH_WINDOW_IDS.has(id)) {
+      this._emitAuthWindowChange();
+    }
   },
 
   _userClose(id) {
@@ -369,11 +439,18 @@ export const windowManager = {
       if (!gmcp.send(DW_WINDOW_SUBMIT, { id: windowId, button: buttonId, data })) {
         this._showConnectionMessage(windowId);
         this._syncWindowConnectionState(windowId);
+      } else if (AUTH_WINDOW_IDS.has(windowId)) {
+        // A login/charselect submit must produce a server response. If
+        // none arrives the socket is dead even though it looks open;
+        // force the reconnect instead of leaving a frozen modal.
+        expectInboundWithin(AUTH_RESPONSE_TIMEOUT_MS, 'auth window got no response');
       }
     } else {
       if (!gmcp.send(DW_WINDOW_ACTION, { id: windowId, button: buttonId })) {
         this._showConnectionMessage(windowId);
         this._syncWindowConnectionState(windowId);
+      } else if (AUTH_WINDOW_IDS.has(windowId)) {
+        expectInboundWithin(AUTH_RESPONSE_TIMEOUT_MS, 'auth window got no response');
       }
     }
   },
@@ -389,9 +466,29 @@ export const windowManager = {
     if (!win || win.type !== 'modal' || !AUTH_WINDOW_IDS.has(id)) return;
 
     const connected = isSocketOpen(state.ws);
+    const connecting = isSocketConnecting(state.ws)
+      || !!state.reconnectTimer || !!state.connectionPending;
     const buttons = win.containerEl ? win.containerEl.querySelectorAll('button') : [];
     for (const button of buttons) {
       button.disabled = !connected;
+    }
+
+    if (win.connStripEl) {
+      win.connStripEl.classList.toggle('is-connected', connected);
+      win.connStripEl.classList.toggle('is-reconnecting', !connected && connecting);
+      win.connStripEl.classList.toggle('is-disconnected', !connected && !connecting);
+      if (win.connStripLabelEl) {
+        win.connStripLabelEl.textContent = connected
+          ? 'Connected'
+          : (connecting ? 'Reconnecting...' : 'Disconnected');
+      }
+    }
+
+    // The modal does the work: if it is visible while the session is
+    // down and nothing is retrying, kick a reconnect rather than
+    // waiting for the player to find the toolbar Connect button.
+    if (!connected && !connecting && !state.userDisconnected) {
+      ensureConnected();
     }
   },
 
@@ -399,12 +496,16 @@ export const windowManager = {
     const win = this.windows[id];
     if (!win || !win.containerEl) return;
 
+    if (AUTH_WINDOW_IDS.has(id) && !state.userDisconnected) {
+      ensureConnected();
+    }
+
     const errorEl = win.containerEl.querySelector('[data-dw-id="error"]');
     const readyStateName = socketReadyStateName(state.ws);
     const reconnecting = state.reconnectTimer || state.connectionPending || readyStateName === 'connecting';
     const message = reconnecting
       ? 'Connection lost. Reconnecting...'
-      : 'Connection lost. Use Connect to try again.';
+      : 'Connection lost. Retrying...';
 
     if (errorEl) {
       errorEl.textContent = message;
@@ -476,8 +577,15 @@ export const windowManager = {
     closeBtn.focus();
   },
 
-  resetAll() {
+  resetAll(options = {}) {
     for (const id of Object.keys(this.windows)) {
+      if (options.keepAuth && AUTH_WINDOW_IDS.has(id) &&
+        this.windows[id].type === 'modal') {
+        // Keep the auth modal alive across a drop; its connection strip
+        // reports the reconnect and the next login window replaces it.
+        this._syncWindowConnectionState(id);
+        continue;
+      }
       this.closeWindow(id, true);
     }
   },

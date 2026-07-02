@@ -112,3 +112,30 @@ not the problem — the **delivery loop and dispatch plumbing** were.
   subscriptions flow; consider a staleness stamp per panel if reports recur.
 - The telopt_d whole-file reformat in `7ffe27c41` makes `git blame`
   archaeology painful; prefer format-only commits kept separate.
+
+## 6. Connection resilience (added 2026-07-02, v1.2.8)
+
+Follow-on work in `connection.js` / `window-manager.js` / `connection-overlay.js`:
+
+- **Transport ladder.** Connects try wss → ws → telnets → telnet (telnet
+  rungs bridge through the `/proxy` endpoint). The user's protocol selection
+  seeds the ladder; a failure *before open* advances one rung; a successful
+  open resets to the top. Plain `ws` is skipped on https pages (mixed
+  content). Logic in `buildTransportLadder`, unit-tested in
+  `test/connection-transport.test.mjs`.
+- **Smart auth modal.** Login/charselect/newchar modals carry a live
+  connection strip (green Connected / amber spinner Reconnecting / red
+  Disconnected), survive disconnects (`resetAll({keepAuth:true})`) instead of
+  being yanked, drive `ensureConnected()` themselves when the session is
+  down, and preserve typed form values when the next connection's login
+  window replaces them. Submits on a half-dead socket are caught by
+  `expectInboundWithin(8s)` — no server response forces a reconnect (dead
+  TCP keeps readyState OPEN for minutes and auth submits never tripped the
+  command-burst stall detector).
+- **Reconnect overlay.** A centered spinner modal with attempt count,
+  transport, live countdown, Retry-now and Stop-trying buttons replaces the
+  terminal "Reconnecting in Ns..." spam. Shows only after the session has
+  been connected once and never fights the auth modal (which has its own
+  strip). `window 'online'` events skip the remaining backoff.
+- Debug hook: `window.connDebug.drop()` simulates a connection drop;
+  `connDebug.retryNow()` / `connDebug.ensureConnected()` drive recovery.
