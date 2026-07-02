@@ -2,7 +2,8 @@ import { state, dom, initDom } from './state.js';
 import { gmcp } from './gmcp.js';
 import { appendSystemMessage, initOutput } from './output.js';
 import { panelManager } from './panel-manager.js';
-import { connect, getWsDebugSnapshot } from './connection.js';
+import { connect, getWsDebugSnapshot, retryNow, ensureConnected } from './connection.js';
+import { connectionOverlay } from './connection-overlay.js';
 import { loadHistory, saveHistory, saveHistoryNow, initInput } from './input.js';
 import { windowManager } from './window-manager.js';
 import { ideManager } from './ide-manager.js';
@@ -82,7 +83,9 @@ function formatBytes(n) {
 
 setInterval(function() {
   if (state.connectTime) {
-    dom.statusConnection.textContent = 'Connected: ' + formatDuration(Date.now() - state.connectTime);
+    const transportTag = state.activeTransport ? ' [' + state.activeTransport + ']' : '';
+    dom.statusConnection.textContent = 'Connected' + transportTag + ': ' +
+      formatDuration(Date.now() - state.connectTime);
     dom.statusConnection.title = 'Sent: ' + formatBytes(state.bytesSent) + ' / Recv: ' + formatBytes(state.bytesReceived);
   }
 }, 1000);
@@ -468,6 +471,7 @@ if (dom.protocolSelect) {
 loadHistory();
 panelManager.init();
 windowManager.init();
+connectionOverlay.init();
 ideManager.init();
 snoopManager.init();
 announcementsManager.init();
@@ -513,6 +517,14 @@ if (dom.connectionState) {
     subtree: true,
   });
 }
+
+window.connDebug = {
+  drop: (code = 4006) => {
+    if (state.ws) state.ws.close(code, 'connDebug.drop');
+  },
+  retryNow,
+  ensureConnected,
+};
 
 window.wsDebug = {
   snapshot: getWsDebugSnapshot,
