@@ -2806,19 +2806,25 @@ body.zork-only-mode #toolbar-connect-fields {
 #update-banner {
   display: none;
   position: fixed;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 9999;
-  padding: 8px 14px;
-  background: #1c3a5e;
-  border: 1px solid #388bfd;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 9px 16px;
+  background: #3b2606;
+  border: 1px solid #d9931f;
   border-radius: 6px;
-  color: var(--df-text);
+  color: #ffe6ad;
   font-size: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
 }
 #update-banner a {
-  color: var(--df-accent-blue);
+  color: #ffd166;
+  font-weight: 700;
   text-decoration: underline;
   margin-left: 4px;
 }
