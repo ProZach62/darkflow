@@ -1630,6 +1630,40 @@ body.zork-only-mode #panels-menu {
 .map-stub-ne.map-stub-area, .map-stub-nw.map-stub-area,
 .map-stub-se.map-stub-area, .map-stub-sw.map-stub-area { height: 9px; }
 
+/* Door markers: a small state-colored tick mid-gap on the exit's side
+   (Mudlet's perpendicular gate, reduced to tile scale). Diagonal doors
+   rotate into diamonds along the corner gap. May appear with no connector
+   under it -- a closed door strips its exit server-side, so the marker is
+   the only trace of the passage. */
+.map-door {
+  position: absolute;
+  z-index: 3;
+  width: 4px;
+  height: 4px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+}
+.map-door-n { bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%); }
+.map-door-s { top: calc(100% + 2px); left: 50%; transform: translateX(-50%); }
+.map-door-e { left: calc(100% + 2px); top: 50%; transform: translateY(-50%); }
+.map-door-w { right: calc(100% + 2px); top: 50%; transform: translateY(-50%); }
+.map-door-ne { bottom: 100%; left: calc(100% - 2px);
+  transform-origin: 50% 100%; transform: rotate(45deg) translateY(-4px); }
+.map-door-nw { bottom: 100%; left: -2px;
+  transform-origin: 50% 100%; transform: rotate(-45deg) translateY(-4px); }
+.map-door-se { top: 100%; left: calc(100% - 2px);
+  transform-origin: 50% 0%; transform: rotate(-45deg) translateY(4px); }
+.map-door-sw { top: 100%; left: -2px;
+  transform-origin: 50% 0%; transform: rotate(45deg) translateY(4px); }
+.map-door-state-open   { background: rgba(120, 200, 120, 0.95); }
+.map-door-state-closed { background: rgba(230, 180, 80, 0.95); }
+.map-door-state-locked { background: rgba(220, 90, 90, 0.95); }
+
+/* Vertical-exit glyphs tinted by their door state. */
+.map-vert-door-open   { color: rgba(120, 200, 120, 0.95); }
+.map-vert-door-closed { color: rgba(230, 180, 80, 0.95); }
+.map-vert-door-locked { color: rgba(220, 90, 90, 0.95); }
+
 /* Per-tile vertical-exit markers: any room with an up/down exit shows a small
    corner glyph, so multi-level areas read consistently everywhere (the Z badge
    only covers the room the player is standing in). Corner budget on a 32px

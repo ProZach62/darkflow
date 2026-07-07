@@ -335,6 +335,28 @@ test('overlapping rooms get the conflict class and stack-count badge', () => {
   assert.ok(out.includes('data-stack="2"'), 'badge carries the stack count');
 });
 
+test('doors render state-colored ticks, even with no exit behind them', () => {
+  const area = 'DoorLand';
+  const out = renderWithRooms(area, [
+    // Open east door with a real exit; locked south door whose exit the
+    // server stripped (closed doors remove their exit); closed up door
+    // with no up exit -> glyph still renders, tinted.
+    { id: area + ':A', name: 'Gatehouse', area, env: 'city',
+      positioned: true, x: 0, y: 0, z: 0,
+      exits: { east: area + ':B' },
+      exitDoors: { east: 1, south: 3, up: 2 } },
+    { id: area + ':B', name: 'Courtyard', area, env: 'city',
+      positioned: true, x: 1, y: 0, z: 0, exits: { west: area + ':A' } },
+  ]);
+  assert.ok(out.includes('map-door-e map-door-state-open"'),
+    'open east door tick');
+  assert.ok(out.includes('map-door-s map-door-state-locked"'),
+    'locked south door tick renders without an exit entry');
+  assert.ok(!out.includes('map-stub-s"'), 'no stub invented for the doored dir');
+  assert.ok(out.includes('map-vert-up map-vert-door-closed"'),
+    'closed up-door renders a tinted up glyph despite no up exit');
+});
+
 test('browse mode renders a catalog area with no player marker', () => {
   // Live current room is elsewhere; the browse pane must be independent of it.
   seedArea('LiveLand');

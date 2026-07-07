@@ -107,14 +107,39 @@ function buildExitSpans(room, cz, source) {
     }
     // Connected room positioned elsewhere (not adjacent): no drawable line.
   }
-  if (room.exits.up !== undefined) {
-    spans += '<span class="map-vert map-vert-up">&#x25B2;</span>';
+  // Door ticks: a small state-colored marker mid-gap. A door may exist on a
+  // direction with NO exit entry (the server strips exits behind closed
+  // doors), so this runs independently of the connector/stub loop above.
+  const doors = room.exitDoors;
+  if (doors) {
+    for (const [dir, abbr] of COMPASS_DIRS) {
+      if (doors[dir]) {
+        spans += '<span class="map-door map-door-' + abbr
+          + ' map-door-state-' + doorStateName(doors[dir]) + '"></span>';
+      }
+    }
   }
-  if (room.exits.down !== undefined) {
-    spans += '<span class="map-vert map-vert-down">&#x25BC;</span>';
+  // Vertical glyphs render from either an exit or a door (a closed up-door
+  // means there IS a way up, just shut right now); door state tints them.
+  if (room.exits.up !== undefined || (doors && doors.up)) {
+    spans += '<span class="map-vert map-vert-up' + vertDoorClass(doors, 'up')
+      + '">&#x25B2;</span>';
+  }
+  if (room.exits.down !== undefined || (doors && doors.down)) {
+    spans += '<span class="map-vert map-vert-down' + vertDoorClass(doors, 'down')
+      + '">&#x25BC;</span>';
   }
   spans += specialExitSpans(room);
   return spans;
+}
+
+function doorStateName(state) {
+  return state === 3 ? 'locked' : state === 2 ? 'closed' : 'open';
+}
+
+function vertDoorClass(doors, dir) {
+  if (!doors || !doors[dir]) return '';
+  return ' map-vert-door-' + doorStateName(doors[dir]);
 }
 
 // Indicators for non-compass exits. "in"-like and "out"-like exits get

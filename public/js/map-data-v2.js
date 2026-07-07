@@ -93,6 +93,7 @@ function normalizeRoomPayload(data, fallbackArea) {
     environment: data.env || data.environment || '',
     exits: {},
     exitKinds: {},
+    exitDoors: {},
     x: data.positioned && data.x !== undefined ? data.x : null,
     y: data.positioned && data.y !== undefined ? data.y : null,
     z: data.positioned && data.z !== undefined ? data.z : null,
@@ -108,6 +109,12 @@ function normalizeRoomPayload(data, fallbackArea) {
   }
   if (data.exitKinds && typeof data.exitKinds === 'object') {
     room.exitKinds = Object.assign({}, data.exitKinds);
+  }
+  // Door states per direction: 1=open 2=closed 3=locked. May cover
+  // directions with no exit entry -- a closed door removes its exit on the
+  // server, so the door marker is the only trace of the passage.
+  if (data.exitDoors && typeof data.exitDoors === 'object') {
+    room.exitDoors = Object.assign({}, data.exitDoors);
   }
 
   return room;
