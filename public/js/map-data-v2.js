@@ -39,7 +39,7 @@ function normalizeRoomId(id) {
   return id === null || id === undefined ? null : String(id);
 }
 
-function setMapStatus(msg) {
+export function setMapStatus(msg) {
   mapStatusMessage = msg;
   mapStatusAt = Date.now();
 }
@@ -116,6 +116,8 @@ function normalizeRoomPayload(data, fallbackArea) {
   if (data.exitDoors && typeof data.exitDoors === 'object') {
     room.exitDoors = Object.assign({}, data.exitDoors);
   }
+  // Room feature tags for map icons (IRE-style details: shop, bank, ...).
+  room.details = Array.isArray(data.details) ? data.details.slice(0, 4) : [];
 
   return room;
 }

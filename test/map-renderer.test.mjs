@@ -357,6 +357,17 @@ test('doors render state-colored ticks, even with no exit behind them', () => {
     'closed up-door renders a tinted up glyph despite no up exit');
 });
 
+test('room details render a feature badge and tooltip list', () => {
+  const area = 'DetailLand';
+  const out = renderWithRooms(area, [
+    { id: area + ':A', name: 'General Store', area, env: 'city',
+      positioned: true, x: 0, y: 0, z: 0, exits: {},
+      details: ['shop', 'bank'] },
+  ]);
+  assert.ok(out.includes('map-detail">$<'), 'shop badge is the $ glyph');
+  assert.ok(out.includes('[shop, bank]'), 'tooltip lists every detail');
+});
+
 test('browse mode renders a catalog area with no player marker', () => {
   // Live current room is elsewhere; the browse pane must be independent of it.
   seedArea('LiveLand');

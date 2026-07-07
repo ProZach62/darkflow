@@ -182,6 +182,29 @@ matter; would also let us retire the V1 lua script.
 6. **GAP 7** (click-to-walk speedwalk) — own plan.
 7. **GAP 8** (MMP export) — only if third-party clients become a goal.
 
+### Implementation status (2026-07-07)
+
+GAPs 1-7 implemented same day (GAP 8 deliberately skipped). Notes beyond the
+recommendations above:
+
+- GAP 4 door probing exposed and fixed a live topology bug: the door mixin
+  removes an exit while its door is closed, so observing a room with a shut
+  door ERASED the mapped edge until someone saw it open. `record_room_exits`
+  now carries door-bearing edges forward across door flips. No new mudlib
+  hook was needed — `query_door`/`query_door_closed`/`query_door_locked` on
+  the room (via the door mixin every ROOM inherits) sufficed; doors are
+  probed over the canonical direction list, never just current exits.
+- GAP 6 ships with `function_exists` auto-probes (shop `is_buyable_stock`,
+  bank `transfer_money`, guild `get_new_title`, pub `bartender_present`,
+  post `query_mail`); the `query_map_details()` room hook overrides them.
+- GAP 7 lives in `public/js/map-speedwalk.js`: same-area BFS (closed/locked
+  doors unroutable), raw-command steps verified against every
+  `MapData2.Current`, per-step timeout, manual input cancels via input.js.
+- GAP 3's audit deviates from Mudlet on one point: dangling exits are
+  deleted-and-logged rather than downgraded to stubs, because the live game
+  re-derives edges on the next observation (Mudlet has no ground truth to
+  re-derive from).
+
 ---
 
 ## Appendix A — Mudlet reference points (for implementation)

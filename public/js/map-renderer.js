@@ -130,7 +130,21 @@ function buildExitSpans(room, cz, source) {
       + '">&#x25BC;</span>';
   }
   spans += specialExitSpans(room);
+  if (room.details && room.details.length) {
+    spans += '<span class="map-detail">' + detailGlyph(room.details[0])
+      + '</span>';
+  }
   return spans;
+}
+
+// Room feature badge (top edge): first detail only; the tooltip lists all.
+const DETAIL_GLYPHS = {
+  shop: '$', bank: 'B', guild: 'G', pub: 'P', post: 'M',
+};
+
+function detailGlyph(detail) {
+  if (DETAIL_GLYPHS[detail]) return DETAIL_GLYPHS[detail];
+  return String(detail).charAt(0).toUpperCase() || '?';
 }
 
 function doorStateName(state) {
@@ -292,6 +306,7 @@ export function renderMap(bodyEl, source = mapData) {
         html += '<div class="map-tile map-tile-room map-tile-' + terrain
           + ' map-tile-player' + conflictClass(bucket)
           + '" title="' + escAttr(tileTitle(room, bucket, source)) + '"'
+          + ' data-room-id="' + escAttr(room.id) + '"'
           + conflictAttr(bucket) + '>'
           + buildExitSpans(room, cz, source) + '</div>';
       } else {
@@ -300,6 +315,7 @@ export function renderMap(bodyEl, source = mapData) {
         html += '<div class="map-tile map-tile-room map-tile-' + terrain
           + conflictClass(bucket) + lastPos
           + '" title="' + escAttr(tileTitle(room, bucket, source)) + '"'
+          + ' data-room-id="' + escAttr(room.id) + '"'
           + conflictAttr(bucket) + '>'
           + buildExitSpans(room, cz, source) + '</div>';
       }
@@ -456,6 +472,9 @@ function tileTitle(room, bucket, source) {
   }
   const boundaries = boundaryExitLines(room, source);
   if (boundaries.length) title += '\n' + boundaries.join('\n');
+  if (room.details && room.details.length) {
+    title += '\n[' + room.details.join(', ') + ']';
+  }
   return title;
 }
 
