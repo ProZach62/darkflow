@@ -285,6 +285,18 @@ test('special (non-compass) exits get the special-exit dot', () => {
     'spatial/vertical-only rooms get no dot');
 });
 
+test('overlapping rooms get the conflict class and stack-count badge', () => {
+  const area = 'OverlapLand';
+  const out = renderWithRooms(area, [
+    { id: area + ':A', name: 'Front Room', area, env: 'city',
+      positioned: true, x: 0, y: 0, z: 0, exits: {} },
+    { id: area + ':B', name: 'Squatter', area, env: 'city',
+      positioned: true, x: 0, y: 0, z: 0, exits: {} },
+  ]);
+  assert.ok(out.includes('map-tile-conflict'), 'shared cell -> conflict class');
+  assert.ok(out.includes('data-stack="2"'), 'badge carries the stack count');
+});
+
 test('browse mode renders a catalog area with no player marker', () => {
   // Live current room is elsewhere; the browse pane must be independent of it.
   seedArea('LiveLand');

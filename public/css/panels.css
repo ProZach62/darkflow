@@ -1433,17 +1433,32 @@ body.zork-only-mode #panels-menu {
   background-repeat: no-repeat;
 }
 
+/* Multiple mapped rooms share this cell: dashed amber outline plus a
+   corner-fold badge showing the stack count (readable on photo tiles,
+   unlike the old 6px dot). The full cellmate list is in the tooltip. */
+.map-tile-conflict {
+  outline: 1px dashed rgba(242, 204, 96, 0.85);
+  outline-offset: -1px;
+}
 .map-tile-conflict::before {
-  content: '';
+  content: attr(data-stack);
   position: absolute;
-  top: 3px;
-  right: 3px;
+  top: 0;
+  right: 0;
   z-index: 2;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+  min-width: 10px;
+  height: 10px;
+  padding: 0 1px;
   background: #f2cc60;
+  color: #1a1a1a;
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 700;
+  text-align: center;
+  font-family: var(--df-font-mono);
+  border-bottom-left-radius: 3px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
 }
 
 .map-tile-player {

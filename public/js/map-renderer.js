@@ -232,14 +232,16 @@ export function renderMap(bodyEl, source = mapData) {
         const terrain = getTerrainName(room.environment);
         html += '<div class="map-tile map-tile-room map-tile-' + terrain
           + ' map-tile-player' + conflictClass(bucket)
-          + '" title="' + escAttr(tileTitle(room, bucket)) + '">'
+          + '" title="' + escAttr(tileTitle(room, bucket)) + '"'
+          + conflictAttr(bucket) + '>'
           + buildExitSpans(room, cz, source) + '</div>';
       } else {
         const terrain = getTerrainName(room.environment);
         const lastPos = pending && room.id === centerRoom.id ? ' map-tile-lastpos' : '';
         html += '<div class="map-tile map-tile-room map-tile-' + terrain
           + conflictClass(bucket) + lastPos
-          + '" title="' + escAttr(tileTitle(room, bucket)) + '">'
+          + '" title="' + escAttr(tileTitle(room, bucket)) + '"'
+          + conflictAttr(bucket) + '>'
           + buildExitSpans(room, cz, source) + '</div>';
       }
     }
@@ -378,6 +380,11 @@ function chooseRoomForTile(bucket, currentId, distances, connectedVisibleCount) 
 
 function conflictClass(bucket) {
   return bucket.length > 1 ? ' map-tile-conflict' : '';
+}
+
+// Stack count for the conflict corner badge (CSS reads it via attr()).
+function conflictAttr(bucket) {
+  return bucket.length > 1 ? ' data-stack="' + bucket.length + '"' : '';
 }
 
 function tileTitle(room, bucket) {
