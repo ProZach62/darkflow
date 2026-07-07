@@ -24,7 +24,7 @@ Darkflow, the web-based WebSocket client for the Darkwind LDMud game server (pla
 - `output.js` -- Terminal output with requestAnimationFrame batching
 - `panel-manager.js` -- Panel lifecycle, drag/drop, edge snapping, GMCP data handlers
 - `panel-renderers.js` -- Render functions for each panel type
-- `map-data.js` -- Room graph model, coordinate tracking, direction detection, server data merge
+- `map-data-v2.js` -- Server-authoritative map model (MapData2): room graph + coords from the server, sync/version reconciliation, browse-area store
 - `map-renderer.js` -- CSS Grid tile map renderer (32x32 terrain tiles)
 - `window-manager.js` -- Server-driven GUI window rendering (Darkwind.Window)
 - `ide-manager.js` / `ide-editor.js` -- In-browser code editor (Darkwind.IDE)
@@ -34,14 +34,14 @@ Darkflow, the web-based WebSocket client for the Darkwind LDMud game server (pla
 See `docs/` for full protocol specifications:
 - `Darkwind.Window 1` -- Server-driven modals, panels, forms
 - `Darkwind.IDE 1` -- In-browser LPC code editor for builders
-- `Darkwind.MapData 1` -- Collaborative mapping (client sends RoomUpdate, server pushes Area data)
+- `Darkwind.MapData2 1` -- Server-authoritative mapping (server pushes Current/Area/Update/BrowseArea; client sends Sync/Browse). The V1 `Darkwind.MapData` package is retired.
 
 ## Server-Side Companion (darkwind-nextgen)
 
 The MUD server codebase is at `../darkwind-nextgen/`. Key server-side files for this client:
 - `secure/daemons/telopt_d.c` -- GMCP message sending (Room.Info, MapData.Area, Window, IDE)
 - `secure/player/telopt.c` -- GMCP message receiving and dispatch
-- `secure/daemons/map_d.c` -- Mapping daemon (stores room graph, resolves coordinates via BFS)
+- `secure/daemons/map2_d.c` -- Mapping daemon (MapData2: shared room graph, incremental sticky coordinate placement; legacy `map_d.c` is the retired V1)
 - `secure/include/gmcp_defs.h` -- GMCP package/key constants
 - `secure/daemons/vrroom.c` -- Virtual room mapping support (query_map_id, query_map_exit_path)
 

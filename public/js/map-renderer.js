@@ -11,9 +11,18 @@ const MAP_DIRECTIONS = new Set([
 ]);
 let lastRenderDebug = null;
 
-const CARDINAL_DIRS = [
+const COMPASS_DIRS = [
   ['north', 'n'], ['south', 's'], ['east', 'e'], ['west', 'w'],
+  ['northeast', 'ne'], ['northwest', 'nw'],
+  ['southeast', 'se'], ['southwest', 'sw'],
 ];
+
+const REVERSE_DIR = {
+  north: 'south', south: 'north', east: 'west', west: 'east',
+  northeast: 'southwest', southwest: 'northeast',
+  northwest: 'southeast', southeast: 'northwest',
+  up: 'down', down: 'up',
+};
 
 // Remember the last room the player occupied that had a coordinate, per area.
 // When the player steps into a room the server has not positioned yet, we keep
@@ -56,31 +65,122 @@ function pickCenterRoom(area, areaRooms, source, skipLast) {
   return best;
 }
 
-// Child spans drawn in the gap outside a room box for each cardinal exit:
+// Child spans drawn in the gap outside a room box for each compass exit
+// (cardinals and diagonals):
 //  - a CONNECTOR line bridging to an adjacent mapped neighbour, or
 //  - a shorter STUB tick toward an exit whose destination is not mapped yet
 //    (so the player can see where there is still more to explore -- the map
 //    grows visibly as you walk, mirroring Mudlet's exit stubs).
+// Each side draws the full gap-bridging line, so a one-way exit still renders
+// a full connector and reciprocal neighbours' lines coincide exactly.
+// Also emits per-tile up/down glyphs and a special-exit (enter/portal) dot so
+// every exit a room has is visible on the map, not just planar compass ones.
 function buildExitSpans(room, cz, source) {
   if (!room || !room.exits) return '';
   let spans = '';
-  for (const [dir, abbr] of CARDINAL_DIRS) {
+  for (const [dir, abbr] of COMPASS_DIRS) {
     const destId = room.exits[dir];
     if (!destId) continue;
     const dest = source.getRoom(destId);
     // Stub if the destination isn't positioned, OR lives in a different zone --
-    // a cross-zone exit's coordinates are in another area's space and must not be
-    // drawn as an adjacent connector.
+    // a cross-zone exit's coordinates are in another area's space and must not
+    // be drawn as an adjacent connector. A KNOWN other-zone destination is an
+    // area boundary ("this leads somewhere else"), rendered distinctly from an
+    // unexplored stub ("more to explore"); the tooltip names the zone.
     if (!dest || dest.x === null || dest.area !== room.area) {
-      spans += '<span class="map-stub map-stub-' + abbr + '"></span>';
+      const areaMod = dest && dest.area && dest.area !== room.area
+        ? ' map-stub-area' : '';
+      spans += '<span class="map-stub map-stub-' + abbr + areaMod + '"></span>';
       continue;
     }
     if (dest.z !== cz) continue;
     const offset = source.DIR_OFFSETS[dir];
     if (dest.x === room.x + offset.dx && dest.y === room.y + offset.dy) {
-      spans += '<span class="map-conn map-conn-' + abbr + '"></span>';
+      // One-way when the destination has no exit pointing back at us
+      // (Mudlet's convention: dashed line + arrowhead toward the dest).
+      const oneWay = !dest.exits || dest.exits[REVERSE_DIR[dir]] !== room.id;
+      spans += '<span class="map-conn map-conn-' + abbr
+        + (oneWay ? ' map-conn-oneway' : '') + '"></span>';
+      if (oneWay) {
+        spans += '<span class="map-arrow map-arrow-' + abbr + '"></span>';
+      }
     }
     // Connected room positioned elsewhere (not adjacent): no drawable line.
+  }
+  // Door ticks: a small state-colored marker mid-gap. A door may exist on a
+  // direction with NO exit entry (the server strips exits behind closed
+  // doors), so this runs independently of the connector/stub loop above.
+  const doors = room.exitDoors;
+  if (doors) {
+    for (const [dir, abbr] of COMPASS_DIRS) {
+      if (doors[dir]) {
+        spans += '<span class="map-door map-door-' + abbr
+          + ' map-door-state-' + doorStateName(doors[dir]) + '"></span>';
+      }
+    }
+  }
+  // Vertical glyphs render from either an exit or a door (a closed up-door
+  // means there IS a way up, just shut right now); door state tints them.
+  if (room.exits.up !== undefined || (doors && doors.up)) {
+    spans += '<span class="map-vert map-vert-up' + vertDoorClass(doors, 'up')
+      + '">&#x25B2;</span>';
+  }
+  if (room.exits.down !== undefined || (doors && doors.down)) {
+    spans += '<span class="map-vert map-vert-down' + vertDoorClass(doors, 'down')
+      + '">&#x25BC;</span>';
+  }
+  spans += specialExitSpans(room);
+  if (room.details && room.details.length) {
+    spans += '<span class="map-detail">' + detailGlyph(room.details[0])
+      + '</span>';
+  }
+  return spans;
+}
+
+// Room feature badge (top edge): first detail only; the tooltip lists all.
+const DETAIL_GLYPHS = {
+  shop: '$', bank: 'B', guild: 'G', pub: 'P', post: 'M',
+};
+
+function detailGlyph(detail) {
+  if (DETAIL_GLYPHS[detail]) return DETAIL_GLYPHS[detail];
+  return String(detail).charAt(0).toUpperCase() || '?';
+}
+
+function doorStateName(state) {
+  return state === 3 ? 'locked' : state === 2 ? 'closed' : 'open';
+}
+
+function vertDoorClass(doors, dir) {
+  if (!doors || !doors[dir]) return '';
+  return ' map-vert-door-' + doorStateName(doors[dir]);
+}
+
+// Indicators for non-compass exits. "in"-like and "out"-like exits get
+// directional chevron glyphs (Mudlet draws inward/outward triangle pairs);
+// any other special exit (portal, custom verb) keeps the generic dot, shifted
+// left when it shares the corner with an in/out glyph. exitKinds may be
+// absent on neighbour stubs that have only been seen from an adjacent room.
+const IN_EXIT_NAMES = new Set(['in', 'enter']);
+const OUT_EXIT_NAMES = new Set(['out', 'exit', 'leave']);
+
+function specialExitSpans(room) {
+  if (!room.exitKinds) return '';
+  let hasIn = false;
+  let hasOut = false;
+  let hasOther = false;
+  for (const [dir, kind] of Object.entries(room.exitKinds)) {
+    if (kind === 'spatial' || kind === 'vertical') continue;
+    if (IN_EXIT_NAMES.has(dir)) hasIn = true;
+    else if (OUT_EXIT_NAMES.has(dir)) hasOut = true;
+    else hasOther = true;
+  }
+  let spans = '';
+  if (hasIn) spans += '<span class="map-inout map-exit-in">&#x203A;&#x2039;</span>';
+  if (hasOut) spans += '<span class="map-inout map-exit-out">&#x2039;&#x203A;</span>';
+  if (hasOther) {
+    spans += '<span class="map-exit-special'
+      + (hasIn || hasOut ? ' map-exit-special-shifted' : '') + '"></span>';
   }
   return spans;
 }
@@ -205,14 +305,18 @@ export function renderMap(bodyEl, source = mapData) {
         const terrain = getTerrainName(room.environment);
         html += '<div class="map-tile map-tile-room map-tile-' + terrain
           + ' map-tile-player' + conflictClass(bucket)
-          + '" title="' + escAttr(tileTitle(room, bucket)) + '">'
+          + '" title="' + escAttr(tileTitle(room, bucket, source)) + '"'
+          + ' data-room-id="' + escAttr(room.id) + '"'
+          + conflictAttr(bucket) + '>'
           + buildExitSpans(room, cz, source) + '</div>';
       } else {
         const terrain = getTerrainName(room.environment);
         const lastPos = pending && room.id === centerRoom.id ? ' map-tile-lastpos' : '';
         html += '<div class="map-tile map-tile-room map-tile-' + terrain
           + conflictClass(bucket) + lastPos
-          + '" title="' + escAttr(tileTitle(room, bucket)) + '">'
+          + '" title="' + escAttr(tileTitle(room, bucket, source)) + '"'
+          + ' data-room-id="' + escAttr(room.id) + '"'
+          + conflictAttr(bucket) + '>'
           + buildExitSpans(room, cz, source) + '</div>';
       }
     }
@@ -353,13 +457,40 @@ function conflictClass(bucket) {
   return bucket.length > 1 ? ' map-tile-conflict' : '';
 }
 
-function tileTitle(room, bucket) {
-  if (bucket.length <= 1) return room.name;
+// Stack count for the conflict corner badge (CSS reads it via attr()).
+function conflictAttr(bucket) {
+  return bucket.length > 1 ? ' data-stack="' + bucket.length + '"' : '';
+}
 
-  const names = bucket.slice(0, 6).map((entry) => entry.name || 'Unknown');
-  const suffix = bucket.length > names.length ? '\n+' + (bucket.length - names.length) + ' more' : '';
-  return room.name + '\n' + bucket.length + ' mapped rooms share this coordinate:\n'
-    + names.join('\n') + suffix;
+function tileTitle(room, bucket, source) {
+  let title = room.name;
+  if (bucket.length > 1) {
+    const names = bucket.slice(0, 6).map((entry) => entry.name || 'Unknown');
+    const suffix = bucket.length > names.length ? '\n+' + (bucket.length - names.length) + ' more' : '';
+    title += '\n' + bucket.length + ' mapped rooms share this coordinate:\n'
+      + names.join('\n') + suffix;
+  }
+  const boundaries = boundaryExitLines(room, source);
+  if (boundaries.length) title += '\n' + boundaries.join('\n');
+  if (room.details && room.details.length) {
+    title += '\n[' + room.details.join(', ') + ']';
+  }
+  return title;
+}
+
+// "east -> darkwind.forest" lines for exits that lead to another zone, so the
+// amber boundary stubs are explained on hover.
+function boundaryExitLines(room, source) {
+  if (!room || !room.exits || !source) return [];
+  const lines = [];
+  for (const [dir, destId] of Object.entries(room.exits)) {
+    if (!MAP_DIRECTIONS.has(dir)) continue;
+    const dest = source.getRoom(destId);
+    if (dest && dest.area && room.area && dest.area !== room.area) {
+      lines.push(dir + ' -> ' + dest.area);
+    }
+  }
+  return lines;
 }
 
 function countVisibleConnectedRooms(areaRooms, distances, z, bounds) {

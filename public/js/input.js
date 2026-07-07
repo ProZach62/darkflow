@@ -22,6 +22,7 @@ import { replaceEmojiAliases } from './emoji-manager.js';
 import { handleEmojiPickerKeydown, initEmojiPicker } from './emoji-picker.js';
 import { handleMentionPickerKeydown, initMentionPicker } from './mention-picker.js';
 import { isSocketOpen } from './socket-state.js';
+import { cancelSpeedwalk, isSpeedwalking } from './map-speedwalk.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -52,7 +53,7 @@ function normalizeOutboundCommand(text) {
   return DIRECTION_ALIASES[trimmed] || command;
 }
 
-function sendRawCommand(text) {
+export function sendRawCommand(text) {
   if (!isSocketOpen(state.ws)) {
     appendSystemMessage('Not connected.');
     return false;
@@ -674,6 +675,9 @@ function handleAliasSlashCommand(text) {
 }
 
 export function sendCommandText(text) {
+  // A manually typed (or hotkeyed) command takes over from any running
+  // map speedwalk -- the player is driving now.
+  if (isSpeedwalking()) cancelSpeedwalk('manual command');
   const trimmed = replaceEmojiAliases(String(text || ''));
   const slashCommandResult = handleAliasSlashCommand(trimmed);
   const aliasResult = slashCommandResult || executeAliasLine(trimmed, {
