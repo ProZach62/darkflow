@@ -1545,6 +1545,58 @@ body.zork-only-mode #panels-menu {
 .map-conn-sw { top: 100%;    left: -1.5px;             width: 3px; height: 12px;
                transform-origin: 50% 0%;   transform: rotate(45deg); }
 
+/* One-way exit (destination has no exit back): dashed warm-tinted bar plus a
+   small arrowhead pointing at the destination (Mudlet's dotted-line-with-
+   arrow convention). Diagonal bars rotate, so "to bottom" follows the bar. */
+.map-conn-oneway {
+  background: repeating-linear-gradient(to bottom,
+    rgba(235, 140, 120, 0.9) 0, rgba(235, 140, 120, 0.9) 2px,
+    transparent 2px, transparent 4px);
+}
+.map-conn-e.map-conn-oneway,
+.map-conn-w.map-conn-oneway {
+  background: repeating-linear-gradient(to right,
+    rgba(235, 140, 120, 0.9) 0, rgba(235, 140, 120, 0.9) 2px,
+    transparent 2px, transparent 4px);
+}
+.map-arrow {
+  position: absolute;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.map-arrow-n { bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  border-left: 3px solid transparent; border-right: 3px solid transparent;
+  border-bottom: 4px solid rgba(235, 140, 120, 0.95); }
+.map-arrow-s { top: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  border-left: 3px solid transparent; border-right: 3px solid transparent;
+  border-top: 4px solid rgba(235, 140, 120, 0.95); }
+.map-arrow-e { left: calc(100% + 4px); top: 50%; transform: translateY(-50%);
+  border-top: 3px solid transparent; border-bottom: 3px solid transparent;
+  border-left: 4px solid rgba(235, 140, 120, 0.95); }
+.map-arrow-w { right: calc(100% + 4px); top: 50%; transform: translateY(-50%);
+  border-top: 3px solid transparent; border-bottom: 3px solid transparent;
+  border-right: 4px solid rgba(235, 140, 120, 0.95); }
+/* Diagonal arrowheads: corner-anchored like the diagonal bars, pushed out
+   along the rotated axis so the apex sits near the destination corner. */
+.map-arrow-ne { bottom: 100%; left: calc(100% - 3px);
+  border-left: 3px solid transparent; border-right: 3px solid transparent;
+  border-bottom: 4px solid rgba(235, 140, 120, 0.95);
+  transform-origin: 50% 100%; transform: rotate(45deg) translateY(-6px); }
+.map-arrow-nw { bottom: 100%; left: -3px;
+  border-left: 3px solid transparent; border-right: 3px solid transparent;
+  border-bottom: 4px solid rgba(235, 140, 120, 0.95);
+  transform-origin: 50% 100%; transform: rotate(-45deg) translateY(-6px); }
+.map-arrow-se { top: 100%; left: calc(100% - 3px);
+  border-left: 3px solid transparent; border-right: 3px solid transparent;
+  border-top: 4px solid rgba(235, 140, 120, 0.95);
+  transform-origin: 50% 0%; transform: rotate(-45deg) translateY(6px); }
+.map-arrow-sw { top: 100%; left: -3px;
+  border-left: 3px solid transparent; border-right: 3px solid transparent;
+  border-top: 4px solid rgba(235, 140, 120, 0.95);
+  transform-origin: 50% 0%; transform: rotate(45deg) translateY(6px); }
+
 /* Exit stub: a shorter, dimmer tick toward an exit whose destination is not
    mapped yet -- "there is more to explore this way". Sits in the gap. */
 .map-stub {
@@ -1569,6 +1621,15 @@ body.zork-only-mode #panels-menu {
 .map-stub-sw { top: 100%;    left: -1px;             width: 2px; height: 7px;
                transform-origin: 50% 0%;   transform: rotate(45deg); }
 
+/* Area-boundary stub: the destination is KNOWN and lives in another zone --
+   amber and slightly longer than an unexplored stub, so "leads somewhere
+   else" reads differently from "more to explore". Tooltip names the zone. */
+.map-stub-area { background: rgba(242, 204, 96, 0.85); }
+.map-stub-n.map-stub-area, .map-stub-s.map-stub-area { height: 7px; }
+.map-stub-e.map-stub-area, .map-stub-w.map-stub-area { width: 7px; }
+.map-stub-ne.map-stub-area, .map-stub-nw.map-stub-area,
+.map-stub-se.map-stub-area, .map-stub-sw.map-stub-area { height: 9px; }
+
 /* Per-tile vertical-exit markers: any room with an up/down exit shows a small
    corner glyph, so multi-level areas read consistently everywhere (the Z badge
    only covers the room the player is standing in). Corner budget on a 32px
@@ -1586,7 +1647,8 @@ body.zork-only-mode #panels-menu {
 .map-vert-up   { top: 1px;    left: 2px; }
 .map-vert-down { bottom: 1px; left: 2px; }
 
-/* Non-spatial exit (enter/portal/custom verb) marker. */
+/* Non-spatial exit (portal/custom verb) marker. Shifted left when an in/out
+   glyph occupies the bottom-right corner. */
 .map-exit-special {
   position: absolute;
   bottom: 3px;
@@ -1599,6 +1661,24 @@ body.zork-only-mode #panels-menu {
   z-index: 3;
   pointer-events: none;
 }
+.map-exit-special-shifted { right: 13px; }
+
+/* In/out exit glyphs (enter/in and out/exit/leave): inward and outward
+   chevron pairs, the compact analog of Mudlet's in/out triangle pairs. */
+.map-inout {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  z-index: 3;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: -1px;
+  font-family: var(--df-font-mono);
+  color: rgba(200, 170, 255, 0.95);
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+  pointer-events: none;
+}
+.map-exit-in ~ .map-exit-out { right: 13px; }
 
 /* Area name (top line) -- the zone you're in; updates as you cross areas. */
 .map-areaname {

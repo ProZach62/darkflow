@@ -146,8 +146,10 @@ test('exits to a different zone render as stubs, not connectors', () => {
   const body = makeBody();
   renderMap(body);
   const out = body.innerHTML;
-  assert.ok(out.includes('map-stub-e"'), 'cross-zone east exit -> stub');
+  assert.ok(out.includes('map-stub-e map-stub-area"'),
+    'cross-zone east exit -> area-boundary stub');
   assert.ok(!out.includes('map-conn-e"'), 'cross-zone exit must not be a connector');
+  assert.ok(out.includes('east -&gt; ZoneB'), 'tooltip names the destination zone');
 });
 
 // ── Diagonal exits + per-tile indicators ─────────────────────────────────────
@@ -175,7 +177,7 @@ test('reciprocal diagonal exits render corner connectors both ways', () => {
   assert.ok(!out.includes('map-stub-ne"'), 'mapped adjacent diagonal is not a stub');
 });
 
-test('one-way diagonal exit draws only the owning side', () => {
+test('one-way diagonal exit draws a dashed connector with an arrowhead', () => {
   const area = 'OneWayDiag';
   const out = renderWithRooms(area, [
     { id: area + ':A', name: 'Ledge', area, env: 'mountain',
@@ -183,8 +185,28 @@ test('one-way diagonal exit draws only the owning side', () => {
     { id: area + ':B', name: 'Slope', area, env: 'mountain',
       positioned: true, x: 1, y: -1, z: 0, exits: {} },
   ]);
-  assert.ok(out.includes('map-conn-ne"'), 'exit owner draws the full connector');
-  assert.ok(!out.includes('map-conn-sw"'), 'no return exit -> no southwest span');
+  assert.ok(out.includes('map-conn-ne map-conn-oneway"'),
+    'exit owner draws the one-way connector');
+  assert.ok(out.includes('map-arrow-ne"'), 'arrowhead toward the destination');
+  assert.ok(!out.includes('map-conn-sw'), 'no return exit -> no southwest span');
+});
+
+test('one-way cardinal exit is marked; reciprocal is not', () => {
+  const area = 'OneWayCard';
+  const out = renderWithRooms(area, [
+    { id: area + ':A', name: 'Chute Top', area, env: 'city',
+      positioned: true, x: 0, y: 0, z: 0,
+      exits: { east: area + ':B', north: area + ':N' } },
+    { id: area + ':B', name: 'Chute Bottom', area, env: 'city',
+      positioned: true, x: 1, y: 0, z: 0, exits: {} },
+    { id: area + ':N', name: 'Two Way', area, env: 'city',
+      positioned: true, x: 0, y: -1, z: 0, exits: { south: area + ':A' } },
+  ]);
+  assert.ok(out.includes('map-conn-e map-conn-oneway"'), 'east is one-way');
+  assert.ok(out.includes('map-arrow-e"'), 'east arrowhead present');
+  assert.ok(out.includes('map-conn-n"'), 'reciprocal north is a plain connector');
+  assert.ok(!out.includes('map-conn-n map-conn-oneway'), 'north not marked one-way');
+  assert.ok(!out.includes('map-arrow-n"'), 'no arrowhead on the reciprocal exit');
 });
 
 test('diagonal exit to an unmapped room renders a diagonal stub', () => {
@@ -205,8 +227,9 @@ test('cross-zone diagonal exit renders a stub, not a connector', () => {
     { id: 'DiagZoneB:gate', name: 'Far Gate', area: 'DiagZoneB', env: 'city',
       positioned: true, x: 1, y: -1, z: 0, exits: { southwest: area + ':edge' } },
   ]);
-  assert.ok(out.includes('map-stub-ne"'), 'cross-zone diagonal -> stub');
-  assert.ok(!out.includes('map-conn-ne"'), 'never a connector across zones');
+  assert.ok(out.includes('map-stub-ne map-stub-area"'),
+    'cross-zone diagonal -> area-boundary stub');
+  assert.ok(!out.includes('map-conn-ne'), 'never a connector across zones');
 });
 
 test('mapped but non-adjacent diagonal renders neither connector nor stub', () => {
@@ -269,20 +292,35 @@ test('rooms with up/down exits get per-tile vertical glyphs', () => {
   assert.equal(out.split('map-vert-up').length - 1, 1, 'only the stairwell shows up glyph');
 });
 
-test('special (non-compass) exits get the special-exit dot', () => {
-  const area = 'SpecialLand';
+test('enter/in exits get the inward glyph, out/leave the outward glyph', () => {
+  const area = 'InOutLand';
   const out = renderWithRooms(area, [
     { id: area + ':A', name: 'Shopfront', area, env: 'city',
       positioned: true, x: 0, y: 0, z: 0,
       exits: { enter: area + ':shop', east: area + ':B' },
       exitKinds: { enter: 'special', east: 'spatial' } },
-    { id: area + ':B', name: 'Street', area, env: 'city',
-      positioned: true, x: 1, y: 0, z: 0, exits: { west: area + ':A' },
-      exitKinds: { west: 'spatial' } },
+    { id: area + ':B', name: 'Shop Interior', area, env: 'inside',
+      positioned: true, x: 1, y: 0, z: 0,
+      exits: { west: area + ':A', out: area + ':A' },
+      exitKinds: { west: 'spatial', out: 'special' } },
   ]);
-  assert.ok(out.includes('map-exit-special'), 'enter exit -> special dot');
-  assert.equal(out.split('map-exit-special').length - 1, 1,
-    'spatial/vertical-only rooms get no dot');
+  assert.ok(out.includes('map-exit-in'), 'enter exit -> inward glyph');
+  assert.ok(out.includes('map-exit-out'), 'out exit -> outward glyph');
+  assert.ok(!out.includes('map-exit-special'),
+    'in/out exits do not also render the generic dot');
+});
+
+test('other special (portal/custom verb) exits keep the generic dot', () => {
+  const area = 'PortalLand';
+  const out = renderWithRooms(area, [
+    { id: area + ':A', name: 'Portal Chamber', area, env: 'inside',
+      positioned: true, x: 0, y: 0, z: 0,
+      exits: { portal: area + ':far', enter: area + ':shop' },
+      exitKinds: { portal: 'special', enter: 'special' } },
+  ]);
+  assert.ok(out.includes('map-exit-in'), 'enter still renders the in glyph');
+  assert.ok(out.includes('map-exit-special map-exit-special-shifted"'),
+    'portal renders the dot, shifted off the in/out corner');
 });
 
 test('overlapping rooms get the conflict class and stack-count badge', () => {
