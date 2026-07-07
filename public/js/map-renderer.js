@@ -11,8 +11,10 @@ const MAP_DIRECTIONS = new Set([
 ]);
 let lastRenderDebug = null;
 
-const CARDINAL_DIRS = [
+const COMPASS_DIRS = [
   ['north', 'n'], ['south', 's'], ['east', 'e'], ['west', 'w'],
+  ['northeast', 'ne'], ['northwest', 'nw'],
+  ['southeast', 'se'], ['southwest', 'sw'],
 ];
 
 // Remember the last room the player occupied that had a coordinate, per area.
@@ -56,15 +58,20 @@ function pickCenterRoom(area, areaRooms, source, skipLast) {
   return best;
 }
 
-// Child spans drawn in the gap outside a room box for each cardinal exit:
+// Child spans drawn in the gap outside a room box for each compass exit
+// (cardinals and diagonals):
 //  - a CONNECTOR line bridging to an adjacent mapped neighbour, or
 //  - a shorter STUB tick toward an exit whose destination is not mapped yet
 //    (so the player can see where there is still more to explore -- the map
 //    grows visibly as you walk, mirroring Mudlet's exit stubs).
+// Each side draws the full gap-bridging line, so a one-way exit still renders
+// a full connector and reciprocal neighbours' lines coincide exactly.
+// Also emits per-tile up/down glyphs and a special-exit (enter/portal) dot so
+// every exit a room has is visible on the map, not just planar compass ones.
 function buildExitSpans(room, cz, source) {
   if (!room || !room.exits) return '';
   let spans = '';
-  for (const [dir, abbr] of CARDINAL_DIRS) {
+  for (const [dir, abbr] of COMPASS_DIRS) {
     const destId = room.exits[dir];
     if (!destId) continue;
     const dest = source.getRoom(destId);
@@ -82,7 +89,27 @@ function buildExitSpans(room, cz, source) {
     }
     // Connected room positioned elsewhere (not adjacent): no drawable line.
   }
+  if (room.exits.up !== undefined) {
+    spans += '<span class="map-vert map-vert-up">&#x25B2;</span>';
+  }
+  if (room.exits.down !== undefined) {
+    spans += '<span class="map-vert map-vert-down">&#x25BC;</span>';
+  }
+  if (hasSpecialExit(room)) {
+    spans += '<span class="map-exit-special"></span>';
+  }
   return spans;
+}
+
+// A room has a "special" exit when any exit kind is neither spatial (compass)
+// nor vertical (up/down) -- enter, portals, custom exit verbs. exitKinds may be
+// absent on neighbour stubs that have only been seen from an adjacent room.
+function hasSpecialExit(room) {
+  if (!room.exitKinds) return false;
+  for (const kind of Object.values(room.exitKinds)) {
+    if (kind !== 'spatial' && kind !== 'vertical') return true;
+  }
+  return false;
 }
 
 // Priority order: more specific terrains first

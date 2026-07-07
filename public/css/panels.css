@@ -1517,6 +1517,19 @@ body.zork-only-mode #panels-menu {
 .map-conn-e { left: 100%; top: 50%; width: 8px; height: 3px; transform: translateY(-50%); }
 .map-conn-w { right: 100%; top: 50%; width: 8px; height: 3px; transform: translateY(-50%); }
 
+/* Diagonal connectors: corner-anchored bars rotated 45deg to bridge the gap
+   corner-to-corner (8px gap -> ~11.3px hypotenuse; 12px so the line overlaps
+   each room corner slightly and visually touches both boxes). Each side draws
+   the full bar; reciprocal neighbours' bars coincide exactly. */
+.map-conn-ne { bottom: 100%; left: calc(100% - 1.5px); width: 3px; height: 12px;
+               transform-origin: 50% 100%; transform: rotate(45deg); }
+.map-conn-nw { bottom: 100%; left: -1.5px;             width: 3px; height: 12px;
+               transform-origin: 50% 100%; transform: rotate(-45deg); }
+.map-conn-se { top: 100%;    left: calc(100% - 1.5px); width: 3px; height: 12px;
+               transform-origin: 50% 0%;   transform: rotate(-45deg); }
+.map-conn-sw { top: 100%;    left: -1.5px;             width: 3px; height: 12px;
+               transform-origin: 50% 0%;   transform: rotate(45deg); }
+
 /* Exit stub: a shorter, dimmer tick toward an exit whose destination is not
    mapped yet -- "there is more to explore this way". Sits in the gap. */
 .map-stub {
@@ -1529,6 +1542,48 @@ body.zork-only-mode #panels-menu {
 .map-stub-s { top: 100%; left: 50%; width: 2px; height: 5px; transform: translateX(-50%); }
 .map-stub-e { left: 100%; top: 50%; width: 5px; height: 2px; transform: translateY(-50%); }
 .map-stub-w { right: 100%; top: 50%; width: 5px; height: 2px; transform: translateY(-50%); }
+
+/* Diagonal stubs: same corner anchors as the connectors, shorter and dimmer
+   (matches the cardinal stub ratio: 5px of an 8px gap -> 7px of ~11.3px). */
+.map-stub-ne { bottom: 100%; left: calc(100% - 1px); width: 2px; height: 7px;
+               transform-origin: 50% 100%; transform: rotate(45deg); }
+.map-stub-nw { bottom: 100%; left: -1px;             width: 2px; height: 7px;
+               transform-origin: 50% 100%; transform: rotate(-45deg); }
+.map-stub-se { top: 100%;    left: calc(100% - 1px); width: 2px; height: 7px;
+               transform-origin: 50% 0%;   transform: rotate(-45deg); }
+.map-stub-sw { top: 100%;    left: -1px;             width: 2px; height: 7px;
+               transform-origin: 50% 0%;   transform: rotate(45deg); }
+
+/* Per-tile vertical-exit markers: any room with an up/down exit shows a small
+   corner glyph, so multi-level areas read consistently everywhere (the Z badge
+   only covers the room the player is standing in). Corner budget on a 32px
+   tile: up = top-left, down = bottom-left, special dot = bottom-right; the
+   conflict marker owns top-right. */
+.map-vert {
+  position: absolute;
+  z-index: 3;
+  font-size: 8px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+  pointer-events: none;
+}
+.map-vert-up   { top: 1px;    left: 2px; }
+.map-vert-down { bottom: 1px; left: 2px; }
+
+/* Non-spatial exit (enter/portal/custom verb) marker. */
+.map-exit-special {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(160, 120, 220, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
+  z-index: 3;
+  pointer-events: none;
+}
 
 /* Area name (top line) -- the zone you're in; updates as you cross areas. */
 .map-areaname {
