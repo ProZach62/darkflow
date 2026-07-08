@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { renderMap } from './map-renderer.js';
 import { browseSource } from './map-data-v2.js';
+import { getLiveMapSource } from './live-map-source.js';
 import { sendCommandText, sendRawCommand } from './input.js';
 import { initSpeedwalk, startSpeedwalk } from './map-speedwalk.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
@@ -13,15 +14,19 @@ import {
 } from './image-preview.js';
 
 // Click-to-walk: clicking a mapped room on the LIVE map speedwalks there
-// over the known graph (map-speedwalk.js sends raw movement commands and
-// verifies every step against MapData2.Current). Wired once per panel body;
+// over the active live map source. Steps are verified by the next authoritative
+// room GMCP frame for that source. Wired once per panel body;
 // renderMap replaces innerHTML each render, so the listener lives on bodyEl
 // and resolves the clicked tile at event time. The browse pane (areaMap) is
 // read-only and gets no wiring.
 let speedwalkReady = false;
 function wireSpeedwalk(bodyEl) {
   if (!speedwalkReady) {
-    initSpeedwalk({ send: sendRawCommand, rerender: () => renderMap(bodyEl) });
+    initSpeedwalk({
+      send: sendRawCommand,
+      rerender: () => renderMap(bodyEl, getLiveMapSource()),
+      source: getLiveMapSource,
+    });
     speedwalkReady = true;
   }
   if (bodyEl.dataset && bodyEl.dataset.speedwalkWired) return;
@@ -30,7 +35,7 @@ function wireSpeedwalk(bodyEl) {
     const tile = ev.target && ev.target.closest
       ? ev.target.closest('.map-tile-room[data-room-id]') : null;
     if (!tile) return;
-    startSpeedwalk(tile.dataset.roomId);
+    startSpeedwalk(tile.dataset.roomId, getLiveMapSource());
   });
 }
 import { fishingManager } from './fishing-manager.js';
@@ -1242,7 +1247,7 @@ export const panelRenderers = {
   },
 
   map(bodyEl, _data) {
-    renderMap(bodyEl);
+    renderMap(bodyEl, getLiveMapSource());
     wireSpeedwalk(bodyEl);
   },
 

@@ -24,6 +24,7 @@ globalThis.requestAnimationFrame = (cb) => setTimeout(cb, 0);
 globalThis.Audio = class { play() { return Promise.resolve(); } addEventListener() {} };
 
 const v2 = await import('../public/js/map-data-v2.js');
+const gmcpMap = await import('../public/js/map-data-gmcp.js');
 const sw = await import('../public/js/map-speedwalk.js');
 const { gmcp } = await import('../public/js/gmcp.js');
 gmcp.send = () => {};
@@ -144,4 +145,31 @@ test('Darkwind.MapData2.Current frames drive the walk via the gmcp bus', () => {
   assert.deepEqual(sent, ['east', 'north'], 'bus-delivered arrival advances');
   sw.cancelSpeedwalk();
   assert.equal(sw.isSpeedwalking(), false);
+});
+
+test('generic Room.Info frames verify external speedwalks', () => {
+  gmcpMap.configureWorld({ name: 'speedwalk-external', host: 'external.test', port: '4242' });
+  gmcpMap.clearMapData();
+  gmcpMap.processRoomInfo({ num: 10, name: 'Outside Start', area: 'Elsewhere', exits: { east: 11 } });
+  gmcpMap.processRoomInfo({ num: 11, name: 'Outside Middle', area: 'Elsewhere', exits: { west: 10, north: 12 } });
+  gmcpMap.processRoomInfo({ num: 10, name: 'Outside Start', area: 'Elsewhere', exits: { east: 11 } });
+  gmcpMap.processRoomInfo({ num: 11, name: 'Outside Middle', area: 'Elsewhere', exits: { west: 10, north: 12 } });
+  gmcpMap.processRoomInfo({ num: 12, name: 'Outside Goal', area: 'Elsewhere', exits: { south: 11 } });
+  gmcpMap.processRoomInfo({ num: 10, name: 'Outside Start', area: 'Elsewhere', exits: { east: 11 } });
+
+  const sent = [];
+  sw.initSpeedwalk({
+    send: (cmd) => sent.push(cmd),
+    rerender: noop,
+    stepTimeoutMs: 5000,
+    source: () => gmcpMap,
+  });
+
+  assert.equal(sw.startSpeedwalk('12', gmcpMap), true);
+  assert.deepEqual(sent, ['east']);
+  gmcp.dispatch('Room.Info', { num: 11 });
+  assert.deepEqual(sent, ['east', 'north']);
+  gmcp.dispatch('Room.Info', { num: 12 });
+  assert.equal(sw.isSpeedwalking(), false);
+  assert.ok(gmcpMap.getMapStatus().includes('Arrived'));
 });

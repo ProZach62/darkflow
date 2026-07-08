@@ -1,12 +1,6 @@
-// Click-to-walk speedwalk over the MapData2 room graph (GAP 7 of the
-// mapping gap analysis; Mudlet's marquee mapper feature, minus the weights).
-//
-// The client already holds the full area graph (room ids + exits), so a
-// plain BFS finds the shortest known route. Steps are sent one at a time
-// and VERIFIED: each Darkwind.MapData2.Current must land on the room the
-// step predicted, otherwise the walk aborts immediately -- a diverted,
-// blocked, or teleported player never has commands fired blindly into the
-// void. Any manually typed command also cancels the walk (see input.js).
+// Click-to-walk speedwalk over the active map graph. Darkwind uses MapData2;
+// outside MUDs use the locally learned Room.Info graph. Steps are sent one at
+// a time and verified against the next authoritative room-id GMCP frame.
 import * as mapData from './map-data-v2.js';
 import { gmcp } from './gmcp.js';
 
@@ -25,9 +19,17 @@ export function initSpeedwalk(options) {
   }, options);
   if (first) {
     gmcp.on('Darkwind.MapData2.Current', (data) => {
+      if (activeSource() !== mapData) return;
       if (data && data.id !== undefined && data.id !== null) {
         notifyRoomChange(String(data.id));
       }
+    });
+    gmcp.on('Room.Info', (data) => {
+      if (activeSource() === mapData) return;
+      const id = data && (data.num !== undefined ? data.num
+        : data.id !== undefined ? data.id
+        : data.vnum);
+      if (id !== undefined && id !== null) notifyRoomChange(String(id));
     });
   }
 }
@@ -82,6 +84,7 @@ export function isSpeedwalking() {
 
 export function startSpeedwalk(targetId, source = mapData) {
   if (!config) return false;
+  if (typeof source === 'function') source = source();
   const currentId = source.getCurrentRoomId();
   if (!currentId || targetId === currentId) return false;
 
@@ -151,5 +154,11 @@ function clearStepTimer() {
 }
 
 function setStatus(msg) {
-  if (mapData.setMapStatus) mapData.setMapStatus(msg);
+  const source = activeSource();
+  if (source && source.setMapStatus) source.setMapStatus(msg);
+  else if (mapData.setMapStatus) mapData.setMapStatus(msg);
+}
+
+function activeSource() {
+  return (config && typeof config.source === 'function') ? config.source() : mapData;
 }

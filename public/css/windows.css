@@ -97,6 +97,14 @@
   overflow: visible;
 }
 
+.dw-player-row-grid {
+  justify-content: start;
+}
+
+.dw-player-row-grid-multicolumn {
+  grid-template-columns: repeat(3, 156px) !important;
+}
+
 /* ── Display elements ───────────────────────────────────────────── */
 .dw-heading {
   margin: 0;

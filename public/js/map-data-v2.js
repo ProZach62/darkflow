@@ -3,9 +3,10 @@ import { gmcp } from './gmcp.js';
 const STORAGE_KEY = 'darkwind-map-data-v2';
 const LEGACY_STORAGE_KEY = 'darkwind-map-data-v3';
 const MIGRATION_KEY = 'darkwind-map-data-v2-migration-complete';
-// Bumped to 3 to flush browser caches after the server map was rebuilt with the
-// incremental/sticky placement algorithm (old cached coordinates were stale).
-const SCHEMA_VERSION = 3;
+// Bumped to 4 to flush browser caches after the server widened room ids from
+// the colliding 17-bit crc to 52-bit md5-derived ints (every cached id and
+// exit target changed identity).
+const SCHEMA_VERSION = 4;
 
 export const DIR_OFFSETS = {
   north:     { dx:  0, dy: -1, dz: 0 },

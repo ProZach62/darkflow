@@ -19,6 +19,13 @@ import {
   clearMapData as clearMapData2,
   load as loadMapData2,
 } from './map-data-v2.js';
+import { load as loadGenericMapData } from './map-data-gmcp.js';
+import {
+  markMapData2Active,
+  processGenericHello,
+  processGenericRoomInfo,
+  resetLiveMapModeForConnection,
+} from './live-map-source.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
 const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'xpmon', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
@@ -130,6 +137,7 @@ export const panelManager = {
     if (appState.zorkOnlyMode) {
       this.disableForZorkOnlyMode();
       loadMapData2();
+      loadGenericMapData();
       this.registerGmcpHandlers();
       return;
     }
@@ -155,6 +163,7 @@ export const panelManager = {
     this._applyDockStateToDom();
     this.repositionAnchoredPanels();
     loadMapData2();
+    loadGenericMapData();
     this.attachDragHandlers();
     this._attachPersistenceFlushHandlers();
     this.registerGmcpHandlers();
@@ -1987,6 +1996,7 @@ export const panelManager = {
   },
 
   resetData(options = {}) {
+    resetLiveMapModeForConnection();
     const preservePanels = new Set(Array.isArray(options.preservePanels) ? options.preservePanels : []);
     const preservedData = {};
 
@@ -3049,10 +3059,15 @@ export const panelManager = {
       this._renderPanel('worth');
     });
 
+    gmcp.on('Core.Hello', (data) => {
+      processGenericHello(data);
+    });
+
     gmcp.on('Room.Info', (data) => {
       const prevRoomNum = this.gmcpData.room ? this.gmcpData.room.num : null;
       if (!this.gmcpData.room) this.gmcpData.room = {};
       Object.assign(this.gmcpData.room, data);
+      processGenericRoomInfo(data);
       if (data && data.num !== undefined && data.num !== prevRoomNum) {
         this.gmcpData.roomImage = null;
         this._renderPanel('roomImage');
@@ -3062,16 +3077,19 @@ export const panelManager = {
     });
 
     gmcp.on('Darkwind.MapData2.Current', (data) => {
+      markMapData2Active();
       processMapData2Current(data);
       this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData2.Area', (data) => {
+      markMapData2Active();
       mergeMapData2Area(data);
       this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData2.Update', (data) => {
+      markMapData2Active();
       mergeMapData2Update(data);
       this._queuePanelRender('map');
     });
@@ -3086,6 +3104,7 @@ export const panelManager = {
     // Server wiped the shared map (map2d clearall): drop our cache + browse view;
     // the fresh Room.Info/Current that follows repopulates the live map.
     gmcp.on('Darkwind.MapData2.Reset', () => {
+      markMapData2Active();
       clearMapData2();
       exitMapData2Browse();
       if (this.panels['areaMap']) this.closePanel('areaMap');
