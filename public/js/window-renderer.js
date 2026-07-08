@@ -17,17 +17,17 @@ function setAttr(el, schema) {
 }
 
 // ── Main render entry ───────────────────────────────────────────────
-export function renderLayout(schema, buttonHandler) {
-  return renderNode(schema, buttonHandler);
+export function renderLayout(schema, buttonHandler, options = {}) {
+  return renderNode(schema, buttonHandler, options);
 }
 
-function renderNode(schema, buttonHandler) {
+function renderNode(schema, buttonHandler, options) {
   if (!schema || !schema.type) {
     const span = document.createElement('span');
     span.textContent = '[unknown]';
     return span;
   }
-  if (LAYOUT_TYPES.has(schema.type)) return renderContainer(schema, buttonHandler);
+  if (LAYOUT_TYPES.has(schema.type)) return renderContainer(schema, buttonHandler, options);
   if (INPUT_TYPES.has(schema.type)) return renderInput(schema, buttonHandler);
   if (DISPLAY_TYPES.has(schema.type)) return renderDisplay(schema, buttonHandler);
 
@@ -37,7 +37,7 @@ function renderNode(schema, buttonHandler) {
 }
 
 // ── Layout containers ───────────────────────────────────────────────
-function renderContainer(schema, buttonHandler) {
+function renderContainer(schema, buttonHandler, options) {
   const el = document.createElement('div');
   el.className = 'dw-layout dw-layout-' + schema.type;
   setAttr(el, schema);
@@ -49,12 +49,31 @@ function renderContainer(schema, buttonHandler) {
     el.style.gridTemplateColumns = cols;
   }
 
+  if (usesPlayerRowMultiColumnGrid(schema, options)) {
+    el.classList.add('dw-player-row-grid', 'dw-player-row-grid-multicolumn');
+    el.style.gridTemplateColumns = 'repeat(3, 156px)';
+  }
+
   if (Array.isArray(schema.children)) {
     for (const child of schema.children) {
-      el.appendChild(renderNode(child, buttonHandler));
+      el.appendChild(renderNode(child, buttonHandler, options));
     }
   }
   return el;
+}
+
+export function countDirectPlayerRows(schema) {
+  if (!schema || !Array.isArray(schema.children)) return 0;
+  return schema.children.filter((child) => child && child.type === 'player_row').length;
+}
+
+export function usesPlayerRowMultiColumnGrid(schema, options = {}) {
+  return !!(
+    options.windowId === 'charselect'
+    && schema
+    && schema.type === 'grid'
+    && countDirectPlayerRows(schema) > 3
+  );
 }
 
 // ── Display elements ────────────────────────────────────────────────

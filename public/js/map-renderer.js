@@ -360,7 +360,12 @@ export function renderMap(bodyEl, source = mapData) {
     if (status) html += '<div class="map-status">' + escAttr(status) + '</div>';
   }
   if (!browse) {
-    html += '<button class="map-resync-btn" title="Clear and resync map for this area">Resync</button>';
+    const clearLabel = source.getClearMapActionLabel ? source.getClearMapActionLabel() : 'Resync';
+    const clearTitle = source.getClearMapActionTitle
+      ? source.getClearMapActionTitle()
+      : 'Clear and resync map for this area';
+    html += '<button class="map-resync-btn" title="' + escAttr(clearTitle) + '">'
+      + escAttr(clearLabel) + '</button>';
   }
 
   bodyEl.innerHTML = html;

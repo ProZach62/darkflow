@@ -51,7 +51,7 @@ export const windowManager = {
       this._handleButton(data.id, buttonId, action);
     };
 
-    const content = renderLayout(data.layout, buttonHandler);
+    const content = renderLayout(data.layout, buttonHandler, { windowId: data.id });
 
     if (data.type === 'npc_dialogue') {
       this._openNpcDialogue(data, content);
