@@ -1461,6 +1461,16 @@ body.zork-only-mode #panels-menu {
   pointer-events: none;
 }
 
+.map-layout-adjusted {
+  outline: 1px dotted rgba(114, 199, 189, 0.9);
+  outline-offset: -2px;
+}
+
+.map-layout-pending,
+.map-layout-frontier {
+  opacity: 0.72;
+}
+
 .map-tile-player {
   box-shadow: 0 0 4px 1px #fff;
 }
@@ -1630,6 +1640,10 @@ body.zork-only-mode #panels-menu {
 .map-stub-ne.map-stub-area, .map-stub-nw.map-stub-area,
 .map-stub-se.map-stub-area, .map-stub-sw.map-stub-area { height: 9px; }
 
+.map-stub-adjusted {
+  background: repeating-linear-gradient(90deg, rgba(114, 199, 189, 0.95) 0 2px, transparent 2px 4px);
+}
+
 /* Door markers: a small state-colored tick mid-gap on the exit's side
    (Mudlet's perpendicular gate, reduced to tile scale). Diagonal doors
    rotate into diamonds along the corner gap. May appear with no connector
@@ -1782,6 +1796,24 @@ body.zork-only-mode #panels-menu {
   font-family: var(--df-font-mono);
 }
 
+.map-authority {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 4;
+  padding: 2px 5px;
+  border: 1px solid var(--df-border);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.78);
+  color: var(--df-muted);
+  font-size: calc(9px * var(--pane-font-scale, 1));
+  line-height: 1.4;
+  font-family: var(--df-font-mono);
+  pointer-events: none;
+}
+.map-authority-authoritative { color: var(--df-ok); }
+.map-authority-learned { color: #f2cc60; }
+
 .map-status {
   position: absolute;
   bottom: 4px;
@@ -1874,6 +1906,7 @@ body.zork-only-mode #panels-menu {
 .quest-list-name { font-size: calc(12px * var(--pane-font-scale, 1)); color: var(--df-text); }
 .quest-list-info { display: flex; align-items: center; gap: 6px; }
 .quest-list-status { font-size: calc(11px * var(--pane-font-scale, 1)); color: var(--df-muted); min-width: 60px; }
+.quest-turnin { margin: 2px 0 6px; color: #ffd84d; font-size: calc(11px * var(--pane-font-scale, 1)); font-weight: 700; }
 
 /* ── Achievement Panel ──────────────────────────────────────────────── */
 .ach-summary {

@@ -17,7 +17,9 @@ import {
   mergeBrowseArea as mergeMapData2Browse,
   exitBrowse as exitMapData2Browse,
   clearMapData as clearMapData2,
+  clearMapDataForArea as clearMapData2ForArea,
   load as loadMapData2,
+  processSyncError as processMapData2Error,
 } from './map-data-v2.js';
 import { load as loadGenericMapData } from './map-data-gmcp.js';
 import {
@@ -3094,6 +3096,12 @@ export const panelManager = {
       this._queuePanelRender('map');
     });
 
+    gmcp.on('Darkwind.MapData2.Error', (data) => {
+      markMapData2Active();
+      processMapData2Error(data);
+      this._queuePanelRender('map');
+    });
+
     // Browse: a catalog area's map, opened in its own pane (areas map <id>).
     gmcp.on('Darkwind.MapData2.BrowseArea', (data) => {
       mergeMapData2Browse(data);
@@ -3101,13 +3109,17 @@ export const panelManager = {
       this._renderPanel('areaMap');
     });
 
-    // Server wiped the shared map (map2d clearall): drop our cache + browse view;
-    // the fresh Room.Info/Current that follows repopulates the live map.
-    gmcp.on('Darkwind.MapData2.Reset', () => {
+    // Area resets preserve maps for every other area. Legacy/unscoped resets
+    // still mean the shared map was wiped (map2d clearall).
+    gmcp.on('Darkwind.MapData2.Reset', (data) => {
       markMapData2Active();
-      clearMapData2();
-      exitMapData2Browse();
-      if (this.panels['areaMap']) this.closePanel('areaMap');
+      if (data && data.scope === 'area' && typeof data.area === 'string' && data.area) {
+        clearMapData2ForArea(data.area, data);
+      } else {
+        clearMapData2();
+        exitMapData2Browse();
+        if (this.panels['areaMap']) this.closePanel('areaMap');
+      }
       this._queuePanelRender('map');
     });
 
@@ -3295,6 +3307,14 @@ export const panelManager = {
               quest.current = totalCurrent;
             }
           }
+          if (typeof data.status === 'string' && data.status) {
+            quest.status = data.status;
+          }
+          if (data.readyToTurnIn !== undefined) {
+            quest.readyToTurnIn = !!data.readyToTurnIn;
+            if (quest.readyToTurnIn) quest.status = 'Ready to Turn In';
+          }
+          if (data.giverArea) quest.giverArea = data.giverArea;
           break;
         }
       }
