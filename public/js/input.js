@@ -788,7 +788,9 @@ export function sendCommand() {
 
 export function initInput() {
   initCompletion();
-  initEmojiPicker(dom.commandInput);
+  initEmojiPicker(dom.commandInput, {
+    isEnabled: () => settingsManager.get('emojiPickerEnabled') !== false,
+  });
   initMentionPicker(dom.commandInput);
 
   dom.commandInput.addEventListener('keydown', function(e) {

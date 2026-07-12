@@ -113,6 +113,7 @@ export const settingsManager = {
     keyMappings: [],
     aliasTabCompletionEnabled: true,
     historyTabCompletionEnabled: false,
+    emojiPickerEnabled: true,
     lagMonitorEnabled: true,
     scrollbackBehavior: 'pause',
     scrollbackSplitRatio: 0.6,
@@ -825,6 +826,7 @@ export const settingsManager = {
       keyMappings: this._normalizeKeyMappings(settings.keyMappings),
       aliasTabCompletionEnabled: settings.aliasTabCompletionEnabled !== false,
       historyTabCompletionEnabled: Boolean(settings.historyTabCompletionEnabled),
+      emojiPickerEnabled: settings.emojiPickerEnabled !== false,
       lagMonitorEnabled: settings.lagMonitorEnabled !== false,
       scrollbackBehavior: this._normalizeScrollbackBehavior(settings.scrollbackBehavior),
       scrollbackSplitRatio: this._normalizeSplitRatio(settings.scrollbackSplitRatio),
@@ -2154,6 +2156,14 @@ export const settingsManager = {
       !!this._draftSettings.historyTabCompletionEnabled,
       (checked) => {
         this._draftSettings.historyTabCompletionEnabled = checked;
+      }
+    ));
+    controlsSection.appendChild(this._createCheckboxRow(
+      'Show emoji picker',
+      'Show emoji suggestions when typing a colon followed by an emoji name.',
+      this._draftSettings.emojiPickerEnabled !== false,
+      (checked) => {
+        this._draftSettings.emojiPickerEnabled = checked;
       }
     ));
 
