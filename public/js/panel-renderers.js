@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { gmcp } from './gmcp.js';
 import { renderMap } from './map-renderer.js';
 import { browseSource } from './map-data-v2.js';
 import { getLiveMapSource } from './live-map-source.js';
@@ -384,6 +385,137 @@ function openRoomImageModal(src, altText) {
 
   document.body.appendChild(overlay);
   roomImageModal = overlay;
+}
+
+// --- Cyberware detail modal ------------------------------------------------
+// Opened by clicking an installed implant in the cyberware panel. Details
+// (look description + cyberscan report) arrive via Darkwind.Cyberware.Details;
+// item art arrives via Darkwind.Cyberware.Image once generation completes.
+let cyberModal = null;
+let cyberModalKeyHandler = null;
+let cyberModalItemId = null;
+let lastCyberwareData = null;
+
+function cyberSlotLabel(loc) {
+  return String(loc || '').replace(/_/g, ' ');
+}
+
+function closeCyberwareModal() {
+  if (!cyberModal) return;
+  if (cyberModalKeyHandler) {
+    document.removeEventListener('keydown', cyberModalKeyHandler);
+    cyberModalKeyHandler = null;
+  }
+  cyberModal.remove();
+  cyberModal = null;
+  cyberModalItemId = null;
+}
+
+function openCyberwareModal(item) {
+  closeCyberwareModal();
+  cyberModalItemId = item.id;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'dw-modal-overlay cyber-modal-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'dw-modal cyber-modal';
+
+  const header = document.createElement('div');
+  header.className = 'dw-modal-header';
+
+  const title = document.createElement('span');
+  title.className = 'dw-modal-title';
+  title.textContent = item.name || 'Implant';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'dw-modal-close';
+  closeBtn.innerHTML = '&#x2715;';
+  closeBtn.addEventListener('click', closeCyberwareModal);
+
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'dw-modal-body cyber-modal-body';
+
+  const imgWrap = document.createElement('div');
+  imgWrap.className = 'cyber-modal-image-wrap';
+  const img = document.createElement('img');
+  img.className = 'cyber-modal-img';
+  img.alt = item.name || 'Implant';
+  img.draggable = false;
+  img.addEventListener('load', () => imgWrap.classList.add('loaded'));
+  const imgNote = document.createElement('div');
+  imgNote.className = 'cyber-modal-image-note';
+  imgNote.textContent = 'Rendering schematic…';
+  imgWrap.appendChild(img);
+  imgWrap.appendChild(imgNote);
+
+  const desc = document.createElement('div');
+  desc.className = 'cyber-modal-desc';
+  desc.textContent = 'Querying implant…';
+
+  const scan = document.createElement('pre');
+  scan.className = 'cyber-modal-scan';
+
+  body.appendChild(imgWrap);
+  body.appendChild(desc);
+  body.appendChild(scan);
+  modal.appendChild(header);
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeCyberwareModal();
+  });
+  cyberModalKeyHandler = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeCyberwareModal();
+    }
+  };
+  document.addEventListener('keydown', cyberModalKeyHandler);
+
+  document.body.appendChild(overlay);
+  cyberModal = overlay;
+}
+
+export function updateCyberwareModalDetails(data) {
+  if (!cyberModal || !data || data.id !== cyberModalItemId) return;
+  const titleEl = cyberModal.querySelector('.dw-modal-title');
+  const desc = cyberModal.querySelector('.cyber-modal-desc');
+  const scan = cyberModal.querySelector('.cyber-modal-scan');
+  const imgNote = cyberModal.querySelector('.cyber-modal-image-note');
+
+  if (data.error) {
+    if (desc) desc.textContent = data.error;
+    if (scan) scan.textContent = '';
+    if (imgNote) imgNote.textContent = '';
+    return;
+  }
+
+  if (titleEl && data.name) titleEl.textContent = data.name;
+  if (desc) {
+    desc.textContent = String(data.description || '').trim()
+      || 'No description available.';
+  }
+  if (scan) scan.textContent = String(data.scan || '').trim();
+  if (data.image) {
+    updateCyberwareModalImage(data.id, data.image);
+  } else if (!data.image_pending && imgNote) {
+    imgNote.textContent = 'No schematic available.';
+  }
+}
+
+export function updateCyberwareModalImage(id, url) {
+  if (!cyberModal || !url || id !== cyberModalItemId) return;
+  const img = cyberModal.querySelector('.cyber-modal-img');
+  const imgNote = cyberModal.querySelector('.cyber-modal-image-note');
+  if (!img) return;
+  img.src = url;
+  if (imgNote) imgNote.textContent = '';
 }
 
 function vitalBarClass(value) {
@@ -1035,6 +1167,75 @@ export const panelRenderers = {
         return '<div class="inv-doll-slot inv-doll-filled"><div class="inv-doll-slot-label">' + label + '</div><div class="inv-doll-slot-item">' + escHtml(item.name) + '</div></div>';
       }
       return '<div class="inv-doll-slot inv-doll-empty"><div class="inv-doll-slot-label">' + label + '</div><div class="inv-doll-slot-item">empty</div></div>';
+    }
+  },
+
+  cyberware(bodyEl, data) {
+    lastCyberwareData = data;
+    if (!data || !Array.isArray(data.installed)) {
+      bodyEl.innerHTML = '<div class="placeholder">Waiting for data...</div>';
+      return;
+    }
+
+    const strain = data.strain || {};
+    const used = Number(strain.used) || 0;
+    const total = Number(strain.total) || 0;
+    const free = Math.max(0, total - used);
+    const pct = total > 0 ? Math.min(100, Math.round((used * 100) / total)) : 0;
+
+    let html = '<div class="cyber-strain">';
+    html += '<div class="cyber-strain-label"><span>Strain</span><span>' +
+      used + ' / ' + total + ' &middot; ' + free + ' free</span></div>';
+    html += '<div class="cyber-strain-bar"><div class="cyber-strain-fill' +
+      (pct >= 90 ? ' cyber-strain-hot' : '') +
+      '" style="width:' + pct + '%"></div></div>';
+    html += '</div>';
+
+    if (!data.installed.length) {
+      html += '<div class="placeholder">No cyberware installed</div>';
+    } else {
+      html += '<div class="cyber-list">';
+      for (let i = 0; i < data.installed.length; i++) {
+        const item = data.installed[i] || {};
+        const locations = Array.isArray(item.locations)
+          ? item.locations.map(cyberSlotLabel).join(', ') : '';
+        const bits = [];
+        if (item.grade) bits.push(item.grade);
+        if (locations) bits.push(locations);
+        bits.push('strain ' + (Number(item.strain) || 0));
+        html += '<div class="cyber-item" data-cyber-index="' + i +
+          '" role="button" tabindex="0" title="Click for implant details">';
+        html += '<div class="cyber-item-name">' + escHtml(item.name || 'Implant') + '</div>';
+        html += '<div class="cyber-item-meta">' + escHtml(bits.join(' · ')) + '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    bodyEl.innerHTML = html;
+
+    // Delegated click/keyboard wiring survives innerHTML re-renders.
+    if (bodyEl.dataset && !bodyEl.dataset.cyberWired && bodyEl.addEventListener) {
+      bodyEl.dataset.cyberWired = '1';
+      const activate = (target) => {
+        const row = target && target.closest
+          ? target.closest('.cyber-item[data-cyber-index]') : null;
+        if (!row) return;
+        const current = lastCyberwareData
+          && Array.isArray(lastCyberwareData.installed)
+          ? lastCyberwareData.installed : [];
+        const item = current[Number(row.dataset.cyberIndex)];
+        if (!item || !item.id) return;
+        openCyberwareModal(item);
+        gmcp.send('Darkwind.Cyberware.Details', { id: item.id });
+      };
+      bodyEl.addEventListener('click', (ev) => activate(ev.target));
+      bodyEl.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          activate(ev.target);
+          if (ev.target.closest && ev.target.closest('.cyber-item')) ev.preventDefault();
+        }
+      });
     }
   },
 
