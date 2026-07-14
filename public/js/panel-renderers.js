@@ -539,6 +539,8 @@ export function renderVitalBar(bodyEl, label, cur, max, opts = {}) {
     bodyEl.appendChild(row);
   }
   if (opts.guild) row.classList.add('vitals-guild');
+  if (opts.reverse) row.classList.add('vitals-reverse');
+  else row.classList.remove('vitals-reverse');
   Array.from(row.classList).forEach((className) => {
     if (className.indexOf('vitals-kind-') === 0) row.classList.remove(className);
   });
@@ -559,27 +561,155 @@ function removeVitalBar(bodyEl, label, opts = {}) {
   if (row) row.remove();
 }
 
-function renderGuildVitalBars(bodyEl, bars) {
-  const seen = {};
-  if (Array.isArray(bars)) {
-    bars.forEach((bar) => {
-      if (!bar || !bar.id || !bar.label) return;
-      const cur = Number(bar.cur);
-      const max = Number(bar.max);
-      if (!Number.isFinite(cur) || !Number.isFinite(max) || max <= 0) return;
-      const id = 'guild-' + bar.id;
-      const rowClass = vitalBarClass(id);
-      const guild = bar.guild ? String(bar.guild) : '';
-      const title = guild ? guild + ': ' + bar.label : String(bar.label);
-      renderVitalBar(bodyEl, String(bar.label), cur, max, {
-        id,
-        guild: true,
-        kind: bar.kind ? String(bar.kind) : '',
-        title,
+const GUILD_VITAL_SEVERITIES = { ok: true, warn: true, danger: true };
+
+function guildVitalSeverityClass(item) {
+  const sev = item && item.severity;
+  return GUILD_VITAL_SEVERITIES[sev] ? ' vitals-sev-' + sev : '';
+}
+
+// Pure HTML builder for the non-meter GuildVitals v2 kinds (boolean, flags,
+// state, counter, cooldown). Returns null for meter kinds, which render via
+// renderVitalBar. Exported for tests.
+export function guildVitalItemHtml(item) {
+  const kind = item && item.kind ? String(item.kind) : 'meter';
+  const label = escHtml(String((item && item.label) || ''));
+  const sev = guildVitalSeverityClass(item);
+  switch (kind) {
+    case 'boolean':
+      return '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-led' +
+        (item.on ? ' on' : '') + sev + '"></span></div>';
+    case 'flags': {
+      const flags = Array.isArray(item.flags) ? item.flags : [];
+      let pips = '';
+      flags.forEach((flag) => {
+        if (!flag || typeof flag !== 'object') return;
+        pips += '<span class="vitals-flag' + (flag.on ? ' on' : '') + '"' +
+          (flag.tip ? ' title="' + escHtml(String(flag.tip)) + '"' : '') +
+          '>' + escHtml(String(flag.label || '')) + '</span>';
       });
+      return '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-flags">' + pips +
+        '</span></div>';
+    }
+    case 'state': {
+      const display = String(item.display || item.value || '-');
+      return '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-state-badge' + sev + '">' +
+        escHtml(display) + '</span></div>';
+    }
+    case 'counter': {
+      const max = Math.max(1, Math.min(12, Number(item.max) || 0));
+      const cur = Math.max(0, Math.min(max, Number(item.cur) || 0));
+      let pips = '';
+      for (let i = 0; i < max; i++) {
+        pips += '<span class="vitals-pip' +
+          (i < cur ? ' filled' + sev : '') + '"></span>';
+      }
+      return '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-val">' + cur + ' / ' + max +
+        '</span></div><div class="vitals-pips">' + pips + '</div>';
+    }
+    case 'cooldown': {
+      const remaining = Math.max(0, Number(item.remaining) || 0);
+      const max = Number(item.max) || 0;
+      let html = '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-val">' +
+        escHtml(formatDuration(remaining)) + '</span></div>';
+      if (max > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((remaining * 100) / max)));
+        html += '<div class="vitals-cd-bar"><div class="vitals-cd-fill" style="width:' +
+          pct + '%"></div></div>';
+      }
+      return html;
+    }
+    default:
+      return null;
+  }
+}
+
+// GuildVitals renderer: accepts both the v2 typed items list and the legacy
+// v1 bars list (kind "warning" maps to a reverse meter). Rows keep their
+// identity by id so they update in place; items are grouped under per-guild
+// headers when more than one guild is present, and DOM order is enforced by
+// re-appending rows each render (appendChild moves existing nodes).
+function renderGuildVitalItems(bodyEl, items) {
+  const seen = {};
+  const groups = [];
+  const groupIndex = {};
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    if (!item || !item.id || !item.label) return;
+    const guild = item.guild ? String(item.guild) : '';
+    if (!(guild in groupIndex)) {
+      groupIndex[guild] = groups.length;
+      groups.push({ guild, items: [] });
+    }
+    groups[groupIndex[guild]].items.push(item);
+  });
+  const showHeaders = groups.length > 1;
+
+  groups.forEach((group) => {
+    if (showHeaders && group.guild) {
+      const hdrClass = vitalBarClass('guild-hdr-' + group.guild);
+      let hdr = bodyEl.querySelector('.' + hdrClass);
+      if (!hdr) {
+        hdr = document.createElement('div');
+        hdr.className = 'vitals-guild-header vitals-guild ' + hdrClass;
+      }
+      hdr.textContent = group.guild;
+      bodyEl.appendChild(hdr);
+      seen[hdrClass] = true;
+    }
+
+    group.items.forEach((item) => {
+      const kind = item.kind ? String(item.kind) : 'meter';
+      const id = 'guild-' + item.id;
+      const rowClass = vitalBarClass(id);
+      const title = item.tip ? String(item.tip)
+        : (group.guild ? group.guild + ': ' + item.label : String(item.label));
+
+      if (kind === 'meter' || kind === 'meter_reverse' || kind === 'warning') {
+        const cur = Number(item.cur);
+        const max = Number(item.max);
+        if (!Number.isFinite(cur) || !Number.isFinite(max) || max <= 0) return;
+        const reverse = kind !== 'meter';
+        renderVitalBar(bodyEl, String(item.label), cur, max, {
+          id,
+          guild: true,
+          kind: reverse ? 'meter_reverse' : '',
+          title,
+          colorMode: reverse ? 'inverse' : '',
+          reverse,
+        });
+        const meterRow = bodyEl.querySelector('.' + rowClass);
+        if (meterRow) bodyEl.appendChild(meterRow);
+        seen[rowClass] = true;
+        return;
+      }
+
+      const html = guildVitalItemHtml(item);
+      if (html === null) return;
+      let row = bodyEl.querySelector('.' + rowClass);
+      if (!row) {
+        row = document.createElement('div');
+        row.className = 'vitals-row vitals-guild ' + rowClass;
+      }
+      Array.from(row.classList).forEach((className) => {
+        if (className.indexOf('vitals-kind-') === 0) row.classList.remove(className);
+      });
+      row.classList.add('vitals-kind-' + kind);
+      if (title) row.title = title;
+      // Only rewrite when the markup changed, so the 2s tick doesn't churn.
+      if (!row.dataset || row.dataset.gvHtml !== html) {
+        row.innerHTML = html;
+        if (row.dataset) row.dataset.gvHtml = html;
+      }
+      bodyEl.appendChild(row);
       seen[rowClass] = true;
     });
-  }
+  });
 
   bodyEl.querySelectorAll('.vitals-guild').forEach((row) => {
     const known = Array.from(row.classList).some((className) => seen[className]);
@@ -739,13 +869,16 @@ export const panelRenderers = {
   },
 
   guildVitals(bodyEl, data) {
-    const bars = data && Array.isArray(data.bars) ? data.bars : [];
-    if (!bars.length) {
+    // v2 servers send "items" (typed indicators); v1 servers send "bars"
+    // (plain meters, kind "warning" for danger-when-full). Both render.
+    const items = data && Array.isArray(data.items) ? data.items
+      : (data && Array.isArray(data.bars) ? data.bars : []);
+    if (!items.length) {
       bodyEl.innerHTML = '<div class="placeholder">No guild vitals</div>';
       return;
     }
     if (bodyEl.querySelector('.placeholder')) bodyEl.innerHTML = '';
-    renderGuildVitalBars(bodyEl, bars);
+    renderGuildVitalItems(bodyEl, items);
   },
 
   omens(bodyEl, data) {
