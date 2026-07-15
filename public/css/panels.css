@@ -737,6 +737,93 @@ body.zork-only-mode #panels-menu {
   transition: width 0.3s ease, background-color 0.3s ease;
 }
 
+/* GuildVitals v2 typed indicators */
+.vitals-reverse .vitals-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+.vitals-guild-header {
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  font-weight: 700;
+  color: var(--df-border-muted);
+  letter-spacing: 1px;
+  padding: 6px 0 2px;
+  text-transform: uppercase;
+}
+.vitals-guild-header:first-child { padding-top: 0; }
+.vitals-inline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: calc(11px * var(--pane-font-scale, 1));
+  color: var(--df-muted);
+}
+.vitals-inline .vitals-val { color: var(--df-text); }
+.vitals-led {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--df-btn-secondary);
+}
+.vitals-led.on { background: #3fb950; box-shadow: 0 0 4px #3fb950; }
+.vitals-led.on.vitals-sev-warn { background: #d29922; box-shadow: 0 0 4px #d29922; }
+.vitals-led.on.vitals-sev-danger { background: #f85149; box-shadow: 0 0 4px #f85149; }
+.vitals-flags {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.vitals-flag {
+  font-size: calc(9px * var(--pane-font-scale, 1));
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: var(--df-btn-secondary);
+  color: var(--df-muted);
+  opacity: 0.6;
+}
+.vitals-flag.on {
+  color: #3fb950;
+  opacity: 1;
+  outline: 1px solid rgba(63, 185, 80, 0.33);
+}
+.vitals-state-badge {
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--df-btn-secondary);
+  color: var(--df-text);
+}
+.vitals-state-badge.vitals-sev-ok { color: #3fb950; }
+.vitals-state-badge.vitals-sev-warn { color: #d29922; }
+.vitals-state-badge.vitals-sev-danger { color: #f85149; }
+.vitals-pips {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+}
+.vitals-pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--df-btn-secondary);
+}
+.vitals-pip.filled { background: var(--df-accent); }
+.vitals-pip.filled.vitals-sev-warn { background: #d29922; }
+.vitals-pip.filled.vitals-sev-danger { background: #f85149; }
+.vitals-cd-bar {
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--df-btn-secondary);
+  margin-top: 2px;
+}
+.vitals-cd-fill {
+  height: 100%;
+  background: var(--df-accent);
+  transition: width 0.3s ease;
+}
+
 /* ── Omens panel ────────────────────────────────────────────────────── */
 .omens-panel {
   display: flex;
@@ -1248,6 +1335,112 @@ body.zork-only-mode #panels-menu {
   color: var(--df-border-muted);
   font-style: italic;
 }
+
+/* ── Cyberware panel ────────────────────────────────────────────────── */
+.cyber-strain {
+  padding: 2px 0 8px;
+}
+.cyber-strain-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  font-weight: 700;
+  color: var(--df-border-muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding-bottom: 3px;
+}
+.cyber-strain-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--df-btn-secondary);
+  overflow: hidden;
+}
+.cyber-strain-fill {
+  height: 100%;
+  background: var(--df-accent);
+  transition: width 0.3s ease;
+}
+.cyber-strain-fill.cyber-strain-hot {
+  background: var(--df-err);
+}
+.cyber-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.cyber-item {
+  padding: 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.cyber-item:hover,
+.cyber-item:focus-visible {
+  background: var(--df-btn-secondary);
+}
+.cyber-item-name {
+  font-size: calc(11px * var(--pane-font-scale, 1));
+  color: var(--df-text);
+}
+.cyber-item-meta {
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  color: var(--df-muted);
+}
+
+/* Cyberware detail modal */
+.cyber-modal {
+  width: min(92vw, 560px);
+  max-width: min(92vw, 560px);
+  max-height: 88vh;
+}
+.cyber-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cyber-modal-image-wrap {
+  position: relative;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cyber-modal-img {
+  display: none;
+  max-width: 100%;
+  max-height: 40vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.cyber-modal-image-wrap.loaded .cyber-modal-img { display: block; }
+.cyber-modal-image-wrap.loaded .cyber-modal-image-note { display: none; }
+.cyber-modal-image-note {
+  color: var(--df-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+.cyber-modal-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--df-text);
+  white-space: pre-wrap;
+}
+.cyber-modal-scan {
+  margin: 0;
+  padding: 10px;
+  background: var(--df-bg);
+  border: 1px solid var(--df-border);
+  border-radius: 6px;
+  font-family: var(--df-font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--df-text);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.cyber-modal-scan:empty { display: none; }
 
 /* ── Enemy panel ────────────────────────────────────────────────────── */
 .enemy-name { font-weight: 600; margin-bottom: 4px; }

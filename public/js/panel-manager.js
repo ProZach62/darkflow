@@ -2,7 +2,7 @@ import { gmcp } from './gmcp.js';
 import { state as appState } from './state.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { openPaneFontSettings } from './pane-settings.js';
-import { panelRenderers } from './panel-renderers.js';
+import { panelRenderers, updateCyberwareModalDetails, updateCyberwareModalImage } from './panel-renderers.js';
 import { parseAnsiText } from './ansi.js';
 import {
   findFirstImageUrlFromFragments,
@@ -3177,6 +3177,25 @@ export const panelManager = {
       this.gmcpData.enemy = this._normalizeEnemyData(data);
       this._syncEnemyPanelVisibility();
       this._renderPanel('enemy');
+    });
+
+    gmcp.on('Darkwind.Cyberware.List', (data) => {
+      this.gmcpData.cyberware = data && typeof data === 'object'
+        ? {
+          installed: Array.isArray(data.installed) ? data.installed : [],
+          strain: (data.strain && typeof data.strain === 'object') ? data.strain : {},
+        }
+        : { installed: [], strain: {} };
+      this._renderPanel('cyberware');
+    });
+
+    gmcp.on('Darkwind.Cyberware.Details', (data) => {
+      updateCyberwareModalDetails(data);
+    });
+
+    gmcp.on('Darkwind.Cyberware.Image', (data) => {
+      if (!data || !data.id || !data.url) return;
+      updateCyberwareModalImage(data.id, data.url);
     });
 
     gmcp.on('Darkwind.Char.Avatar', (data) => {

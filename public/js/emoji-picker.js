@@ -11,6 +11,7 @@ let pickerEl = null;
 let activeToken = null;
 let activeSuggestions = [];
 let activeIndex = 0;
+let isEnabled = () => true;
 
 function ensurePicker() {
   if (pickerEl) return pickerEl;
@@ -89,6 +90,11 @@ function replaceCompletedAliases() {
 }
 
 function updateEmojiPicker() {
+  if (!isEnabled()) {
+    closeEmojiPicker();
+    return;
+  }
+
   const value = inputEl.value;
   const cursor = inputEl.selectionStart == null ? value.length : inputEl.selectionStart;
   const token = findEmojiToken(value, cursor);
@@ -131,6 +137,11 @@ function selectEmoji(index = activeIndex) {
 }
 
 export function handleEmojiPickerKeydown(event) {
+  if (!isEnabled()) {
+    closeEmojiPicker();
+    return false;
+  }
+
   if (!pickerEl || pickerEl.hidden) return false;
 
   if (event.key === 'ArrowDown') {
@@ -161,8 +172,9 @@ export function handleEmojiPickerKeydown(event) {
   return false;
 }
 
-export function initEmojiPicker(input) {
+export function initEmojiPicker(input, options = {}) {
   inputEl = input;
+  isEnabled = typeof options.isEnabled === 'function' ? options.isEnabled : () => true;
   ensurePicker();
 
   inputEl.addEventListener('input', updateEmojiPicker);

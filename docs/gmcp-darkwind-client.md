@@ -111,16 +111,48 @@ progress fields from `Char.Vitals`.
 
 ### `Darkwind.GuildVitals`
 
-The Guild Vitals panel consumes guild-specific resource bars from
-`Darkwind.GuildVitals`.
+The Guild Vitals panel consumes typed guild indicators from
+`Darkwind.GuildVitals`. The client advertises `Darkwind.GuildVitals 2` in
+`Core.Supports`; servers that understand version 2 reply with an `items`
+payload, while version-1 servers (and servers talking to version-1 clients
+such as default Mudlet profiles) keep the legacy `bars` payload. The client
+accepts both shapes. Mudlet script authors opt into the typed payload by
+advertising version `2`.
+
+| Field | Notes |
+|-------|-------|
+| `items` | Array of typed guild indicators (version 2) |
+
+Every item carries `id` (stable row identity), `guild` (display name, used
+for the per-guild section headers), `label`, an optional `kind` (default
+`meter`), an optional `severity` (`ok`/`warn`/`danger`, drives color for
+non-meter kinds), and an optional `tip` (hover tooltip).
+
+Per-kind fields:
+
+| Kind | Fields | Rendering |
+|------|--------|-----------|
+| `meter` | `cur`, `max`, `pct` | Left-anchored fill, green-when-full ramp |
+| `meter_reverse` | `cur`, `max`, `pct` | Right-anchored fill, red-when-full ramp (heat, intoxication) |
+| `boolean` | `on` (0/1) | LED dot, lit color from `severity` |
+| `flags` | `flags` array of `{label, on, tip?}` | One row of ordered pips (e.g. firmware flags, blessings) |
+| `state` | `value`, `display` | Badge pill showing `display` (falls back to `value`) |
+| `counter` | `cur`, `max` (≤ 12) | Filled/empty pip row (stacks, charges) |
+| `cooldown` | `remaining` seconds, optional `max` | Countdown text plus a depletion bar when `max` is present; the server re-sends absolute values every tick, the client does not tick locally |
+
+Rows update in place by `id` and stale rows (and their guild headers) are
+removed when the server sends a changed list. Headers only appear when items
+span more than one guild.
+
+#### Legacy (version 1)
 
 | Field | Notes |
 |-------|-------|
 | `bars` | Array of guild-specific resource bars |
 
 Each `bars` entry is a mapping with `id`, `guild`, `label`, `cur`, `max`,
-`pct`, and optional `kind`. The browser renders these in the Guild Vitals panel
-and removes stale guild rows when the server sends a changed list.
+`pct`, and optional `kind` (only `warning`, which the client renders as a
+reverse meter). This is what version-1 clients receive today, unchanged.
 
 ### Features
 

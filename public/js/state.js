@@ -37,6 +37,7 @@ export const state = {
     keyMappings: [],
     aliasTabCompletionEnabled: true,
     historyTabCompletionEnabled: false,
+    emojiPickerEnabled: true,
     scrollbackBehavior: 'pause',
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: 'normal',

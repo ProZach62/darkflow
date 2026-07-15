@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { gmcp } from './gmcp.js';
 import { renderMap } from './map-renderer.js';
 import { browseSource } from './map-data-v2.js';
 import { getLiveMapSource } from './live-map-source.js';
@@ -386,6 +387,137 @@ function openRoomImageModal(src, altText) {
   roomImageModal = overlay;
 }
 
+// --- Cyberware detail modal ------------------------------------------------
+// Opened by clicking an installed implant in the cyberware panel. Details
+// (look description + cyberscan report) arrive via Darkwind.Cyberware.Details;
+// item art arrives via Darkwind.Cyberware.Image once generation completes.
+let cyberModal = null;
+let cyberModalKeyHandler = null;
+let cyberModalItemId = null;
+let lastCyberwareData = null;
+
+function cyberSlotLabel(loc) {
+  return String(loc || '').replace(/_/g, ' ');
+}
+
+function closeCyberwareModal() {
+  if (!cyberModal) return;
+  if (cyberModalKeyHandler) {
+    document.removeEventListener('keydown', cyberModalKeyHandler);
+    cyberModalKeyHandler = null;
+  }
+  cyberModal.remove();
+  cyberModal = null;
+  cyberModalItemId = null;
+}
+
+function openCyberwareModal(item) {
+  closeCyberwareModal();
+  cyberModalItemId = item.id;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'dw-modal-overlay cyber-modal-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'dw-modal cyber-modal';
+
+  const header = document.createElement('div');
+  header.className = 'dw-modal-header';
+
+  const title = document.createElement('span');
+  title.className = 'dw-modal-title';
+  title.textContent = item.name || 'Implant';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'dw-modal-close';
+  closeBtn.innerHTML = '&#x2715;';
+  closeBtn.addEventListener('click', closeCyberwareModal);
+
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'dw-modal-body cyber-modal-body';
+
+  const imgWrap = document.createElement('div');
+  imgWrap.className = 'cyber-modal-image-wrap';
+  const img = document.createElement('img');
+  img.className = 'cyber-modal-img';
+  img.alt = item.name || 'Implant';
+  img.draggable = false;
+  img.addEventListener('load', () => imgWrap.classList.add('loaded'));
+  const imgNote = document.createElement('div');
+  imgNote.className = 'cyber-modal-image-note';
+  imgNote.textContent = 'Rendering schematic…';
+  imgWrap.appendChild(img);
+  imgWrap.appendChild(imgNote);
+
+  const desc = document.createElement('div');
+  desc.className = 'cyber-modal-desc';
+  desc.textContent = 'Querying implant…';
+
+  const scan = document.createElement('pre');
+  scan.className = 'cyber-modal-scan';
+
+  body.appendChild(imgWrap);
+  body.appendChild(desc);
+  body.appendChild(scan);
+  modal.appendChild(header);
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeCyberwareModal();
+  });
+  cyberModalKeyHandler = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeCyberwareModal();
+    }
+  };
+  document.addEventListener('keydown', cyberModalKeyHandler);
+
+  document.body.appendChild(overlay);
+  cyberModal = overlay;
+}
+
+export function updateCyberwareModalDetails(data) {
+  if (!cyberModal || !data || data.id !== cyberModalItemId) return;
+  const titleEl = cyberModal.querySelector('.dw-modal-title');
+  const desc = cyberModal.querySelector('.cyber-modal-desc');
+  const scan = cyberModal.querySelector('.cyber-modal-scan');
+  const imgNote = cyberModal.querySelector('.cyber-modal-image-note');
+
+  if (data.error) {
+    if (desc) desc.textContent = data.error;
+    if (scan) scan.textContent = '';
+    if (imgNote) imgNote.textContent = '';
+    return;
+  }
+
+  if (titleEl && data.name) titleEl.textContent = data.name;
+  if (desc) {
+    desc.textContent = String(data.description || '').trim()
+      || 'No description available.';
+  }
+  if (scan) scan.textContent = String(data.scan || '').trim();
+  if (data.image) {
+    updateCyberwareModalImage(data.id, data.image);
+  } else if (!data.image_pending && imgNote) {
+    imgNote.textContent = 'No schematic available.';
+  }
+}
+
+export function updateCyberwareModalImage(id, url) {
+  if (!cyberModal || !url || id !== cyberModalItemId) return;
+  const img = cyberModal.querySelector('.cyber-modal-img');
+  const imgNote = cyberModal.querySelector('.cyber-modal-image-note');
+  if (!img) return;
+  img.src = url;
+  if (imgNote) imgNote.textContent = '';
+}
+
 function vitalBarClass(value) {
   const suffix = String(value || 'bar').toLowerCase()
     .replace(/[^a-z0-9_-]+/g, '-')
@@ -407,6 +539,8 @@ export function renderVitalBar(bodyEl, label, cur, max, opts = {}) {
     bodyEl.appendChild(row);
   }
   if (opts.guild) row.classList.add('vitals-guild');
+  if (opts.reverse) row.classList.add('vitals-reverse');
+  else row.classList.remove('vitals-reverse');
   Array.from(row.classList).forEach((className) => {
     if (className.indexOf('vitals-kind-') === 0) row.classList.remove(className);
   });
@@ -427,27 +561,155 @@ function removeVitalBar(bodyEl, label, opts = {}) {
   if (row) row.remove();
 }
 
-function renderGuildVitalBars(bodyEl, bars) {
-  const seen = {};
-  if (Array.isArray(bars)) {
-    bars.forEach((bar) => {
-      if (!bar || !bar.id || !bar.label) return;
-      const cur = Number(bar.cur);
-      const max = Number(bar.max);
-      if (!Number.isFinite(cur) || !Number.isFinite(max) || max <= 0) return;
-      const id = 'guild-' + bar.id;
-      const rowClass = vitalBarClass(id);
-      const guild = bar.guild ? String(bar.guild) : '';
-      const title = guild ? guild + ': ' + bar.label : String(bar.label);
-      renderVitalBar(bodyEl, String(bar.label), cur, max, {
-        id,
-        guild: true,
-        kind: bar.kind ? String(bar.kind) : '',
-        title,
+const GUILD_VITAL_SEVERITIES = { ok: true, warn: true, danger: true };
+
+function guildVitalSeverityClass(item) {
+  const sev = item && item.severity;
+  return GUILD_VITAL_SEVERITIES[sev] ? ' vitals-sev-' + sev : '';
+}
+
+// Pure HTML builder for the non-meter GuildVitals v2 kinds (boolean, flags,
+// state, counter, cooldown). Returns null for meter kinds, which render via
+// renderVitalBar. Exported for tests.
+export function guildVitalItemHtml(item) {
+  const kind = item && item.kind ? String(item.kind) : 'meter';
+  const label = escHtml(String((item && item.label) || ''));
+  const sev = guildVitalSeverityClass(item);
+  switch (kind) {
+    case 'boolean':
+      return '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-led' +
+        (item.on ? ' on' : '') + sev + '"></span></div>';
+    case 'flags': {
+      const flags = Array.isArray(item.flags) ? item.flags : [];
+      let pips = '';
+      flags.forEach((flag) => {
+        if (!flag || typeof flag !== 'object') return;
+        pips += '<span class="vitals-flag' + (flag.on ? ' on' : '') + '"' +
+          (flag.tip ? ' title="' + escHtml(String(flag.tip)) + '"' : '') +
+          '>' + escHtml(String(flag.label || '')) + '</span>';
       });
+      return '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-flags">' + pips +
+        '</span></div>';
+    }
+    case 'state': {
+      const display = String(item.display || item.value || '-');
+      return '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-state-badge' + sev + '">' +
+        escHtml(display) + '</span></div>';
+    }
+    case 'counter': {
+      const max = Math.max(1, Math.min(12, Number(item.max) || 0));
+      const cur = Math.max(0, Math.min(max, Number(item.cur) || 0));
+      let pips = '';
+      for (let i = 0; i < max; i++) {
+        pips += '<span class="vitals-pip' +
+          (i < cur ? ' filled' + sev : '') + '"></span>';
+      }
+      return '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-val">' + cur + ' / ' + max +
+        '</span></div><div class="vitals-pips">' + pips + '</div>';
+    }
+    case 'cooldown': {
+      const remaining = Math.max(0, Number(item.remaining) || 0);
+      const max = Number(item.max) || 0;
+      let html = '<div class="vitals-inline"><span class="vitals-label-name">' +
+        label + '</span><span class="vitals-val">' +
+        escHtml(formatDuration(remaining)) + '</span></div>';
+      if (max > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((remaining * 100) / max)));
+        html += '<div class="vitals-cd-bar"><div class="vitals-cd-fill" style="width:' +
+          pct + '%"></div></div>';
+      }
+      return html;
+    }
+    default:
+      return null;
+  }
+}
+
+// GuildVitals renderer: accepts both the v2 typed items list and the legacy
+// v1 bars list (kind "warning" maps to a reverse meter). Rows keep their
+// identity by id so they update in place; items are grouped under per-guild
+// headers when more than one guild is present, and DOM order is enforced by
+// re-appending rows each render (appendChild moves existing nodes).
+function renderGuildVitalItems(bodyEl, items) {
+  const seen = {};
+  const groups = [];
+  const groupIndex = {};
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    if (!item || !item.id || !item.label) return;
+    const guild = item.guild ? String(item.guild) : '';
+    if (!(guild in groupIndex)) {
+      groupIndex[guild] = groups.length;
+      groups.push({ guild, items: [] });
+    }
+    groups[groupIndex[guild]].items.push(item);
+  });
+  const showHeaders = groups.length > 1;
+
+  groups.forEach((group) => {
+    if (showHeaders && group.guild) {
+      const hdrClass = vitalBarClass('guild-hdr-' + group.guild);
+      let hdr = bodyEl.querySelector('.' + hdrClass);
+      if (!hdr) {
+        hdr = document.createElement('div');
+        hdr.className = 'vitals-guild-header vitals-guild ' + hdrClass;
+      }
+      hdr.textContent = group.guild;
+      bodyEl.appendChild(hdr);
+      seen[hdrClass] = true;
+    }
+
+    group.items.forEach((item) => {
+      const kind = item.kind ? String(item.kind) : 'meter';
+      const id = 'guild-' + item.id;
+      const rowClass = vitalBarClass(id);
+      const title = item.tip ? String(item.tip)
+        : (group.guild ? group.guild + ': ' + item.label : String(item.label));
+
+      if (kind === 'meter' || kind === 'meter_reverse' || kind === 'warning') {
+        const cur = Number(item.cur);
+        const max = Number(item.max);
+        if (!Number.isFinite(cur) || !Number.isFinite(max) || max <= 0) return;
+        const reverse = kind !== 'meter';
+        renderVitalBar(bodyEl, String(item.label), cur, max, {
+          id,
+          guild: true,
+          kind: reverse ? 'meter_reverse' : '',
+          title,
+          colorMode: reverse ? 'inverse' : '',
+          reverse,
+        });
+        const meterRow = bodyEl.querySelector('.' + rowClass);
+        if (meterRow) bodyEl.appendChild(meterRow);
+        seen[rowClass] = true;
+        return;
+      }
+
+      const html = guildVitalItemHtml(item);
+      if (html === null) return;
+      let row = bodyEl.querySelector('.' + rowClass);
+      if (!row) {
+        row = document.createElement('div');
+        row.className = 'vitals-row vitals-guild ' + rowClass;
+      }
+      Array.from(row.classList).forEach((className) => {
+        if (className.indexOf('vitals-kind-') === 0) row.classList.remove(className);
+      });
+      row.classList.add('vitals-kind-' + kind);
+      if (title) row.title = title;
+      // Only rewrite when the markup changed, so the 2s tick doesn't churn.
+      if (!row.dataset || row.dataset.gvHtml !== html) {
+        row.innerHTML = html;
+        if (row.dataset) row.dataset.gvHtml = html;
+      }
+      bodyEl.appendChild(row);
       seen[rowClass] = true;
     });
-  }
+  });
 
   bodyEl.querySelectorAll('.vitals-guild').forEach((row) => {
     const known = Array.from(row.classList).some((className) => seen[className]);
@@ -607,13 +869,16 @@ export const panelRenderers = {
   },
 
   guildVitals(bodyEl, data) {
-    const bars = data && Array.isArray(data.bars) ? data.bars : [];
-    if (!bars.length) {
+    // v2 servers send "items" (typed indicators); v1 servers send "bars"
+    // (plain meters, kind "warning" for danger-when-full). Both render.
+    const items = data && Array.isArray(data.items) ? data.items
+      : (data && Array.isArray(data.bars) ? data.bars : []);
+    if (!items.length) {
       bodyEl.innerHTML = '<div class="placeholder">No guild vitals</div>';
       return;
     }
     if (bodyEl.querySelector('.placeholder')) bodyEl.innerHTML = '';
-    renderGuildVitalBars(bodyEl, bars);
+    renderGuildVitalItems(bodyEl, items);
   },
 
   omens(bodyEl, data) {
@@ -1035,6 +1300,75 @@ export const panelRenderers = {
         return '<div class="inv-doll-slot inv-doll-filled"><div class="inv-doll-slot-label">' + label + '</div><div class="inv-doll-slot-item">' + escHtml(item.name) + '</div></div>';
       }
       return '<div class="inv-doll-slot inv-doll-empty"><div class="inv-doll-slot-label">' + label + '</div><div class="inv-doll-slot-item">empty</div></div>';
+    }
+  },
+
+  cyberware(bodyEl, data) {
+    lastCyberwareData = data;
+    if (!data || !Array.isArray(data.installed)) {
+      bodyEl.innerHTML = '<div class="placeholder">Waiting for data...</div>';
+      return;
+    }
+
+    const strain = data.strain || {};
+    const used = Number(strain.used) || 0;
+    const total = Number(strain.total) || 0;
+    const free = Math.max(0, total - used);
+    const pct = total > 0 ? Math.min(100, Math.round((used * 100) / total)) : 0;
+
+    let html = '<div class="cyber-strain">';
+    html += '<div class="cyber-strain-label"><span>Strain</span><span>' +
+      used + ' / ' + total + ' &middot; ' + free + ' free</span></div>';
+    html += '<div class="cyber-strain-bar"><div class="cyber-strain-fill' +
+      (pct >= 90 ? ' cyber-strain-hot' : '') +
+      '" style="width:' + pct + '%"></div></div>';
+    html += '</div>';
+
+    if (!data.installed.length) {
+      html += '<div class="placeholder">No cyberware installed</div>';
+    } else {
+      html += '<div class="cyber-list">';
+      for (let i = 0; i < data.installed.length; i++) {
+        const item = data.installed[i] || {};
+        const locations = Array.isArray(item.locations)
+          ? item.locations.map(cyberSlotLabel).join(', ') : '';
+        const bits = [];
+        if (item.grade) bits.push(item.grade);
+        if (locations) bits.push(locations);
+        bits.push('strain ' + (Number(item.strain) || 0));
+        html += '<div class="cyber-item" data-cyber-index="' + i +
+          '" role="button" tabindex="0" title="Click for implant details">';
+        html += '<div class="cyber-item-name">' + escHtml(item.name || 'Implant') + '</div>';
+        html += '<div class="cyber-item-meta">' + escHtml(bits.join(' · ')) + '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    bodyEl.innerHTML = html;
+
+    // Delegated click/keyboard wiring survives innerHTML re-renders.
+    if (bodyEl.dataset && !bodyEl.dataset.cyberWired && bodyEl.addEventListener) {
+      bodyEl.dataset.cyberWired = '1';
+      const activate = (target) => {
+        const row = target && target.closest
+          ? target.closest('.cyber-item[data-cyber-index]') : null;
+        if (!row) return;
+        const current = lastCyberwareData
+          && Array.isArray(lastCyberwareData.installed)
+          ? lastCyberwareData.installed : [];
+        const item = current[Number(row.dataset.cyberIndex)];
+        if (!item || !item.id) return;
+        openCyberwareModal(item);
+        gmcp.send('Darkwind.Cyberware.Details', { id: item.id });
+      };
+      bodyEl.addEventListener('click', (ev) => activate(ev.target));
+      bodyEl.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          activate(ev.target);
+          if (ev.target.closest && ev.target.closest('.cyber-item')) ev.preventDefault();
+        }
+      });
     }
   },
 

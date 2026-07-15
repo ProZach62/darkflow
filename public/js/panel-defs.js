@@ -32,6 +32,8 @@ export const PANEL_DEFS = {
                defaultVisible: true },
   quests:    { title: 'Quests',    defaultDock: 'right', defaultOrder: 3 },
   achievements: { title: 'Achievements', defaultDock: 'right', defaultOrder: 4 },
+  cyberware: { title: 'Cyberware', defaultDock: 'right', defaultOrder: 5,
+               defaultVisible: false },
   connection: { title: 'Connection', defaultDock: 'float', defaultOrder: 2,
                defaultFloatW: 340, defaultFloatH: 330,
                defaultSnapLeft: true, defaultSnapBottom: true,

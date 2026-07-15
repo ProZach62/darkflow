@@ -150,7 +150,7 @@ export const gmcp = {
       'Darkwind.Room.Image 1',
       'Darkwind.Divine 1',
       'Darkwind.Sky 1',
-      'Darkwind.GuildVitals 1',
+      'Darkwind.GuildVitals 2',
       'Darkwind.XPMon 1',
       'Darkwind.Client.Subscriptions 1',
       'Darkwind.Client.NAWS 1',
@@ -167,7 +167,8 @@ export const gmcp = {
       'Darkwind.Broadcast 1',
       'Darkwind.LinuxRescue 1',
       'Darkwind.Lag 1',
-      'Darkwind.Fishing 1'
+      'Darkwind.Fishing 1',
+      'Darkwind.Cyberware 1'
     ]);
     this.enabled = true;
   },
