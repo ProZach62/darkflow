@@ -366,9 +366,17 @@ export const windowManager = {
       (portrait || frame).appendChild(closeBtn);
     }
 
+    const escHandler = (event) => {
+      if (event.key !== 'Escape' || data.closable === false) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this._userClose(data.id);
+    };
+
     frame.appendChild(body);
     overlay.appendChild(frame);
     host.appendChild(overlay);
+    document.addEventListener('keydown', escHandler, true);
 
     this.windows[data.id] = {
       id: data.id,
@@ -376,6 +384,7 @@ export const windowManager = {
       type: 'npc_dialogue',
       el: overlay,
       containerEl: body,
+      escHandler,
     };
   },
 
@@ -402,6 +411,7 @@ export const windowManager = {
       if (win.escHandler) document.removeEventListener('keydown', win.escHandler);
       if (win.el) win.el.remove();
     } else if (win.type === 'npc_dialogue') {
+      if (win.escHandler) document.removeEventListener('keydown', win.escHandler, true);
       if (win.el) win.el.remove();
     } else if (win.type === 'panel' && win.panelId) {
       panelManager.removeDynamicPanel(win.panelId);
