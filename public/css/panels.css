@@ -1666,14 +1666,21 @@ body.zork-only-mode #panels-menu {
 }
 
 .map-tile-player {
-  box-shadow: 0 0 4px 1px #fff;
+  box-shadow:
+    0 0 0 1px #00ffff,
+    0 0 8px 2px rgba(0, 255, 255, 0.95),
+    0 0 16px 4px rgba(0, 190, 255, 0.55);
 }
 .map-tile-player::after {
   content: '';
   position: absolute;
-  inset: 0;
+  width: 44px;
+  height: 44px;
+  left: 50%;
+  top: 50%;
   z-index: 1;
-  background: url('/assets/tiles/player.png') center/cover no-repeat;
+  background: url('/assets/tiles/player.png') center/contain no-repeat;
+  transform: translate(-50%, -50%);
 }
 
 /* Terrain tile backgrounds */
