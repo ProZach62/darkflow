@@ -71,7 +71,8 @@ function seedArea(area) {
   });
 }
 
-test('area-scoped MapData2 reset clears only that live area and requests a full sync', () => {
+test('area-scoped MapData2 reset preserves last-good context and requests one full sync', () => {
+  v2.clearMapData();
   seedArea('Area A');
   seedArea('Area B');
   v2.processCurrent({
@@ -94,29 +95,32 @@ test('area-scoped MapData2 reset clears only that live area and requests a full 
     areaGeneration: 7,
   });
 
-  assert.equal(v2.getRoomsByArea('Area A').length, 0);
+  assert.equal(v2.getRoomsByArea('Area A').length, 1);
   assert.equal(v2.getRoomsByArea('Area B').length, 1);
-  assert.equal(v2.getCurrentRoomId(), null);
-  assert.deepEqual(sent.at(-1), {
-    name: 'Darkwind.MapData2.Sync',
-    data: {
-      area: 'Area A',
-      mapEpoch: 'epoch-1',
-      generation: 7,
-      since: 0,
-      version: 0,
-      snapshotVersion: 0,
-      cursor: 0,
-    },
-  });
+  assert.equal(v2.getCurrentRoomId(), 'Area A:center');
+  const syncs = sent.filter(({ name, data }) =>
+    name === 'Darkwind.MapData2.Sync' && data.area === 'Area A');
+  assert.equal(syncs.length, 1);
+  assert.equal(syncs[0].data.protocol, 2);
+  assert.equal(syncs[0].data.mapEpoch, 'epoch-1');
+  assert.equal(syncs[0].data.generation, 7);
+  assert.equal(syncs[0].data.since, 0);
+  assert.equal(syncs[0].data.cursor, 0);
+  assert.ok(syncs[0].data.syncId);
 });
 
-test('unscoped MapData2 reset retains clearall behavior', () => {
+test('unscoped MapData2 reset preserves presentation while recovering Current', () => {
+  v2.clearMapData();
   seedArea('Area A');
   seedArea('Area B');
+  sent.length = 0;
 
   gmcp.dispatch('Darkwind.MapData2.Reset', { protocol: 2, mapEpoch: 'epoch-2' });
 
-  assert.equal(v2.getRoomsByArea('Area A').length, 0);
-  assert.equal(v2.getRoomsByArea('Area B').length, 0);
+  assert.equal(v2.getRoomsByArea('Area A').length, 1);
+  assert.equal(v2.getRoomsByArea('Area B').length, 1);
+  assert.deepEqual(sent, [{
+    name: 'Darkwind.MapData2.Sync',
+    data: { protocol: 2, current: 1, mapEpoch: 'epoch-2' },
+  }]);
 });

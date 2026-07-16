@@ -504,8 +504,13 @@ test('v2 replacement snapshots are applied atomically on completion', () => {
       x: 0, y: 0, z: 0, exits: {} }],
   });
   withGmcpSpy((sent) => {
+    v2.clearMapDataForArea('AtomicLand', {
+      protocol: 2, mapEpoch: 'epoch-a', areaGeneration: 2,
+    });
+    const firstRequest = sent.find(({ data }) => data.area === 'AtomicLand').data;
     v2.mergeServerUpdate({
       protocol: 2, mapEpoch: 'epoch-a', area: 'AtomicLand', areaGeneration: 2,
+      syncId: firstRequest.syncId, fromCursor: firstRequest.cursor,
       since: 0, snapshotVersion: 8, latestVersion: 8, cursor: 10,
       complete: 0, replace: 1,
       rooms: [{ id: 'new-a', name: 'New A', area: 'AtomicLand', positioned: 1,
@@ -513,10 +518,12 @@ test('v2 replacement snapshots are applied atomically on completion', () => {
     });
     assert.ok(v2.getRoom('old'), 'old complete snapshot remains visible mid-sync');
     assert.equal(v2.getRoom('new-a'), undefined, 'partial room is staged');
-    assert.equal(sent.length, 1, 'continuation requested');
+    const continuation = sent.filter(({ data }) => data.area === 'AtomicLand').at(-1).data;
+    assert.equal(continuation.cursor, 10, 'continuation requested');
 
     v2.mergeServerUpdate({
       protocol: 2, mapEpoch: 'epoch-a', area: 'AtomicLand', areaGeneration: 2,
+      syncId: continuation.syncId, fromCursor: continuation.cursor,
       since: 0, snapshotVersion: 8, latestVersion: 8, cursor: 20,
       complete: 1, replace: 1,
       rooms: [{ id: 'new-b', name: 'New B', area: 'AtomicLand', positioned: 1,
@@ -528,12 +535,12 @@ test('v2 replacement snapshots are applied atomically on completion', () => {
   });
 });
 
-test('v2 epoch changes discard stale areas and request a full snapshot', () => {
+test('v2 epoch changes retain last-good areas while requesting a full snapshot', () => {
   v2.clearMapData();
-  v2.mergeServerUpdate({
+  v2.mergeServerAreaData({
     protocol: 2, mapEpoch: 'old-epoch', area: 'OldLand', areaGeneration: 1,
-    since: 0, snapshotVersion: 1, latestVersion: 1, complete: 1, replace: 1,
-    cursor: 'old', rooms: [{ id: 'old-room', name: 'Old', area: 'OldLand',
+    version: 1, replace: 1,
+    rooms: [{ id: 'old-room', name: 'Old', area: 'OldLand',
       positioned: 1, x: 0, y: 0, z: 0, exits: {} }],
   });
   assert.ok(v2.getRoom('old-room'));
@@ -544,7 +551,7 @@ test('v2 epoch changes discard stale areas and request a full snapshot', () => {
       id: 'new-room', name: 'New', area: 'NewLand', positioned: 1,
       x: 0, y: 0, z: 0, areaVersion: 1, exits: {}, liveExits: {},
     });
-    assert.equal(v2.getRoom('old-room'), undefined, 'old epoch cache removed');
+    assert.ok(v2.getRoom('old-room'), 'last-good snapshot stays visible during recovery');
     assert.equal(v2.getMapEpoch(), 'new-epoch');
     assert.equal(sent.length, 1);
     assert.equal(sent[0].data.since, 0, 'new epoch starts with a full sync');

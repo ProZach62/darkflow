@@ -162,25 +162,34 @@ test('no known path reports without sending anything', () => {
   assert.ok(v2.getMapStatus().includes('No known path'));
 });
 
-test('Darkwind.MapData2.Current frames drive the walk via the gmcp bus', () => {
+test('Darkwind.MapData2.Current updates the model before advancing the walk', async () => {
   seedWalkArea();
   const sent = [];
   sw.initSpeedwalk({ send: (cmd) => sent.push(cmd), rerender: noop,
     stepTimeoutMs: 5000 });
 
+  const updateModel = (data) => v2.processCurrent(data);
+  gmcp.on('Darkwind.MapData2.Current', updateModel);
+
   sw.startSpeedwalk('C');
-  v2.processCurrent({
-    id: 'B', name: 'Middle', area: 'WalkLand', positioned: true,
-    x: 1, y: 0, z: 0, areaVersion: 1,
-    exits: { west: 'A', north: 'C' },
-  });
-  gmcp.dispatch('Darkwind.MapData2.Current', { id: 'B' });
-  assert.deepEqual(sent, ['east', 'north'], 'bus-delivered arrival advances');
-  sw.cancelSpeedwalk();
+  try {
+    gmcp.dispatch('Darkwind.MapData2.Current', {
+      id: 'B', name: 'Middle', area: 'WalkLand', positioned: true,
+      x: 1, y: 0, z: 0, areaVersion: 1,
+      exits: { west: 'A', north: 'C' },
+      liveExits: { west: 'A', north: 'C' },
+    });
+    await Promise.resolve();
+    assert.deepEqual(sent, ['east', 'north'],
+      'bus-delivered arrival advances after model state is current');
+  } finally {
+    gmcp.off('Darkwind.MapData2.Current', updateModel);
+    sw.cancelSpeedwalk();
+  }
   assert.equal(sw.isSpeedwalking(), false);
 });
 
-test('generic Room.Info frames verify external speedwalks', () => {
+test('generic Room.Info updates the model before advancing external walks', async () => {
   gmcpMap.configureWorld({ name: 'speedwalk-external', host: 'external.test', port: '4242' });
   gmcpMap.clearMapData();
   gmcpMap.processRoomInfo({ num: 10, name: 'Outside Start', area: 'Elsewhere', exits: { east: 11 } });
@@ -200,11 +209,20 @@ test('generic Room.Info frames verify external speedwalks', () => {
 
   assert.equal(sw.startSpeedwalk('12', gmcpMap), true);
   assert.deepEqual(sent, ['east']);
-  gmcpMap.processRoomInfo({ num: 11, name: 'Outside Middle', area: 'Elsewhere',
-    exits: { west: 10, north: 12 } });
-  gmcp.dispatch('Room.Info', { num: 11 });
-  assert.deepEqual(sent, ['east', 'north']);
-  gmcp.dispatch('Room.Info', { num: 12 });
-  assert.equal(sw.isSpeedwalking(), false);
-  assert.ok(gmcpMap.getMapStatus().includes('Arrived'));
+  const updateModel = (data) => gmcpMap.processRoomInfo(data);
+  gmcp.on('Room.Info', updateModel);
+  try {
+    gmcp.dispatch('Room.Info', { num: 11, name: 'Outside Middle', area: 'Elsewhere',
+      exits: { west: 10, north: 12 } });
+    await Promise.resolve();
+    assert.deepEqual(sent, ['east', 'north']);
+    gmcp.dispatch('Room.Info', { num: 12, name: 'Outside Goal', area: 'Elsewhere',
+      exits: { south: 11 } });
+    await Promise.resolve();
+    assert.equal(sw.isSpeedwalking(), false);
+    assert.ok(gmcpMap.getMapStatus().includes('Arrived'));
+  } finally {
+    gmcp.off('Room.Info', updateModel);
+    sw.cancelSpeedwalk();
+  }
 });

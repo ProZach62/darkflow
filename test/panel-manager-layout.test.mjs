@@ -165,6 +165,35 @@ test('xp monitor pane defaults to a visible left dock panel', () => {
   assert.equal(PANEL_DEFS.xpmon.defaultOrder, 8);
 });
 
+test('desktop mode removes mobile-only visibility classes from recreated panes', () => {
+  const classes = new Set(['gmcp-panel-widget', 'mobile-panel-active', 'mobile-panel-hidden']);
+  const originalPanels = panelManager.panels;
+  const originalContent = panelManager._mobile.contentEl;
+  const originalEnabled = panelManager._mobile.enabled;
+  try {
+    panelManager._mobile.contentEl = {};
+    panelManager._mobile.enabled = false;
+    panelManager.panels = {
+      map: {
+        el: {
+          classList: {
+            remove(...names) { for (const name of names) classes.delete(name); },
+          },
+        },
+      },
+    };
+
+    panelManager._syncMobilePanelVisibility();
+    assert.equal(classes.has('mobile-panel-hidden'), false);
+    assert.equal(classes.has('mobile-panel-active'), false);
+    assert.equal(classes.has('gmcp-panel-widget'), true);
+  } finally {
+    panelManager.panels = originalPanels;
+    panelManager._mobile.contentEl = originalContent;
+    panelManager._mobile.enabled = originalEnabled;
+  }
+});
+
 test('panel close handlers can block pane removal for dirty editors', () => {
   let removed = 0;
   let saved = 0;

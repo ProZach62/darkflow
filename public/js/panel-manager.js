@@ -16,14 +16,15 @@ import {
   mergeServerUpdate as mergeMapData2Update,
   mergeBrowseArea as mergeMapData2Browse,
   exitBrowse as exitMapData2Browse,
-  clearMapData as clearMapData2,
   clearMapDataForArea as clearMapData2ForArea,
+  beginGlobalReset as beginMapData2GlobalReset,
   load as loadMapData2,
   processSyncError as processMapData2Error,
 } from './map-data-v2.js';
 import { load as loadGenericMapData } from './map-data-gmcp.js';
 import {
   markMapData2Active,
+  markMapData2Unavailable,
   processGenericHello,
   processGenericRoomInfo,
   resetLiveMapModeForConnection,
@@ -138,8 +139,7 @@ export const panelManager = {
   init() {
     if (appState.zorkOnlyMode) {
       this.disableForZorkOnlyMode();
-      loadMapData2();
-      loadGenericMapData();
+      this._hydrateMapCaches();
       this.registerGmcpHandlers();
       return;
     }
@@ -164,8 +164,7 @@ export const panelManager = {
 
     this._applyDockStateToDom();
     this.repositionAnchoredPanels();
-    loadMapData2();
-    loadGenericMapData();
+    this._hydrateMapCaches();
     this.attachDragHandlers();
     this._attachPersistenceFlushHandlers();
     this.registerGmcpHandlers();
@@ -177,8 +176,17 @@ export const panelManager = {
       if (connected) this._armSubscriptionSyncFallback();
       else this._clearSubscriptionSyncFallback();
     });
+    document.addEventListener('darkflow:map-source-changed', () => {
+      this._queuePanelRender('map');
+    });
     this._initialized = true;
     this._notifyWorkspaceLayoutChanged();
+  },
+
+  _hydrateMapCaches() {
+    return Promise.allSettled([loadMapData2(), loadGenericMapData()]).then(() => {
+      this._queuePanelRender('map');
+    });
   },
 
   setHiddenByDefault(ids) {
@@ -1096,12 +1104,21 @@ export const panelManager = {
     el.appendChild(header);
     el.appendChild(body);
 
-    this.panels[id] = { el, headerEl: header, bodyEl: body, title: def.title };
+    const panel = { el, headerEl: header, bodyEl: body, title: def.title };
+    this.panels[id] = panel;
     this._placePanelElement(id, el, st);
     this._applyPaneFont(id);
 
-    if (this.gmcpData[id]) {
+    // Map state lives outside gmcpData. Recreating the pane (workspace switch,
+    // mobile mode, or reopening it) must render the retained map immediately
+    // instead of waiting indefinitely for another movement packet.
+    const hasExternalMapState = id === 'map' || id === 'areaMap';
+    if (hasExternalMapState || this.gmcpData[id]) {
       this._renderPanel(id);
+    }
+    if (hasExternalMapState && typeof ResizeObserver !== 'undefined') {
+      panel.mapResizeObserver = new ResizeObserver(() => this._queuePanelRender(id));
+      panel.mapResizeObserver.observe(body);
     }
     if (id === 'sky') this._syncSkyTimer();
     this._renderMobileSheet();
@@ -1803,6 +1820,7 @@ export const panelManager = {
     st.visible = false;
     const p = this.panels[id];
     if (p) {
+      if (p.mapResizeObserver) p.mapResizeObserver.disconnect();
       p.el.remove();
       delete this.panels[id];
     }
@@ -1998,7 +2016,7 @@ export const panelManager = {
   },
 
   resetData(options = {}) {
-    resetLiveMapModeForConnection();
+    const mapReload = resetLiveMapModeForConnection();
     const preservePanels = new Set(Array.isArray(options.preservePanels) ? options.preservePanels : []);
     const preservedData = {};
 
@@ -2016,12 +2034,14 @@ export const panelManager = {
     }
     for (const [id, p] of Object.entries(this.panels)) {
       if (id === TERMINAL_PANEL_ID || p.terminal) continue;
-      if (preservePanels.has(id) && this.gmcpData[id] !== undefined) {
+      if (id === 'map' || id === 'areaMap'
+        || (preservePanels.has(id) && this.gmcpData[id] !== undefined)) {
         this._renderPanel(id);
       } else {
         p.bodyEl.innerHTML = '<div class="placeholder">Waiting for data...</div>';
       }
     }
+    Promise.resolve(mapReload).then(() => this._queuePanelRender('map'));
     this._renderPanel('avatar');
     this._hideAvatarMeter();
     this._syncSkyTimer();
@@ -2394,6 +2414,7 @@ export const panelManager = {
   _resetLivePanels() {
     this._restoreTerminalToClassic();
     for (const p of Object.values(this.panels)) {
+      if (p.mapResizeObserver) p.mapResizeObserver.disconnect();
       p.el.remove();
     }
     this.panels = {};
@@ -2529,6 +2550,15 @@ export const panelManager = {
 
   _syncMobilePanelVisibility() {
     if (!this._mobile.contentEl) return;
+    // The mobile sheet DOM stays mounted when returning to desktop. Rendering
+    // that dormant sheet must not leave its visibility classes on recreated
+    // desktop panes (where `.mobile-panel-hidden` now correctly means hidden).
+    if (!this._mobile.enabled) {
+      for (const panel of Object.values(this.panels)) {
+        panel.el.classList.remove('mobile-panel-active', 'mobile-panel-hidden');
+      }
+      return;
+    }
     const activeId = this._mobile.activePanelId;
     let hasVisible = false;
     for (const [id, panel] of Object.entries(this.panels)) {
@@ -3079,26 +3109,23 @@ export const panelManager = {
     });
 
     gmcp.on('Darkwind.MapData2.Current', (data) => {
-      markMapData2Active();
-      processMapData2Current(data);
+      if (processMapData2Current(data)) markMapData2Active();
       this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData2.Area', (data) => {
-      markMapData2Active();
       mergeMapData2Area(data);
       this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData2.Update', (data) => {
-      markMapData2Active();
       mergeMapData2Update(data);
       this._queuePanelRender('map');
     });
 
     gmcp.on('Darkwind.MapData2.Error', (data) => {
-      markMapData2Active();
       processMapData2Error(data);
+      if (data && data.code === 'current_unavailable') markMapData2Unavailable(data);
       this._queuePanelRender('map');
     });
 
@@ -3112,11 +3139,10 @@ export const panelManager = {
     // Area resets preserve maps for every other area. Legacy/unscoped resets
     // still mean the shared map was wiped (map2d clearall).
     gmcp.on('Darkwind.MapData2.Reset', (data) => {
-      markMapData2Active();
       if (data && data.scope === 'area' && typeof data.area === 'string' && data.area) {
         clearMapData2ForArea(data.area, data);
       } else {
-        clearMapData2();
+        beginMapData2GlobalReset(data);
         exitMapData2Browse();
         if (this.panels['areaMap']) this.closePanel('areaMap');
       }

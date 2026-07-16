@@ -28,6 +28,7 @@ let currentRoomId = null;
 let currentAreaName = '';
 let areaVersions = new Map();
 let areaGenerations = new Map();
+let areaHydrationRevisions = new Map();
 let mapEpoch = '';
 let worldKey = 'darkwind';
 let active = false;
@@ -36,17 +37,151 @@ let mapStatusAt = 0;
 let saveTimer = null;
 let forceFullSyncOnNextCurrent = false;
 let lastSyncRequestByArea = new Map();
-let stagedSyncs = new Map();
+// Exactly one snapshot transfer may own an area at a time.  The transfer keeps
+// its last-good public snapshot untouched until a complete, ordered replacement
+// is ready to commit.
+let activeSyncs = new Map();
 let dirtyAreas = new Set();
 let storageError = '';
 let loadToken = 0;
+let protocol2Known = false;
+let syncSequence = 0;
+let currentRequestTimer = null;
+let currentRequestPending = false;
+let currentRequestToken = 0;
+let currentRetryTimer = null;
+let currentRetryToken = 0;
+let currentRetryAttempts = 0;
+let connectionGeneration = 0;
+let currentSeenGeneration = -1;
 
 const MAP_STATUS_TTL_MS = 6000;
 const SAVE_DEBOUNCE_MS = 200;
-const SYNC_THROTTLE_MS = 4000;
+const CURRENT_REQUEST_THROTTLE_MS = 1000;
+const CURRENT_RETRY_DEFAULT_MS = 250;
+const CURRENT_RETRY_MAX_ATTEMPTS = 8;
+const CURRENT_RETRY_MAX_DELAY_MS = 2000;
+const SYNC_RETRY_DEFAULT_MS = 1000;
+const SYNC_PAGE_TIMEOUT_MS = 5000;
 
 function normalizeRoomId(id) {
   return id === null || id === undefined ? null : String(id);
+}
+
+function cursorKey(cursor) {
+  return cursor === null || cursor === undefined || cursor === '' ? '0' : String(cursor);
+}
+
+function unrefTimer(timer) {
+  if (timer && typeof timer.unref === 'function') timer.unref();
+  return timer;
+}
+
+function clearCurrentRequest() {
+  currentRequestToken++;
+  if (currentRequestTimer) clearTimeout(currentRequestTimer);
+  currentRequestTimer = null;
+  currentRequestPending = false;
+}
+
+function clearCurrentRetry() {
+  currentRetryToken++;
+  if (currentRetryTimer) clearTimeout(currentRetryTimer);
+  currentRetryTimer = null;
+  currentRetryAttempts = 0;
+}
+
+// A grid frame is unavailable only while the server atomically moves its
+// rooms. Keep Current presentation stale-but-visible and probe again with a
+// bounded backoff in case the completing area Reset is delayed or the player
+// was not yet part of the server's viewer set.
+function scheduleCurrentRetry(delayMs) {
+  if (hasLiveCurrent() || currentRetryTimer
+    || currentRetryAttempts >= CURRENT_RETRY_MAX_ATTEMPTS) return false;
+  const requestGeneration = connectionGeneration;
+  const retryToken = ++currentRetryToken;
+  const baseDelay = Math.max(50, Number(delayMs) || CURRENT_RETRY_DEFAULT_MS);
+  const backoffDelay = baseDelay * (2 ** Math.min(currentRetryAttempts, 4));
+  const retryDelay = Math.max(baseDelay,
+    Math.min(CURRENT_RETRY_MAX_DELAY_MS, backoffDelay));
+  currentRetryAttempts++;
+  currentRetryTimer = unrefTimer(setTimeout(() => {
+    if (retryToken !== currentRetryToken) return;
+    currentRetryTimer = null;
+    if (requestGeneration !== connectionGeneration || hasLiveCurrent()) return;
+    requestCurrentState();
+  }, retryDelay));
+  return true;
+}
+
+function cancelAreaSync(area) {
+  const sync = activeSyncs.get(area);
+  if (sync) {
+    sync.retryToken = (sync.retryToken || 0) + 1;
+    sync.pageRequestToken = (sync.pageRequestToken || 0) + 1;
+    if (sync.retryTimer) clearTimeout(sync.retryTimer);
+    if (sync.pageTimer) clearTimeout(sync.pageTimer);
+  }
+  activeSyncs.delete(area);
+}
+
+function clearSyncPageTimer(sync) {
+  if (sync && sync.pageTimer) clearTimeout(sync.pageTimer);
+  if (sync) {
+    sync.pageTimer = null;
+    sync.pageRequestToken = (sync.pageRequestToken || 0) + 1;
+  }
+}
+
+function clearSyncRetryTimer(sync) {
+  if (sync && sync.retryTimer) clearTimeout(sync.retryTimer);
+  if (sync) {
+    sync.retryTimer = null;
+    sync.retryToken = (sync.retryToken || 0) + 1;
+  }
+}
+
+function cancelAllSyncs() {
+  for (const area of Array.from(activeSyncs.keys())) cancelAreaSync(area);
+  lastSyncRequestByArea.clear();
+}
+
+function bumpAreaHydrationRevision(area) {
+  if (!area) return;
+  areaHydrationRevisions.set(area, (areaHydrationRevisions.get(area) || 0) + 1);
+}
+
+export function hasLiveCurrent() {
+  return !!currentRoomId && currentSeenGeneration === connectionGeneration;
+}
+
+export function requestCurrentState() {
+  if (!protocol2Known || hasLiveCurrent() || currentRequestPending) return false;
+  currentRequestPending = true;
+  const requestGeneration = connectionGeneration;
+  const requestToken = ++currentRequestToken;
+  gmcp.send('Darkwind.MapData2.Sync', { protocol: 2, current: 1, mapEpoch });
+  currentRequestTimer = unrefTimer(setTimeout(() => {
+    if (requestToken !== currentRequestToken) return;
+    currentRequestTimer = null;
+    currentRequestPending = false;
+    // A later v2 packet may retry. Do not run an unbounded background loop when
+    // the server has explicitly reported that no current context is available.
+    if (requestGeneration !== connectionGeneration) return;
+  }, CURRENT_REQUEST_THROTTLE_MS));
+  return true;
+}
+
+export function resetForConnection() {
+  connectionGeneration++;
+  currentSeenGeneration = -1;
+  protocol2Known = false;
+  clearCurrentRequest();
+  clearCurrentRetry();
+  cancelAllSyncs();
+  if (currentRoomId && rooms.has(currentRoomId)) {
+    setMapStatus('Reconnecting map context...');
+  }
 }
 
 function safeSlug(value) {
@@ -59,9 +194,8 @@ export function configureWorld(identity = {}) {
   if (next === worldKey) return;
   flushPendingMapSave();
   worldKey = next;
-  loadToken++;
   resetInMemoryState();
-  load();
+  return load();
 }
 
 export function setMapStatus(msg) {
@@ -105,6 +239,10 @@ export function getAuthority() { return 'authoritative'; }
 export function getMapEpoch() { return mapEpoch; }
 
 export function canWalkExit(room, dir, destId) {
+  // A retained reconnect snapshot is presentation-only until this connection
+  // has supplied a fresh Current. Never send movement from a prior character,
+  // login state, or socket generation just because its old route is visible.
+  if (!hasLiveCurrent()) return false;
   if (!room || !dir || !destId) return false;
   if (room.layoutState === 'identity_conflict') return false;
   const defaultSafe = !!DIR_OFFSETS[dir] || dir === 'in' || dir === 'out';
@@ -212,38 +350,57 @@ function save(area) {
   }, SAVE_DEBOUNCE_MS);
 }
 
+function cancelPendingMapSave(area = '') {
+  if (area) dirtyAreas.delete(area);
+  else dirtyAreas.clear();
+  if (saveTimer && dirtyAreas.size === 0) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+}
+
 export function flushPendingMapSave() {
   if (saveTimer) {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
   const areas = Array.from(dirtyAreas);
+  const savingWorld = worldKey;
   dirtyAreas.clear();
   for (const area of areas) {
     const areaRooms = [];
     for (const room of rooms.values()) if (room.area === area) areaRooms.push(room);
-    saveMapArea(STORAGE_SOURCE, worldKey, area, {
+    saveMapArea(STORAGE_SOURCE, savingWorld, area, {
       schemaVersion: SCHEMA_VERSION,
       mapEpoch,
       generation: areaGenerations.get(area) || 0,
       version: areaVersions.get(area) || 0,
       rooms: areaRooms,
-    }).then(() => pruneMapAreas(STORAGE_SOURCE, worldKey, 25000, area)).catch((error) => {
+    }).then(() => pruneMapAreas(STORAGE_SOURCE, savingWorld, 25000, area)).catch((error) => {
       storageError = error && error.message ? error.message : 'Map cache unavailable';
     });
   }
 }
 
 function resetInMemoryState() {
+  loadToken++;
+  connectionGeneration++;
+  clearCurrentRequest();
+  clearCurrentRetry();
+  cancelAllSyncs();
+  cancelPendingMapSave();
   rooms.clear();
   areaVersions.clear();
   areaGenerations.clear();
-  stagedSyncs.clear();
-  dirtyAreas.clear();
+  areaHydrationRevisions.clear();
   currentRoomId = null;
   currentAreaName = '';
+  currentSeenGeneration = -1;
   active = false;
   mapEpoch = '';
+  protocol2Known = false;
+  forceFullSyncOnNextCurrent = false;
+  exitBrowse();
 }
 
 function runStorageMigration() {
@@ -280,20 +437,28 @@ function runStorageMigration() {
 export async function load() {
   const token = ++loadToken;
   const loadingWorld = worldKey;
+  const hydrationRevisions = new Map(areaHydrationRevisions);
   runStorageMigration();
   try {
     const records = await loadMapAreas(STORAGE_SOURCE, loadingWorld);
     if (token !== loadToken || loadingWorld !== worldKey || !records.length) return;
     let loadedEpoch = mapEpoch;
     for (const record of records) {
+      if (token !== loadToken || loadingWorld !== worldKey) return;
       if (!record || record.schemaVersion !== SCHEMA_VERSION
         || typeof record.area !== 'string' || !record.area
         || typeof record.mapEpoch !== 'string' || !record.mapEpoch
         || !Array.isArray(record.rooms)) {
-        await deleteMapArea(STORAGE_SOURCE, worldKey, record && record.area);
+        await deleteMapArea(STORAGE_SOURCE, loadingWorld, record && record.area);
         continue;
       }
       if (loadedEpoch && loadedEpoch !== record.mapEpoch) continue;
+      if ((areaHydrationRevisions.get(record.area) || 0)
+        !== (hydrationRevisions.get(record.area) || 0)) continue;
+      // A live completed snapshot may commit while IndexedDB hydration is
+      // waiting behind queued writes. Once that area has an in-memory baseline,
+      // never merge missing IDs from the older cache back into it.
+      if (areaVersions.has(record.area)) continue;
       loadedEpoch = record.mapEpoch || loadedEpoch;
       if (!areaVersions.has(record.area))
         areaVersions.set(record.area, Number(record.version) || 0);
@@ -307,7 +472,6 @@ export async function load() {
     mapEpoch = loadedEpoch;
     active = rooms.size > 0;
   } catch (e) {
-    resetInMemoryState();
     storageError = e && e.message ? e.message : 'Map cache unavailable';
   }
 }
@@ -326,17 +490,22 @@ function reconcileAreaVersion(area, serverVersion) {
   const known = areaVersions.get(area);
   const full = known === undefined || serverVersion < known;
   if (!full && serverVersion <= known) return;
-
-  const now = Date.now();
-  if (now - (lastSyncRequestByArea.get(area) || 0) < SYNC_THROTTLE_MS) return;
-  lastSyncRequestByArea.set(area, now);
+  if (activeSyncs.has(area)) return;
   if (full) setMapStatus('Syncing map...');
   requestAreaSync(area, full);
 }
 
 function resetForEpoch(epoch) {
-  resetInMemoryState();
+  loadToken++;
+  cancelAllSyncs();
+  clearCurrentRequest();
+  clearCurrentRetry();
+  cancelPendingMapSave();
+  currentSeenGeneration = -1;
+  areaVersions.clear();
+  areaGenerations.clear();
   mapEpoch = epoch || '';
+  protocol2Known = true;
   forceFullSyncOnNextCurrent = true;
   clearMapSource(STORAGE_SOURCE, worldKey).catch(() => {});
   setMapStatus('Refreshing authoritative map...');
@@ -344,6 +513,7 @@ function resetForEpoch(epoch) {
 
 export function processCurrent(data) {
   if (!data || data.id === null || data.id === undefined) return 0;
+  if (Number(data.protocol) >= 2 || data.mapEpoch) protocol2Known = true;
   if (data.protocol >= 2 && data.mapEpoch && mapEpoch && data.mapEpoch !== mapEpoch) {
     resetForEpoch(data.mapEpoch);
   } else if (data.mapEpoch && !mapEpoch) {
@@ -353,12 +523,14 @@ export function processCurrent(data) {
   mergeRoom(data, data.area);
   currentRoomId = normalizeRoomId(data.id);
   currentAreaName = data.areaName || data.area || '';
+  currentSeenGeneration = connectionGeneration;
+  clearCurrentRequest();
+  clearCurrentRetry();
   if (data.area && data.areaGeneration !== undefined) {
     const knownGeneration = areaGenerations.get(data.area);
     if (knownGeneration !== undefined && knownGeneration !== data.areaGeneration) {
-      removeAreaRooms(data.area);
       areaVersions.delete(data.area);
-      stagedSyncs.delete(data.area);
+      cancelAreaSync(data.area);
       forceFullSyncOnNextCurrent = true;
     }
     areaGenerations.set(data.area, data.areaGeneration);
@@ -370,7 +542,6 @@ export function processCurrent(data) {
   if (forceFullSyncOnNextCurrent && data.area) {
     forceFullSyncOnNextCurrent = false;
     setMapStatus('Updating map data...');
-    lastSyncRequestByArea.set(data.area, Date.now());
     requestAreaSync(data.area, true);
   } else if (data.area) {
     reconcileAreaVersion(data.area, data.areaVersion);
@@ -378,12 +549,16 @@ export function processCurrent(data) {
   if (!data.positioned) {
     setMapStatus('Map layout pending for ' + (data.name || 'current room'));
   }
-  save(data.area);
+  if (!activeSyncs.has(data.area)) save(data.area);
   return 1;
 }
 
 export function mergeServerAreaData(data) {
   if (!data || !data.area || !Array.isArray(data.rooms)) return 0;
+  if (Number(data.protocol) >= 2 || data.mapEpoch) {
+    protocol2Known = true;
+    if (!hasLiveCurrent()) requestCurrentState();
+  }
   active = true;
   if (data.replace || data.version === undefined) removeAreaRooms(data.area);
 
@@ -395,6 +570,7 @@ export function mergeServerAreaData(data) {
   // would mark rooms we never received as already-held.
   if (data.version !== undefined && !data.more) {
     areaVersions.set(data.area, data.version);
+    bumpAreaHydrationRevision(data.area);
   }
   if (data.areaGeneration !== undefined) areaGenerations.set(data.area, data.areaGeneration);
   if (data.mapEpoch) mapEpoch = data.mapEpoch;
@@ -403,7 +579,14 @@ export function mergeServerAreaData(data) {
 }
 
 export function mergeServerUpdate(data) {
-  if (data && data.protocol >= 2) return mergeServerUpdateV2(data);
+  if (data && Number(data.protocol) >= 2) {
+    protocol2Known = true;
+    return mergeServerUpdateV2(data);
+  }
+  // Once this connection has demonstrated protocol 2, a protocol-less Update
+  // is an unsolicited v1 stream. Mixing it into a staged v2 snapshot can wipe
+  // the last-good area or restart pagination from the wrong cursor.
+  if (protocol2Known) return 0;
   const merged = mergeServerAreaData(data);
   if (data && data.area && data.more) {
     // Continue THIS sync with the server's cursor. The old version-high-water
@@ -417,23 +600,86 @@ export function mergeServerUpdate(data) {
   return merged;
 }
 
+function nextSyncId() {
+  syncSequence++;
+  return connectionGeneration + '-' + Date.now().toString(36) + '-' + syncSequence.toString(36);
+}
+
+function scheduleAreaSyncRetry(sync, delayMs) {
+  if (!sync || activeSyncs.get(sync.area) !== sync || sync.retryTimer) return;
+  const requestGeneration = sync.connectionGeneration;
+  const retryToken = ++sync.retryToken;
+  sync.retryTimer = unrefTimer(setTimeout(() => {
+    if (retryToken !== sync.retryToken) return;
+    sync.retryTimer = null;
+    if (requestGeneration !== connectionGeneration || activeSyncs.get(sync.area) !== sync) return;
+    sync.requestOutstanding = false;
+    sendAreaSyncRequest(sync, sync.expectedCursor);
+  }, Math.max(50, Number(delayMs) || SYNC_RETRY_DEFAULT_MS)));
+}
+
+function sendAreaSyncRequest(sync, cursor) {
+  if (!sync || activeSyncs.get(sync.area) !== sync || sync.requestOutstanding) return false;
+  sync.expectedCursor = cursor === undefined ? 0 : cursor;
+  sync.outstandingCursor = cursorKey(sync.expectedCursor);
+  const sent = gmcp.send('Darkwind.MapData2.Sync', {
+    protocol: 2,
+    area: sync.area,
+    mapEpoch,
+    generation: sync.generation,
+    since: sync.since,
+    version: sync.since,
+    snapshotVersion: sync.snapshotVersion === null ? 0 : sync.snapshotVersion,
+    cursor: sync.expectedCursor,
+    fromCursor: sync.expectedCursor,
+    syncId: sync.syncId,
+  });
+  if (sent === false) {
+    scheduleAreaSyncRetry(sync, SYNC_RETRY_DEFAULT_MS);
+    return false;
+  }
+  sync.requestOutstanding = true;
+  clearSyncPageTimer(sync);
+  const pageRequestToken = sync.pageRequestToken;
+  sync.pageTimer = unrefTimer(setTimeout(() => {
+    if (pageRequestToken !== sync.pageRequestToken) return;
+    sync.pageTimer = null;
+    if (activeSyncs.get(sync.area) !== sync || !sync.requestOutstanding) return;
+    sync.requestOutstanding = false;
+    scheduleAreaSyncRetry(sync, SYNC_RETRY_DEFAULT_MS);
+  }, SYNC_PAGE_TIMEOUT_MS));
+  return true;
+}
+
 function mergeServerUpdateV2(data) {
   if (!data || !data.area || !Array.isArray(data.rooms)) return 0;
-  if (data.mapEpoch && mapEpoch && data.mapEpoch !== mapEpoch) resetForEpoch(data.mapEpoch);
-  if (data.mapEpoch) mapEpoch = data.mapEpoch;
-
-  let stage = stagedSyncs.get(data.area);
-  if (!stage || stage.snapshotVersion !== data.snapshotVersion
-    || stage.generation !== data.areaGeneration || stage.since !== data.since) {
-    stage = {
-      rooms: new Map(),
-      snapshotVersion: Number(data.snapshotVersion) || 0,
-      generation: Number(data.areaGeneration) || 0,
-      since: Number(data.since) || 0,
-      replace: !!data.replace,
-    };
-    stagedSyncs.set(data.area, stage);
+  if (data.mapEpoch && mapEpoch && data.mapEpoch !== mapEpoch) {
+    resetForEpoch(data.mapEpoch);
+    requestCurrentState();
+    return 0;
   }
+  if (data.mapEpoch) mapEpoch = data.mapEpoch;
+  if (!hasLiveCurrent()) requestCurrentState();
+  const stage = activeSyncs.get(data.area);
+  if (!stage || !stage.requestOutstanding) {
+    requestCurrentState();
+    return 0;
+  }
+  if (data.syncId !== undefined && String(data.syncId) !== stage.syncId) return 0;
+  if (data.fromCursor !== undefined
+    && cursorKey(data.fromCursor) !== stage.outstandingCursor) return 0;
+  if (data.since !== undefined && Number(data.since) !== stage.since) return 0;
+  const responseSnapshot = Number(data.snapshotVersion) || 0;
+  if (stage.snapshotVersion !== null && responseSnapshot !== stage.snapshotVersion) return 0;
+  const responseGeneration = Number(data.areaGeneration) || 0;
+  if (stage.generation && responseGeneration && responseGeneration !== stage.generation) return 0;
+  if (stage.snapshotVersion === null) stage.snapshotVersion = responseSnapshot;
+  if (!stage.generation && responseGeneration) stage.generation = responseGeneration;
+  clearSyncRetryTimer(stage);
+  clearSyncPageTimer(stage);
+  stage.requestOutstanding = false;
+  stage.replace = stage.replace || !!data.replace;
+
   let merged = 0;
   for (const raw of data.rooms) {
     const room = normalizeRoomPayload(raw, data.area);
@@ -443,80 +689,166 @@ function mergeServerUpdateV2(data) {
   }
 
   if (!data.complete) {
-    gmcp.send('Darkwind.MapData2.Sync', {
-      area: data.area,
-      mapEpoch,
-      generation: stage.generation,
-      since: stage.since,
-      snapshotVersion: stage.snapshotVersion,
-      cursor: data.cursor,
-    });
+    if (cursorKey(data.cursor) === stage.outstandingCursor) {
+      setMapStatus('Map sync paused: server cursor did not advance');
+      scheduleAreaSyncRetry(stage, SYNC_RETRY_DEFAULT_MS);
+      return merged;
+    }
+    sendAreaSyncRequest(stage, data.cursor);
     return merged;
   }
 
-  if (stage.replace) removeAreaRooms(data.area);
-  for (const room of stage.rooms.values()) rooms.set(room.id, room);
+  const liveCurrent = currentRoomId ? rooms.get(currentRoomId) : null;
+  if (stage.replace) {
+    for (const [id, room] of rooms) if (room.area === data.area) rooms.delete(id);
+  }
+  for (const room of stage.rooms.values()) {
+    if (liveCurrent && room.id === liveCurrent.id) {
+      rooms.set(room.id, Object.assign(room, {
+        liveExits: Object.assign({}, liveCurrent.liveExits || {}),
+        liveDoors: Object.assign({}, liveCurrent.liveDoors || {}),
+        hasLiveObservation: !!liveCurrent.hasLiveObservation,
+        observedAt: liveCurrent.observedAt || room.observedAt,
+      }));
+    } else {
+      rooms.set(room.id, room);
+    }
+  }
+  // A full snapshot should contain the current room. Keep the live Current
+  // observation anyway so a malformed or reordered response cannot strand the
+  // current pointer or remove live door/exit truth.
+  if (liveCurrent && liveCurrent.area === data.area && !rooms.has(liveCurrent.id)) {
+    rooms.set(liveCurrent.id, liveCurrent);
+  }
   areaVersions.set(data.area, stage.snapshotVersion);
   areaGenerations.set(data.area, stage.generation);
-  stagedSyncs.delete(data.area);
+  bumpAreaHydrationRevision(data.area);
+  cancelAreaSync(data.area);
+  active = rooms.size > 0;
   save(data.area);
 
   if (Number(data.latestVersion) > stage.snapshotVersion) requestAreaSync(data.area, false);
+  if (!hasLiveCurrent()) requestCurrentState();
   return merged;
 }
 
 export function requestAreaSync(area, forceFull) {
-  if (!area) return;
+  if (!area) return false;
+  if (activeSyncs.has(area)) return false;
   const since = forceFull ? 0 : (areaVersions.get(area) || 0);
-  gmcp.send('Darkwind.MapData2.Sync', {
+  const sync = {
     area,
-    mapEpoch,
     generation: areaGenerations.get(area) || 0,
     since,
-    version: since,
-    snapshotVersion: 0,
-    cursor: 0,
-  });
+    snapshotVersion: null,
+    expectedCursor: 0,
+    outstandingCursor: '0',
+    requestOutstanding: false,
+    replace: !!forceFull,
+    rooms: new Map(),
+    retryTimer: null,
+    retryToken: 0,
+    pageTimer: null,
+    pageRequestToken: 0,
+    syncId: nextSyncId(),
+    connectionGeneration,
+  };
+  activeSyncs.set(area, sync);
+  lastSyncRequestByArea.set(area, Date.now());
+  sendAreaSyncRequest(sync, 0);
+  return true;
 }
 
 export function processSyncError(data) {
-  if (!data || !data.area) return;
-  if (data.mapEpoch && data.mapEpoch !== mapEpoch) resetForEpoch(data.mapEpoch);
+  if (!data) return;
+  if (Number(data.protocol) >= 2 || data.mapEpoch) protocol2Known = true;
+  if (data.code === 'current_unavailable') {
+    clearCurrentRequest();
+    currentSeenGeneration = -1;
+    if (data.reason === 'grid_reflow') {
+      setMapStatus('Repositioning authoritative map...');
+      scheduleCurrentRetry(data.retryAfterMs);
+    } else {
+      clearCurrentRetry();
+      setMapStatus('Current map location unavailable; using learned map.');
+    }
+    return;
+  }
+  if (!data.area) {
+    requestCurrentState();
+    return;
+  }
+  let sync = activeSyncs.get(data.area);
+  if (data.syncId !== undefined && (!sync || String(data.syncId) !== sync.syncId)) return;
+  if (data.fromCursor !== undefined && sync
+    && cursorKey(data.fromCursor) !== sync.outstandingCursor) return;
+  if (sync) {
+    clearSyncRetryTimer(sync);
+    clearSyncPageTimer(sync);
+    sync.requestOutstanding = false;
+  }
+  if (data.mapEpoch && data.mapEpoch !== mapEpoch) {
+    resetForEpoch(data.mapEpoch);
+    sync = null;
+  }
   if (data.areaGeneration !== undefined) areaGenerations.set(data.area, data.areaGeneration);
-  stagedSyncs.delete(data.area);
   if (data.code === 'rate_limited') {
-    setTimeout(() => requestAreaSync(data.area, false), Number(data.retryAfterMs) || 1000);
+    if (sync) {
+      scheduleAreaSyncRetry(sync, data.retryAfterMs);
+    }
     return;
   }
   if (data.restart) {
+    cancelAreaSync(data.area);
     areaVersions.delete(data.area);
     requestAreaSync(data.area, true);
+    return;
+  }
+  if (sync) {
+    sync.requestOutstanding = false;
+    scheduleAreaSyncRetry(sync, data.retryAfterMs);
   }
 }
 
 export function clearMapDataForArea(area, reset = {}) {
   if (!area) return;
-  const current = currentRoomId ? rooms.get(currentRoomId) : null;
-  if (current && current.area === area) {
-    currentRoomId = null;
-    currentAreaName = '';
-  }
-  removeAreaRooms(area);
+  if (Number(reset.protocol) >= 2 || reset.mapEpoch) protocol2Known = true;
+  clearCurrentRequest();
+  clearCurrentRetry();
+  cancelAreaSync(area);
+  bumpAreaHydrationRevision(area);
+  cancelPendingMapSave(area);
   areaVersions.delete(area);
   areaGenerations.delete(area);
   if (reset.areaGeneration !== undefined) {
     areaGenerations.set(area, reset.areaGeneration);
   }
   if (reset.mapEpoch) mapEpoch = reset.mapEpoch;
-  stagedSyncs.delete(area);
   lastSyncRequestByArea.delete(area);
-  dirtyAreas.delete(area);
-  active = rooms.size > 0;
-  deleteMapArea(STORAGE_SOURCE, worldKey, area).catch((error) => {
-    storageError = error && error.message ? error.message : 'Map cache unavailable';
-  });
-  setMapStatus('Cleared ' + area + ', resyncing...');
+  deleteMapArea(STORAGE_SOURCE, worldKey, area).catch(() => {});
+  setMapStatus('Refreshing ' + area + '...');
   requestAreaSync(area, true);
+  if (!hasLiveCurrent()) requestCurrentState();
+}
+
+// Authoritative global resets invalidate baselines, not the last successfully
+// rendered snapshot. The following Current selects the area to replace; until
+// that replacement commits the player keeps a useful stale-but-labelled map.
+export function beginGlobalReset(reset = {}) {
+  if (Number(reset.protocol) >= 2 || reset.mapEpoch) protocol2Known = true;
+  cancelAllSyncs();
+  loadToken++;
+  clearCurrentRequest();
+  clearCurrentRetry();
+  cancelPendingMapSave();
+  currentSeenGeneration = -1;
+  areaVersions.clear();
+  areaGenerations.clear();
+  if (reset.mapEpoch) mapEpoch = reset.mapEpoch;
+  clearMapSource(STORAGE_SOURCE, worldKey).catch(() => {});
+  forceFullSyncOnNextCurrent = true;
+  setMapStatus('Refreshing authoritative map...');
+  if (!hasLiveCurrent()) requestCurrentState();
 }
 
 export function clearMapData() {
@@ -630,7 +962,15 @@ function debugSummary() {
     areaGenerations: Object.fromEntries(areaGenerations),
     mapEpoch,
     authority: 'authoritative',
-    stagedSyncs: Array.from(stagedSyncs.keys()),
+    activeSyncs: Array.from(activeSyncs.values()).map((sync) => ({
+      area: sync.area,
+      syncId: sync.syncId,
+      since: sync.since,
+      snapshotVersion: sync.snapshotVersion,
+      cursor: sync.expectedCursor,
+      stagedRooms: sync.rooms.size,
+      requestOutstanding: sync.requestOutstanding,
+    })),
     storageError,
   };
 }
@@ -650,10 +990,21 @@ function debugRooms(area) {
   return out;
 }
 
+function debugExportAll() {
+  return JSON.stringify({
+    schemaVersion: SCHEMA_VERSION,
+    worldKey,
+    exportedAt: new Date().toISOString(),
+    summary: debugSummary(),
+    rooms: Array.from(rooms.values()),
+  }, null, 2);
+}
+
 if (typeof window !== 'undefined') {
   window.mapDebug = {
     summary: debugSummary,
     rooms: debugRooms,
+    exportAll: debugExportAll,
     clearData: clearMapData,
     resync: (area) => requestAreaSync(area, true),
   };

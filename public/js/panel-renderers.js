@@ -20,16 +20,15 @@ import {
 // renderMap replaces innerHTML each render, so the listener lives on bodyEl
 // and resolves the clicked tile at event time. The browse pane (areaMap) is
 // read-only and gets no wiring.
-let speedwalkReady = false;
 function wireSpeedwalk(bodyEl) {
-  if (!speedwalkReady) {
-    initSpeedwalk({
-      send: sendRawCommand,
-      rerender: () => renderMap(bodyEl, getLiveMapSource()),
-      source: getLiveMapSource,
-    });
-    speedwalkReady = true;
-  }
+  // initSpeedwalk registers GMCP listeners only on its first call, but always
+  // refreshes its callbacks. Rebind the rerender target whenever a map pane is
+  // recreated so status/timeout updates never render into a detached body.
+  initSpeedwalk({
+    send: sendRawCommand,
+    rerender: () => renderMap(bodyEl, getLiveMapSource()),
+    source: getLiveMapSource,
+  });
   if (bodyEl.dataset && bodyEl.dataset.speedwalkWired) return;
   if (bodyEl.dataset) bodyEl.dataset.speedwalkWired = '1';
   bodyEl.addEventListener('click', (ev) => {

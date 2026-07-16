@@ -31,9 +31,15 @@ let mapStatusAt = 0;
 let saveTimer = null;
 let lastRoomId = null;
 let coordStatsByArea = new Map();
+let areaHydrationRevisions = new Map();
 let dirtyAreas = new Set();
 let storageError = '';
 let loadToken = 0;
+
+function bumpAreaHydrationRevision(area) {
+  if (!area) return;
+  areaHydrationRevisions.set(area, (areaHydrationRevisions.get(area) || 0) + 1);
+}
 
 function normalizeRoomId(id) {
   return id === null || id === undefined ? null : String(id);
@@ -248,7 +254,8 @@ export function configureWorld(identity = {}) {
   loadToken++;
   rooms.clear();
   coordStatsByArea.clear();
-  load();
+  areaHydrationRevisions.clear();
+  return load();
 }
 
 export function resetForConnection() {
@@ -337,14 +344,15 @@ export function flushPendingMapSave() {
     saveTimer = null;
   }
   const areas = Array.from(dirtyAreas);
+  const savingWorld = worldKey;
   dirtyAreas.clear();
   for (const area of areas) {
     const areaRooms = [];
     for (const room of rooms.values()) if (room.area === area) areaRooms.push(room);
-    saveMapArea(STORAGE_SOURCE, worldKey, area, {
+    saveMapArea(STORAGE_SOURCE, savingWorld, area, {
       schemaVersion: SCHEMA_VERSION,
       rooms: areaRooms,
-    }).then(() => pruneMapAreas(STORAGE_SOURCE, worldKey, 25000, area)).catch((error) => {
+    }).then(() => pruneMapAreas(STORAGE_SOURCE, savingWorld, 25000, area)).catch((error) => {
       storageError = error && error.message ? error.message : 'Map cache unavailable';
     });
   }
@@ -353,6 +361,7 @@ export function flushPendingMapSave() {
 export async function load() {
   const token = ++loadToken;
   const loadingWorld = worldKey;
+  const hydrationRevisions = new Map(areaHydrationRevisions);
   rooms.clear();
   currentRoomId = null;
   currentAreaName = '';
@@ -386,11 +395,14 @@ export async function load() {
     const records = await loadMapAreas(STORAGE_SOURCE, loadingWorld);
     if (token !== loadToken || loadingWorld !== worldKey) return;
     for (const record of records) {
+      if (token !== loadToken || loadingWorld !== worldKey) return;
       if (!record || record.schemaVersion !== SCHEMA_VERSION
         || typeof record.area !== 'string' || !record.area || !Array.isArray(record.rooms)) {
-        await deleteMapArea(STORAGE_SOURCE, worldKey, record && record.area);
+        await deleteMapArea(STORAGE_SOURCE, loadingWorld, record && record.area);
         continue;
       }
+      if ((areaHydrationRevisions.get(record.area) || 0)
+        !== (hydrationRevisions.get(record.area) || 0)) continue;
       for (const room of record.rooms) {
         if (!room || typeof room !== 'object' || room.id === undefined
           || typeof room.area !== 'string' || !room.exits || typeof room.exits !== 'object') continue;
@@ -413,13 +425,16 @@ export async function load() {
     active = rooms.size > 0;
     rebuildCoordStats();
   } catch (e) {
-    rooms.clear();
+    // Cache hydration is optional. Room.Info packets can arrive while the
+    // asynchronous read is in flight; an IndexedDB/localStorage failure must
+    // not erase that newer live map and make the pane disappear mid-session.
     storageError = e && e.message ? e.message : 'Map cache unavailable';
   }
 }
 
 export function clearMapDataForArea(area) {
   if (!area) return;
+  bumpAreaHydrationRevision(area);
   for (const [id, room] of rooms) {
     if (room.area === area) rooms.delete(id);
   }
@@ -431,12 +446,14 @@ export function clearMapDataForArea(area) {
 }
 
 export function clearMapData() {
+  loadToken++;
   rooms.clear();
   currentRoomId = null;
   currentAreaName = '';
   active = false;
   lastRoomId = null;
   coordStatsByArea.clear();
+  areaHydrationRevisions.clear();
   dirtyAreas.clear();
   clearMapSource(STORAGE_SOURCE, worldKey).catch(() => {});
 }

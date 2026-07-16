@@ -619,7 +619,8 @@ body.zork-only-mode #panels-menu {
   min-height: 0;
 }
 
-.gmcp-panel-hidden {
+.gmcp-panel-hidden,
+.mobile-panel-hidden {
   display: none !important;
 }
 

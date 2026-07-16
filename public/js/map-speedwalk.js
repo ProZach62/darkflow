@@ -21,7 +21,14 @@ export function initSpeedwalk(options) {
     gmcp.on('Darkwind.MapData2.Current', (data) => {
       if (activeSource() !== mapData) return;
       if (data && data.id !== undefined && data.id !== null) {
-        notifyRoomChange(String(data.id));
+        const roomId = String(data.id);
+        // GMCP listeners are ordered by registration. The map pane can now
+        // render (and wire speedwalk) before panelManager registers the model
+        // handlers, so defer verification until every synchronous handler has
+        // installed the new Current/live-exit state.
+        queueMicrotask(() => {
+          if (activeSource() === mapData) notifyRoomChange(roomId);
+        });
       }
     });
     gmcp.on('Room.Info', (data) => {
@@ -29,7 +36,12 @@ export function initSpeedwalk(options) {
       const id = data && (data.num !== undefined ? data.num
         : data.id !== undefined ? data.id
         : data.vnum);
-      if (id !== undefined && id !== null) notifyRoomChange(String(id));
+      if (id !== undefined && id !== null) {
+        const roomId = String(id);
+        queueMicrotask(() => {
+          if (activeSource() !== mapData) notifyRoomChange(roomId);
+        });
+      }
     });
     if (typeof document !== 'undefined') {
       document.addEventListener('dw:connectionstate', (event) => {

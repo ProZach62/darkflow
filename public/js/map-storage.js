@@ -2,9 +2,35 @@ const DB_NAME = 'darkflow-maps';
 const DB_VERSION = 1;
 const STORE = 'areas';
 const FALLBACK_PREFIX = 'darkflow-map-area:';
+const scopeOperations = new Map();
 
 function recordKey(source, world, area) {
   return [source, world, area].join('|');
+}
+
+function scopeKey(source, world) {
+  return [source, world].join('|');
+}
+
+function enqueueScopeOperation(source, world, operation) {
+  const key = scopeKey(source, world);
+  const previous = scopeOperations.get(key) || Promise.resolve();
+  const run = previous.catch(() => {}).then(operation);
+  scopeOperations.set(key, run);
+  const cleanup = () => {
+    if (scopeOperations.get(key) === run) scopeOperations.delete(key);
+  };
+  run.then(cleanup, cleanup);
+  return run;
+}
+
+async function waitForScope(source, world) {
+  const key = scopeKey(source, world);
+  while (scopeOperations.has(key)) {
+    const pending = scopeOperations.get(key);
+    await pending.catch(() => {});
+    if (scopeOperations.get(key) === pending) break;
+  }
 }
 
 function openDb() {
@@ -45,7 +71,12 @@ function saveFallback(record) {
   localStorage.setItem(FALLBACK_PREFIX + record.key, JSON.stringify(record));
 }
 
-export async function loadMapAreas(source, world) {
+function removeFallback(key) {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.removeItem(FALLBACK_PREFIX + key); } catch (e) {}
+}
+
+async function loadMapAreasNow(source, world) {
   const db = await openDb().catch(() => null);
   if (!db) return fallbackRecords(source, world);
   return new Promise((resolve) => {
@@ -69,36 +100,56 @@ export async function loadMapAreas(source, world) {
   });
 }
 
-export async function saveMapArea(source, world, area, value) {
-  const record = Object.assign({}, value, {
+export async function loadMapAreas(source, world) {
+  await waitForScope(source, world);
+  return loadMapAreasNow(source, world);
+}
+
+export function saveMapArea(source, world, area, value) {
+  // Snapshot before entering the queue. Callers retain and mutate their live
+  // room objects while IndexedDB operations are pending.
+  let snapshot = value;
+  try {
+    snapshot = typeof structuredClone === 'function'
+      ? structuredClone(value)
+      : JSON.parse(JSON.stringify(value));
+  } catch (e) {
+    snapshot = value;
+  }
+  const record = Object.assign({}, snapshot, {
     key: recordKey(source, world, area), source, world, area, updatedAt: Date.now(),
   });
-  const db = await openDb().catch(() => null);
-  if (!db) {
-    saveFallback(record);
-    return;
-  }
-  await new Promise((resolve, reject) => {
-    const request = db.transaction(STORE, 'readwrite').objectStore(STORE).put(record);
-    request.onsuccess = resolve;
-    request.onerror = () => {
-      try {
-        saveFallback(record);
+  return enqueueScopeOperation(source, world, async () => {
+    const db = await openDb().catch(() => null);
+    if (!db) {
+      saveFallback(record);
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const request = db.transaction(STORE, 'readwrite').objectStore(STORE).put(record);
+      request.onsuccess = () => {
+        removeFallback(record.key);
         resolve();
-      } catch (error) {
-        reject(error);
-      }
-    };
+      };
+      request.onerror = () => {
+        try {
+          saveFallback(record);
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      };
+    });
   });
 }
 
-export async function deleteMapArea(source, world, area) {
+async function deleteMapAreaNow(source, world, area) {
   const key = recordKey(source, world, area);
+  // Always delete the fallback copy too. Previously, an IndexedDB-backed
+  // delete left fallback data behind and loadMapAreas resurrected the map.
+  removeFallback(key);
   const db = await openDb().catch(() => null);
-  if (!db) {
-    if (typeof localStorage !== 'undefined') localStorage.removeItem(FALLBACK_PREFIX + key);
-    return;
-  }
+  if (!db) return;
   await new Promise((resolve) => {
     const request = db.transaction(STORE, 'readwrite').objectStore(STORE).delete(key);
     request.onsuccess = resolve;
@@ -106,21 +157,29 @@ export async function deleteMapArea(source, world, area) {
   });
 }
 
-export async function clearMapSource(source, world) {
-  const records = await loadMapAreas(source, world);
-  await Promise.all(records.map((entry) => deleteMapArea(source, world, entry.area)));
+export function deleteMapArea(source, world, area) {
+  return enqueueScopeOperation(source, world, () => deleteMapAreaNow(source, world, area));
 }
 
-export async function pruneMapAreas(source, world, maxRooms = 25000, keepArea = '') {
-  const records = await loadMapAreas(source, world);
-  records.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  let kept = 0;
-  for (const record of records) {
-    const count = Array.isArray(record.rooms) ? record.rooms.length : 0;
-    if (record.area === keepArea || kept + count <= maxRooms) {
-      kept += count;
-      continue;
+export function clearMapSource(source, world) {
+  return enqueueScopeOperation(source, world, async () => {
+    const records = await loadMapAreasNow(source, world);
+    await Promise.all(records.map((entry) => deleteMapAreaNow(source, world, entry.area)));
+  });
+}
+
+export function pruneMapAreas(source, world, maxRooms = 25000, keepArea = '') {
+  return enqueueScopeOperation(source, world, async () => {
+    const records = await loadMapAreasNow(source, world);
+    records.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    let kept = 0;
+    for (const record of records) {
+      const count = Array.isArray(record.rooms) ? record.rooms.length : 0;
+      if (record.area === keepArea || kept + count <= maxRooms) {
+        kept += count;
+        continue;
+      }
+      await deleteMapAreaNow(source, world, record.area);
     }
-    await deleteMapArea(source, world, record.area);
-  }
+  });
 }

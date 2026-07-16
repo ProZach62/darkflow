@@ -36,3 +36,27 @@ test('map storage ignores corrupt fallback records', async () => {
   const records = await storage.loadMapAreas('mapdata2', 'mud-a');
   assert.deepEqual(records.map((entry) => entry.area), ['Area B']);
 });
+
+test('map storage snapshots queued values before callers mutate them', async () => {
+  const value = { rooms: [{ id: 'original' }] };
+  const saving = storage.saveMapArea('mapdata2', 'snapshot-world', 'Area', value);
+  value.rooms[0].id = 'mutated';
+  await saving;
+
+  const records = await storage.loadMapAreas('mapdata2', 'snapshot-world');
+  assert.equal(records[0].rooms[0].id, 'original');
+});
+
+test('clear is ordered after old saves and before a new replacement', async () => {
+  const oldSave = storage.saveMapArea('mapdata2', 'ordered-world', 'Area', {
+    rooms: [{ id: 'old' }],
+  });
+  const clearing = storage.clearMapSource('mapdata2', 'ordered-world');
+  const newSave = storage.saveMapArea('mapdata2', 'ordered-world', 'Area', {
+    rooms: [{ id: 'new' }],
+  });
+  await Promise.all([oldSave, clearing, newSave]);
+
+  const records = await storage.loadMapAreas('mapdata2', 'ordered-world');
+  assert.deepEqual(records.flatMap((entry) => entry.rooms.map((room) => room.id)), ['new']);
+});
