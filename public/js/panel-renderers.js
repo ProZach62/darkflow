@@ -292,6 +292,29 @@ function inverseVitalBarColor(pct) {
   return '#3fb950';
 }
 
+export function heatVitalBarColor(pct) {
+  const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+  if (clamped <= 50) {
+    const t = clamped / 50;
+    return interpolateColor('#3fb950', '#d29922', t);
+  }
+  const t = (clamped - 50) / 50;
+  return interpolateColor('#d29922', '#f85149', t);
+}
+
+function interpolateColor(from, to, t) {
+  const a = parseHexColor(from);
+  const b = parseHexColor(to);
+  const mix = (idx) => Math.round(a[idx] + (b[idx] - a[idx]) * t);
+  return '#' + [mix(0), mix(1), mix(2)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function parseHexColor(value) {
+  return [1, 3, 5].map((idx) => parseInt(value.slice(idx, idx + 2), 16));
+}
+
 function divineGodLabel(god) {
   switch (String(god || '').toLowerCase()) {
     case 'mitra': return 'Mitra';
@@ -550,7 +573,10 @@ export function renderVitalBar(bodyEl, label, cur, max, opts = {}) {
   else row.removeAttribute('title');
   const fill = row.querySelector('.vitals-bar-fill');
   fill.style.width = pct + '%';
-  fill.style.backgroundColor = opts.colorMode === 'inverse'
+  if (opts.colorMode === 'heat') {
+    fill.style.backgroundColor = heatVitalBarColor(pct);
+  }
+  else fill.style.backgroundColor = opts.colorMode === 'inverse'
     ? inverseVitalBarColor(pct)
     : vitalBarColor(pct);
 }
@@ -679,7 +705,8 @@ function renderGuildVitalItems(bodyEl, items) {
           guild: true,
           kind: reverse ? 'meter_reverse' : '',
           title,
-          colorMode: reverse ? 'inverse' : '',
+          colorMode: item.id === 'street_samurai.heat' ? 'heat'
+            : (reverse ? 'inverse' : ''),
           reverse,
         });
         const meterRow = bodyEl.querySelector('.' + rowClass);

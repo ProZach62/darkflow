@@ -79,8 +79,15 @@ globalThis.window = {
   },
 };
 
-const { panelRenderers, guildVitalItemHtml } =
+const { panelRenderers, guildVitalItemHtml, heatVitalBarColor } =
   await import('../public/js/panel-renderers.js');
+
+test('Street Samurai Heat color ramps green to yellow to red', () => {
+  assert.equal(heatVitalBarColor(0), '#3fb950');
+  assert.equal(heatVitalBarColor(50), '#d29922');
+  assert.equal(heatVitalBarColor(100), '#f85149');
+  assert.match(heatVitalBarColor(75), /^#[0-9a-f]{6}$/);
+});
 
 test('boolean items render an LED with severity class', () => {
   const on = guildVitalItemHtml({
