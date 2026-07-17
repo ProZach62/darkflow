@@ -130,6 +130,49 @@ test('map recenter clears both pan axes without changing zoom', () => {
   }
 });
 
+test('docking a map queues a render for the new sidebar dimensions', () => {
+  const originalPanels = panelManager.panels;
+  const originalState = panelManager.state;
+  const originalQueuePanelRender = panelManager._queuePanelRender;
+  const originalApplyDockStateToDom = panelManager._applyDockStateToDom;
+  const originalInsertIntoDock = panelManager._insertIntoDock;
+  const originalSaveState = panelManager.saveState;
+  const originalDocument = globalThis.document;
+  const queued = [];
+
+  try {
+    const floatBtn = { title: '', innerHTML: '' };
+    const panelEl = { querySelector: () => floatBtn };
+    panelManager.state = {
+      docks: { left: true, right: true },
+      panels: { map: { dock: 'float', order: 0 } },
+    };
+    panelManager.panels = { map: { el: panelEl } };
+    panelManager._queuePanelRender = (id) => queued.push(id);
+    panelManager._applyDockStateToDom = () => {};
+    panelManager._insertIntoDock = () => {};
+    panelManager.saveState = () => {};
+    globalThis.document = {
+      getElementById: () => ({
+        querySelectorAll: () => [],
+      }),
+    };
+
+    panelManager.dockPanel('map', 'left', 0);
+
+    assert.deepEqual(queued, ['map']);
+    assert.equal(panelManager.state.panels.map.dock, 'left');
+  } finally {
+    panelManager.panels = originalPanels;
+    panelManager.state = originalState;
+    panelManager._queuePanelRender = originalQueuePanelRender;
+    panelManager._applyDockStateToDom = originalApplyDockStateToDom;
+    panelManager._insertIntoDock = originalInsertIntoDock;
+    panelManager.saveState = originalSaveState;
+    globalThis.document = originalDocument;
+  }
+});
+
 test('pane snap detection records left and right anchor relationships', () => {
   panelManager.panels = {
     terminal: {

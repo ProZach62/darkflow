@@ -1616,14 +1616,17 @@ body.zork-only-mode #panels-menu {
 }
 
 /* ── Map Panel ──────────────────────────────────────────────────────── */
-[data-panel-id="map"].gmcp-panel-widget {
+[data-panel-id="map"].gmcp-panel-widget,
+[data-panel-id="areaMap"].gmcp-panel-widget {
   display: flex;
   flex-direction: column;
 }
-[data-panel-id="map"] .panel-header {
+[data-panel-id="map"] .panel-header,
+[data-panel-id="areaMap"] .panel-header {
   flex-shrink: 0;
 }
-#panel-body-map {
+#panel-body-map,
+#panel-body-areaMap {
   padding: 0;
   overflow: hidden;
   background: #000000;
@@ -1633,6 +1636,8 @@ body.zork-only-mode #panels-menu {
   align-items: center;
   justify-content: center;
   position: relative;
+}
+#panel-body-map {
   touch-action: none;
   user-select: none;
 }
@@ -1647,6 +1652,13 @@ body.zork-only-mode #panels-menu {
 .map-grid-frame {
   position: relative;
   flex: 0 0 auto;
+}
+
+.map-grid-frame > .map-grid {
+  position: absolute;
+}
+
+#panel-body-map .map-grid-frame {
   cursor: grab;
 }
 

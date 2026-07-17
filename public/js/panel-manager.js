@@ -1824,6 +1824,7 @@ export const panelManager = {
     const fb = p.el.querySelector('.panel-float');
     if (fb) { fb.title = 'Float'; fb.innerHTML = '&#x25A1;'; }
 
+    if (id === 'map' || id === 'areaMap') this._queuePanelRender(id);
     this.saveState();
     if (id === TERMINAL_PANEL_ID) this._notifyOutputLayoutChanged();
   },

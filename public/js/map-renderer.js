@@ -257,16 +257,18 @@ export function renderMap(bodyEl, source = mapData) {
     lastCenterByArea.set(centerRoom.area, centerRoom.id);
   }
 
-  const bodyWidth = bodyEl.clientWidth || 320;
-  const bodyHeight = bodyEl.clientHeight || 240;
+  const bodyRect = bodyEl.getBoundingClientRect ? bodyEl.getBoundingClientRect() : null;
+  const bodyWidth = (bodyRect && bodyRect.width) || bodyEl.clientWidth || 320;
+  const bodyHeight = (bodyRect && bodyRect.height) || bodyEl.clientHeight || 240;
   const zoom = normalizeMapZoom(bodyEl.dataset && bodyEl.dataset.mapZoom);
 
   // How many tiles fit in the panel (each cell is a tile plus the gap to the next).
   // Keep a small offscreen buffer so drag-panning never exposes an empty edge
   // before the renderer recenters on another world coordinate.
   const pitch = (TILE_SIZE + TILE_GAP) * zoom;
-  const tilesX = Math.max(3, Math.floor((bodyWidth + TILE_GAP) / pitch));
-  const tilesY = Math.max(3, Math.floor((bodyHeight + TILE_GAP) / pitch));
+  const visualGap = TILE_GAP * zoom;
+  const tilesX = Math.max(3, Math.round((bodyWidth + visualGap) / pitch));
+  const tilesY = Math.max(3, Math.round((bodyHeight + visualGap) / pitch));
 
   // Ensure odd numbers so the viewport has a stable center, then add equally
   // sized overscan on every side.
@@ -305,16 +307,19 @@ export function renderMap(bodyEl, source = mapData) {
   }
 
   // Build grid HTML
-  const gridPixelWidth = (gridW * TILE_SIZE) + (Math.max(0, gridW - 1) * TILE_GAP);
-  const gridPixelHeight = (gridH * TILE_SIZE) + (Math.max(0, gridH - 1) * TILE_GAP);
-  let html = '<div class="map-grid-frame" style="width:' + (gridPixelWidth * zoom)
-    + 'px;height:' + (gridPixelHeight * zoom) + 'px;transform:translate('
+  const viewportPixelWidth = (viewportW * TILE_SIZE)
+    + (Math.max(0, viewportW - 1) * TILE_GAP);
+  const viewportPixelHeight = (viewportH * TILE_SIZE)
+    + (Math.max(0, viewportH - 1) * TILE_GAP);
+  const overscanOffset = MAP_OVERSCAN_CELLS * (TILE_SIZE + TILE_GAP) * zoom;
+  let html = '<div class="map-grid-frame" style="width:' + (viewportPixelWidth * zoom)
+    + 'px;height:' + (viewportPixelHeight * zoom) + 'px;transform:translate('
     + horizontalPan.offset + 'px,' + verticalPan.offset + 'px)"'
     + ' data-map-pitch="' + pitch + '"'
     + ' data-map-pan-offset-x="' + horizontalPan.offset + '"'
     + ' data-map-pan-offset-y="' + verticalPan.offset + '">'
-    + '<div class="map-grid" style="'
-    + 'gap:' + TILE_GAP + 'px;'
+    + '<div class="map-grid" style="left:-' + overscanOffset
+    + 'px;top:-' + overscanOffset + 'px;gap:' + TILE_GAP + 'px;'
     + 'grid-template-columns:repeat(' + gridW + ',' + TILE_SIZE + 'px);'
     + 'grid-template-rows:repeat(' + gridH + ',' + TILE_SIZE + 'px);'
     + 'transform:scale(' + zoom + ')">';
@@ -435,6 +440,7 @@ export function renderMap(bodyEl, source = mapData) {
     zoom,
     pan: { x: panX, y: panY },
     viewCenter: { x: cx, y: cy, z: cz },
+    viewport: { width: viewportW, height: viewportH },
     grid: { width: gridW, height: gridH },
   };
 }

@@ -130,6 +130,53 @@ test('zooming out renders more map cells within the same pane', () => {
   assert.ok(zoomedBody.innerHTML.includes('transform:scale(0.2)'));
 });
 
+test('map overscan does not enlarge the frame layout box', () => {
+  const area = 'Overscanland';
+  seedArea(area);
+  v2.processCurrent({
+    id: area + ':A', name: 'Town Square', area, env: 'city',
+    positioned: true, x: 0, y: 0, z: 0, areaVersion: 1,
+    exits: { north: area + ':B' },
+  });
+
+  const body = makeBody();
+  renderMap(body);
+  const debug = window.mapRenderDebug();
+
+  assert.deepEqual(debug.viewport, { width: 7, height: 5 });
+  assert.deepEqual(debug.grid, { width: 11, height: 9 });
+  assert.ok(body.innerHTML.includes('class="map-grid-frame" style="width:272px;height:192px'));
+  assert.ok(body.innerHTML.includes('class="map-grid" style="left:-80px;top:-80px'));
+});
+
+test('content-sized map frames stabilize instead of growing on resize rerenders', () => {
+  const area = 'Stableland';
+  seedArea(area);
+  v2.processCurrent({
+    id: area + ':A', name: 'Town Square', area, env: 'city',
+    positioned: true, x: 0, y: 0, z: 0, areaVersion: 1,
+    exits: { north: area + ':B' },
+  });
+
+  for (const zoom of [0.2, 1, 1.5]) {
+    const body = makeBody();
+    body.dataset.mapZoom = String(zoom);
+    const heights = [];
+
+    for (let render = 0; render < 6; render++) {
+      renderMap(body);
+      const match = body.innerHTML.match(/map-grid-frame" style="width:[^;]+;height:([\d.]+)px/);
+      assert.ok(match, 'frame height is rendered');
+      const frameHeight = Number(match[1]);
+      heights.push(frameHeight);
+      body.clientHeight = frameHeight;
+    }
+
+    assert.ok(Math.max(...heights) <= heights[0], zoom + ' zoom must not grow');
+    assert.equal(heights[5], heights[4], zoom + ' zoom must stabilize');
+  }
+});
+
 test('panning changes the rendered world center while retaining a partial-cell offset', () => {
   const area = 'Panland';
   seedArea(area);
