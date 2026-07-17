@@ -1,9 +1,12 @@
 import * as mapData from './map-data-v2.js';
+import { normalizeMapZoom } from './map-zoom.js';
+import { normalizeMapPan, splitMapPan } from './map-pan.js';
 
 const TILE_SIZE = 32;
 // Gap between room boxes. Rooms are drawn as separate boxes spaced apart, with
 // connector lines bridging the gap between connected neighbours.
 const TILE_GAP = 8;
+const MAP_OVERSCAN_CELLS = 2;
 const MAP_DIRECTIONS = new Set([
   'north', 'south', 'east', 'west',
   'northeast', 'northwest', 'southeast', 'southwest',
@@ -256,20 +259,30 @@ export function renderMap(bodyEl, source = mapData) {
 
   const bodyWidth = bodyEl.clientWidth || 320;
   const bodyHeight = bodyEl.clientHeight || 240;
+  const zoom = normalizeMapZoom(bodyEl.dataset && bodyEl.dataset.mapZoom);
 
-  // How many tiles fit in the panel (each cell is a tile plus the gap to the next)
-  const pitch = TILE_SIZE + TILE_GAP;
+  // How many tiles fit in the panel (each cell is a tile plus the gap to the next).
+  // Keep a small offscreen buffer so drag-panning never exposes an empty edge
+  // before the renderer recenters on another world coordinate.
+  const pitch = (TILE_SIZE + TILE_GAP) * zoom;
   const tilesX = Math.max(3, Math.floor((bodyWidth + TILE_GAP) / pitch));
   const tilesY = Math.max(3, Math.floor((bodyHeight + TILE_GAP) / pitch));
 
-  // Ensure odd numbers so player is centered
-  const gridW = tilesX % 2 === 0 ? tilesX - 1 : tilesX;
-  const gridH = tilesY % 2 === 0 ? tilesY - 1 : tilesY;
+  // Ensure odd numbers so the viewport has a stable center, then add equally
+  // sized overscan on every side.
+  const viewportW = tilesX % 2 === 0 ? tilesX - 1 : tilesX;
+  const viewportH = tilesY % 2 === 0 ? tilesY - 1 : tilesY;
+  const gridW = viewportW + (MAP_OVERSCAN_CELLS * 2);
+  const gridH = viewportH + (MAP_OVERSCAN_CELLS * 2);
   const radiusX = (gridW - 1) / 2;
   const radiusY = (gridH - 1) / 2;
 
-  const cx = centerRoom.x;
-  const cy = centerRoom.y;
+  const panX = normalizeMapPan(bodyEl.dataset && bodyEl.dataset.mapPanX);
+  const panY = normalizeMapPan(bodyEl.dataset && bodyEl.dataset.mapPanY);
+  const horizontalPan = splitMapPan(panX, pitch);
+  const verticalPan = splitMapPan(panY, pitch);
+  const cx = centerRoom.x - horizontalPan.cells;
+  const cy = centerRoom.y - verticalPan.cells;
   const cz = centerRoom.z;
 
   const areaRooms = source.getRoomsByArea(centerRoom.area);
@@ -292,10 +305,19 @@ export function renderMap(bodyEl, source = mapData) {
   }
 
   // Build grid HTML
-  let html = '<div class="map-grid" style="'
+  const gridPixelWidth = (gridW * TILE_SIZE) + (Math.max(0, gridW - 1) * TILE_GAP);
+  const gridPixelHeight = (gridH * TILE_SIZE) + (Math.max(0, gridH - 1) * TILE_GAP);
+  let html = '<div class="map-grid-frame" style="width:' + (gridPixelWidth * zoom)
+    + 'px;height:' + (gridPixelHeight * zoom) + 'px;transform:translate('
+    + horizontalPan.offset + 'px,' + verticalPan.offset + 'px)"'
+    + ' data-map-pitch="' + pitch + '"'
+    + ' data-map-pan-offset-x="' + horizontalPan.offset + '"'
+    + ' data-map-pan-offset-y="' + verticalPan.offset + '">'
+    + '<div class="map-grid" style="'
     + 'gap:' + TILE_GAP + 'px;'
     + 'grid-template-columns:repeat(' + gridW + ',' + TILE_SIZE + 'px);'
-    + 'grid-template-rows:repeat(' + gridH + ',' + TILE_SIZE + 'px)">';
+    + 'grid-template-rows:repeat(' + gridH + ',' + TILE_SIZE + 'px);'
+    + 'transform:scale(' + zoom + ')">';
 
   for (let ry = 0; ry < gridH; ry++) {
     for (let rx = 0; rx < gridW; rx++) {
@@ -329,7 +351,7 @@ export function renderMap(bodyEl, source = mapData) {
     }
   }
 
-  html += '</div>';
+  html += '</div></div>';
 
   // Z-level indicator overlay. Reflects the room the player is in when known,
   // otherwise the parked center room.
@@ -410,6 +432,9 @@ export function renderMap(bodyEl, source = mapData) {
     connectedRoomCount: distances.size,
     connectedVisibleCount,
     visibleBucketCount: countVisibleBuckets(buckets, visibleBounds),
+    zoom,
+    pan: { x: panX, y: panY },
+    viewCenter: { x: cx, y: cy, z: cz },
     grid: { width: gridW, height: gridH },
   };
 }

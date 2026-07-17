@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { gmcp } from './gmcp.js';
 import { renderMap } from './map-renderer.js';
+import { wireMapPan } from './map-pan.js';
 import { browseSource } from './map-data-v2.js';
 import { getLiveMapSource } from './live-map-source.js';
 import { sendCommandText, sendRawCommand } from './input.js';
@@ -1609,6 +1610,9 @@ export const panelRenderers = {
   map(bodyEl, _data) {
     renderMap(bodyEl, getLiveMapSource());
     wireSpeedwalk(bodyEl);
+    wireMapPan(bodyEl, {
+      rerender: () => renderMap(bodyEl, getLiveMapSource()),
+    });
   },
 
   areaMap(bodyEl, _data) {

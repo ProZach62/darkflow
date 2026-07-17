@@ -33,6 +33,7 @@ gmcp.send = () => {};
 function makeBody() {
   let html = '';
   return {
+    dataset: {},
     clientWidth: 320, clientHeight: 240,
     get innerHTML() { return html; },
     set innerHTML(v) { html = v; },
@@ -103,6 +104,51 @@ test('positioned current room renders the player tile normally', () => {
 
   const dbg = window.mapRenderDebug();
   assert.equal(dbg.pending, false);
+});
+
+test('zooming out renders more map cells within the same pane', () => {
+  const area = 'Zoomland';
+  seedArea(area);
+  v2.processCurrent({
+    id: area + ':A', name: 'Town Square', area, env: 'city',
+    positioned: true, x: 0, y: 0, z: 0, areaVersion: 1,
+    exits: { north: area + ':B' },
+  });
+
+  const normalBody = makeBody();
+  renderMap(normalBody);
+  const normalGrid = window.mapRenderDebug().grid;
+
+  const zoomedBody = makeBody();
+  zoomedBody.dataset.mapZoom = '0.2';
+  renderMap(zoomedBody);
+  const zoomed = window.mapRenderDebug();
+
+  assert.equal(zoomed.zoom, 0.2);
+  assert.ok(zoomed.grid.width > normalGrid.width);
+  assert.ok(zoomed.grid.height > normalGrid.height);
+  assert.ok(zoomedBody.innerHTML.includes('transform:scale(0.2)'));
+});
+
+test('panning changes the rendered world center while retaining a partial-cell offset', () => {
+  const area = 'Panland';
+  seedArea(area);
+  v2.processCurrent({
+    id: area + ':A', name: 'Town Square', area, env: 'city',
+    positioned: true, x: 10, y: 20, z: 0, areaVersion: 1,
+    exits: { north: area + ':B' },
+  });
+
+  const body = makeBody();
+  body.dataset.mapPanX = '1.25';
+  body.dataset.mapPanY = '-0.75';
+  renderMap(body);
+  const debug = window.mapRenderDebug();
+
+  assert.deepEqual(debug.pan, { x: 1.25, y: -0.75 });
+  assert.deepEqual(debug.viewCenter, { x: 9, y: 21, z: 0 });
+  assert.ok(body.innerHTML.includes('data-map-pan-offset-x="10"'));
+  assert.ok(body.innerHTML.includes('data-map-pan-offset-y="10"'));
 });
 
 test('exits to unmapped rooms render as stubs', () => {

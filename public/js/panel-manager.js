@@ -3,6 +3,12 @@ import { state as appState } from './state.js';
 import { PANEL_DEFS, PANEL_STORAGE_KEY } from './panel-defs.js';
 import { openPaneFontSettings } from './pane-settings.js';
 import { panelRenderers, updateCyberwareModalDetails, updateCyberwareModalImage } from './panel-renderers.js';
+import {
+  MAP_ZOOM_LEVELS,
+  formatMapZoom,
+  normalizeMapZoom,
+  stepMapZoom,
+} from './map-zoom.js';
 import { parseAnsiText } from './ansi.js';
 import {
   findFirstImageUrlFromFragments,
@@ -572,6 +578,7 @@ export const panelManager = {
         snapRight,
         snapBottom,
         font: source.font,
+        mapZoom: id === 'map' ? normalizeMapZoom(source.mapZoom) : undefined,
       };
     }
 
@@ -816,6 +823,7 @@ export const panelManager = {
         // every load, drifting panes across refreshes. Positions are
         // absolute floatX/floatY only.
         font: (s.font && typeof s.font === 'object') ? s.font : undefined,
+        mapZoom: id === 'map' ? normalizeMapZoom(s.mapZoom) : undefined,
       };
     }
     this.state.panels = panels;
@@ -1046,6 +1054,7 @@ export const panelManager = {
 
     const controls = document.createElement('span');
     controls.className = 'panel-controls';
+    const mapZoomControls = id === 'map' ? this._createMapZoomControls(id) : null;
 
     const settingsBtn = document.createElement('button');
     settingsBtn.className = 'panel-btn panel-settings';
@@ -1089,6 +1098,7 @@ export const panelManager = {
       this.closePanel(id);
     });
 
+    if (mapZoomControls) controls.appendChild(mapZoomControls.el);
     controls.appendChild(settingsBtn);
     controls.appendChild(collapseBtn);
     controls.appendChild(floatBtn);
@@ -1100,12 +1110,14 @@ export const panelManager = {
     body.className = 'panel-body' + (st.collapsed ? ' collapsed' : '');
     body.id = 'panel-body-' + id;
     body.innerHTML = '<div class="placeholder">Waiting for data...</div>';
+    if (id === 'map') body.dataset.mapZoom = String(normalizeMapZoom(st.mapZoom));
 
     el.appendChild(header);
     el.appendChild(body);
 
-    const panel = { el, headerEl: header, bodyEl: body, title: def.title };
+    const panel = { el, headerEl: header, bodyEl: body, title: def.title, mapZoomControls };
     this.panels[id] = panel;
+    if (mapZoomControls) this._syncMapZoomControls(id);
     this._placePanelElement(id, el, st);
     this._applyPaneFont(id);
 
@@ -1122,6 +1134,65 @@ export const panelManager = {
     }
     if (id === 'sky') this._syncSkyTimer();
     this._renderMobileSheet();
+  },
+
+  _createMapZoomControls(id) {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'map-zoom-controls';
+
+    const outBtn = document.createElement('button');
+    outBtn.type = 'button';
+    outBtn.className = 'panel-btn map-zoom-btn map-zoom-out';
+    outBtn.title = 'Zoom map out';
+    outBtn.setAttribute('aria-label', 'Zoom map out');
+    outBtn.innerHTML = '&#x2212;';
+    outBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.setMapZoom(id, stepMapZoom(this.state.panels[id].mapZoom, -1));
+    });
+
+    const level = document.createElement('span');
+    level.className = 'map-zoom-level';
+    level.setAttribute('aria-live', 'polite');
+
+    const inBtn = document.createElement('button');
+    inBtn.type = 'button';
+    inBtn.className = 'panel-btn map-zoom-btn map-zoom-in';
+    inBtn.title = 'Zoom map in';
+    inBtn.setAttribute('aria-label', 'Zoom map in');
+    inBtn.textContent = '+';
+    inBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.setMapZoom(id, stepMapZoom(this.state.panels[id].mapZoom, 1));
+    });
+
+    wrapper.appendChild(outBtn);
+    wrapper.appendChild(level);
+    wrapper.appendChild(inBtn);
+    return { el: wrapper, outBtn, inBtn, level };
+  },
+
+  _syncMapZoomControls(id) {
+    const panel = this.panels[id];
+    const controls = panel && panel.mapZoomControls;
+    if (!controls) return;
+    const zoom = normalizeMapZoom(this.state.panels[id] && this.state.panels[id].mapZoom);
+    controls.level.textContent = formatMapZoom(zoom);
+    controls.outBtn.disabled = zoom === MAP_ZOOM_LEVELS[0];
+    controls.inBtn.disabled = zoom === MAP_ZOOM_LEVELS[MAP_ZOOM_LEVELS.length - 1];
+  },
+
+  setMapZoom(id, value) {
+    if (id !== 'map' || !this.state.panels[id]) return;
+    const zoom = normalizeMapZoom(value);
+    this.state.panels[id].mapZoom = zoom;
+    const panel = this.panels[id];
+    if (panel && panel.bodyEl && panel.bodyEl.dataset) {
+      panel.bodyEl.dataset.mapZoom = String(zoom);
+    }
+    this._syncMapZoomControls(id);
+    this._renderPanel(id);
+    this.saveState();
   },
 
   // --- Per-pane font -------------------------------------------------------

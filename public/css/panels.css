@@ -307,6 +307,36 @@ body.zork-only-mode #panels-menu {
 }
 .panel-btn:hover { color: var(--df-text); }
 
+.map-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-right: 2px;
+}
+
+.map-zoom-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.map-zoom-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.map-zoom-level {
+  min-width: 30px;
+  color: var(--df-muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 .panel-body {
   padding: 6px 8px;
   font-size: calc(12px * var(--pane-font-scale, 1));
@@ -1597,12 +1627,27 @@ body.zork-only-mode #panels-menu {
   align-items: center;
   justify-content: center;
   position: relative;
+  touch-action: none;
+  user-select: none;
 }
 
 .map-grid {
   display: grid;
   background: #000;
   --map-connector-color: rgba(180, 195, 210, 0.8);
+  transform-origin: top left;
+}
+
+.map-grid-frame {
+  position: relative;
+  flex: 0 0 auto;
+  cursor: grab;
+}
+
+#panel-body-map.map-panning,
+#panel-body-map.map-panning .map-grid-frame,
+#panel-body-map.map-panning .map-tile {
+  cursor: grabbing;
 }
 
 .map-empty {
@@ -1730,6 +1775,7 @@ body.zork-only-mode #panels-menu {
 .map-tile-room {
   border: 1px solid rgba(255, 255, 255, 0.13);
   box-sizing: border-box;
+  cursor: pointer;
 }
 /* Connector: a line bridging the gap to an adjacent connected room. Spans the
    full TILE_GAP (8px) so it visually touches both room boxes. */

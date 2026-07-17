@@ -63,6 +63,44 @@ test('initial floating layout preserves map and room image placement metadata', 
   assert.equal(panels.roomImage.floatY, panels.map.floatY + panels.map.floatH + 8);
 });
 
+test('map zoom updates pane state, controls, and render scale', () => {
+  const originalPanels = panelManager.panels;
+  const originalState = panelManager.state;
+  const originalRenderPanel = panelManager._renderPanel;
+  const originalSaveState = panelManager.saveState;
+  let renders = 0;
+  let saves = 0;
+
+  try {
+    const controls = {
+      level: { textContent: '' },
+      outBtn: { disabled: false },
+      inBtn: { disabled: false },
+    };
+    panelManager.state = { docks: {}, panels: { map: { mapZoom: 1 } } };
+    panelManager.panels = {
+      map: { bodyEl: { dataset: {} }, mapZoomControls: controls },
+    };
+    panelManager._renderPanel = () => { renders++; };
+    panelManager.saveState = () => { saves++; };
+
+    panelManager.setMapZoom('map', 0.7);
+
+    assert.equal(panelManager.state.panels.map.mapZoom, 0.7);
+    assert.equal(panelManager.panels.map.bodyEl.dataset.mapZoom, '0.7');
+    assert.equal(controls.level.textContent, '70%');
+    assert.equal(controls.outBtn.disabled, false);
+    assert.equal(controls.inBtn.disabled, false);
+    assert.equal(renders, 1);
+    assert.equal(saves, 1);
+  } finally {
+    panelManager.panels = originalPanels;
+    panelManager.state = originalState;
+    panelManager._renderPanel = originalRenderPanel;
+    panelManager.saveState = originalSaveState;
+  }
+});
+
 test('pane snap detection records left and right anchor relationships', () => {
   panelManager.panels = {
     terminal: {
