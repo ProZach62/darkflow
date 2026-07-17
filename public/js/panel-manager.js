@@ -1166,10 +1166,22 @@ export const panelManager = {
       this.setMapZoom(id, stepMapZoom(this.state.panels[id].mapZoom, 1));
     });
 
+    const recenterBtn = document.createElement('button');
+    recenterBtn.type = 'button';
+    recenterBtn.className = 'panel-btn map-recenter-btn';
+    recenterBtn.title = 'Re-center map on current room';
+    recenterBtn.setAttribute('aria-label', 'Re-center map on current room');
+    recenterBtn.innerHTML = '&#x25CE;';
+    recenterBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.recenterMap(id);
+    });
+
     wrapper.appendChild(outBtn);
     wrapper.appendChild(level);
     wrapper.appendChild(inBtn);
-    return { el: wrapper, outBtn, inBtn, level };
+    wrapper.appendChild(recenterBtn);
+    return { el: wrapper, outBtn, inBtn, level, recenterBtn };
   },
 
   _syncMapZoomControls(id) {
@@ -1193,6 +1205,15 @@ export const panelManager = {
     this._syncMapZoomControls(id);
     this._renderPanel(id);
     this.saveState();
+  },
+
+  recenterMap(id) {
+    if (id !== 'map') return;
+    const panel = this.panels[id];
+    if (!panel || !panel.bodyEl || !panel.bodyEl.dataset) return;
+    panel.bodyEl.dataset.mapPanX = '0';
+    panel.bodyEl.dataset.mapPanY = '0';
+    this._renderPanel(id);
   },
 
   // --- Per-pane font -------------------------------------------------------

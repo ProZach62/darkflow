@@ -101,6 +101,35 @@ test('map zoom updates pane state, controls, and render scale', () => {
   }
 });
 
+test('map recenter clears both pan axes without changing zoom', () => {
+  const originalPanels = panelManager.panels;
+  const originalRenderPanel = panelManager._renderPanel;
+  let renders = 0;
+
+  try {
+    panelManager.panels = {
+      map: {
+        bodyEl: {
+          dataset: { mapZoom: '0.5', mapPanX: '6', mapPanY: '-3.5' },
+        },
+      },
+    };
+    panelManager._renderPanel = () => { renders++; };
+
+    panelManager.recenterMap('map');
+
+    assert.deepEqual(panelManager.panels.map.bodyEl.dataset, {
+      mapZoom: '0.5',
+      mapPanX: '0',
+      mapPanY: '0',
+    });
+    assert.equal(renders, 1);
+  } finally {
+    panelManager.panels = originalPanels;
+    panelManager._renderPanel = originalRenderPanel;
+  }
+});
+
 test('pane snap detection records left and right anchor relationships', () => {
   panelManager.panels = {
     terminal: {

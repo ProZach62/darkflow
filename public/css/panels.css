@@ -314,7 +314,8 @@ body.zork-only-mode #panels-menu {
   margin-right: 2px;
 }
 
-.map-zoom-btn {
+.map-zoom-btn,
+.map-recenter-btn {
   width: 18px;
   height: 18px;
   padding: 0;
@@ -322,6 +323,11 @@ body.zork-only-mode #panels-menu {
   font-weight: 700;
   line-height: 18px;
   text-align: center;
+}
+
+.map-recenter-btn {
+  margin-left: 2px;
+  font-size: 13px;
 }
 
 .map-zoom-btn:disabled {
