@@ -122,7 +122,8 @@ test('exits to unmapped rooms render as stubs', () => {
 
   const body = makeBody();
   renderMap(body);
-  assert.ok(body.innerHTML.includes('map-stub-e"'), 'unmapped east exit -> east stub');
+  assert.ok(body.innerHTML.includes('map-stub-e map-stub-unvisited"'),
+    'unmapped east exit -> visible unvisited east stub');
 });
 
 test('exits to a different zone render as stubs, not connectors', () => {
@@ -215,7 +216,8 @@ test('diagonal exit to an unmapped room renders a diagonal stub', () => {
     { id: area + ':A', name: 'Fork', area, env: 'forest',
       positioned: true, x: 0, y: 0, z: 0, exits: { northeast: area + ':unknown' } },
   ]);
-  assert.ok(out.includes('map-stub-ne"'), 'unmapped diagonal -> corner stub');
+  assert.ok(out.includes('map-stub-ne map-stub-unvisited"'),
+    'unmapped diagonal -> visible unvisited corner stub');
   assert.ok(!out.includes('map-conn-ne"'), 'and no connector');
 });
 

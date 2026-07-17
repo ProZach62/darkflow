@@ -88,9 +88,9 @@ function buildExitSpans(room, cz, source) {
     // area boundary ("this leads somewhere else"), rendered distinctly from an
     // unexplored stub ("more to explore"); the tooltip names the zone.
     if (!dest || dest.x === null || dest.area !== room.area) {
-      const areaMod = dest && dest.area && dest.area !== room.area
-        ? ' map-stub-area' : '';
-      spans += '<span class="map-stub map-stub-' + abbr + areaMod + '"></span>';
+      const stubMod = dest && dest.area && dest.area !== room.area
+        ? ' map-stub-area' : ' map-stub-unvisited';
+      spans += '<span class="map-stub map-stub-' + abbr + stubMod + '"></span>';
       continue;
     }
     if (dest.z !== cz) continue;

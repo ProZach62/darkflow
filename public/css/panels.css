@@ -1602,6 +1602,7 @@ body.zork-only-mode #panels-menu {
 .map-grid {
   display: grid;
   background: #000;
+  --map-connector-color: rgba(180, 195, 210, 0.8);
 }
 
 .map-empty {
@@ -1735,7 +1736,7 @@ body.zork-only-mode #panels-menu {
 .map-conn {
   position: absolute;
   z-index: 2;
-  background: rgba(180, 195, 210, 0.8);
+  background: var(--map-connector-color);
   pointer-events: none;
 }
 .map-conn-n { bottom: 100%; left: 50%; width: 3px; height: 8px; transform: translateX(-50%); }
@@ -1808,8 +1809,8 @@ body.zork-only-mode #panels-menu {
   border-top: 4px solid rgba(235, 140, 120, 0.95);
   transform-origin: 50% 0%; transform: rotate(45deg) translateY(6px); }
 
-/* Exit stub: a shorter, dimmer tick toward an exit whose destination is not
-   mapped yet -- "there is more to explore this way". Sits in the gap. */
+/* Exit stub: a shorter tick toward an exit whose destination is not mapped
+   yet -- "there is more to explore this way". Sits in the gap. */
 .map-stub {
   position: absolute;
   z-index: 2;
@@ -1831,6 +1832,32 @@ body.zork-only-mode #panels-menu {
                transform-origin: 50% 0%;   transform: rotate(-45deg); }
 .map-stub-sw { top: 100%;    left: -1px;             width: 2px; height: 7px;
                transform-origin: 50% 0%;   transform: rotate(45deg); }
+
+/* Unvisited exits match normal connector color and thickness. The dashed
+   fill is the only visual distinction from a connection to a visited room. */
+.map-stub-unvisited {
+  background: repeating-linear-gradient(to bottom,
+    var(--map-connector-color) 0, var(--map-connector-color) 2px,
+    transparent 2px, transparent 4px);
+}
+.map-stub-e.map-stub-unvisited,
+.map-stub-w.map-stub-unvisited {
+  background: repeating-linear-gradient(to right,
+    var(--map-connector-color) 0, var(--map-connector-color) 2px,
+    transparent 2px, transparent 4px);
+}
+.map-stub-n.map-stub-unvisited,
+.map-stub-s.map-stub-unvisited { width: 3px; height: 6px; }
+.map-stub-e.map-stub-unvisited,
+.map-stub-w.map-stub-unvisited { width: 6px; height: 3px; }
+.map-stub-ne.map-stub-unvisited,
+.map-stub-nw.map-stub-unvisited,
+.map-stub-se.map-stub-unvisited,
+.map-stub-sw.map-stub-unvisited { width: 3px; height: 9px; }
+.map-stub-ne.map-stub-unvisited,
+.map-stub-se.map-stub-unvisited { left: calc(100% - 1.5px); }
+.map-stub-nw.map-stub-unvisited,
+.map-stub-sw.map-stub-unvisited { left: -1.5px; }
 
 /* Area-boundary stub: the destination is KNOWN and lives in another zone --
    amber and slightly longer than an unexplored stub, so "leads somewhere
