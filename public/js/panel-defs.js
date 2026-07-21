@@ -46,6 +46,11 @@ export const PANEL_DEFS = {
                defaultFloatW: 420, defaultFloatH: 500,
                defaultLayer: 2,
                defaultVisible: false },
+  roomPlaylist: { title: 'Jukebox', defaultDock: 'float', defaultOrder: 5,
+               defaultFloatW: 440, defaultFloatH: 560,
+               defaultLayer: 2,
+               defaultSnapLeft: true, defaultSnapBottom: true,
+               defaultVisible: false },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';

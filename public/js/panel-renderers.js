@@ -40,6 +40,7 @@ function wireSpeedwalk(bodyEl) {
   });
 }
 import { fishingManager } from './fishing-manager.js';
+import { roomPlaylistManager } from './room-playlist-manager.js';
 
 let roomImageModal = null;
 let roomImageModalKeyHandler = null;
@@ -745,6 +746,10 @@ function renderGuildVitalItems(bodyEl, items) {
 }
 
 export const panelRenderers = {
+  roomPlaylist(bodyEl, data) {
+    roomPlaylistManager.attachPanel(bodyEl, data);
+  },
+
   fishing(bodyEl) {
     fishingManager.render(bodyEl);
   },

@@ -16,6 +16,7 @@ import { linuxRescueManager } from './linux-rescue-manager.js';
 import { lagMonitor } from './lag-monitor.js';
 import { soundPanel } from './sound-panel.js';
 import { fishingManager } from './fishing-manager.js';
+import { roomPlaylistManager } from './room-playlist-manager.js';
 import { soundManager } from './sound-manager.js';
 import { settingsManager } from './settings-manager.js';
 import { flushPendingMapSave } from './map-data-v2.js';
@@ -483,6 +484,7 @@ linuxRescueManager.init();
 lagMonitor.init();
 soundPanel.init();
 fishingManager.init();
+roomPlaylistManager.init();
 
 window.lagDebug = {
   snapshot: () => lagMonitor.getSnapshot(),
