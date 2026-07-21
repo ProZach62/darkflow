@@ -24,7 +24,12 @@ All three messages flow client -> server only; the server does not echo a struct
 
 Direction: `Client -> Server`
 
-Tells the server which UI surfaces the client currently cares about so the server can avoid pushing data the client will not render. Subscriptions are stored on the player attribute and used to gate downstream pushes (vitals, status, room, map, room image, avatar, group, inventory, enemy, chat, omens, quests, achievements, and the announcement bell).
+Tells the server which UI surfaces the client currently cares about so the
+server can avoid pushing data the client will not render. Subscriptions are
+stored on the player attribute and used to gate downstream pushes including
+vitals, guild vitals, XP Monitor, status, room, map, room image, avatar, group,
+inventory, cyberware, enemy, chat, omens, sky, quests, achievements, and the
+announcement bell.
 
 ### Schema
 
@@ -35,9 +40,12 @@ Tells the server which UI surfaces the client currently cares about so the serve
   "panels": {
     "avatar": true,
     "vitals": true,
+    "guildVitals": true,
     "status": true,
+    "buffs": true,
     "worth": false,
     "stats": false,
+    "xpmon": false,
     "room": true,
     "group": false,
     "inventory": true,
@@ -46,8 +54,10 @@ Tells the server which UI surfaces the client currently cares about so the serve
     "map": true,
     "roomImage": true,
     "omens": false,
+    "sky": true,
     "quests": false,
-    "achievements": false
+    "achievements": false,
+    "cyberware": false
   },
   "features": {
     "announcementsBadge": true,
@@ -56,7 +66,8 @@ Tells the server which UI surfaces the client currently cares about so the serve
     "windows": true,
     "ide": true,
     "completion": true,
-    "giphy": true
+    "giphy": true,
+    "broadcast": true
   }
 }
 ```
@@ -79,7 +90,9 @@ The current server recognizes the following panel keys. Unknown keys are stored 
 | `avatar` | Drives `Darkwind.Char.Avatar` and is part of the media-subscription gate |
 | `vitals` | Driven by `Char.Vitals`. The client always sends `vitals: true` |
 | `guildVitals` | Driven by `Darkwind.GuildVitals` |
+| `xpmon` | Driven by `Darkwind.XPMon` |
 | `status` | Driven by `Char.Status`. The client forces `status: true` whenever the buffs panel is open |
+| `buffs` | Client layout key; opening it forces the server-recognized `status` subscription for `Char.Defences.*` hydration |
 | `worth` | Driven by `Char.Worth` |
 | `stats` | Driven by `Char.Stats` and `Char.RealStats` |
 | `room` | Drives `Room.Info` push gate (alongside `map` and `roomImage`) |
@@ -93,6 +106,11 @@ The current server recognizes the following panel keys. Unknown keys are stored 
 | `sky` | Drives `Darkwind.Sky`; the client animates between occasional syncs |
 | `quests` | Drives `Darkwind.Quests.*` |
 | `achievements` | Drives `Darkwind.Achievements.*` |
+| `cyberware` | Drives `Darkwind.Cyberware.List` and its detail/image flow |
+
+The client also sends visibility keys for local or self-opening panels such as
+`areaMap`, `connection`, `ide`, `fishing`, and `roomPlaylist`. The current
+server stores unknown keys but does not use them as push gates.
 
 ### `Char.Vitals`
 
@@ -110,6 +128,10 @@ progress fields from `Char.Vitals`.
 | `encumberance_label` | Human-readable encumbrance state |
 
 ### `Darkwind.GuildVitals`
+
+The complete package specification is in
+[`gmcp-darkwind-guild-vitals.md`](gmcp-darkwind-guild-vitals.md). The summary
+below explains its relationship to panel subscriptions.
 
 The Guild Vitals panel consumes typed guild indicators from
 `Darkwind.GuildVitals`. The client advertises `Darkwind.GuildVitals 2` in
@@ -161,12 +183,19 @@ reverse meter). This is what version-1 clients receive today, unchanged.
 | `announcementsBadge` | Subscribe to unread-count badge updates (`Darkwind.Announcements.State`/`Update`) |
 | `announcementsList` | Request a `Darkwind.Announcements.List` snapshot. The web client sets this to `true` only when the user opens the announcements modal, and clears the flag locally after sending so subsequent subscription messages will not re-request the snapshot |
 | `enemyAutoOpen` | Allow the server to auto-open an enemy panel when combat begins |
-| `windows` | Allow `Darkwind.Window.*` flow |
-| `ide` | Allow `Darkwind.IDE.*` flow |
-| `completion` | Allow `Darkwind.Completion.*` flow |
-| `giphy` | Allow `Darkwind.Giphy.Show` overlays |
+| `windows` | Client capability hint for `Darkwind.Window.*` |
+| `ide` | Client capability hint for `Darkwind.IDE.*` |
+| `completion` | Client capability hint for `Darkwind.Completion.*` |
+| `giphy` | Client capability hint for `Darkwind.Giphy.Show` overlays |
+| `broadcast` | Client capability hint for `Darkwind.Broadcast.Show` overlays |
 
-The `windows`, `ide`, `completion`, and `giphy` feature flags are advertised as `true` by the current client by default; they exist so future client versions can opt out of these surfaces without dropping the support declaration.
+The `windows`, `ide`, `completion`, `giphy`, and `broadcast` feature flags are
+advertised as `true` by the current client by default; they exist so future
+client versions can opt out of these surfaces without dropping the support
+declaration. The current Darkwind server stores these hints but only uses
+`announcementsBadge`, `announcementsList`, and `enemyAutoOpen` as active
+subscription gates; package support and feature-specific settings govern the
+other flows today.
 
 ### Client Behavior
 

@@ -31,10 +31,13 @@ Darkflow, the web-based WebSocket client for the Darkwind LDMud game server (pla
 
 ## GMCP Extensions
 
-See `docs/` for full protocol specifications:
-- `Darkwind.Window 1` -- Server-driven modals, panels, forms
-- `Darkwind.IDE 1` -- In-browser LPC code editor for builders
-- `Darkwind.MapData2 1` -- Server-authoritative mapping (server pushes Current/Area/Update/BrowseArea; client sends Sync/Browse). The V1 `Darkwind.MapData` package is retired.
+See [`docs/gmcp-darkwind-index.md`](docs/gmcp-darkwind-index.md) for the full,
+handshake-aligned protocol catalog. Major extensions include:
+- `Darkwind.Window 1` -- Server-driven modals, panels, and forms
+- `Darkwind.IDE 2` -- In-browser LPC editor with single-frame and chunked transfers
+- `Darkwind.MapData2 2` -- Server-authoritative mapping, browse, reset, and error flow
+
+The V1 `Darkwind.MapData` package is retired and documented only for migration.
 
 ## Server-Side Companion (darkwind-nextgen)
 

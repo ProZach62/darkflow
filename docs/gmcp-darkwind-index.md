@@ -1,77 +1,80 @@
-# Darkwind GMCP Package Index
+# Darkflow GMCP Package Index
 
-This index lists every custom `Darkwind.*` package currently advertised by the Darkflow client handshake in [`public/js/gmcp.js`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/public/js/gmcp.js). Darkflow identifies itself as the `Core.Hello.client`; the custom protocol package names remain `Darkwind.*`.
+This is the canonical documentation index for GMCP support in Darkflow. The
+support strings below match the current `Core.Supports.Set` payload in
+[`public/js/gmcp.js`](../public/js/gmcp.js). Package-specific pages describe
+the messages Darkflow sends, receives, normalizes, and renders.
 
-## Advertised Packages
+## Core Protocol
 
-| Package | Support String | Messages | Direction | Source Doc | Implementation Note |
-|---------|----------------|----------|-----------|------------|---------------------|
-| `Darkwind.Char.Avatar` | `Darkwind.Char.Avatar 1` | (root) | Server -> Client | [`docs/gmcp-darkwind-char-avatar.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-char-avatar.md) | One-shot URL push; refresh requested via `Darkwind.Client.RefreshMedia`. |
-| `Darkwind.Room.Image` | `Darkwind.Room.Image 1` | (root) | Server -> Client | [`docs/gmcp-darkwind-room-image.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-room-image.md) | Client preloads via probe `Image` element; cleared on room change. |
-| `Darkwind.Divine` | `Darkwind.Divine 1` | (root) | Server -> Client | [`docs/gmcp-darkwind-divine.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-divine.md) | Replaces full omens/patron snapshot each push. |
-| `Darkwind.Sky` | `Darkwind.Sky 1` | (root) | Server -> Client | [`docs/gmcp-darkwind-sky.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-sky.md) | Periodic time/lunar sync; client animates locally between pushes. |
-| `Darkwind.Client` | `Darkwind.Client.Subscriptions 1`, `Darkwind.Client.NAWS 1` | `Subscriptions`, `NAWS`, `RefreshMedia` | Client -> Server | [`docs/gmcp-darkwind-client.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-client.md) | `Subscriptions` and `NAWS` are advertised; `RefreshMedia` is gated by media packages. |
-| `Darkwind.Window` | `Darkwind.Window 1` | `Open`, `Update`, `Close`, `Submit`, `Action`, `Closed` | Mixed | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) | `Update` supports only the renderer operations implemented in the current client. |
-| `Darkwind.Snoop` | `Darkwind.Snoop 1` | `Open`, `Append`, `Status`, `Close`, `Command`, `Stop`, `Closed` | Mixed | [`docs/gmcp-darkwind-snoop.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-snoop.md) | Builder-only graphical snoop modal with target/self command execution. |
-| `Darkwind.IDE` | `Darkwind.IDE 2` | `Open`, chunked open/save, `SaveResult`, `Close` | Mixed | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) | Large files use chunked transfers; `Close` includes `{ "path": ... }`. |
-| `Darkwind.MapData` | `Darkwind.MapData 1` | `RoomUpdate`, `Area`, `Update`, `Sync`, `RoomCoords` | Mixed | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) | `Update` and `Sync` are live client behavior; `RoomCoords` is implemented as an active correction path, not reserved. |
-| `Darkwind.MapData2` | `Darkwind.MapData2 1` | `Current`, `Area`, `Update`, `Sync` | Mixed | [`docs/gmcp-darkwind-mapdata-v2.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata-v2.md) | Server-authoritative graph; coordinates are display metadata and V1 remains fallback. |
-| `Darkwind.Completion` | `Darkwind.Completion 1` | `Request`, `Result` | Mixed | [`docs/gmcp-darkwind-completion.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-completion.md) | Ambiguous results are shown to the user only on repeated Tab for the same line and cursor state. |
-| `Darkwind.Quests` | `Darkwind.Quests 1` | `List`, `Active`, `Update`, `Complete` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) | Payload shapes are documented from current client usage because no prior in-repo spec existed. |
-| `Darkwind.Achievements` | `Darkwind.Achievements 1` | `List`, `Update` | Server -> Client | [`docs/gmcp-darkwind-achievements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-achievements.md) | `Update` merges per-family entries by `id` and replaces `summary` wholesale. |
-| `Darkwind.Announcements` | `Darkwind.Announcements 1` | `List`, `New`, `Update`, `State`, `MarkRead` | Mixed | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) | `List` is the login snapshot; read/archive changes now use targeted `Update` payloads. |
-| `Darkwind.Giphy` | `Darkwind.Giphy 1` | `Show` | Server -> Client | [`docs/gmcp-darkwind-giphy.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-giphy.md) | Transient overlay; gated by the `giphy` feature flag in `Darkwind.Client.Subscriptions`. |
-| `Darkwind.Sound` | `Darkwind.Sound 1` | (root) | Server -> Client | [`docs/gmcp-darkwind-sound.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-sound.md) | Toolbar audio widget; player-controlled volume, mute, category filtering, and loop stop handling. |
+`Core` is part of GMCP negotiation and is not included in the support array.
 
-## Message Catalog
+| Messages | Direction | Documentation |
+| --- | --- | --- |
+| `Core.Hello`, `Core.Supports.Set`, `Core.Supports.Add`, `Core.Supports.Remove`, `Core.Ping` | Mixed | [Core support](gmcp-core.md) |
 
-| Message | Direction | Documented In |
-|---------|-----------|---------------|
-| `Darkwind.Char.Avatar` | Server -> Client | [`docs/gmcp-darkwind-char-avatar.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-char-avatar.md) |
-| `Darkwind.Room.Image` | Server -> Client | [`docs/gmcp-darkwind-room-image.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-room-image.md) |
-| `Darkwind.Divine` | Server -> Client | [`docs/gmcp-darkwind-divine.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-divine.md) |
-| `Darkwind.Sky` | Server -> Client | [`docs/gmcp-darkwind-sky.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-sky.md) |
-| `Darkwind.Client.Subscriptions` | Client -> Server | [`docs/gmcp-darkwind-client.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-client.md) |
-| `Darkwind.Client.NAWS` | Client -> Server | [`docs/gmcp-darkwind-client.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-client.md) |
-| `Darkwind.Client.RefreshMedia` | Client -> Server | [`docs/gmcp-darkwind-client.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-client.md) |
-| `Darkwind.Window.Open` | Server -> Client | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
-| `Darkwind.Window.Update` | Server -> Client | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
-| `Darkwind.Window.Close` | Server -> Client | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
-| `Darkwind.Window.Submit` | Client -> Server | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
-| `Darkwind.Window.Action` | Client -> Server | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
-| `Darkwind.Window.Closed` | Client -> Server | [`docs/gmcp-darkwind-window.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-window.md) |
-| `Darkwind.Snoop.Open` | Server -> Client | [`docs/gmcp-darkwind-snoop.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-snoop.md) |
-| `Darkwind.Snoop.Append` | Server -> Client | [`docs/gmcp-darkwind-snoop.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-snoop.md) |
-| `Darkwind.Snoop.Status` | Server -> Client | [`docs/gmcp-darkwind-snoop.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-snoop.md) |
-| `Darkwind.Snoop.Close` | Server -> Client | [`docs/gmcp-darkwind-snoop.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-snoop.md) |
-| `Darkwind.Snoop.Command` | Client -> Server | [`docs/gmcp-darkwind-snoop.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-snoop.md) |
-| `Darkwind.Snoop.Stop` | Client -> Server | [`docs/gmcp-darkwind-snoop.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-snoop.md) |
-| `Darkwind.Snoop.Closed` | Client -> Server | [`docs/gmcp-darkwind-snoop.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-snoop.md) |
-| `Darkwind.IDE.Open` | Server -> Client | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) |
-| `Darkwind.IDE.Save` | Client -> Server | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) |
-| `Darkwind.IDE.SaveResult` | Server -> Client | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) |
-| `Darkwind.IDE.Close` | Client -> Server | [`docs/gmcp-darkwind-ide.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-ide.md) |
-| `Darkwind.MapData.RoomUpdate` | Client -> Server | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
-| `Darkwind.MapData.Area` | Server -> Client | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
-| `Darkwind.MapData.Update` | Server -> Client | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
-| `Darkwind.MapData.Sync` | Client -> Server | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
-| `Darkwind.MapData.RoomCoords` | Server -> Client | [`docs/gmcp-darkwind-mapdata.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata.md) |
-| `Darkwind.MapData2.Current` | Server -> Client | [`docs/gmcp-darkwind-mapdata-v2.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata-v2.md) |
-| `Darkwind.MapData2.Area` | Server -> Client | [`docs/gmcp-darkwind-mapdata-v2.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata-v2.md) |
-| `Darkwind.MapData2.Update` | Server -> Client | [`docs/gmcp-darkwind-mapdata-v2.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata-v2.md) |
-| `Darkwind.MapData2.Sync` | Client -> Server | [`docs/gmcp-darkwind-mapdata-v2.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-mapdata-v2.md) |
-| `Darkwind.Completion.Request` | Client -> Server | [`docs/gmcp-darkwind-completion.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-completion.md) |
-| `Darkwind.Completion.Result` | Server -> Client | [`docs/gmcp-darkwind-completion.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-completion.md) |
-| `Darkwind.Quests.List` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
-| `Darkwind.Quests.Active` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
-| `Darkwind.Quests.Update` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
-| `Darkwind.Quests.Complete` | Server -> Client | [`docs/gmcp-darkwind-quests.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-quests.md) |
-| `Darkwind.Achievements.List` | Server -> Client | [`docs/gmcp-darkwind-achievements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-achievements.md) |
-| `Darkwind.Achievements.Update` | Server -> Client | [`docs/gmcp-darkwind-achievements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-achievements.md) |
-| `Darkwind.Announcements.List` | Server -> Client | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
-| `Darkwind.Announcements.New` | Server -> Client | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
-| `Darkwind.Announcements.Update` | Server -> Client | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
-| `Darkwind.Announcements.State` | Server -> Client | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
-| `Darkwind.Announcements.MarkRead` | Client -> Server | [`docs/gmcp-darkwind-announcements.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-announcements.md) |
-| `Darkwind.Giphy.Show` | Server -> Client | [`docs/gmcp-darkwind-giphy.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-giphy.md) |
-| `Darkwind.Sound` | Server -> Client | [`docs/gmcp-darkwind-sound.md`](/Users/jasonalexander/coding/darkwind/play.darkwind.ai/docs/gmcp-darkwind-sound.md) |
+## Standard Packages
+
+| Support String | Purpose | Documentation |
+| --- | --- | --- |
+| `Char 1` | Character namespace support | [Char](gmcp-char.md) |
+| `Char.Vitals 1` | Vitals and embedded opponent state | [Char](gmcp-char.md) |
+| `Char.Status 1` | Character identity and status deltas | [Char](gmcp-char.md) |
+| `Char.StatusVars 1` | Status-variable metadata | [Char](gmcp-char.md) |
+| `Char.Stats 1` | Current attributes | [Char](gmcp-char.md) |
+| `Char.RealStats 1` | Base attributes | [Char](gmcp-char.md) |
+| `Char.Worth 1` | Carried and banked currency | [Char](gmcp-char.md) |
+| `Char.Enemy 1` | Current combat target | [Char](gmcp-char.md) |
+| `Char.Items 1` | Inventory snapshots and deltas | [Char](gmcp-char.md) |
+| `Char.Defences 1` | Buff/debuff snapshots and deltas | [Char](gmcp-char.md) |
+| `Room 1` | Room metadata and player presence | [Room](gmcp-room.md) |
+| `Comm 1` | Communication namespace support | [Comm](gmcp-comm.md) |
+| `Comm.Channel 1` | Channels, messages, and player roster | [Comm](gmcp-comm.md) |
+| `Group 1` | Group roster and member vitals | [Group and Game](gmcp-group-game.md) |
+| `Game 1` | Game identity, version, and uptime | [Group and Game](gmcp-group-game.md) |
+
+## Darkwind Extensions
+
+The `Darkwind.*` package names remain protocol-stable even though the client is
+branded Darkflow.
+
+| Support String | Messages | Direction | Documentation |
+| --- | --- | --- | --- |
+| `Darkwind.Char.Avatar 1` | `Darkwind.Char.Avatar` | Server -> Client | [Character avatar](gmcp-darkwind-char-avatar.md) |
+| `Darkwind.Room.Image 1` | `Darkwind.Room.Image` | Server -> Client | [Room image](gmcp-darkwind-room-image.md) |
+| `Darkwind.Divine 1` | `Darkwind.Divine` | Server -> Client | [Divine state](gmcp-darkwind-divine.md) |
+| `Darkwind.Sky 1` | `Darkwind.Sky` | Server -> Client | [Sky](gmcp-darkwind-sky.md) |
+| `Darkwind.GuildVitals 2` | `Darkwind.GuildVitals` | Server -> Client | [Guild vitals](gmcp-darkwind-guild-vitals.md) |
+| `Darkwind.XPMon 1` | `Darkwind.XPMon` | Server -> Client | [XP Monitor](gmcp-darkwind-xpmon.md) |
+| `Darkwind.Client.Subscriptions 1` | `Subscriptions`, `RefreshMedia` | Client -> Server | [Client coordination](gmcp-darkwind-client.md) |
+| `Darkwind.Client.NAWS 1` | `NAWS` | Client -> Server | [Client coordination](gmcp-darkwind-client.md) |
+| `Darkwind.Window 1` | `Open`, `Update`, `Close`, `Submit`, `Action`, `Closed` | Mixed | [Windows](gmcp-darkwind-window.md) |
+| `Darkwind.Snoop 1` | `Open`, `Append`, `Status`, `Close`, `Command`, `Stop`, `Closed` | Mixed | [Snoop](gmcp-darkwind-snoop.md) |
+| `Darkwind.IDE 2` | Single-frame and chunked open/save messages | Mixed | [IDE](gmcp-darkwind-ide.md) |
+| `Darkwind.MapData2 2` | `Current`, `Area`, `Update`, `Sync`, `Browse`, `BrowseArea`, `Reset`, `Error` | Mixed | [MapData2](gmcp-darkwind-mapdata-v2.md) |
+| `Darkwind.Completion 1` | `Request`, `Result` | Mixed | [Completion](gmcp-darkwind-completion.md) |
+| `Darkwind.Quests 1` | `List`, `Active`, `Update`, `Complete` | Server -> Client | [Quests](gmcp-darkwind-quests.md) |
+| `Darkwind.Achievements 1` | `List`, `Update` | Server -> Client | [Achievements](gmcp-darkwind-achievements.md) |
+| `Darkwind.Announcements 1` | `List`, `New`, `Update`, `State`, `MarkRead` | Mixed | [Announcements](gmcp-darkwind-announcements.md) |
+| `Darkwind.Giphy 1` | `Show` | Server -> Client | [Giphy](gmcp-darkwind-giphy.md) |
+| `Darkwind.Sound 1` | Root package | Server -> Client | [Sound](gmcp-darkwind-sound.md) |
+| `Darkwind.Broadcast 1` | `Show` | Server -> Client | [Broadcast](gmcp-darkwind-broadcast.md) |
+| `Darkwind.LinuxRescue 1` | `Open` | Server -> Client | [Linux Rescue](gmcp-darkwind-linux-rescue.md) |
+| `Darkwind.Lag 1` | `Get`, `Status` | Mixed | [Lag](gmcp-darkwind-lag.md) |
+| `Darkwind.Fishing 1` | Interactive fishing session messages | Mixed | [Fishing](gmcp-darkwind-fishing.md) |
+| `Darkwind.Cyberware 1` | `List`, `Details`, `Image` | Mixed | [Cyberware](gmcp-darkwind-cyberware.md) |
+| `Darkwind.Room.Playlist 1` | `State`, `Action`, `Report` | Mixed | [Room playlist](gmcp-darkwind-room-playlist.md) |
+
+## Historical Packages
+
+`Darkwind.MapData 1` is retired. Darkflow no longer advertises it or registers
+its message handlers. Its [historical protocol document](gmcp-darkwind-mapdata.md)
+is retained for older clients and migration work; current mapping uses
+`Darkwind.MapData2 2`.
+
+## Runtime Inspection
+
+Every received message is available to the wildcard GMCP listener and live
+GMCP variable registry, even when no dedicated renderer exists. Use the GMCP
+Debug panel for frame inspection. For browser extensions, use the documented
+public debug/event surfaces rather than mutating `panelManager.gmcpData`.

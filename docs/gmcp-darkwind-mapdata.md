@@ -1,10 +1,18 @@
 # Darkwind.MapData GMCP Protocol Specification
 
-This document specifies the `Darkwind.MapData` GMCP package as implemented by the current web client. It covers the traversal reports the client sends, the authoritative map state the server returns, and the correction flow used when local inference diverges from server coordinates.
+> Historical protocol: Darkflow no longer advertises or handles
+> `Darkwind.MapData 1`. Current mapping uses
+> [`Darkwind.MapData2 2`](gmcp-darkwind-mapdata-v2.md). This document is
+> retained for older clients and migration work.
+
+This document specifies the retired `Darkwind.MapData` protocol. It covers the
+traversal reports older clients sent, the authoritative map state the server
+returned, and the correction flow used when local inference diverged from
+server coordinates.
 
 ## Package Overview
 
-Support declaration advertised by the client:
+Historical support declaration:
 
 ```json
 ["Darkwind.MapData 1"]
@@ -18,7 +26,7 @@ Support declaration advertised by the client:
 | `Darkwind.MapData.Sync` | Client -> Server | Request a full or incremental sync for one area |
 | `Darkwind.MapData.RoomCoords` | Server -> Client | Correct one room's coordinates without sending a full area payload |
 
-## Client Model
+## Historical Client Model
 
 The client keeps a local room graph in `localStorage["darkwind-map-data"]`. Each room record stores:
 
@@ -84,7 +92,7 @@ The client treats coordinates in two classes:
 - `inferred`: derived locally from recent movement intent plus known room coordinates
 - `server`: received from `Darkwind.MapData.Area`, `Darkwind.MapData.Update`, or `Darkwind.MapData.RoomCoords`
 
-The client requests a resync when current assumptions are no longer trustworthy. The implemented triggers are:
+The legacy client requested a resync when its assumptions were no longer trustworthy. The implemented triggers were:
 
 - an inferred coordinate would collide with an already occupied coordinate in the same area
 - the player changes rooms without a trusted movement intent, while other stale intents are still pending
@@ -206,7 +214,9 @@ Delivers a full snapshot for one area. The client merges the supplied rooms and 
 
 Direction: `Server -> Client`
 
-Delivers an incremental sync payload for one area. The web client currently treats the room payload like `Darkwind.MapData.Area`, then updates the stored area version and optionally requests the next chunk.
+Delivered an incremental sync payload for one area. The legacy web client
+treated the room payload like `Darkwind.MapData.Area`, then updated the stored
+area version and optionally requested the next chunk.
 
 The exact incremental diff semantics are inferred from client behavior rather than documented server code. The client requires the following shape:
 
@@ -277,7 +287,9 @@ Requests a full or incremental sync for one area.
 
 Direction: `Server -> Client`
 
-Corrects one room's coordinates without requiring a full area payload. This message is implemented and applied immediately by the current client.
+Corrected one room's coordinates without requiring a full area payload. The
+legacy client applied this message immediately; the current client does not
+register this handler.
 
 ### Schema
 

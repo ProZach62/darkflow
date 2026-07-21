@@ -11,7 +11,7 @@ The app is intentionally lightweight: Express serves static files, the browser c
 - **Connection resilience**: client version fetch before connect, auto-reconnect, stalled-socket watchdog, byte counters, diagnostics via `window.wsDebug`, and Ctrl+K full GMCP/media resync.
 - **Dockable interface**: left/right sidebars, floating panels, drag/drop ordering, snapping, collapse/close controls, mobile panel sheet, and persisted panel layout.
 - **Player panels**: avatar, status, vitals, worth, stats, room, room image, group, inventory, enemy, chat, quests, achievements, and dynamic server-driven panels.
-- **Map system**: local movement tracking plus `Darkwind.MapData` sync, area versions, incremental updates, server coordinate corrections, and tile-based rendering.
+- **Map system**: generic `Room.Info` learning plus server-authoritative `Darkwind.MapData2 2` sync, area browsing, safe speedwalk verification, and tile-based rendering.
 - **Server-driven windows**: `Darkwind.Window` modals/panels for login and in-game UI, including forms, buttons, updates, submits, actions, and close notifications.
 - **Builder IDE**: `Darkwind.IDE` opens files in the browser, supports save/compile feedback, diagnostics, and close notifications.
 - **Command ergonomics**: command history, optional history-based Tab completion, server-authoritative completion, aliases, triggers, custom key mappings, and highlight rules.
@@ -30,18 +30,19 @@ Browser  --HTTP-->       Darkflow static app, usually localhost:3000
 Darkflow identifies itself in GMCP as:
 
 ```json
-{ "client": "Darkflow", "version": "0.9.26" }
+{ "client": "Darkflow", "version": "<runtime version>" }
 ```
 
-The custom protocol packages remain `Darkwind.*` for compatibility.
+The version comes from `public/version.json`; the custom protocol packages
+remain `Darkwind.*` for compatibility.
 
 ## Quick Start
 
 Requires [Node.js](https://nodejs.org/) 18+.
 
 ```bash
-git clone https://github.com/jasona/play.darkwind.ai.git
-cd play.darkwind.ai
+git clone https://github.com/jasona/darkflow.git
+cd darkflow
 npm install
 npm start
 ```
@@ -123,7 +124,7 @@ docker run -p 3000:3000 darkflow-client
 │       ├── settings-manager.js  # Settings, import/export, aliases/triggers/highlights UI
 │       ├── panel-manager.js     # Panel lifecycle, layout, GMCP panel handlers
 │       ├── panel-renderers.js   # Built-in panel renderers
-│       ├── map-data.js          # Room graph, map sync, map debug tools
+│       ├── map-data-v2.js       # Server-authoritative map sync and browse state
 │       ├── map-renderer.js      # Tile map renderer
 │       ├── window-manager.js    # Darkwind.Window renderer
 │       ├── ide-manager.js       # Darkwind.IDE GMCP bridge
@@ -140,36 +141,18 @@ docker run -p 3000:3000 darkflow-client
 
 ## GMCP Packages
 
-Darkflow advertises these standard GMCP packages:
+Darkflow supports standard `Core`, `Char`, `Room`, `Comm`, `Group`, and `Game`
+families plus Darkwind-specific panels, media, mapping, builder tools, windows,
+completion, connection diagnostics, fishing, cyberware, and shared-room media.
 
-| Package | Purpose |
-|---------|---------|
-| `Char 1` | Character identity and profile data |
-| `Char.Vitals 1` | HP/SP and vital state |
-| `Char.Items 1` | Inventory, room, and container item state |
-| `Room 1` | Room info and room player updates |
-| `Comm 1` | Channel/chat messages |
-| `Group 1` | Party/group state |
-| `Game 1` | Game name, version, uptime, reboot state |
+The [Darkflow GMCP Package Index](docs/gmcp-darkwind-index.md) is the canonical,
+handshake-aligned catalog. It lists every advertised support string and links
+to message schemas and client behavior for each package. The
+[`docs/` landing page](docs/README.md) also groups the protocol pages by
+standard and Darkwind-specific families.
 
-Darkflow also advertises these Darkwind-specific packages:
-
-| Package | Purpose | Docs |
-|---------|---------|------|
-| `Darkwind.Char.Avatar 1` | Player avatar image data | [index](docs/gmcp-darkwind-index.md) |
-| `Darkwind.Room.Image 1` | Generated room image panel data | [index](docs/gmcp-darkwind-index.md) |
-| `Darkwind.Sky 1` | Animated sky, time, and lunar sync data | [sky](docs/gmcp-darkwind-sky.md) |
-| `Darkwind.Client.Subscriptions 1` | Client-side panel/feature visibility subscriptions | [index](docs/gmcp-darkwind-index.md) |
-| `Darkwind.Window 1` | Server-driven modals, panels, forms, actions | [window](docs/gmcp-darkwind-window.md) |
-| `Darkwind.IDE 1` | Builder file editor open/save/result/close | [ide](docs/gmcp-darkwind-ide.md) |
-| `Darkwind.MapData 1` | Collaborative map sync and coordinate correction | [mapdata](docs/gmcp-darkwind-mapdata.md) |
-| `Darkwind.Completion 1` | Server-authoritative command/argument completion | [completion](docs/gmcp-darkwind-completion.md) |
-| `Darkwind.Quests 1` | Quest list, active quest, objective updates, completion | [quests](docs/gmcp-darkwind-quests.md) |
-| `Darkwind.Achievements 1` | Achievement panel and update data | [index](docs/gmcp-darkwind-index.md) |
-| `Darkwind.Announcements 1` | Announcement inbox and read-state updates | [announcements](docs/gmcp-darkwind-announcements.md) |
-| `Darkwind.Giphy 1` | In-client animated GIF reactions | [index](docs/gmcp-darkwind-index.md) |
-
-Client-originated helper packages include `Darkwind.Client.RefreshMedia` and `Darkwind.Client.Subscriptions`.
+The legacy `Darkwind.MapData 1` package is retired. Current mapping uses
+`Darkwind.MapData2 2`.
 
 ## Brand Assets
 

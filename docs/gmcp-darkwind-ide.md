@@ -224,8 +224,11 @@ The current client always includes `path` in the close message.
 ## Client Notes
 
 - The IDE is lazy-loaded on first use.
-- `Open` and `SaveResult` are the only IDE messages the current client listens for.
-- The client sends `Save` and `Close` from callbacks bound to the active editor instance.
+- The client listens for `Open`, `OpenStart`, `OpenChunk`, `OpenFinish`, and
+  `SaveResult`.
+- The client sends single-frame `Save` for smaller documents; large documents
+  use `SaveStart`, `SaveChunk`, `SaveFinish`, and `SaveAbort`.
+- `Close` is sent from the callback bound to the active editor instance.
 - Closing can be triggered by the Close button or `Escape`; unsaved-change confirmation is handled inside the editor UI before `Darkwind.IDE.Close` is sent.
 
 ## Transport

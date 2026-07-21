@@ -20,12 +20,13 @@ version 1 offset/version response path for clients advertising version 1.
 | Message | Direction | Purpose |
 |---------|-----------|---------|
 | `Darkwind.MapData2.Current` | Server -> Client | Current room plus live movement truth |
+| `Darkwind.MapData2.Area` | Server -> Client | Full area payload and version-1 compatibility snapshot |
 | `Darkwind.MapData2.Update` | Server -> Client | Full or incremental snapshot page |
 | `Darkwind.MapData2.Sync` | Client -> Server | Start or continue a snapshot |
 | `Darkwind.MapData2.Error` | Server -> Client | Restart or retry instruction |
 | `Darkwind.MapData2.Browse` | Client -> Server | Request a catalog map |
 | `Darkwind.MapData2.BrowseArea` | Server -> Client | Catalog map page |
-| `Darkwind.MapData2.Reset` | Server -> Client | Global epoch changed |
+| `Darkwind.MapData2.Reset` | Server -> Client | Invalidate one area or the complete map cache |
 
 ## Room Record
 
@@ -121,6 +122,40 @@ An epoch mismatch invalidates the whole MapData2 cache. An area-generation
 mismatch invalidates only that area. `Error.restart` instructs the client to
 discard the staged transfer and request a full area snapshot. Rate-limit errors
 carry `retryAfterMs`.
+
+## Area And Version 1 Compatibility
+
+`Darkwind.MapData2.Area` carries `{ area, rooms }` plus optional `version`,
+`more`, `replace`, `areaGeneration`, and `mapEpoch` fields. Darkflow merges the
+rooms immediately. A completed payload stores the area's version; `replace`
+removes the area's prior membership before merging.
+
+Version 1 `Update` pagination uses `version`, `since`, `offset`, and `more`.
+Darkflow continues with:
+
+```json
+{
+  "area": "Darkwind",
+  "version": 40,
+  "offset": 100
+}
+```
+
+After a connection demonstrates protocol 2, Darkflow ignores unsolicited
+protocol-less v1 updates so they cannot corrupt a staged v2 snapshot.
+
+## Browse And Reset
+
+`Darkwind.MapData2.Browse { "catalog": "area-id" }` requests a catalog area.
+`Darkwind.MapData2.BrowseArea` returns its `catalog`, display `name`, optional
+`center`, `rooms`, and version-1 `more`/`offset` pagination fields. Browse data
+is stored separately from the live map.
+
+An area-scoped Reset includes `scope: "area"`, `area`, and optionally the new
+`areaGeneration`/`mapEpoch`; Darkflow clears and resyncs only that area. An
+unscoped Reset invalidates all MapData2 baselines and requests a fresh current
+context while keeping the last rendered snapshot visible until replacement
+data commits.
 
 ## Speedwalk Safety
 
