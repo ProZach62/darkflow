@@ -447,7 +447,7 @@ function scheduleLostTransmissionRecovery(text) {
     lastLostTransmissionRecoveryAt = Date.now();
 
     if (!isSocketOpen(state.ws)) return;
-    panelManager.resetData({ preservePanels: ['chat'] });
+    panelManager.resetData({ preservePanels: ['chat', 'roomPlaylist'] });
     if (gmcp.restartHandshake({
       reason: 'lost-transmission',
       panels: panelManager.getSubscriptionPanels(),

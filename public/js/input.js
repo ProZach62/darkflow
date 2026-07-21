@@ -857,7 +857,7 @@ export function initInput() {
       clearOutput();
     } else if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
-      panelManager.resetData({ preservePanels: ['chat'] });
+      panelManager.resetData({ preservePanels: ['chat', 'roomPlaylist'] });
       if (gmcp.restartHandshake({ panels: panelManager.getSubscriptionPanels() })) {
         panelManager.refreshMediaPanels();
       }
