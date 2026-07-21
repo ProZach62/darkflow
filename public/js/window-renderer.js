@@ -1,6 +1,8 @@
 import { LAYOUT_TYPES, INPUT_TYPES, DISPLAY_TYPES, STYLE_ALLOWLIST } from './window-types.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
 
+const NPC_DIALOGUE_MULTICOLUMN_CHOICE_THRESHOLD = 8;
+
 // ── Style helpers ───────────────────────────────────────────────────
 export function applyStyle(el, styleObj) {
   if (!styleObj || typeof styleObj !== 'object') return;
@@ -74,6 +76,10 @@ export function usesPlayerRowMultiColumnGrid(schema, options = {}) {
     && schema.type === 'grid'
     && countDirectPlayerRows(schema) > 3
   );
+}
+
+export function usesNpcDialogueMultiColumnChoices(choiceCount) {
+  return Number(choiceCount) > NPC_DIALOGUE_MULTICOLUMN_CHOICE_THRESHOLD;
 }
 
 // ── Display elements ────────────────────────────────────────────────
@@ -191,8 +197,10 @@ function renderDisplay(schema, buttonHandler) {
 function renderNpcDialogue(schema, buttonHandler) {
   const npc = schema.npc && typeof schema.npc === 'object' ? schema.npc : {};
   const choices = Array.isArray(schema.choices) ? schema.choices : [];
+  const multiColumnChoices = usesNpcDialogueMultiColumnChoices(choices.length);
   const wrap = document.createElement('div');
   wrap.className = 'dw-npc-dialogue';
+  if (multiColumnChoices) wrap.classList.add('dw-npc-dialogue-many-choices');
   setAttr(wrap, schema);
 
   const portraitWrap = document.createElement('div');
@@ -223,6 +231,9 @@ function renderNpcDialogue(schema, buttonHandler) {
   if (choices.length) {
     const choiceWrap = document.createElement('div');
     choiceWrap.className = 'dw-npc-dialogue-choices';
+    if (multiColumnChoices) {
+      choiceWrap.classList.add('dw-npc-dialogue-choices-multicolumn');
+    }
     for (const choice of choices) {
       if (!choice || typeof choice !== 'object') continue;
       const button = document.createElement('button');

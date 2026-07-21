@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   countDirectPlayerRows,
+  usesNpcDialogueMultiColumnChoices,
   usesPlayerRowMultiColumnGrid,
 } from '../public/js/window-renderer.js';
 
@@ -28,4 +29,9 @@ test('charselect player row grids switch to multicolumn beyond three characters'
 
 test('non-charselect player row grids do not switch layout', () => {
   assert.equal(usesPlayerRowMultiColumnGrid(gridWithPlayerRows(4), { windowId: 'finger' }), false);
+});
+
+test('npc dialogue choices switch to columns only for long choice lists', () => {
+  assert.equal(usesNpcDialogueMultiColumnChoices(8), false);
+  assert.equal(usesNpcDialogueMultiColumnChoices(9), true);
 });
