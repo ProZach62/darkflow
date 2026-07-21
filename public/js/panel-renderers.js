@@ -245,9 +245,12 @@ function skyClockLabel(sky) {
   return String(sky.hour).padStart(2, '0') + ':' + String(sky.minute).padStart(2, '0');
 }
 
-function skyRecomputeMoon(moon, daySinceBeginning) {
-  const cycle = Number(moon && moon.cycle_days) || 1;
-  const phase = (Math.trunc(daySinceBeginning / cycle) % 8) + 1;
+export function skyRecomputeMoon(moon, sky) {
+  const phaseHours = Number(moon && moon.phase_hours) || 0;
+  const cycleDays = Number(moon && moon.cycle_days) || 1;
+  const phase = phaseHours > 0
+    ? (Math.trunc(sky.gameNow / (phaseHours * 3600)) % 8) + 1
+    : (Math.trunc(sky.daySinceBeginning / cycleDays) % 8) + 1;
   const names = ['new', 'waxing crescent', 'half', 'waxing gibbous', 'full', 'waning gibbous', 'half', 'waning crescent'];
   return {
     ...moon,
@@ -769,7 +772,9 @@ export const panelRenderers = {
     const sunVisible = sky.stage !== 'night';
     const sunX = 8 + sunProgress * 84;
     const sunY = 78 - Math.sin(sunProgress * Math.PI) * 62;
-    const moons = Array.isArray(data.moons) ? data.moons.map((moon) => skyRecomputeMoon(moon, sky.daySinceBeginning)) : [];
+    const moons = Array.isArray(data.moons)
+      ? data.moons.map((moon) => skyRecomputeMoon(moon, sky))
+      : [];
     const surfaceBody = skySurfaceBody(data);
     const showMoons = sky.stage === 'night' || sky.stage === 'twilight';
     let html = '<div class="sky-panel sky-stage-' + escHtml(sky.stage) + '">';
