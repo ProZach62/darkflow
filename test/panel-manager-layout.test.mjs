@@ -130,6 +130,36 @@ test('map recenter clears both pan axes without changing zoom', () => {
   }
 });
 
+test('jukebox state updates do not automatically open its pane', () => {
+  const originalGmcpData = panelManager.gmcpData;
+  const originalRenderPanel = panelManager._renderPanel;
+  const originalOpenPanel = panelManager.openPanel;
+  let renders = 0;
+  let opens = 0;
+
+  try {
+    panelManager.gmcpData = {};
+    panelManager._renderPanel = (id) => {
+      if (id === 'roomPlaylist') renders++;
+    };
+    panelManager.openPanel = () => { opens++; };
+
+    panelManager.handleRoomPlaylistState({
+      enabled: true,
+      room_id: '/domains/darkwind/room/tavern',
+    });
+
+    assert.equal(panelManager.gmcpData.roomPlaylist.enabled, true);
+    assert.equal(panelManager.gmcpData.roomPlaylist.room_id, '/domains/darkwind/room/tavern');
+    assert.equal(renders, 1);
+    assert.equal(opens, 0);
+  } finally {
+    panelManager.gmcpData = originalGmcpData;
+    panelManager._renderPanel = originalRenderPanel;
+    panelManager.openPanel = originalOpenPanel;
+  }
+});
+
 test('docking a map queues a render for the new sidebar dimensions', () => {
   const originalPanels = panelManager.panels;
   const originalState = panelManager.state;

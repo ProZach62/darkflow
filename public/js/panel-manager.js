@@ -128,7 +128,6 @@ export const panelManager = {
   _avatarChargeSync: null,
   _draggingEnemyPanel: false,
   _syncEnemyPanelAfterDrag: false,
-  _roomPlaylistAutoOpenedRoomId: null,
   _pendingPanelRenders: new Set(),
   _panelRenderFrame: null,
   _mobile: {
@@ -187,20 +186,17 @@ export const panelManager = {
       this._queuePanelRender('map');
     });
     document.addEventListener('darkflow:room-playlist-state', (event) => {
-      const data = event.detail && typeof event.detail === 'object'
-        ? event.detail
-        : { enabled: false };
-      this.gmcpData.roomPlaylist = data;
-      if (!data.enabled) {
-        this._roomPlaylistAutoOpenedRoomId = null;
-      } else if (this._roomPlaylistAutoOpenedRoomId !== data.room_id) {
-        this._roomPlaylistAutoOpenedRoomId = data.room_id;
-        this.openPanel('roomPlaylist');
-      }
-      this._renderPanel('roomPlaylist');
+      this.handleRoomPlaylistState(event.detail);
     });
     this._initialized = true;
     this._notifyWorkspaceLayoutChanged();
+  },
+
+  handleRoomPlaylistState(data) {
+    this.gmcpData.roomPlaylist = data && typeof data === 'object'
+      ? data
+      : { enabled: false };
+    this._renderPanel('roomPlaylist');
   },
 
   _hydrateMapCaches() {
