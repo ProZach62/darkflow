@@ -1,7 +1,7 @@
 # Darkflow Client Docs
 
-This directory documents the Darkflow browser client, its GMCP protocol
-support, and the embedded MCP test harness. The live implementation in
+This directory documents the Darkflow browser and desktop clients, their GMCP
+protocol support, and the embedded MCP test harness. The live implementation in
 `public/js/` is the source of truth when protocol and historical design notes
 disagree.
 
@@ -66,6 +66,7 @@ These documents cover the embedded relay that lets an LLM or CLI drive a MUD:
 
 | Document | Coverage |
 | --- | --- |
+| [Darkwind desktop client](desktop.md) | Electron architecture, packaging, updates, Steam depots, and releases |
 | [Web client blueprint](BLUEPRINT-webclient.md) | Original transport and browser-client design |
 | [Web client plan](PLAN-webclient.md) | Original implementation and deployment plan |
 | [RFC 2549 debug](rfc2549-debug.md) | Debug surface for the optional RFC 2549 transport mode |

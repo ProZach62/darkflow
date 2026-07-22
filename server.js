@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const net = require('net');
 const tls = require('tls');
 const { WebSocketServer } = require('ws');
@@ -21,7 +22,28 @@ try {
 } catch(e) { /* no .env file, that's fine */ }
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+const DESKTOP_COOKIE_NAME = 'darkflow-desktop-token';
+
+function hasDesktopSession(req) {
+  if (process.env.DARKFLOW_DESKTOP !== '1') return true;
+  const expected = process.env.DARKFLOW_DESKTOP_TOKEN || '';
+  const cookieHeader = req.headers.cookie || '';
+  const cookie = cookieHeader.split(';').map((part) => part.trim()).find((part) => (
+    part.startsWith(`${DESKTOP_COOKIE_NAME}=`)
+  ));
+  const actual = cookie ? cookie.slice(DESKTOP_COOKIE_NAME.length + 1) : '';
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  if (!expected || actualBuffer.length !== expectedBuffer.length) return false;
+  return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+app.use((req, res, next) => {
+  if (hasDesktopSession(req)) return next();
+  res.set('Cache-Control', 'no-store');
+  return res.status(403).end();
+});
 
 // Serve client configuration from environment variables
 app.get('/config.json', (req, res) => {
@@ -102,7 +124,7 @@ const { IAC, DO, TELOPT_GMCP } = constants;
 // to bound memory if a non-GMCP MUD is connected.
 const MAX_PENDING_GMCP_BYTES = 64 * 1024;
 
-const LOG_DIR = path.join(__dirname, 'log');
+const LOG_DIR = process.env.DARKFLOW_LOG_DIR || path.join(__dirname, 'log');
 const PROXY_LOG = path.join(LOG_DIR, 'proxy.log');
 try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch(e) { /* ignore */ }
 
@@ -118,12 +140,33 @@ function logProxy(entry) {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/proxy' });
 
+wss.on('error', (error) => {
+  console.error('[proxy] WebSocket server error:', error.message);
+});
+
 wss.on('connection', (ws, req) => {
   const reqUrl = new URL(req.url, 'http://localhost');
   const host = reqUrl.searchParams.get('host');
   const port = parseInt(reqUrl.searchParams.get('port'), 10);
   const useTls = reqUrl.searchParams.get('tls') === '1';
   const sourceIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  if (process.env.DARKFLOW_DESKTOP === '1') {
+    const address = server.address();
+    const expectedOrigin = address && typeof address === 'object'
+      ? `http://127.0.0.1:${address.port}`
+      : '';
+    if (req.headers.origin !== expectedOrigin) {
+      logProxy({ event: 'reject', reason: 'invalid-origin', sourceIp, origin: req.headers.origin });
+      try { ws.close(1008, 'invalid origin'); } catch(e) {}
+      return;
+    }
+    if (!hasDesktopSession(req)) {
+      logProxy({ event: 'reject', reason: 'invalid-session', sourceIp });
+      try { ws.close(1008, 'invalid session'); } catch(e) {}
+      return;
+    }
+  }
 
   if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
     logProxy({ event: 'reject', reason: 'invalid-args', sourceIp, host, port });
@@ -285,14 +328,53 @@ wss.on('connection', (ws, req) => {
   });
 });
 
+function startServer({ port = PORT, host = process.env.HOST } = {}) {
+  if (server.listening) return Promise.resolve(server.address());
+
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      resolve(server.address());
+    };
+
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen({ port, ...(host ? { host } : {}) });
+  });
+}
+
+function stopServer() {
+  for (const client of wss.clients) client.terminate();
+  if (!server.listening) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
 if (require.main === module) {
-  server.listen(PORT, () => {
-    console.log(`Darkflow listening on port ${PORT}`);
-    console.log(`Proxy endpoint: ws[s]://<host>:${PORT}/proxy?host=X&port=Y&tls=0|1`);
+  startServer().then((address) => {
+    const port = address && typeof address === 'object' ? address.port : PORT;
+    console.log(`Darkflow listening on port ${port}`);
+    console.log(`Proxy endpoint: ws[s]://<host>:${port}/proxy?host=X&port=Y&tls=0|1`);
+  }).catch((error) => {
+    console.error('Darkflow failed to start:', error);
+    process.exitCode = 1;
   });
 }
 
 module.exports = {
+  app,
+  server,
+  startServer,
+  stopServer,
   makeTelnetParser,
   wrapGmcp,
   constants,

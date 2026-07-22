@@ -1,14 +1,124 @@
 {
   "name": "darkflow-client",
   "version": "1.4.3",
-  "description": "Darkflow WebSocket client for Darkwind",
-  "main": "server.js",
+  "description": "Darkwind game client powered by Darkflow",
+  "main": "desktop/main.cjs",
+  "author": {
+    "name": "Jason Alexander",
+    "email": "jason.alexander@gmail.com"
+  },
+  "desktopName": "Darkwind",
+  "homepage": "https://play.darkwind.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jasona/darkflow.git"
+  },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "desktop": "electron .",
+    "desktop:smoke": "electron . --smoke-test",
+    "desktop:pack": "electron-builder --dir --publish never",
+    "desktop:dist": "electron-builder --publish never",
+    "desktop:dist:mac": "electron-builder --mac --publish never",
+    "desktop:dist:win": "electron-builder --win --publish never",
+    "desktop:dist:linux": "electron-builder --linux --publish never",
+    "desktop:steam": "electron-builder --dir --publish never --config.extraMetadata.darkflowDistribution=steam",
+    "desktop:steam:mac": "electron-builder --mac --dir --universal --publish never --config.extraMetadata.darkflowDistribution=steam",
+    "desktop:steam:win": "electron-builder --win --dir --x64 --publish never --config.extraMetadata.darkflowDistribution=steam",
+    "desktop:steam:linux": "electron-builder --linux --dir --x64 --publish never --config.extraMetadata.darkflowDistribution=steam",
+    "version:set": "node desktop/set-version.cjs"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "express": "^4.21.0",
     "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "ai.darkwind.game",
+    "productName": "Darkwind",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "dist/desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "lib/**/*",
+      "public/**/*",
+      "server.js",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "darkflowDistribution": "direct"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jasona",
+        "repo": "darkflow"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.games",
+      "electronUpdaterCompatibility": ">=2.16",
+      "icon": "public/assets/brand/darkflow-icon-512.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "electronUpdaterCompatibility": ">=2.16",
+      "icon": "public/assets/brand/darkflow-icon-512.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "category": "Game",
+      "electronUpdaterCompatibility": ">=2.16",
+      "executableName": "darkwind",
+      "icon": "public/assets/brand/darkflow-icon-512.png",
+      "syncDesktopName": true,
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }

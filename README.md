@@ -1,8 +1,8 @@
 # Darkflow
 
-Darkflow is the official browser client for Darkwind. It is a fast, terminal-first WebSocket client with Darkwind-specific panels, mapping, media, builder tools, settings, and GMCP integrations layered around the live MUD session.
+Darkflow is the official web and desktop client for Darkwind. It is a fast, terminal-first WebSocket client with Darkwind-specific panels, mapping, media, builder tools, settings, and GMCP integrations layered around the live MUD session.
 
-The app is intentionally lightweight: Express serves static files, the browser connects directly to the MUD over WebSocket, and the frontend is native ES modules with no build step or client-side framework.
+The app is intentionally lightweight: Express serves static files, the browser connects directly to the MUD over WebSocket, and the frontend is native ES modules with no build step or client-side framework. Electron packages that same server and frontend for Windows, macOS, Linux, and Steam without creating a separate client fork.
 
 ## What Darkflow Supports
 
@@ -25,6 +25,7 @@ The app is intentionally lightweight: Express serves static files, the browser c
 ```
 Browser  --WebSocket-->  Darkwind game server, usually darkwind.ai:4242
 Browser  --HTTP-->       Darkflow static app, usually localhost:3000
+Desktop --loopback-->    The same Darkflow server and static app inside Electron
 ```
 
 Darkflow identifies itself in GMCP as:
@@ -49,6 +50,15 @@ npm start
 
 Open `http://localhost:3000`. If no host is configured by the server, enter the MUD host and port manually and click **Connect**.
 
+To launch the desktop client during development:
+
+```bash
+npm run desktop
+```
+
+See [Darkwind Desktop Client](docs/desktop.md) for native packages, GitHub
+auto-updates, signing, versioned releases, and Steam depot builds.
+
 ## Configuration
 
 The Express server serves static files and exposes `/config.json` and `/api/version`.
@@ -56,6 +66,7 @@ The Express server serves static files and exposes `/config.json` and `/api/vers
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3000` | HTTP port for Darkflow |
+| `HOST` | all interfaces | Optional HTTP bind address, such as `127.0.0.1` |
 | `MUD_HOST` | empty | Default host shown in the toolbar; if set, the client auto-connects |
 | `MUD_PORT` | `4242` | Default MUD port |
 | `MUD_WSS` | enabled | Set to `0` to default to plain `ws://` |
@@ -63,6 +74,7 @@ The Express server serves static files and exposes `/config.json` and `/api/vers
 | `MCP_ENABLED` | `1` | Set to `0` to not mount the MCP relay at `/mcp` |
 | `MCP_PATH` | `/mcp` | Route the MCP relay is served on (use a long random path in production) |
 | `MCP_AUTH_TOKEN` | empty | If set, MCP clients must send `Authorization: Bearer <token>` |
+| `DARKFLOW_LOG_DIR` | `./log` | Proxy log directory; Electron sets this to per-user app data |
 
 The runtime client version is stored in `public/version.json` and returned by `/api/version` with `Cache-Control: no-store`.
 
@@ -99,6 +111,7 @@ docker run -p 3000:3000 darkflow-client
 ```
 .
 ├── server.js                    # Express static server plus config/version endpoints
+├── desktop/                     # Electron main/preload, updater, and release helpers
 ├── public/
 │   ├── index.html               # Darkflow app shell
 │   ├── darkflow-brand.html      # Hidden brand asset download page
@@ -183,6 +196,9 @@ The generated source sheet is stored as `Gemini_Generated_Image_itemzcitemzcitem
 
 Chrome 90+, Firefox 90+, Safari 15+, Edge 90+ with native WebSocket support.
 
+Desktop packages target current supported releases of Windows, macOS, and
+mainstream x64 Linux distributions.
+
 ## License
 
 `darkflow-client` is released under the [Unknown](LICENSE).
@@ -192,5 +208,7 @@ licenses:
 
 | Dependency | License |
 | --- | --- |
+| [Electron](https://github.com/electron/electron) | MIT |
+| [electron-updater](https://github.com/electron-userland/electron-builder) | MIT |
 | [express](https://github.com/expressjs/express) | MIT |
 | [ws](https://github.com/websockets/ws) | MIT |

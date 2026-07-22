@@ -119,6 +119,7 @@ export function initDom() {
   dom.statusUptime = document.getElementById('status-uptime');
   dom.statusVersions = document.getElementById('status-versions');
   dom.updateBanner = document.getElementById('update-banner');
+  dom.updateMessage = document.getElementById('update-message');
   dom.updateRefresh = document.getElementById('update-refresh');
   dom.toolbarBrand = document.getElementById('toolbar-brand');
   dom.gmcpPanel = document.getElementById('gmcp-panel');

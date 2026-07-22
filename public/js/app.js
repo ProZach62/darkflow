@@ -28,6 +28,7 @@ import { functionManager } from './function-manager.js';
 import { sendAutomaticCommand } from './input.js';
 import { PRODUCT_NAME, gameTitle } from './brand.js';
 import { initRfc2549Debug } from './rfc2549-debug.js';
+import { initializeDesktopUpdates } from './desktop-integration.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -591,19 +592,27 @@ state.clientVersionPromise = fetchClientVersion().then(version => {
   return state.clientVersion;
 });
 
-// Poll for updates every 5 minutes; only when tab is visible
-const VERSION_POLL_MS = 5 * 60 * 1000;
-setInterval(function() {
-  if (document.visibilityState !== 'visible') return;
-  if (!clientVersion) return;
-  fetchClientVersion().then(v => {
-    if (v && v !== clientVersion) {
-      dom.updateBanner.style.display = 'block';
-    }
-  });
-}, VERSION_POLL_MS);
-
-dom.updateRefresh.addEventListener('click', function(e) {
-  e.preventDefault();
-  location.reload();
+const hasDesktopUpdates = initializeDesktopUpdates({
+  banner: dom.updateBanner,
+  message: dom.updateMessage,
+  action: dom.updateRefresh,
 });
+
+if (!hasDesktopUpdates) {
+  // Poll for updates every 5 minutes; only when the browser tab is visible.
+  const VERSION_POLL_MS = 5 * 60 * 1000;
+  setInterval(function() {
+    if (document.visibilityState !== 'visible') return;
+    if (!clientVersion) return;
+    fetchClientVersion().then(v => {
+      if (v && v !== clientVersion) {
+        dom.updateBanner.style.display = 'block';
+      }
+    });
+  }, VERSION_POLL_MS);
+
+  dom.updateRefresh.addEventListener('click', function(e) {
+    e.preventDefault();
+    location.reload();
+  });
+}
