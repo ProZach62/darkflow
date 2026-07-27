@@ -29,8 +29,8 @@ export const BACKGROUND_PRESETS = Object.freeze([
     image: '/assets/backgrounds/moonlit-forest.jpg',
     thumbnail: '/assets/backgrounds/thumbs/moonlit-forest.jpg',
     position: 'center center',
-    dim: 0.34,
-    terminalAlpha: 0.6,
+    dim: 0.2,
+    terminalAlpha: 0.54,
   }),
   Object.freeze({
     key: 'deep-halls',
@@ -55,12 +55,12 @@ export const BACKGROUND_PRESETS = Object.freeze([
   Object.freeze({
     key: 'neon-city',
     label: 'Neon City',
-    description: 'Rain and neon above a sleepless megacity.',
+    description: 'Brilliant neon towers and flying traffic above a sleepless megacity.',
     image: '/assets/backgrounds/neon-city.jpg',
     thumbnail: '/assets/backgrounds/thumbs/neon-city.jpg',
     position: 'center center',
-    dim: 0.24,
-    terminalAlpha: 0.56,
+    dim: 0.12,
+    terminalAlpha: 0.5,
   }),
   Object.freeze({
     key: 'arcane-observatory',
@@ -69,8 +69,8 @@ export const BACKGROUND_PRESETS = Object.freeze([
     image: '/assets/backgrounds/arcane-observatory.jpg',
     thumbnail: '/assets/backgrounds/thumbs/arcane-observatory.jpg',
     position: 'center center',
-    dim: 0.32,
-    terminalAlpha: 0.6,
+    dim: 0.18,
+    terminalAlpha: 0.52,
   }),
   Object.freeze({
     key: 'berserker-hold',
@@ -89,8 +89,8 @@ export const BACKGROUND_PRESETS = Object.freeze([
     image: '/assets/backgrounds/outback-night.jpg',
     thumbnail: '/assets/backgrounds/thumbs/outback-night.jpg',
     position: 'center center',
-    dim: 0.28,
-    terminalAlpha: 0.58,
+    dim: 0.16,
+    terminalAlpha: 0.52,
   }),
 ]);
 

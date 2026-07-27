@@ -81,8 +81,8 @@ test('applying a preset writes trusted CSS variables and none clears them', () =
   assert.equal(doc.documentElement.dataset.backgroundActive, 'true');
   assert.equal(doc.properties.get('--df-background-image'), 'url("/assets/backgrounds/moonlit-forest.jpg")');
   assert.equal(doc.properties.get('--df-background-position'), 'center center');
-  assert.equal(doc.properties.get('--df-background-dim'), '0.34');
-  assert.equal(doc.properties.get('--df-terminal-background-alpha'), '0.6');
+  assert.equal(doc.properties.get('--df-background-dim'), '0.2');
+  assert.equal(doc.properties.get('--df-terminal-background-alpha'), '0.54');
 
   applyBackground(NO_BACKGROUND_KEY, doc);
   assert.equal(doc.documentElement.dataset.background, NO_BACKGROUND_KEY);
