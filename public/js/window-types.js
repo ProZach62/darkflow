@@ -21,6 +21,7 @@ export const DISPLAY_TYPES = new Set([
   'npc_dialogue',
   'player_row',
   'finger_profile',
+  'street_samurai_dashboard',
 ]);
 
 // Button actions

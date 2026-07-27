@@ -158,7 +158,8 @@ docker run -p 3000:3000 darkflow-client
 
 Darkflow supports standard `Core`, `Char`, `Room`, `Comm`, `Group`, and `Game`
 families plus Darkwind-specific panels, media, mapping, builder tools, windows,
-completion, connection diagnostics, fishing, cyberware, and shared-room media.
+completion, connection diagnostics, fishing, cyberware, the Street Samurai
+Cortex dashboard, and shared-room media.
 
 The [Darkflow GMCP Package Index](docs/gmcp-darkwind-index.md) is the canonical,
 handshake-aligned catalog. It lists every advertised support string and links

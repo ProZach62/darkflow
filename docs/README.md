@@ -47,6 +47,7 @@ Darkwind-specific package to its supporting documentation.
 | [Lag](gmcp-darkwind-lag.md) | Server driver-health request/response |
 | [Fishing](gmcp-darkwind-fishing.md) | Interactive fishing session protocol |
 | [Cyberware](gmcp-darkwind-cyberware.md) | Implant list, detail, and image flow |
+| [Street Samurai](gmcp-darkwind-street-samurai.md) | Live Cortex dashboard state and window lifecycle |
 | [Room playlist](gmcp-darkwind-room-playlist.md) | Shared room jukebox state, actions, and reports |
 
 The [legacy MapData v1 document](gmcp-darkwind-mapdata.md) is historical. The

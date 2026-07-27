@@ -86,6 +86,7 @@ The current client supports only these node types.
 - `progress`
 - `image`
 - `youtube_embed`
+- `street_samurai_dashboard`
 
 #### Input nodes
 
@@ -126,6 +127,7 @@ lineHeight, textTransform
 | `progress` | `value`, `color`, `label` |
 | `image` | `src`, `alt`, `loading`, `loadingText` |
 | `youtube_embed` | `src`, `url`, `title` |
+| `street_samurai_dashboard` | `state`, `active_tab`; see [Street Samurai](gmcp-darkwind-street-samurai.md) |
 | `text`, `password` | `label`, `value`, `placeholder` |
 | `number` | `label`, `value`, `min`, `max`, `step` |
 | `select` | `label`, `value`, `options[]` with `value` and optional `label` |

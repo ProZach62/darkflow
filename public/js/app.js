@@ -30,6 +30,7 @@ import { sendAutomaticCommand } from './input.js';
 import { PRODUCT_NAME, gameTitle } from './brand.js';
 import { initRfc2549Debug } from './rfc2549-debug.js';
 import { initializeDesktopUpdates } from './desktop-integration.js';
+import { streetSamuraiDashboardManager } from './street-samurai-dashboard-manager.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -475,6 +476,7 @@ if (dom.protocolSelect) {
 loadHistory();
 panelManager.init();
 windowManager.init();
+streetSamuraiDashboardManager.init();
 connectionOverlay.init();
 ideManager.init();
 snoopManager.init();
