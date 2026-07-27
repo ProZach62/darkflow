@@ -42,6 +42,7 @@ branded Darkflow.
 | --- | --- | --- | --- |
 | `Darkwind.Char.Avatar 1` | `Darkwind.Char.Avatar` | Server -> Client | [Character avatar](gmcp-darkwind-char-avatar.md) |
 | `Darkwind.Combat 1` | `State`, `Events`, `Resync` | Mixed | [Visual combat](gmcp-darkwind-combat.md) |
+| `Darkwind.Visual 1` | `State`, `Events`, `Preview` | Server -> Client | [Visual effects](gmcp-darkwind-visual.md) |
 | `Darkwind.Room.Image 1` | `Darkwind.Room.Image` | Server -> Client | [Room image](gmcp-darkwind-room-image.md) |
 | `Darkwind.Divine 1` | `Darkwind.Divine` | Server -> Client | [Divine state](gmcp-darkwind-divine.md) |
 | `Darkwind.Sky 1` | `Darkwind.Sky` | Server -> Client | [Sky](gmcp-darkwind-sky.md) |

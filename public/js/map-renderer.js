@@ -1,6 +1,7 @@
 import * as mapData from './map-data-v2.js';
 import { normalizeMapZoom } from './map-zoom.js';
 import { normalizeMapPan, splitMapPan } from './map-pan.js';
+import { getPrimaryTerrain } from './terrain-semantics.mjs';
 
 const TILE_SIZE = 32;
 // Gap between room boxes. Rooms are drawn as separate boxes spaced apart, with
@@ -193,21 +194,8 @@ function specialExitSpans(room) {
   return spans;
 }
 
-// Priority order: more specific terrains first
-const TERRAIN_PRIORITY = [
-  'city', 'road', 'path', 'forest', 'jungle', 'canopy',
-  'plains', 'farm', 'hills', 'mountain', 'desert',
-  'sea', 'lake', 'river', 'beach', 'swamp', 'arctic',
-  'underground', 'inside', 'barren', 'underwater', 'sky', 'outside',
-];
-
 function getTerrainName(environment) {
-  if (!environment) return 'outside';
-  const terrains = environment.toLowerCase().split(/,\s*| and /);
-  for (const t of TERRAIN_PRIORITY) {
-    if (terrains.includes(t)) return t;
-  }
-  return 'outside';
+  return getPrimaryTerrain(environment);
 }
 
 export function renderMap(bodyEl, source = mapData) {

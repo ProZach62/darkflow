@@ -227,6 +227,9 @@ function scheduleHandshakeGuard(forWs) {
       reason: 'handshake-retry',
       full: true,
       panels: panelManager.getSubscriptionPanels(),
+      features: {
+        visualEffects: settingsManager.get('visualEffectsEnabled'),
+      },
     });
   }, HANDSHAKE_RESEND_DELAY_MS);
 }
@@ -691,6 +694,9 @@ export async function connect() {
         reason: wasReconnect ? 'reconnect' : 'login',
         full: true,
         panels: panelManager.getSubscriptionPanels(),
+        features: {
+          visualEffects: settingsManager.get('visualEffectsEnabled'),
+        },
       });
       timerManager.startAutoTimers();
     };

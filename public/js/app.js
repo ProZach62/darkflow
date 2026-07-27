@@ -17,6 +17,7 @@ import { lagMonitor } from './lag-monitor.js';
 import { soundPanel } from './sound-panel.js';
 import { fishingManager } from './fishing-manager.js';
 import { combatVisualManager } from './combat-visual-manager.js';
+import { visualEffectsManager } from './visual-effects-manager.js';
 import { roomPlaylistManager } from './room-playlist-manager.js';
 import { soundManager } from './sound-manager.js';
 import { settingsManager } from './settings-manager.js';
@@ -489,6 +490,7 @@ lagMonitor.init();
 soundPanel.init();
 fishingManager.init();
 combatVisualManager.init();
+visualEffectsManager.init();
 roomPlaylistManager.init();
 
 window.lagDebug = {

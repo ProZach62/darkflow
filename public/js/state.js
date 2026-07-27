@@ -43,6 +43,7 @@ export const state = {
     outputScrollbackPreset: 'normal',
     tabObservabilityEnabled: false,
     screenReaderMode: false,
+    visualEffectsEnabled: false,
     terminalWidthColumns: null,
     workspaceLayout: 'classic',
     settingsBackupPromptEnabled: true,

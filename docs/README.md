@@ -27,6 +27,7 @@ Darkwind-specific package to its supporting documentation.
 | --- | --- |
 | [Client](gmcp-darkwind-client.md) | Subscriptions, terminal geometry, and media refresh |
 | [Character avatar](gmcp-darkwind-char-avatar.md) | Character image pushes |
+| [Visual effects](gmcp-darkwind-visual.md) | Optional planet/terrain ambience, combat and spell cues, low-health presentation, and allowlisted builder previews |
 | [Room image](gmcp-darkwind-room-image.md) | Room image pushes and preload behavior |
 | [Divine](gmcp-darkwind-divine.md) | Patron, pressure, omens, and divine events |
 | [Sky](gmcp-darkwind-sky.md) | Game time, sky stages, moons, and world bodies |

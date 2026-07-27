@@ -128,6 +128,7 @@ export const settingsManager = {
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
     screenReaderMode: false,
+    visualEffectsEnabled: false,
     terminalWidthColumns: null,
     workspaceLayout: 'classic',
     paneGridSnapEnabled: false,
@@ -346,6 +347,13 @@ export const settingsManager = {
     }
   },
 
+  _publishSettingsChanged() {
+    if (typeof document === 'undefined' || typeof CustomEvent !== 'function') return;
+    document.dispatchEvent(new CustomEvent('darkwind:settings-changed', {
+      detail: { ...this._settings },
+    }));
+  },
+
   _applySettings(nextSettings) {
     this._settings = this._normalizeSettings({
       ...this._settings,
@@ -361,6 +369,7 @@ export const settingsManager = {
     this._applyActiveTheme();
     this._applyActiveBackground();
     this._save();
+    this._publishSettingsChanged();
   },
 
   // --- Theming -------------------------------------------------------------
@@ -800,6 +809,7 @@ export const settingsManager = {
     sendTerminalGeometry(true);
     this._applyActiveTheme();
     this._applyActiveBackground();
+    this._publishSettingsChanged();
 
     try {
       localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(bundle.data.aliases || { scopes: {} }));
@@ -865,6 +875,7 @@ export const settingsManager = {
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
       screenReaderMode: Boolean(settings.screenReaderMode),
+      visualEffectsEnabled: Boolean(settings.visualEffectsEnabled),
       terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
       workspaceLayout: settings.workspaceLayout === 'floating' ? 'floating' : 'classic',
       paneGridSnapEnabled: Boolean(settings.paneGridSnapEnabled),
@@ -2147,6 +2158,19 @@ export const settingsManager = {
     appearanceSection.appendChild(appearanceTitle);
     appearanceSection.appendChild(this._createThemeRow());
     appearanceSection.appendChild(this._createBackgroundPicker());
+
+    const visualsTitle = document.createElement('h3');
+    visualsTitle.className = 'dw-heading';
+    visualsTitle.textContent = 'Visual effects';
+    appearanceSection.appendChild(visualsTitle);
+    appearanceSection.appendChild(this._createCheckboxRow(
+      'Game visual effects',
+      'Add optional planet and terrain ambience, spell and combat feedback, and a slow red pulse while you are at 40% health or less. Game text, controls, and combatbrief settings are never changed.',
+      !!this._draftSettings.visualEffectsEnabled,
+      (checked) => {
+        this._draftSettings.visualEffectsEnabled = checked;
+      }
+    ));
 
     const terminalTitle = document.createElement('h3');
     terminalTitle.className = 'dw-heading';
