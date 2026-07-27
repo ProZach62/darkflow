@@ -46,6 +46,7 @@ export const state = {
     terminalWidthColumns: null,
     workspaceLayout: 'classic',
     settingsBackupPromptEnabled: true,
+    background: 'none',
   },
   terminalGeometry: {
     columns: 75,

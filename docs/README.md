@@ -67,6 +67,7 @@ These documents cover the embedded relay that lets an LLM or CLI drive a MUD:
 | Document | Coverage |
 | --- | --- |
 | [Darkwind desktop client](desktop.md) | Electron architecture, packaging, updates, Steam depots, and releases |
+| [Curated backgrounds](backgrounds.md) | Preset catalog, ultrawide tiling, persistence, and asset requirements |
 | [Web client blueprint](BLUEPRINT-webclient.md) | Original transport and browser-client design |
 | [Web client plan](PLAN-webclient.md) | Original implementation and deployment plan |
 | [RFC 2549 debug](rfc2549-debug.md) | Debug surface for the optional RFC 2549 transport mode |
