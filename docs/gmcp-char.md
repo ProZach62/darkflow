@@ -28,7 +28,7 @@ Char.Defences 1
 | `Char.Stats` | Server -> Client | Store current attributes |
 | `Char.RealStats` | Server -> Client | Store base attributes for comparison with current values |
 | `Char.Worth` | Server -> Client | Render dedicated gold and bank values |
-| `Char.Enemy` | Server -> Client | Render or close the combat target panel |
+| `Char.Enemy` | Server -> Client | Render or close the authoritative combat target; also feeds visual Combat mode |
 | `Char.Items.List` | Server -> Client | Replace inventory state for `location: "inv"` |
 | `Char.Items.Add` | Server -> Client | Add one inventory item |
 | `Char.Items.Remove` | Server -> Client | Remove one inventory item by id |
@@ -111,6 +111,12 @@ Darkwind's native shape is:
 Darkflow also accepts a generic shape with `name`, `hp`, `mhp` or `maxhp`,
 `mn`/`mana`/`sp`, `mmn`/`maxmana`/`maxsp`, `level`, `image`/`avatar`, and
 `hp_string`. An empty name or `"None"` closes the target panel.
+
+The optional [Darkwind.Combat](gmcp-darkwind-combat.md) package changes the
+existing Enemy pane into a visual Combat scene during an active encounter, but
+does not replace this message. `Char.Enemy` remains authoritative for the
+staged target's name, HP, condition, and art; Combat State supplies lifecycle
+and roster identity, while Combat Events supply transient outcomes.
 
 ## Char.Items
 

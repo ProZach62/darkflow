@@ -29,7 +29,7 @@ function normalizeSupports(payload) {
   return supports;
 }
 
-function normalizeSubscriptionPayload(payload = {}) {
+export function normalizeSubscriptionPayload(payload = {}) {
   return {
     reason: payload.reason || 'visibility-sync',
     full: !!payload.full,
@@ -37,6 +37,7 @@ function normalizeSubscriptionPayload(payload = {}) {
     features: {
       announcementsBadge: true,
       enemyAutoOpen: true,
+      combatPane: false,
       windows: true,
       ide: true,
       completion: true,
@@ -147,6 +148,7 @@ export const gmcp = {
       'Group 1',
       'Game 1',
       'Darkwind.Char.Avatar 1',
+      'Darkwind.Combat 1',
       'Darkwind.Room.Image 1',
       'Darkwind.Divine 1',
       'Darkwind.Sky 1',
@@ -186,7 +188,7 @@ export const gmcp = {
 
   sendSubscriptions(payload = {}) {
     if (!isSocketOpen(state.ws)) return false;
-    this.subscriptions = normalizeSubscriptionPayload({
+    const subscriptions = normalizeSubscriptionPayload({
       ...this.subscriptions,
       ...payload,
       panels: payload.panels || this.subscriptions.panels,
@@ -195,7 +197,9 @@ export const gmcp = {
         ...(payload.features || {}),
       },
     });
-    this.send(GMCP_SUBSCRIPTIONS_PACKAGE, this.subscriptions);
+    const sent = this.send(GMCP_SUBSCRIPTIONS_PACKAGE, subscriptions);
+    if (!sent) return false;
+    this.subscriptions = subscriptions;
     if (payload.features && payload.features.announcementsList) {
       this.subscriptions.features.announcementsList = false;
     }

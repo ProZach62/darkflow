@@ -11,9 +11,12 @@ const WebSocket = require('ws');
 const { server, startServer, stopServer } = require('../server.js');
 const { version: expectedVersion } = require('../public/version.json');
 const { version: packageVersion } = require('../package.json');
+const packageLock = require('../package-lock.json');
 
 test('web and desktop release versions stay synchronized', () => {
   assert.equal(expectedVersion, packageVersion);
+  assert.equal(expectedVersion, packageLock.version);
+  assert.equal(expectedVersion, packageLock.packages[''].version);
 });
 
 test('Darkflow server can be embedded on an ephemeral loopback port', async (t) => {

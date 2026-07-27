@@ -500,3 +500,388 @@ test('hidden enemy pane does not overwrite saved resized dimensions', () => {
   assert.equal(panelManager.state.panels.enemy.floatW, 456);
   assert.equal(panelManager.state.panels.enemy.floatH, 167);
 });
+
+test('visual layout migration sets the requested 580 by 465 Combat frame at layer 10', () => {
+  const originalSaveState = panelManager.saveState;
+  const originalApplyFloatPosition = panelManager._applyFloatPosition;
+  let saves = 0;
+  let applies = 0;
+
+  try {
+    panelManager._mobile.enabled = false;
+    panelManager.state.panels = {
+      enemy: {
+        dock: 'float',
+        visible: true,
+        floatW: PANEL_DEFS.enemy.defaultFloatW,
+        floatH: PANEL_DEFS.enemy.defaultFloatH,
+        combatVisualExpanded: false,
+      },
+    };
+    panelManager.panels = { enemy: { el: {} } };
+    panelManager.saveState = () => { saves++; };
+    panelManager._applyFloatPosition = () => { applies++; };
+
+    assert.equal(panelManager.prepareCombatVisualLayout(), true);
+    assert.equal(panelManager.state.panels.enemy.floatW, 580);
+    assert.equal(panelManager.state.panels.enemy.floatH, 465);
+    assert.equal(panelManager.state.panels.enemy.zLayer, 10);
+    assert.equal(panelManager.state.panels.enemy.floatZ, 1100);
+    assert.equal(panelManager.state.panels.enemy.combatVisualExpanded, true);
+    assert.equal(panelManager.state.panels.enemy.combatVisualLayoutVersion, 3);
+    assert.equal(saves, 1);
+    assert.equal(applies, 1);
+
+    assert.equal(panelManager.prepareCombatVisualLayout(), false);
+    assert.equal(saves, 1, 'the visual expansion marker prevents repeated layout writes');
+  } finally {
+    panelManager.saveState = originalSaveState;
+    panelManager._applyFloatPosition = originalApplyFloatPosition;
+  }
+});
+
+test('first visual activation normalizes a player-resized Enemy pane to the Combat frame', () => {
+  const originalSaveState = panelManager.saveState;
+  panelManager._mobile.enabled = false;
+  panelManager.state.panels = {
+    enemy: {
+      dock: 'float',
+      visible: true,
+      floatW: 512,
+      floatH: 280,
+      combatVisualExpanded: false,
+    },
+  };
+  panelManager.panels = {};
+  panelManager.saveState = () => {};
+
+  try {
+    assert.equal(panelManager.prepareCombatVisualLayout(), true);
+    assert.equal(panelManager.state.panels.enemy.floatW, 580);
+    assert.equal(panelManager.state.panels.enemy.floatH, 465);
+    assert.equal(panelManager.state.panels.enemy.zLayer, 10);
+    assert.equal(panelManager.state.panels.enemy.combatVisualExpanded, true);
+    assert.equal(panelManager.state.panels.enemy.combatVisualLayoutVersion, 3);
+  } finally {
+    panelManager.saveState = originalSaveState;
+  }
+});
+
+test('visual layout migration upgrades the prior automatic 620 by 420 size', () => {
+  const originalSaveState = panelManager.saveState;
+  const originalApplyFloatPosition = panelManager._applyFloatPosition;
+
+  try {
+    panelManager._mobile.enabled = false;
+    panelManager.state.panels = {
+      enemy: {
+        dock: 'float',
+        visible: true,
+        floatX: 290,
+        floatY: 180,
+        floatW: 620,
+        floatH: 420,
+        combatVisualExpanded: true,
+      },
+    };
+    panelManager.panels = { enemy: { el: {} } };
+    panelManager.saveState = () => {};
+    panelManager._applyFloatPosition = () => {};
+
+    assert.equal(panelManager.prepareCombatVisualLayout(), true);
+    assert.equal(panelManager.state.panels.enemy.floatW, 580);
+    assert.equal(panelManager.state.panels.enemy.floatH, 465);
+    assert.equal(panelManager.state.panels.enemy.zLayer, 10);
+    assert.equal(panelManager.state.panels.enemy.combatVisualLayoutVersion, 3);
+  } finally {
+    panelManager.saveState = originalSaveState;
+    panelManager._applyFloatPosition = originalApplyFloatPosition;
+  }
+});
+
+test('visual layout migration replaces a custom prior size with the requested Combat frame', () => {
+  const originalSaveState = panelManager.saveState;
+
+  try {
+    panelManager._mobile.enabled = false;
+    panelManager.state.panels = {
+      enemy: {
+        dock: 'float',
+        visible: true,
+        floatW: 704,
+        floatH: 510,
+        combatVisualExpanded: true,
+      },
+    };
+    panelManager.panels = {};
+    panelManager.saveState = () => {};
+
+    assert.equal(panelManager.prepareCombatVisualLayout(), true);
+    assert.equal(panelManager.state.panels.enemy.floatW, 580);
+    assert.equal(panelManager.state.panels.enemy.floatH, 465);
+    assert.equal(panelManager.state.panels.enemy.zLayer, 10);
+    assert.equal(panelManager.state.panels.enemy.combatVisualLayoutVersion, 3);
+  } finally {
+    panelManager.saveState = originalSaveState;
+  }
+});
+
+test('visual layout migration expands a legacy Enemy pane before floating it from a dock', () => {
+  const originalSaveState = panelManager.saveState;
+  const originalApplyFloatPosition = panelManager._applyFloatPosition;
+
+  try {
+    panelManager._mobile.enabled = false;
+    panelManager.state.panels = {
+      enemy: {
+        dock: 'left',
+        visible: true,
+        floatW: PANEL_DEFS.enemy.defaultFloatW,
+        floatH: PANEL_DEFS.enemy.defaultFloatH,
+        combatVisualExpanded: false,
+      },
+    };
+    panelManager.panels = { enemy: { el: {} } };
+    panelManager.saveState = () => {};
+    panelManager._applyFloatPosition = () => {};
+
+    assert.equal(panelManager.prepareCombatVisualLayout(), true);
+    assert.equal(panelManager.state.panels.enemy.floatW, 580);
+    assert.equal(panelManager.state.panels.enemy.floatH, 465);
+    assert.equal(panelManager.state.panels.enemy.zLayer, 10);
+  } finally {
+    panelManager.saveState = originalSaveState;
+    panelManager._applyFloatPosition = originalApplyFloatPosition;
+  }
+});
+
+test('mobile visual activation leaves the desktop size migration pending', () => {
+  const originalSaveState = panelManager.saveState;
+  let saves = 0;
+
+  try {
+    panelManager._mobile.enabled = true;
+    panelManager.state.panels = {
+      enemy: {
+        dock: 'float',
+        visible: true,
+        floatW: PANEL_DEFS.enemy.defaultFloatW,
+        floatH: PANEL_DEFS.enemy.defaultFloatH,
+        combatVisualExpanded: false,
+      },
+    };
+    panelManager.panels = {};
+    panelManager.saveState = () => { saves++; };
+
+    assert.equal(panelManager.prepareCombatVisualLayout(), false);
+    assert.equal(panelManager.state.panels.enemy.floatW, PANEL_DEFS.enemy.defaultFloatW);
+    assert.equal(panelManager.state.panels.enemy.floatH, PANEL_DEFS.enemy.defaultFloatH);
+    assert.equal(panelManager.state.panels.enemy.combatVisualLayoutVersion, undefined);
+    assert.equal(saves, 0);
+  } finally {
+    panelManager._mobile.enabled = false;
+    panelManager.saveState = originalSaveState;
+  }
+});
+
+test('active visual combat keeps its exact frame when pane grid snapping is enabled', () => {
+  const originalActive = panelManager._combatVisualPresentationActive;
+  try {
+    panelManager._combatVisualPresentationActive = true;
+    assert.deepEqual(
+      panelManager._snapFloatSizeToGrid('enemy', 580, 465),
+      { width: 580, height: 465 },
+    );
+    assert.deepEqual(
+      panelManager._snapFloatSizeToGrid('enemy', 701, 512),
+      { width: 580, height: 465 },
+    );
+  } finally {
+    panelManager._combatVisualPresentationActive = originalActive;
+  }
+});
+
+test('visual combat floats and centers the Enemy pane in the available screen', () => {
+  const originalState = panelManager.state;
+  const originalPanels = panelManager.panels;
+  const originalMakeFloat = panelManager._makeFloat;
+  const originalGetSnapBounds = panelManager._getSnapBounds;
+  const originalApplyFloatPosition = panelManager._applyFloatPosition;
+  let madeFloat = 0;
+  let applied = 0;
+  let uncollapsed = false;
+
+  try {
+    panelManager._mobile.enabled = false;
+    panelManager.state = {
+      docks: { left: false, right: false },
+      panels: {
+        enemy: {
+          dock: 'left',
+          visible: true,
+          collapsed: true,
+          floatX: 12,
+          floatY: 20,
+          floatW: 620,
+          floatH: 420,
+          snapLeft: true,
+          snapTop: true,
+          snapRight: false,
+          snapBottom: false,
+          panelAnchor: { targetId: 'terminal', relation: 'above' },
+        },
+      },
+    };
+    panelManager.panels = {
+      enemy: {
+        el: {
+          classList: { contains() { return false; } },
+          querySelector() { return null; },
+        },
+        bodyEl: {
+          classList: {
+            remove(name) {
+              if (name === 'collapsed') uncollapsed = true;
+            },
+          },
+        },
+      },
+    };
+    panelManager._makeFloat = () => { madeFloat++; };
+    panelManager._getSnapBounds = () => ({
+      left: 100,
+      top: 40,
+      right: 1100,
+      bottom: 740,
+    });
+    panelManager._applyFloatPosition = () => { applied++; };
+
+    assert.equal(panelManager._centerEnemyPanelForCombat(), true);
+    const state = panelManager.state.panels.enemy;
+    assert.equal(state.dock, 'float');
+    assert.equal(state.collapsed, false);
+    assert.equal(state.snapLeft, false);
+    assert.equal(state.snapTop, false);
+    assert.equal(state.snapRight, false);
+    assert.equal(state.snapBottom, false);
+    assert.equal(state.panelAnchor, undefined);
+    assert.equal(state.floatW, 580);
+    assert.equal(state.floatH, 465);
+    assert.equal(state.zLayer, 10);
+    assert.equal(state.floatZ, 1100);
+    assert.equal(state.floatX, 310);
+    assert.equal(state.floatY, 158);
+    assert.equal(madeFloat, 1);
+    assert.equal(applied, 1);
+    assert.equal(uncollapsed, true);
+  } finally {
+    panelManager.state = originalState;
+    panelManager.panels = originalPanels;
+    panelManager._makeFloat = originalMakeFloat;
+    panelManager._getSnapBounds = originalGetSnapBounds;
+    panelManager._applyFloatPosition = originalApplyFloatPosition;
+  }
+});
+
+test('active visual combat stays above higher-layer panes before Char.Enemy arrives', () => {
+  const originalState = panelManager.state;
+  const originalPanels = panelManager.panels;
+  const originalGmcpData = panelManager.gmcpData;
+
+  try {
+    panelManager._mobile.enabled = false;
+    panelManager.state = {
+      docks: { left: false, right: false },
+      panels: {
+        enemy: { dock: 'float', visible: true, zLayer: 10 },
+        ide: { dock: 'float', visible: true, zLayer: 50 },
+      },
+    };
+    panelManager.panels = {
+      enemy: { el: { style: { display: '', zIndex: '1019' } } },
+      ide: { el: { style: { display: '', zIndex: '1509' } } },
+    };
+    panelManager.gmcpData = {
+      enemy: { enemy_name: 'None' },
+      combatVisual: { visualEnabled: true, active: true },
+    };
+
+    panelManager._keepEnemyPanelAbove();
+    assert.equal(panelManager.panels.enemy.el.style.zIndex, '1510');
+  } finally {
+    panelManager.state = originalState;
+    panelManager.panels = originalPanels;
+    panelManager.gmcpData = originalGmcpData;
+  }
+});
+
+test('presentation readiness rejects hidden, collapsed, and collapsed-dock combat panes', () => {
+  panelManager._mobile.enabled = false;
+  panelManager.state = {
+    docks: { left: false, right: false },
+    panels: {
+      enemy: { dock: 'float', visible: true, collapsed: false },
+    },
+  };
+  panelManager.panels = { enemy: { el: { style: { display: '' } } } };
+
+  assert.equal(panelManager.getPanelPresentationState('enemy').ready, true);
+
+  panelManager.state.panels.enemy.collapsed = true;
+  assert.equal(panelManager.getPanelPresentationState('enemy').ready, false);
+
+  panelManager.state.panels.enemy.collapsed = false;
+  panelManager.state.panels.enemy.dock = 'left';
+  panelManager.state.docks.left = true;
+  assert.equal(panelManager.getPanelPresentationState('enemy').ready, false);
+
+  panelManager.state.docks.left = false;
+  panelManager.panels.enemy.el.style.display = 'none';
+  assert.equal(panelManager.getPanelPresentationState('enemy').ready, false);
+});
+
+test('Combat title override is retained before a hidden Enemy pane is created', () => {
+  panelManager._mobile.enabled = false;
+  panelManager.panels = {};
+
+  panelManager.setPanelTitle('enemy', 'Combat');
+  assert.equal(panelManager._panelTitleOverrides.enemy, 'Combat');
+
+  panelManager.setPanelTitle('enemy', 'Enemy');
+  assert.equal(panelManager._panelTitleOverrides.enemy, undefined);
+});
+
+test('visual model toggles the Combat host layout class with the mode', () => {
+  const originalPanels = panelManager.panels;
+  const originalGmcpData = panelManager.gmcpData;
+  const originalRenderPanel = panelManager._renderPanel;
+  const toggles = [];
+
+  try {
+    panelManager.panels = {
+      enemy: {
+        el: {
+          classList: {
+            toggle(name, enabled) {
+              toggles.push([name, enabled]);
+            },
+          },
+        },
+      },
+    };
+    panelManager.gmcpData = {};
+    panelManager._renderPanel = () => true;
+
+    assert.equal(panelManager.setCombatVisualState({ visualEnabled: true }), true);
+    assert.deepEqual(toggles.at(-1), ['combat-visual-host', true]);
+    assert.equal(panelManager.gmcpData.combatVisual.visualEnabled, true);
+
+    panelManager.setCombatVisualState(null);
+    assert.deepEqual(toggles.at(-1), ['combat-visual-host', false]);
+    assert.equal(panelManager.gmcpData.combatVisual, undefined);
+  } finally {
+    panelManager.panels = originalPanels;
+    panelManager.gmcpData = originalGmcpData;
+    panelManager._renderPanel = originalRenderPanel;
+  }
+});
