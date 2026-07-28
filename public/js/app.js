@@ -415,12 +415,15 @@ dom.mobilePanelsBtn.addEventListener('click', function() {
 // ── Panels Menu ─────────────────────────────────────────────────────
 document.getElementById('panels-menu-btn').addEventListener('click', function(e) {
   e.stopPropagation();
-  document.getElementById('panels-menu').classList.toggle('open');
+  const menu = document.getElementById('panels-menu');
+  const isOpen = menu.classList.toggle('open');
+  document.getElementById('toolbar').classList.toggle('panels-menu-active', isOpen);
 });
 
 // Close dropdowns on outside click
 document.addEventListener('click', function() {
   document.getElementById('panels-menu').classList.remove('open');
+  document.getElementById('toolbar').classList.remove('panels-menu-active');
 });
 
 // ── Init ────────────────────────────────────────────────────────────

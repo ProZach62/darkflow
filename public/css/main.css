@@ -248,6 +248,10 @@ body {
     var(--df-panel);
 }
 
+#toolbar.panels-menu-active {
+  z-index: 11000;
+}
+
 .toolbar-left {
   display: flex;
   align-items: center;
