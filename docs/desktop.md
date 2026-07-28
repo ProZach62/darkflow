@@ -92,6 +92,12 @@ publisher warning. The release workflow expects these repository secrets:
 | macOS | `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` |
 | Windows | `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` |
 
+Production CI uses `desktop:release:*` commands that fail rather than publish
+an unsigned macOS or Windows build. Local `desktop:dist:*` commands remain
+available for unsigned development packages. CI also verifies the macOS
+signature and notarization ticket, the Windows Authenticode signature, every
+expected installer and blockmap, and the platform-specific updater metadata.
+
 ## Releasing
 
 Keep the web runtime version, npm package version, and desktop application
@@ -102,13 +108,16 @@ npm run version:set -- 1.5.0
 npm test
 git add package.json package-lock.json public/version.json
 git commit -m "Release Darkwind desktop 1.5.0"
-git tag v1.5.0
-git push origin main v1.5.0
+git tag -a v1.5.0 -m "Darkwind desktop 1.5.0"
+git push origin main
+git push origin refs/tags/v1.5.0
 ```
 
 Pushing a matching `v*` tag runs `.github/workflows/desktop-release.yml`. It
 tests once, builds each target on its native runner, and publishes a GitHub
 release containing installers plus the update metadata consumed by the app.
+The tagged commit must be contained in `origin/main`. Use one GitHub release
+per version with all three platforms; do not create separate platform releases.
 Do not publish a lower or reused version after a broken release; update clients
 only move to a higher semantic version.
 

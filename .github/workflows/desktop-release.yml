@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -31,7 +33,13 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
+          case "$VERSION" in
+            *-*) echo "Desktop production releases require a stable semantic version."; exit 1 ;;
+          esac
           test "$GITHUB_REF_NAME" = "v$VERSION"
+          TAG_COMMIT="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          git fetch origin main
+          git merge-base --is-ancestor "$TAG_COMMIT" origin/main
           test -n "$MAC_CSC_LINK"
           test -n "$MAC_CSC_KEY_PASSWORD"
           test -n "$APPLE_ID"
@@ -47,14 +55,17 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            command: desktop:dist:mac
+            command: desktop:release:mac
             artifact: desktop-macos
+            platform: mac
           - os: windows-latest
-            command: desktop:dist:win
+            command: desktop:release:win
             artifact: desktop-windows
+            platform: win
           - os: ubuntu-latest
-            command: desktop:dist:linux
+            command: desktop:release:linux
             artifact: desktop-linux
+            platform: linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -73,6 +84,28 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - name: Validate update artifacts and metadata
+        run: npm run desktop:validate-release -- ${{ matrix.platform }} dist/desktop
+      - name: Verify macOS signature and notarization
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          codesign --verify --deep --strict --verbose=2 dist/desktop/mac-universal/Darkwind.app
+          spctl --assess --verbose=4 --type execute dist/desktop/mac-universal/Darkwind.app
+          DMG="$(find dist/desktop -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$DMG"
+          xcrun stapler validate "$DMG"
+      - name: Verify Windows Authenticode signature
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem dist/desktop -Filter '*-win-x64.exe' |
+            Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer was not generated.' }
+          $signature = Get-AuthenticodeSignature $installer.FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "Windows installer signature is $($signature.Status): $($signature.StatusMessage)"
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -90,10 +123,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
+      - name: Validate complete release payload
+        run: node desktop/validate-release.cjs all release-assets
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

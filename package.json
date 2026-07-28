@@ -23,6 +23,10 @@
     "desktop:dist:mac": "electron-builder --mac --publish never",
     "desktop:dist:win": "electron-builder --win --publish never",
     "desktop:dist:linux": "electron-builder --linux --publish never",
+    "desktop:release:mac": "electron-builder --mac --publish never --config.mac.forceCodeSigning=true",
+    "desktop:release:win": "electron-builder --win --publish never --config.win.forceCodeSigning=true",
+    "desktop:release:linux": "electron-builder --linux --publish never",
+    "desktop:validate-release": "node desktop/validate-release.cjs",
     "desktop:steam": "electron-builder --dir --publish never --config.extraMetadata.darkflowDistribution=steam",
     "desktop:steam:mac": "electron-builder --mac --dir --universal --publish never --config.extraMetadata.darkflowDistribution=steam",
     "desktop:steam:win": "electron-builder --win --dir --x64 --publish never --config.extraMetadata.darkflowDistribution=steam",
@@ -66,7 +70,10 @@
     "mac": {
       "category": "public.app-category.games",
       "electronUpdaterCompatibility": ">=2.16",
+      "forceCodeSigning": false,
+      "hardenedRuntime": true,
       "icon": "public/assets/brand/darkflow-icon-512.png",
+      "notarize": true,
       "target": [
         {
           "target": "dmg",
@@ -84,6 +91,7 @@
     },
     "win": {
       "electronUpdaterCompatibility": ">=2.16",
+      "forceCodeSigning": false,
       "icon": "public/assets/brand/darkflow-icon-512.png",
       "target": [
         {
