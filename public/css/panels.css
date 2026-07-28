@@ -52,6 +52,10 @@ body.floating-workspace-mode #main-content {
     var(--df-bg);
 }
 
+html[data-background-active="true"] body.floating-workspace-mode #main-content {
+  background: transparent;
+}
+
 body.floating-workspace-mode #center-column {
   display: none;
 }

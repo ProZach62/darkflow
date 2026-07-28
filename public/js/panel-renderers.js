@@ -14,6 +14,7 @@ import {
   isImageFileUrl,
   openImagePreviewPane,
 } from './image-preview.js';
+import { buildCombatView } from './combat-visual-core.mjs';
 
 // Click-to-walk: clicking a mapped room on the LIVE map speedwalks there
 // over the active live map source. Steps are verified by the next authoritative
@@ -589,6 +590,241 @@ export function renderVitalBar(bodyEl, label, cur, max, opts = {}) {
 function removeVitalBar(bodyEl, label, opts = {}) {
   const row = bodyEl.querySelector('.' + vitalBarClass(opts.id || label));
   if (row) row.remove();
+}
+
+const COMBAT_RESULT_LABELS = {
+  hit: 'Hit',
+  critical: 'Critical',
+  miss: 'Miss',
+  dodge: 'Dodged',
+  absorb: 'Absorbed',
+};
+
+const COMBAT_PERSPECTIVE_LABELS = {
+  outgoing: {
+    hit: 'Your hit',
+    critical: 'Your critical hit',
+    miss: 'You missed',
+    dodge: 'Target dodged',
+    absorb: 'Target absorbed',
+  },
+  incoming: {
+    hit: 'Incoming hit',
+    critical: 'Incoming critical hit',
+    miss: 'Enemy missed',
+    dodge: 'You dodged',
+    absorb: 'You absorbed it',
+  },
+  observed: {
+    hit: 'Observed hit',
+    critical: 'Observed critical hit',
+    miss: 'Observed miss',
+    dodge: 'Observed dodge',
+    absorb: 'Observed absorb',
+  },
+};
+
+function combatHealthHtml(side, name, health) {
+  const safeName = escHtml(name || (side === 'player' ? 'You' : 'Target'));
+  if (!health || !health.known) {
+    const unknownLabel = health && health.status === 'unavailable'
+      ? 'Unavailable'
+      : 'Synchronizing';
+    return '<div class="combat-health combat-health-unknown" role="progressbar" ' +
+      'aria-label="' + safeName + ' health" aria-valuetext="' + unknownLabel + '">' +
+      '<div class="combat-health-track"><div class="combat-health-fill"></div></div>' +
+      '<div class="combat-health-values"><span>HP</span><span>' + unknownLabel + '</span></div></div>';
+  }
+  const current = Math.round(health.current);
+  const maximum = Math.round(health.max);
+  const percent = Math.max(0, Math.min(100, Math.round(health.percent)));
+  return '<div class="combat-health combat-health-' + side + '" role="progressbar" ' +
+    'aria-label="' + safeName + ' health" aria-valuemin="0" aria-valuemax="' + maximum +
+    '" aria-valuenow="' + current + '" aria-valuetext="' + current + ' of ' + maximum + '">' +
+    '<div class="combat-health-track"><div class="combat-health-fill" style="width:' + percent + '%"></div>' +
+    '<span class="combat-health-percent">' + percent + '%</span></div>' +
+    '<div class="combat-health-values"><span>HP</span><span>' +
+    formatInt(current) + ' / ' + formatInt(maximum) + '</span></div></div>';
+}
+
+function combatArtHtml(side, combatant, loadedImages, failedImages, event, impactSide) {
+  const hasImage = !!combatant.image;
+  const image = hasImage ? combatant.image : '/assets/avatar-ghost.svg';
+  const loadedClass = loadedImages.has(image) ? ' is-loaded' : '';
+  const failedClass = failedImages.has(image) ? ' is-error' : '';
+  const classes = 'combat-art combat-art-' + side +
+    (hasImage ? ' has-image' : ' is-placeholder') + loadedClass + failedClass;
+  let html = '<div class="' + classes + '"><img src="' + escHtml(image) +
+    '" data-combat-image="' + escHtml(image) + '" alt="" draggable="false">';
+  if (event && impactSide === side) {
+    html += '<div class="combat-impact-badge" aria-hidden="true">' +
+      escHtml(COMBAT_RESULT_LABELS[event.result] || event.result) + '</div>';
+    if (Object.prototype.hasOwnProperty.call(event, 'damage')) {
+      html += '<div class="combat-damage-number combat-damage-' + side +
+        '" aria-hidden="true">' + formatInt(event.damage) + '</div>';
+    }
+  }
+  return html + '</div>';
+}
+
+function combatEventLabel(event) {
+  if (!event) return 'Awaiting the next exchange';
+  const perspectiveLabels = COMBAT_PERSPECTIVE_LABELS[event.perspective];
+  let label = (perspectiveLabels && perspectiveLabels[event.result])
+    || COMBAT_RESULT_LABELS[event.result]
+    || 'Exchange';
+  if (Object.prototype.hasOwnProperty.call(event, 'damage')) {
+    label += ' \u2022 ' + formatInt(event.damage) + ' damage';
+  } else if (event.result === 'absorb' && Object.prototype.hasOwnProperty.call(event, 'absorbed')) {
+    label += ' \u2022 ' + formatInt(event.absorbed) + ' absorbed';
+  }
+  return label;
+}
+
+function renderCombatVisual(bodyEl, data) {
+  const view = buildCombatView(data.model, {
+    enemy: data.enemy,
+    vitals: data.vitals,
+    avatar: data.avatar,
+  });
+  const event = view.event;
+  const loadedImages = bodyEl._combatLoadedImages instanceof Set
+    ? bodyEl._combatLoadedImages
+    : new Set();
+  const failedImages = bodyEl._combatFailedImages instanceof Set
+    ? bodyEl._combatFailedImages
+    : new Set();
+  bodyEl._combatLoadedImages = loadedImages;
+  bodyEl._combatFailedImages = failedImages;
+  const resultClass = event ? ' combat-result-' + event.result : '';
+  const perspectiveClass = event && event.perspective
+    ? ' combat-perspective-' + event.perspective.replace(/[^a-z0-9_-]/g, '')
+    : '';
+  const motionClass = view.reducedMotion ? ' combat-visual-reduced' : '';
+  const effectiveClass = view.effective
+    ? ' combat-visual-effective'
+    : ' combat-visual-syncing';
+  // Perspective is the recipient-safe source of truth. Keep the actor IDs for
+  // observed combat, but never let an older/mixed server omit the player-side
+  // impact treatment from an explicitly incoming event.
+  const incomingEvent = !!(event && event.perspective === 'incoming');
+  const outgoingEvent = !!(event && event.perspective === 'outgoing');
+  const playerImpact = event && (incomingEvent || event.targetId === view.player.id);
+  const targetImpact = event && (outgoingEvent || event.targetId === view.target.id);
+  const playerActor = event && (outgoingEvent || event.actorId === view.player.id);
+  const targetActor = event && (incomingEvent || event.actorId === view.target.id);
+  const impactSideClass = playerImpact
+    ? ' combat-impact-player'
+    : (targetImpact ? ' combat-impact-opponent' : '');
+  const impactSide = playerImpact ? 'player' : (targetImpact ? 'target' : '');
+  const playerClass = (playerImpact ? ' is-impact-target' : '') +
+    (playerActor ? ' is-event-actor' : '');
+  const targetClass = (targetImpact ? ' is-impact-target' : '') +
+    (targetActor ? ' is-event-actor' : '');
+  const eventLabel = combatEventLabel(event);
+  let announcement = '';
+  let announcementKey = '';
+  if (event) {
+    announcement = event.summary || eventLabel;
+    announcementKey = view.epoch + ':' + view.encounterId + ':event:' + event.seq;
+  } else if (view.summary && (!view.active || !view.history.length)) {
+    announcement = view.summary;
+    announcementKey = view.epoch + ':' + view.encounterId + ':state:' + view.stateSeq;
+  }
+  if (!announcementKey || bodyEl._combatAnnouncementKey === announcementKey) {
+    announcement = '';
+  } else {
+    bodyEl._combatAnnouncementKey = announcementKey;
+  }
+  let html = '<div class="combat-visual' + resultClass + perspectiveClass + impactSideClass +
+    effectiveClass + motionClass +
+    '" role="region" aria-label="Visual combat" data-encounter-id="' + escHtml(view.encounterId) + '">';
+
+  html += '<div class="combat-stage">';
+  html += '<article class="combatant-card combatant-player' + playerClass + '">';
+  html += '<div class="combatant-name"><span>' + escHtml(view.player.name) + '</span></div>';
+  html += combatArtHtml('player', view.player, loadedImages, failedImages, event, impactSide);
+  html += combatHealthHtml('player', view.player.name, view.player.health);
+  html += '</article>';
+  html += '<div class="combat-versus" aria-hidden="true"><span>VS</span></div>';
+  html += '<article class="combatant-card combatant-target' + targetClass + '">';
+  html += '<div class="combatant-name"><span>' + escHtml(view.target.name) + '</span></div>';
+  html += combatArtHtml('target', view.target, loadedImages, failedImages, event, impactSide);
+  html += combatHealthHtml('target', view.target.name, view.target.health);
+  if (view.target.condition) {
+    html += '<div class="combat-target-condition">' + escHtml(view.target.condition) + '</div>';
+  }
+  html += '</article>';
+
+  html += '</div>';
+
+  html += '<div class="combat-current-event combat-current-' +
+    escHtml(event ? event.result : 'waiting') + '"><span class="combat-event-glyph" aria-hidden="true"></span>' +
+    '<span class="combat-event-copy"><strong>' + escHtml(eventLabel) + '</strong>';
+  if (event && event.summary) {
+    html += '<span class="combat-event-summary">' + escHtml(event.summary) + '</span>';
+  }
+  html += '</span></div>';
+
+  if (view.threats.length || view.hiddenThreatCount) {
+    html += '<div class="combat-threats" aria-label="Additional combat threats"><span class="combat-section-label">Threats</span>';
+    for (const threat of view.threats) {
+      html += '<span class="combat-threat-chip">' + escHtml(threat.name) + '</span>';
+    }
+    if (view.hiddenThreatCount) {
+      html += '<span class="combat-threat-chip combat-threat-more">+' +
+        view.hiddenThreatCount + '</span>';
+    }
+    html += '</div>';
+  }
+
+  if (view.history.length) {
+    html += '<ol class="combat-event-history" aria-label="Recent combat events">';
+    for (const historyEvent of view.history.slice(-5).reverse()) {
+      html += '<li class="combat-history-' + escHtml(historyEvent.result) + '"><span>' +
+        escHtml(COMBAT_RESULT_LABELS[historyEvent.result] || historyEvent.result) + '</span><span>' +
+        escHtml(historyEvent.summary || combatEventLabel(historyEvent)) + '</span></li>';
+    }
+    if (view.overflow.omitted) {
+      html += '<li class="combat-history-overflow"><span>Combined</span><span>+' +
+        formatInt(view.overflow.omitted) + ' exchanges</span></li>';
+    }
+    html += '</ol>';
+  }
+
+  if (!view.active && view.outcome) {
+    html += '<div class="combat-outcome combat-outcome-' + escHtml(view.outcome) + '">' +
+      escHtml(view.summary || view.outcome) + '</div>';
+  } else if (!view.effective) {
+    html += '<div class="combat-sync-state">' +
+      'Visual combat is synchronizing; text fallback remains active</div>';
+  }
+  html += '<div class="sr-only combat-live-region" role="status" aria-live="polite" aria-atomic="true">' +
+    escHtml(announcement) + '</div>';
+  html += '</div>';
+
+  bodyEl.innerHTML = html;
+  bodyEl._enemyState = null;
+  if (typeof bodyEl.querySelectorAll === 'function') {
+    for (const img of bodyEl.querySelectorAll('.combat-art img')) {
+      const wrap = img.parentElement;
+      const imageKey = img.getAttribute('data-combat-image') || img.src || '';
+      const markLoaded = () => {
+        if (imageKey) {
+          loadedImages.add(imageKey);
+          failedImages.delete(imageKey);
+        }
+        if (wrap && wrap.classList) wrap.classList.add('is-loaded');
+      };
+      const markFailed = () => {
+        if (imageKey) failedImages.add(imageKey);
+        if (wrap && wrap.classList) wrap.classList.add('is-error');
+      };
+      img.addEventListener('load', markLoaded, { once: true });
+      img.addEventListener('error', markFailed, { once: true });
+      if (img.complete && img.naturalWidth > 0) markLoaded();
+    }
+  }
 }
 
 const GUILD_VITAL_SEVERITIES = { ok: true, warn: true, danger: true };
@@ -1410,6 +1646,11 @@ export const panelRenderers = {
   },
 
   enemy(bodyEl, data) {
+    if (data && data.combatVisual && data.model) {
+      renderCombatVisual(bodyEl, data);
+      return;
+    }
+
     if (!data || !data.enemy_name || data.enemy_name === 'None' || data.enemy_name === '') {
       bodyEl.innerHTML = '<div class="panel-inactive placeholder">No target</div>';
       bodyEl._enemyState = null;

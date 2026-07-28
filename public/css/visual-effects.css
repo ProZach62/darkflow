@@ -1,0 +1,875 @@
+#visual-effects-root {
+  position: fixed;
+  inset: 0;
+  /* Floating pane layers can reach 10,999. Cosmetic effects must remain
+     visible over those panes while still sitting below 20,000+ system UI. */
+  z-index: 12000;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  isolation: isolate;
+}
+
+#visual-effects-root[hidden] {
+  display: none;
+}
+
+#visual-effects-root > div {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.visual-effects-planet,
+.visual-effects-terrain,
+.visual-effects-low-health,
+.visual-effects-spell-cast,
+.visual-effects-outgoing-damage,
+.visual-effects-incoming-damage {
+  opacity: 0;
+}
+
+/* Keep persistent planet ambience strongest at the viewport edges so its
+   identity is obvious without laying a colored veil over terminal text. */
+#visual-effects-root.is-planet-darkwind .visual-effects-planet,
+#visual-effects-root.is-planet-dailos .visual-effects-planet,
+#visual-effects-root.is-planet-markas .visual-effects-planet,
+#visual-effects-root.is-planet-tekal .visual-effects-planet {
+  opacity: 1;
+  box-shadow:
+    inset 0 0 clamp(84px, 10vw, 160px) var(--visual-planet-edge),
+    inset 0 0 clamp(190px, 24vw, 360px) var(--visual-planet-depth);
+  filter: saturate(1.15);
+}
+
+#visual-effects-root.is-planet-darkwind .visual-effects-planet {
+  --visual-preview-accent: rgba(66, 171, 244, 0.7);
+  --visual-planet-edge: rgba(37, 158, 224, 0.16);
+  --visual-planet-depth: rgba(11, 58, 102, 0.08);
+  background:
+    radial-gradient(ellipse 90% 58% at 50% -12%, rgba(62, 174, 238, 0.28), rgba(28, 96, 158, 0.14) 42%, transparent 72%),
+    radial-gradient(ellipse 46% 110% at -8% 52%, rgba(23, 121, 187, 0.12), transparent 70%),
+    radial-gradient(ellipse 42% 105% at 106% 64%, rgba(50, 119, 183, 0.1), transparent 72%),
+    linear-gradient(145deg, rgba(6, 31, 55, 0.05), transparent 47%, rgba(18, 48, 73, 0.04));
+}
+
+#visual-effects-root.is-planet-dailos .visual-effects-planet {
+  --visual-preview-accent: rgba(222, 62, 255, 0.7);
+  --visual-planet-edge: rgba(203, 70, 238, 0.16);
+  --visual-planet-depth: rgba(80, 29, 131, 0.08);
+  background:
+    radial-gradient(ellipse 62% 68% at 8% 13%, rgba(220, 54, 218, 0.28), rgba(143, 39, 188, 0.12) 43%, transparent 69%),
+    radial-gradient(ellipse 64% 72% at 94% 88%, rgba(115, 45, 178, 0.23), rgba(71, 29, 126, 0.1) 48%, transparent 72%),
+    radial-gradient(ellipse 45% 55% at 88% 4%, rgba(86, 63, 185, 0.1), transparent 68%),
+    linear-gradient(125deg, rgba(84, 12, 97, 0.055), transparent 54%);
+  animation: darkflow-planet-drift 18s ease-in-out infinite alternate;
+}
+
+#visual-effects-root.is-planet-markas .visual-effects-planet {
+  --visual-preview-accent: rgba(255, 88, 35, 0.72);
+  --visual-planet-edge: rgba(232, 81, 35, 0.17);
+  --visual-planet-depth: rgba(116, 36, 17, 0.08);
+  background:
+    radial-gradient(ellipse 96% 62% at 50% 112%, rgba(229, 74, 35, 0.32), rgba(153, 48, 24, 0.14) 46%, transparent 72%),
+    radial-gradient(ellipse 48% 64% at 102% 10%, rgba(211, 86, 37, 0.18), rgba(115, 38, 18, 0.08) 48%, transparent 72%),
+    radial-gradient(ellipse 42% 72% at -6% 36%, rgba(164, 48, 27, 0.11), transparent 70%),
+    linear-gradient(112deg, rgba(79, 23, 11, 0.05), transparent 46%, rgba(120, 43, 20, 0.04));
+}
+
+#visual-effects-root.is-planet-tekal .visual-effects-planet {
+  --visual-preview-accent: rgba(49, 229, 151, 0.7);
+  --visual-planet-edge: rgba(45, 205, 146, 0.16);
+  --visual-planet-depth: rgba(11, 84, 65, 0.08);
+  background:
+    radial-gradient(ellipse 68% 60% at 23% -10%, rgba(55, 222, 145, 0.28), rgba(25, 139, 104, 0.12) 43%, transparent 70%),
+    radial-gradient(ellipse 58% 58% at 84% -2%, rgba(60, 153, 219, 0.22), rgba(32, 112, 158, 0.09) 47%, transparent 71%),
+    radial-gradient(ellipse 52% 60% at 104% 86%, rgba(35, 153, 118, 0.11), transparent 72%),
+    linear-gradient(160deg, rgba(4, 64, 44, 0.05), transparent 60%);
+  animation: darkflow-planet-drift 22s ease-in-out infinite alternate-reverse;
+}
+
+/* Builder previews deliberately amplify the otherwise restrained persistent
+   ambience so each planet is immediately recognizable during a short test. */
+#visual-effects-root.is-preview-planet .visual-effects-planet {
+  opacity: 0.82;
+  box-shadow:
+    inset 0 0 115px var(--visual-preview-accent, rgba(83, 178, 255, 0.66)),
+    inset 0 0 300px rgba(0, 6, 14, 0.42);
+  filter: saturate(1.85) brightness(1.18);
+  animation: darkflow-ambience-preview 5s ease-in-out both;
+  will-change: opacity, filter, transform;
+}
+
+/* The primary terrain follows the same canonical priority used by the map. */
+#visual-effects-root.is-terrain-forest .visual-effects-terrain,
+#visual-effects-root.is-terrain-jungle .visual-effects-terrain {
+  --visual-preview-accent: rgba(69, 223, 100, 0.72);
+  opacity: 0.25;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(77, 181, 91, 0.19) 0 1px, transparent 2px),
+    radial-gradient(circle at 78% 24%, rgba(149, 211, 94, 0.14) 0 1px, transparent 2px),
+    linear-gradient(180deg, rgba(4, 46, 26, 0.19), transparent 26%, transparent 79%, rgba(8, 56, 25, 0.12));
+  background-size: 95px 83px, 127px 109px, auto;
+  animation: darkflow-forest-motes 20s linear infinite;
+}
+
+#visual-effects-root.is-terrain-desert .visual-effects-terrain,
+#visual-effects-root.is-terrain-coast .visual-effects-terrain {
+  --visual-preview-accent: rgba(255, 173, 63, 0.74);
+  opacity: 0.24;
+  background:
+    radial-gradient(ellipse at 50% 115%, rgba(237, 164, 72, 0.28), transparent 55%),
+    repeating-linear-gradient(173deg, transparent 0 45px, rgba(255, 196, 112, 0.035) 47px 49px);
+  animation: darkflow-heat-haze 12s ease-in-out infinite alternate;
+}
+
+#visual-effects-root.is-terrain-arctic .visual-effects-terrain {
+  --visual-preview-accent: rgba(178, 235, 255, 0.78);
+  opacity: 0.26;
+  background:
+    radial-gradient(circle at 12% 22%, rgba(225, 247, 255, 0.34) 0 1px, transparent 2px),
+    radial-gradient(circle at 72% 8%, rgba(190, 233, 255, 0.27) 0 1px, transparent 2px),
+    linear-gradient(180deg, rgba(117, 210, 255, 0.16), transparent 31%);
+  background-size: 83px 101px, 121px 137px, auto;
+  animation: darkflow-snow-drift 15s linear infinite;
+}
+
+#visual-effects-root.is-terrain-swamp .visual-effects-terrain,
+#visual-effects-root.is-terrain-water .visual-effects-terrain,
+#visual-effects-root.is-terrain-underwater .visual-effects-terrain {
+  --visual-preview-accent: rgba(52, 215, 205, 0.72);
+  opacity: 0.24;
+  background:
+    radial-gradient(ellipse at 30% 105%, rgba(44, 138, 128, 0.22), transparent 52%),
+    repeating-radial-gradient(ellipse at 70% 115%, transparent 0 36px, rgba(107, 219, 213, 0.04) 38px 40px);
+  animation: darkflow-water-caustics 14s ease-in-out infinite alternate;
+}
+
+#visual-effects-root.is-terrain-city .visual-effects-terrain,
+#visual-effects-root.is-terrain-road .visual-effects-terrain {
+  --visual-preview-accent: rgba(125, 185, 230, 0.7);
+  opacity: 0.16;
+  background:
+    linear-gradient(90deg, rgba(100, 132, 158, 0.09), transparent 18%, transparent 82%, rgba(100, 132, 158, 0.09)),
+    repeating-linear-gradient(90deg, transparent 0 79px, rgba(155, 185, 205, 0.025) 80px 81px);
+}
+
+#visual-effects-root.is-terrain-mountain .visual-effects-terrain,
+#visual-effects-root.is-terrain-plains .visual-effects-terrain {
+  --visual-preview-accent: rgba(171, 194, 126, 0.68);
+  opacity: 0.18;
+  background:
+    radial-gradient(ellipse at 50% 115%, rgba(114, 137, 95, 0.18), transparent 58%),
+    linear-gradient(180deg, rgba(112, 160, 188, 0.09), transparent 30%);
+}
+
+#visual-effects-root.is-terrain-underground .visual-effects-terrain,
+#visual-effects-root.is-terrain-inside .visual-effects-terrain {
+  --visual-preview-accent: rgba(87, 76, 127, 0.8);
+  opacity: 0.24;
+  background:
+    radial-gradient(ellipse at center, transparent 38%, rgba(0, 0, 0, 0.31) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.15), transparent 28%);
+}
+
+/* Terrain previews use a full-strength edge wash and a quick reveal. Normal
+   terrain ambience remains intentionally quiet during regular play. */
+#visual-effects-root.is-preview-terrain .visual-effects-terrain {
+  opacity: 0.9;
+  box-shadow:
+    inset 0 0 125px var(--visual-preview-accent, rgba(117, 188, 220, 0.7)),
+    inset 0 0 310px rgba(0, 5, 12, 0.46);
+  filter: saturate(1.9) contrast(1.14) brightness(1.12);
+  animation: darkflow-ambience-preview 5s ease-in-out both;
+  will-change: opacity, filter, transform;
+}
+
+#visual-effects-root.is-world-transition .visual-effects-planet,
+#visual-effects-root.is-world-transition .visual-effects-terrain {
+  animation: darkflow-world-transition 900ms ease-out both;
+}
+
+/* A transition cannot rely on planet or terrain art being present. These
+   root-owned layers make the portal-like wipe visible during wayshard travel
+   and builder previews, even when the current room has no ambience. */
+#visual-effects-root.is-world-transition::before,
+#visual-effects-root.is-world-transition::after,
+#visual-effects-root.is-preview-transition::before,
+#visual-effects-root.is-preview-transition::after {
+  position: absolute;
+  z-index: 8;
+  content: "";
+  pointer-events: none;
+}
+
+#visual-effects-root.is-world-transition::before,
+#visual-effects-root.is-preview-transition::before {
+  inset: -8%;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse at center,
+      rgba(226, 250, 255, 0.88) 0,
+      rgba(83, 190, 255, 0.54) 16%,
+      rgba(21, 73, 143, 0.38) 38%,
+      rgba(0, 5, 15, 0.92) 74%);
+  box-shadow:
+    inset 0 0 110px rgba(125, 222, 255, 0.7),
+    inset 0 0 280px rgba(0, 8, 28, 0.95);
+  animation: darkflow-transition-preview 1250ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+  will-change: opacity, transform, filter;
+}
+
+#visual-effects-root.is-world-transition::after,
+#visual-effects-root.is-preview-transition::after {
+  top: 50%;
+  left: -8%;
+  right: -8%;
+  height: 5px;
+  opacity: 0;
+  background: rgba(239, 253, 255, 0.98);
+  box-shadow:
+    0 0 12px 4px rgba(205, 245, 255, 0.94),
+    0 0 42px 16px rgba(71, 179, 255, 0.86),
+    0 0 100px 38px rgba(38, 105, 230, 0.48);
+  animation: darkflow-transition-seam 1250ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+  will-change: opacity, transform;
+}
+
+/* Persistent low-health state. It is its own layer so impacts and spell flashes
+   can run without cancelling the warning pulse. */
+.visual-effects-low-health {
+  background:
+    radial-gradient(ellipse at center, transparent 34%, rgba(116, 0, 0, 0.17) 60%, rgba(232, 23, 16, 0.74) 100%),
+    linear-gradient(90deg, rgba(224, 17, 13, 0.38), transparent 11%, transparent 89%, rgba(224, 17, 13, 0.38));
+  box-shadow:
+    inset 0 0 90px rgba(255, 34, 24, 0.46),
+    inset 0 0 210px rgba(105, 0, 0, 0.38);
+  will-change: opacity, filter;
+}
+
+#visual-effects-root.is-low-health .visual-effects-low-health {
+  animation: darkflow-low-health-pulse 3.6s ease-in-out infinite;
+}
+
+#visual-effects-root.is-preview-low-health .visual-effects-low-health {
+  animation: darkflow-low-health-preview 1.8s ease-in-out infinite;
+}
+
+/* Incoming impact remains the strongest combat treatment. */
+.visual-effects-incoming-damage {
+  background:
+    radial-gradient(ellipse at center, transparent 42%, rgba(104, 0, 0, 0.14) 67%, rgba(208, 25, 18, 0.72) 100%),
+    linear-gradient(90deg, rgba(255, 46, 33, 0.28), transparent 8%, transparent 92%, rgba(255, 46, 33, 0.28));
+  box-shadow:
+    inset 0 0 70px rgba(255, 49, 35, 0.36),
+    inset 0 0 150px rgba(108, 0, 0, 0.28);
+  will-change: opacity, filter;
+}
+
+#visual-effects-root.is-incoming-intensity-1 { --visual-impact-opacity: 0.52; }
+#visual-effects-root.is-incoming-intensity-2 { --visual-impact-opacity: 0.72; }
+#visual-effects-root.is-incoming-intensity-3 { --visual-impact-opacity: 0.9; }
+
+#visual-effects-root.is-incoming-damage .visual-effects-incoming-damage {
+  animation: darkflow-incoming-damage-vignette 420ms ease-out both;
+}
+
+/* Outgoing attacks use a quick warm forward beat, visually distinct from harm
+   to the player. */
+.visual-effects-outgoing-damage {
+  background:
+    radial-gradient(ellipse at 56% 50%, transparent 48%, rgba(255, 194, 76, 0.08) 72%, rgba(255, 116, 30, 0.32) 100%),
+    linear-gradient(90deg, transparent 54%, rgba(255, 190, 83, 0.16) 100%);
+  box-shadow: inset -34px 0 90px rgba(255, 117, 32, 0.16);
+}
+
+#visual-effects-root.is-outgoing-intensity-1 { --visual-outgoing-opacity: 0.38; }
+#visual-effects-root.is-outgoing-intensity-2 { --visual-outgoing-opacity: 0.56; }
+#visual-effects-root.is-outgoing-intensity-3 { --visual-outgoing-opacity: 0.72; }
+
+#visual-effects-root.is-outgoing-damage .visual-effects-outgoing-damage {
+  animation: darkflow-outgoing-damage-flare 360ms ease-out both;
+}
+
+/* Spell events carry semantic palettes only; the server cannot inject CSS. */
+.visual-effects-spell-cast {
+  background:
+    radial-gradient(circle at 50% 48%, var(--spell-core, rgba(173, 113, 255, 0.25)), transparent 29%),
+    radial-gradient(ellipse at center, transparent 38%, var(--spell-edge, rgba(119, 49, 207, 0.34)) 100%);
+  box-shadow:
+    inset 0 0 110px var(--spell-glow, rgba(158, 85, 255, 0.2)),
+    inset 0 0 210px var(--spell-edge, rgba(119, 49, 207, 0.17));
+  mix-blend-mode: screen;
+}
+
+.visual-effects-spell-cast > div {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#visual-effects-root.is-spell-arcane {
+  --spell-core: rgba(192, 138, 255, 0.28);
+  --spell-edge: rgba(116, 49, 215, 0.34);
+  --spell-glow: rgba(167, 89, 255, 0.22);
+}
+#visual-effects-root.is-spell-cold {
+  --spell-core: rgba(220, 250, 255, 0.34);
+  --spell-edge: rgba(76, 185, 234, 0.37);
+  --spell-glow: rgba(126, 218, 255, 0.24);
+}
+#visual-effects-root.is-spell-divine {
+  --spell-core: rgba(255, 247, 195, 0.36);
+  --spell-edge: rgba(255, 199, 73, 0.34);
+  --spell-glow: rgba(255, 227, 125, 0.24);
+}
+#visual-effects-root.is-spell-fire {
+  --spell-core: rgba(255, 221, 111, 0.34);
+  --spell-edge: rgba(241, 68, 22, 0.42);
+  --spell-glow: rgba(255, 120, 34, 0.26);
+}
+#visual-effects-root.is-spell-healing {
+  --spell-core: rgba(214, 255, 205, 0.35);
+  --spell-edge: rgba(67, 214, 113, 0.35);
+  --spell-glow: rgba(91, 238, 135, 0.23);
+}
+#visual-effects-root.is-spell-lightning {
+  --spell-core: rgba(240, 247, 255, 0.4);
+  --spell-edge: rgba(87, 118, 255, 0.42);
+  --spell-glow: rgba(117, 159, 255, 0.27);
+}
+#visual-effects-root.is-spell-nature {
+  --spell-core: rgba(224, 255, 167, 0.32);
+  --spell-edge: rgba(71, 179, 77, 0.36);
+  --spell-glow: rgba(116, 221, 90, 0.22);
+}
+#visual-effects-root.is-spell-shadow {
+  --spell-core: rgba(178, 92, 211, 0.24);
+  --spell-edge: rgba(52, 12, 75, 0.51);
+  --spell-glow: rgba(101, 34, 135, 0.27);
+}
+
+#visual-effects-root.is-spell-cast .visual-effects-spell-cast {
+  animation: darkflow-spell-cast-flash 620ms ease-out both;
+}
+
+/* Fire, frost, and lightning are the three fully illustrated elemental spell
+   treatments. They still use the fixed semantic spell schools from GMCP; the
+   server cannot provide markup, CSS, timing, or other presentation values. */
+#visual-effects-root.is-spell-cast:is(.is-spell-fire, .is-spell-cold, .is-spell-lightning)
+  .visual-effects-spell-cast {
+  opacity: 1;
+  animation: none;
+  background: none;
+  box-shadow: none;
+}
+
+.visual-effects-fire {
+  background:
+    radial-gradient(ellipse at 50% 112%, rgba(255, 208, 61, 0.44), rgba(255, 90, 10, 0.23) 38%, transparent 68%),
+    radial-gradient(ellipse at -8% 58%, rgba(255, 111, 14, 0.3), transparent 42%),
+    radial-gradient(ellipse at 108% 52%, rgba(255, 111, 14, 0.3), transparent 42%);
+  mix-blend-mode: screen;
+}
+
+.visual-effects-fire::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  box-shadow:
+    inset 0 -70px 90px rgba(255, 68, 4, 0.38),
+    inset 0 30px 70px -38px rgba(255, 88, 8, 0.27),
+    inset 34px 0 70px rgba(255, 80, 7, 0.22),
+    inset -34px 0 70px rgba(255, 80, 7, 0.22);
+}
+
+.visual-fire-flame {
+  --flame-delay: 0ms;
+  --flame-rotate: 0deg;
+  --flame-scale: 1;
+  position: absolute;
+  left: var(--flame-left, 50%);
+  bottom: var(--flame-bottom, -7%);
+  width: clamp(
+    100px,
+    calc(var(--flame-width, 8vw) + var(--flame-width, 8vw)),
+    250px
+  );
+  aspect-ratio: 2 / 3;
+  opacity: 0;
+  background: url("../assets/effects/flame-01.png") center / 100% 100% no-repeat;
+  filter:
+    drop-shadow(0 0 9px rgba(255, 119, 6, 0.72))
+    drop-shadow(0 0 24px rgba(225, 35, 0, 0.42));
+  transform: translate3d(-50%, 20%, 0) rotate(var(--flame-rotate)) scale(var(--flame-scale));
+  transform-origin: 50% 86%;
+}
+
+.visual-fire-flame:nth-child(1)  { --flame-left: -1%; --flame-bottom: 18%; --flame-width: 7vw; --flame-rotate: 24deg; --flame-delay: 40ms; }
+.visual-fire-flame:nth-child(2)  { --flame-left: 2%; --flame-bottom: -4%; --flame-width: 10vw; --flame-delay: 100ms; --flame-scale: 1.12; }
+.visual-fire-flame:nth-child(3)  { --flame-left: 12%; --flame-width: 7vw; --flame-delay: 10ms; --flame-scale: 0.78; }
+.visual-fire-flame:nth-child(4)  { --flame-left: 23%; --flame-width: 9vw; --flame-delay: 130ms; }
+.visual-fire-flame:nth-child(5)  { --flame-left: 36%; --flame-width: 6vw; --flame-delay: 70ms; --flame-scale: 0.83; }
+.visual-fire-flame:nth-child(6)  { --flame-left: 48%; --flame-width: 10vw; --flame-delay: 0ms; --flame-scale: 1.08; }
+.visual-fire-flame:nth-child(7)  { --flame-left: 59%; --flame-width: 7vw; --flame-delay: 150ms; --flame-scale: 0.82; }
+.visual-fire-flame:nth-child(8)  { --flame-left: 70%; --flame-width: 9vw; --flame-delay: 55ms; }
+.visual-fire-flame:nth-child(9)  { --flame-left: 81%; --flame-width: 6vw; --flame-delay: 115ms; --flame-scale: 0.76; }
+.visual-fire-flame:nth-child(10) { --flame-left: 91%; --flame-width: 9vw; --flame-delay: 25ms; --flame-scale: 1.04; }
+.visual-fire-flame:nth-child(11) { --flame-left: 99%; --flame-bottom: -2%; --flame-width: 10vw; --flame-delay: 125ms; }
+.visual-fire-flame:nth-child(12) { --flame-left: 101%; --flame-bottom: 23%; --flame-width: 7vw; --flame-rotate: -24deg; --flame-delay: 60ms; }
+
+#visual-effects-root.is-spell-cast.is-spell-fire .visual-effects-fire {
+  animation: darkflow-fire-edge-bloom 1150ms ease-out both;
+  will-change: opacity;
+}
+
+#visual-effects-root.is-spell-cast.is-spell-fire .visual-fire-flame {
+  animation: darkflow-fire-flame-rise 900ms cubic-bezier(0.22, 0.65, 0.33, 1) var(--flame-delay) both;
+  will-change: transform, opacity;
+}
+
+.visual-effects-frost {
+  background:
+    url("../assets/effects/frost-edge-overlay.png") center / 100% 100% no-repeat,
+    radial-gradient(ellipse at center, rgba(206, 244, 255, 0.13), rgba(152, 222, 244, 0.17) 54%, rgba(224, 249, 255, 0.68) 100%);
+  box-shadow:
+    inset 0 0 70px rgba(239, 253, 255, 0.76),
+    inset 0 0 170px rgba(132, 217, 244, 0.54),
+    inset 0 0 300px rgba(207, 244, 255, 0.24);
+  mix-blend-mode: screen;
+}
+
+#visual-effects-root.is-spell-cast.is-spell-cold .visual-effects-frost {
+  animation: darkflow-frost-over 1450ms cubic-bezier(0.18, 0.72, 0.22, 1) both;
+  will-change: opacity, transform;
+}
+
+.visual-effects-lightning {
+  background:
+    radial-gradient(ellipse at 50% 46%, rgba(220, 238, 255, 0.22), transparent 48%),
+    radial-gradient(ellipse at center, transparent 42%, rgba(79, 118, 255, 0.35) 100%);
+  mix-blend-mode: screen;
+}
+
+.visual-effects-lightning::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: rgba(224, 241, 255, 0.5);
+  opacity: 0;
+}
+
+.visual-lightning-arc {
+  --arc-delay: 0ms;
+  --arc-rotate: 0deg;
+  position: absolute;
+  top: var(--arc-top, -15%);
+  left: var(--arc-left, 45%);
+  width: clamp(180px, 18vw, 300px);
+  height: var(--arc-height, 78vh);
+  translate: -50% 0;
+  opacity: 0;
+  background: url("../assets/effects/lightning-01.png") center / 100% 100% no-repeat;
+  filter:
+    drop-shadow(0 0 7px rgba(235, 248, 255, 0.9))
+    drop-shadow(0 0 20px rgba(85, 139, 255, 0.58));
+  transform: rotate(var(--arc-rotate)) scaleY(0.5);
+  transform-origin: 50% 0;
+}
+
+.visual-lightning-arc:nth-child(1) { --arc-left: 5%; --arc-top: -28%; --arc-height: 86vh; --arc-rotate: 58deg; --arc-delay: 0ms; }
+.visual-lightning-arc:nth-child(2) { --arc-left: 34%; --arc-top: -36%; --arc-height: 78vh; --arc-rotate: -42deg; --arc-delay: 130ms; }
+.visual-lightning-arc:nth-child(3) { --arc-left: 76%; --arc-top: -8%; --arc-height: 75vh; --arc-rotate: 51deg; --arc-delay: 265ms; }
+.visual-lightning-arc:nth-child(4) { --arc-left: 13%; --arc-top: 31%; --arc-height: 62vh; --arc-rotate: -67deg; --arc-delay: 385ms; }
+.visual-lightning-arc:nth-child(5) { --arc-left: 59%; --arc-top: 22%; --arc-height: 67vh; --arc-rotate: 71deg; --arc-delay: 515ms; }
+.visual-lightning-arc:nth-child(6) { --arc-left: 48%; --arc-top: -13%; --arc-height: 72vh; --arc-rotate: 17deg; --arc-delay: 635ms; }
+
+#visual-effects-root.is-spell-cast.is-spell-lightning .visual-effects-lightning {
+  animation: darkflow-lightning-field 980ms linear both;
+  will-change: opacity;
+}
+
+#visual-effects-root.is-spell-cast.is-spell-lightning .visual-effects-lightning::before {
+  animation: darkflow-lightning-flash 980ms steps(1, end) both;
+}
+
+#visual-effects-root.is-spell-cast.is-spell-lightning .visual-lightning-arc {
+  animation: darkflow-lightning-arc 315ms steps(2, end) var(--arc-delay) both;
+  will-change: transform, opacity;
+}
+
+.dw-visual-impact-shake {
+  animation: darkflow-incoming-damage-shake 160ms ease-out both;
+  will-change: transform;
+}
+
+.dw-visual-attack-lunge {
+  animation: darkflow-outgoing-attack-lunge 190ms ease-out both;
+  will-change: transform;
+}
+
+@keyframes darkflow-planet-drift {
+  from { transform: scale(1) translate3d(-0.4%, -0.2%, 0); }
+  to { transform: scale(1.035) translate3d(0.6%, 0.35%, 0); }
+}
+
+@keyframes darkflow-ambience-preview {
+  0% {
+    opacity: 0;
+    filter: saturate(0.7) brightness(0.72);
+    transform: scale(1.04);
+  }
+  12% {
+    opacity: 0.94;
+    filter: saturate(2.05) brightness(1.24);
+    transform: scale(1);
+  }
+  28%, 78% {
+    opacity: 0.76;
+    filter: saturate(1.85) brightness(1.18);
+    transform: scale(1.008);
+  }
+  100% {
+    opacity: 0.58;
+    filter: saturate(1.5) brightness(1.08);
+    transform: scale(1);
+  }
+}
+
+@keyframes darkflow-forest-motes {
+  from { background-position: 0 0, 0 0, 0 0; }
+  to { background-position: 26px -84px, -19px -108px, 0 0; }
+}
+
+@keyframes darkflow-heat-haze {
+  from { transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+  to { transform: translate3d(0, -0.35%, 0) scale(1.01); filter: blur(0.4px); }
+}
+
+@keyframes darkflow-snow-drift {
+  from { background-position: 0 0, 0 0, 0 0; }
+  to { background-position: 42px 101px, -24px 137px, 0 0; }
+}
+
+@keyframes darkflow-water-caustics {
+  from { transform: scale(1) translate3d(-0.25%, 0, 0); }
+  to { transform: scale(1.018) translate3d(0.25%, -0.3%, 0); }
+}
+
+@keyframes darkflow-world-transition {
+  0% { opacity: 0; filter: saturate(0.65); }
+  45% { opacity: 0.32; }
+  100% { filter: saturate(1); }
+}
+
+@keyframes darkflow-transition-preview {
+  0% {
+    opacity: 0;
+    filter: blur(18px) saturate(0.7);
+    transform: scale(1.16);
+  }
+  18% {
+    opacity: 0.82;
+    filter: blur(2px) saturate(1.5);
+    transform: scale(1);
+  }
+  42% {
+    opacity: 0.96;
+    filter: blur(0) saturate(1.85) brightness(1.3);
+    transform: scaleY(0.065) scaleX(1.08);
+  }
+  55% {
+    opacity: 1;
+    filter: blur(0) saturate(1.35) brightness(1.8);
+    transform: scaleY(0.018) scaleX(1.14);
+  }
+  72% {
+    opacity: 0.68;
+    filter: blur(1px) saturate(1.25);
+    transform: scaleY(0.62) scaleX(1.04);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(8px) saturate(1);
+    transform: scale(0.96);
+  }
+}
+
+@keyframes darkflow-transition-seam {
+  0% { opacity: 0; transform: scaleX(0.04); }
+  22% { opacity: 0.76; transform: scaleX(0.24); }
+  47%, 58% { opacity: 1; transform: scaleX(1); }
+  76% { opacity: 0.5; transform: scaleX(1.08); }
+  100% { opacity: 0; transform: scaleX(1.14); }
+}
+
+@keyframes darkflow-low-health-pulse {
+  0%, 100% {
+    opacity: 0.28;
+    filter: saturate(1) brightness(0.92);
+  }
+  50% {
+    opacity: 0.84;
+    filter: saturate(1.42) brightness(1.04);
+  }
+}
+
+@keyframes darkflow-low-health-preview {
+  0%, 100% {
+    opacity: 0.38;
+    filter: saturate(1.1) brightness(0.9);
+  }
+  18% {
+    opacity: 0.98;
+    filter: saturate(1.65) brightness(1.08);
+  }
+  34% {
+    opacity: 0.52;
+    filter: saturate(1.2) brightness(0.94);
+  }
+  58% {
+    opacity: 0.9;
+    filter: saturate(1.5) brightness(1.04);
+  }
+}
+
+@keyframes darkflow-incoming-damage-vignette {
+  0% { opacity: 0; filter: saturate(1); }
+  18% { opacity: var(--visual-impact-opacity, 0.72); filter: saturate(1.3); }
+  100% { opacity: 0; filter: saturate(1); }
+}
+
+@keyframes darkflow-outgoing-damage-flare {
+  0% { opacity: 0; }
+  22% { opacity: var(--visual-outgoing-opacity, 0.56); }
+  100% { opacity: 0; }
+}
+
+@keyframes darkflow-spell-cast-flash {
+  0% { opacity: 0; transform: scale(0.985); }
+  24% { opacity: var(--visual-spell-intensity, 0.9); transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.018); }
+}
+
+@keyframes darkflow-fire-edge-bloom {
+  0% { opacity: 0; }
+  14% { opacity: var(--visual-spell-intensity, 0.9); }
+  62% { opacity: var(--visual-spell-intensity, 0.9); }
+  100% { opacity: 0; }
+}
+
+@keyframes darkflow-fire-flame-rise {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, 32%, 0) rotate(var(--flame-rotate)) scale(calc(var(--flame-scale) * 0.72));
+  }
+  20% { opacity: 0.94; }
+  57% {
+    opacity: 0.86;
+    transform: translate3d(-50%, -12%, 0) rotate(var(--flame-rotate)) scale(var(--flame-scale));
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -58%, 0) rotate(var(--flame-rotate)) scale(calc(var(--flame-scale) * 0.54));
+  }
+}
+
+@keyframes darkflow-frost-over {
+  0% {
+    opacity: 0;
+    transform: scale(1.035);
+  }
+  18% {
+    opacity: var(--visual-spell-intensity, 0.9);
+  }
+  46%, 68% {
+    opacity: var(--visual-spell-intensity, 0.9);
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.995);
+  }
+}
+
+@keyframes darkflow-lightning-field {
+  0% { opacity: 0; }
+  6%, 83% { opacity: var(--visual-spell-intensity, 0.9); }
+  100% { opacity: 0; }
+}
+
+@keyframes darkflow-lightning-flash {
+  0%, 10%, 35%, 44%, 100% { opacity: 0; }
+  5% { opacity: 0.42; }
+  40% { opacity: 0.18; }
+}
+
+@keyframes darkflow-lightning-arc {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--arc-rotate)) translate3d(-6%, -10%, 0) scaleY(0.38);
+  }
+  20% {
+    opacity: 1;
+    transform: rotate(var(--arc-rotate)) translate3d(4%, 0, 0) scaleY(1);
+  }
+  61% {
+    opacity: 0.84;
+    transform: rotate(var(--arc-rotate)) translate3d(-3%, 2%, 0) scaleY(0.96);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--arc-rotate)) translate3d(7%, 5%, 0) scaleY(1.03);
+  }
+}
+
+@keyframes darkflow-incoming-damage-shake {
+  0% { transform: translate3d(0, 0, 0); }
+  24% { transform: translate3d(-3px, 1px, 0); }
+  48% { transform: translate3d(2px, -1px, 0); }
+  72% { transform: translate3d(-1px, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes darkflow-outgoing-attack-lunge {
+  0% { transform: translate3d(0, 0, 0); }
+  36% { transform: translate3d(2px, -1px, 0) scale(0.999); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+#visual-effects-root.is-reduced-motion .visual-effects-planet,
+#visual-effects-root.is-reduced-motion .visual-effects-terrain,
+#visual-effects-root.is-reduced-motion .visual-effects-low-health,
+#visual-effects-root.is-reduced-motion .visual-effects-spell-cast,
+#visual-effects-root.is-reduced-motion .visual-effects-outgoing-damage,
+#visual-effects-root.is-reduced-motion .visual-effects-incoming-damage {
+  animation: none;
+  transform: none;
+  filter: none;
+}
+
+#visual-effects-root.is-reduced-motion .visual-effects-spell-cast > div,
+#visual-effects-root.is-reduced-motion .visual-fire-flame,
+#visual-effects-root.is-reduced-motion .visual-lightning-arc,
+#visual-effects-root.is-reduced-motion .visual-effects-lightning::before {
+  animation: none;
+  transform: none;
+  filter: none;
+}
+
+#visual-effects-root.is-reduced-motion.is-low-health .visual-effects-low-health,
+#visual-effects-root.is-reduced-motion.is-preview-low-health .visual-effects-low-health {
+  opacity: 0.62;
+}
+
+#visual-effects-root.is-reduced-motion.is-world-transition::before,
+#visual-effects-root.is-reduced-motion.is-preview-transition::before {
+  animation: none;
+  opacity: 0.56;
+  filter: none;
+  transform: none;
+}
+
+#visual-effects-root.is-reduced-motion.is-world-transition::after,
+#visual-effects-root.is-reduced-motion.is-preview-transition::after {
+  animation: none;
+  opacity: 0.9;
+  transform: scaleX(0.82);
+}
+
+#visual-effects-root.is-reduced-motion.is-incoming-damage .visual-effects-incoming-damage {
+  opacity: min(var(--visual-impact-opacity, 0.72), 0.46);
+}
+
+#visual-effects-root.is-reduced-motion.is-outgoing-damage .visual-effects-outgoing-damage {
+  opacity: min(var(--visual-outgoing-opacity, 0.56), 0.36);
+}
+
+#visual-effects-root.is-reduced-motion.is-spell-cast .visual-effects-spell-cast {
+  opacity: 0.38;
+}
+
+#visual-effects-root.is-reduced-motion.is-spell-cast:is(.is-spell-fire, .is-spell-cold, .is-spell-lightning)
+  .visual-effects-spell-cast {
+  opacity: 1;
+}
+
+#visual-effects-root.is-reduced-motion.is-spell-cast.is-spell-fire .visual-effects-fire {
+  opacity: 0.3;
+}
+
+#visual-effects-root.is-reduced-motion.is-spell-cast.is-spell-cold .visual-effects-frost {
+  opacity: 0.34;
+}
+
+#visual-effects-root.is-reduced-motion.is-spell-cast.is-spell-lightning .visual-effects-lightning {
+  opacity: 0.24;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dw-visual-impact-shake,
+  .dw-visual-attack-lunge {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  #visual-effects-root .visual-effects-planet,
+  #visual-effects-root .visual-effects-terrain,
+  #visual-effects-root .visual-effects-low-health,
+  #visual-effects-root .visual-effects-spell-cast,
+  #visual-effects-root .visual-effects-outgoing-damage,
+  #visual-effects-root .visual-effects-incoming-damage {
+    animation: none;
+    transform: none;
+    filter: none;
+  }
+
+  #visual-effects-root .visual-effects-spell-cast > div,
+  #visual-effects-root .visual-fire-flame,
+  #visual-effects-root .visual-lightning-arc,
+  #visual-effects-root .visual-effects-lightning::before {
+    animation: none;
+    transform: none;
+    filter: none;
+  }
+
+  #visual-effects-root.is-low-health .visual-effects-low-health,
+  #visual-effects-root.is-preview-low-health .visual-effects-low-health { opacity: 0.62; }
+  #visual-effects-root.is-world-transition::before,
+  #visual-effects-root.is-preview-transition::before {
+    animation: none;
+    opacity: 0.56;
+    filter: none;
+    transform: none;
+  }
+  #visual-effects-root.is-world-transition::after,
+  #visual-effects-root.is-preview-transition::after {
+    animation: none;
+    opacity: 0.9;
+    transform: scaleX(0.82);
+  }
+  #visual-effects-root.is-incoming-damage .visual-effects-incoming-damage {
+    opacity: min(var(--visual-impact-opacity, 0.72), 0.46);
+  }
+  #visual-effects-root.is-outgoing-damage .visual-effects-outgoing-damage {
+    opacity: min(var(--visual-outgoing-opacity, 0.56), 0.36);
+  }
+  #visual-effects-root.is-spell-cast .visual-effects-spell-cast { opacity: 0.38; }
+  #visual-effects-root.is-spell-cast:is(.is-spell-fire, .is-spell-cold, .is-spell-lightning)
+    .visual-effects-spell-cast {
+    opacity: 1;
+  }
+  #visual-effects-root.is-spell-cast.is-spell-fire .visual-effects-fire { opacity: 0.3; }
+  #visual-effects-root.is-spell-cast.is-spell-cold .visual-effects-frost {
+    opacity: 0.34;
+  }
+  #visual-effects-root.is-spell-cast.is-spell-lightning .visual-effects-lightning { opacity: 0.24; }
+}
+
+@media (forced-colors: active) {
+  #visual-effects-root {
+    display: none !important;
+  }
+}

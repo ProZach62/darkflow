@@ -343,7 +343,9 @@ export const windowManager = {
   },
 
   _openNpcDialogue(data, content) {
-    const host = dom.outputShell || document.body;
+    const boundsHost = document.getElementById('main-content') ||
+      dom.outputShell || document.body;
+    const host = document.body;
     const overlay = document.createElement('div');
     overlay.className = 'dw-npc-dialogue-overlay';
     overlay.setAttribute('data-dw-window', data.id);
@@ -357,13 +359,12 @@ export const windowManager = {
 
     if (data.closable !== false) {
       const closeBtn = document.createElement('button');
-      const portrait = body.querySelector('.dw-npc-dialogue-portrait');
       closeBtn.type = 'button';
       closeBtn.className = 'dw-npc-dialogue-close';
       closeBtn.innerHTML = '&#x2715;';
       closeBtn.setAttribute('aria-label', 'Close dialogue');
       closeBtn.addEventListener('click', () => this._userClose(data.id));
-      (portrait || frame).appendChild(closeBtn);
+      frame.appendChild(closeBtn);
     }
 
     const escHandler = (event) => {
@@ -376,6 +377,22 @@ export const windowManager = {
     frame.appendChild(body);
     overlay.appendChild(frame);
     host.appendChild(overlay);
+
+    const syncBounds = () => {
+      const rect = boundsHost.getBoundingClientRect();
+      overlay.style.left = rect.left + 'px';
+      overlay.style.top = rect.top + 'px';
+      overlay.style.width = rect.width + 'px';
+      overlay.style.height = rect.height + 'px';
+    };
+    const resizeHandler = () => syncBounds();
+    let boundsObserver = null;
+    syncBounds();
+    window.addEventListener('resize', resizeHandler);
+    if (typeof ResizeObserver === 'function') {
+      boundsObserver = new ResizeObserver(syncBounds);
+      boundsObserver.observe(boundsHost);
+    }
     document.addEventListener('keydown', escHandler, true);
 
     this.windows[data.id] = {
@@ -385,6 +402,8 @@ export const windowManager = {
       el: overlay,
       containerEl: body,
       escHandler,
+      boundsObserver,
+      resizeHandler,
     };
   },
 
@@ -412,6 +431,8 @@ export const windowManager = {
       if (win.el) win.el.remove();
     } else if (win.type === 'npc_dialogue') {
       if (win.escHandler) document.removeEventListener('keydown', win.escHandler, true);
+      if (win.boundsObserver) win.boundsObserver.disconnect();
+      if (win.resizeHandler) window.removeEventListener('resize', win.resizeHandler);
       if (win.el) win.el.remove();
     } else if (win.type === 'panel' && win.panelId) {
       panelManager.removeDynamicPanel(win.panelId);

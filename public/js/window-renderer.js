@@ -1,5 +1,6 @@
 import { LAYOUT_TYPES, INPUT_TYPES, DISPLAY_TYPES, STYLE_ALLOWLIST } from './window-types.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
+import { renderStreetSamuraiDashboard } from './street-samurai-dashboard.js';
 
 const NPC_DIALOGUE_MULTICOLUMN_CHOICE_THRESHOLD = 8;
 
@@ -91,6 +92,8 @@ function renderDisplay(schema, buttonHandler) {
       return renderPlayerRow(schema);
     case 'finger_profile':
       return renderFingerProfile(schema);
+    case 'street_samurai_dashboard':
+      return renderStreetSamuraiDashboard(schema);
     case 'heading': {
       const el = document.createElement('h3');
       el.className = 'dw-heading';

@@ -17,6 +17,13 @@ import { panelManager } from './panel-manager.js';
 import { PRODUCT_NAME } from './brand.js';
 import { soundManager, SOUND_CATEGORIES, SOUND_CATEGORY_INFO } from './sound-manager.js';
 import { applyTheme, convertVsCodeTheme, BUILTIN_THEMES, DEFAULT_THEME_KEY } from './theme-manager.js';
+import {
+  applyBackground,
+  BACKGROUND_PRESETS,
+  DEFAULT_BACKGROUND_KEY,
+  NO_BACKGROUND_KEY,
+  normalizeBackgroundKey,
+} from './background-manager.js';
 import { createAutomationEditor } from './settings-automation.js';
 import { listGmcpVariables } from './gmcp-variables.js';
 
@@ -92,16 +99,18 @@ function settingsWindowGeometry() {
   const saved = loadSettingsWindowState();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
+  const availableW = Math.max(0, vw - 8);
+  const availableH = Math.max(0, vh - 8);
   let w = Number(saved.w) || Math.min(1000, vw - 28);
   let h = Number(saved.h) || Math.min(700, vh - 130);
-  w = Math.max(SETTINGS_WINDOW_MIN_W, Math.min(w, vw - 8));
-  h = Math.max(SETTINGS_WINDOW_MIN_H, Math.min(h, vh - 8));
+  w = Math.min(availableW, Math.max(SETTINGS_WINDOW_MIN_W, w));
+  h = Math.min(availableH, Math.max(SETTINGS_WINDOW_MIN_H, h));
   let x = Number.isFinite(Number(saved.x)) && saved.x !== null && saved.x !== undefined
     ? Number(saved.x) : (vw - w - 14);
   let y = Number.isFinite(Number(saved.y)) && saved.y !== null && saved.y !== undefined
     ? Number(saved.y) : 54;
-  x = Math.max(0, Math.min(x, vw - 200));
-  y = Math.max(0, Math.min(y, vh - 100));
+  x = Math.max(0, Math.min(x, vw - w));
+  y = Math.max(0, Math.min(y, vh - h));
   return { x, y, w, h, tab: typeof saved.tab === 'string' ? saved.tab : 'connection' };
 }
 
@@ -119,12 +128,14 @@ export const settingsManager = {
     scrollbackSplitRatio: 0.6,
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
     screenReaderMode: false,
+    visualEffectsEnabled: false,
     terminalWidthColumns: null,
     workspaceLayout: 'classic',
     paneGridSnapEnabled: false,
     settingsBackupPromptEnabled: true,
     theme: DEFAULT_THEME_KEY,
     customThemes: {},
+    background: DEFAULT_BACKGROUND_KEY,
   },
   _settings: {},
   _draftSettings: {},
@@ -163,6 +174,9 @@ export const settingsManager = {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
+          if (!Object.prototype.hasOwnProperty.call(parsed, 'background')) {
+            parsed.background = NO_BACKGROUND_KEY;
+          }
           this._settings = { ...this._settings, ...parsed };
         }
       }
@@ -179,6 +193,7 @@ export const settingsManager = {
     panelManager.setPaneGridSnapEnabled(this._settings.paneGridSnapEnabled, { initializing: true });
     sendTerminalGeometry(false);
     this._applyActiveTheme();
+    this._applyActiveBackground();
   },
 
   get(key) {
@@ -332,6 +347,13 @@ export const settingsManager = {
     }
   },
 
+  _publishSettingsChanged() {
+    if (typeof document === 'undefined' || typeof CustomEvent !== 'function') return;
+    document.dispatchEvent(new CustomEvent('darkwind:settings-changed', {
+      detail: { ...this._settings },
+    }));
+  },
+
   _applySettings(nextSettings) {
     this._settings = this._normalizeSettings({
       ...this._settings,
@@ -345,7 +367,9 @@ export const settingsManager = {
     panelManager.setPaneGridSnapEnabled(this._settings.paneGridSnapEnabled);
     sendTerminalGeometry(true);
     this._applyActiveTheme();
+    this._applyActiveBackground();
     this._save();
+    this._publishSettingsChanged();
   },
 
   // --- Theming -------------------------------------------------------------
@@ -371,6 +395,22 @@ export const settingsManager = {
     if (this._draftSettings) this._draftSettings.theme = key;
     state.settings = { ...this._settings };
     this._applyActiveTheme();
+    this._save();
+  },
+
+  _applyActiveBackground() {
+    try {
+      applyBackground(this._settings.background);
+    } catch (error) {
+      console.warn('Failed to apply background', error);
+    }
+  },
+
+  _setBackground(key) {
+    this._settings.background = normalizeBackgroundKey(key);
+    if (this._draftSettings) this._draftSettings.background = this._settings.background;
+    state.settings = { ...this._settings };
+    this._applyActiveBackground();
     this._save();
   },
 
@@ -768,6 +808,8 @@ export const settingsManager = {
     panelManager.setPaneGridSnapEnabled(nextSettings.paneGridSnapEnabled);
     sendTerminalGeometry(true);
     this._applyActiveTheme();
+    this._applyActiveBackground();
+    this._publishSettingsChanged();
 
     try {
       localStorage.setItem(ALIAS_STORAGE_KEY, JSON.stringify(bundle.data.aliases || { scopes: {} }));
@@ -833,12 +875,14 @@ export const settingsManager = {
       outputScrollbackPreset: this._normalizeOutputScrollbackPreset(settings.outputScrollbackPreset),
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
       screenReaderMode: Boolean(settings.screenReaderMode),
+      visualEffectsEnabled: Boolean(settings.visualEffectsEnabled),
       terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
       workspaceLayout: settings.workspaceLayout === 'floating' ? 'floating' : 'classic',
       paneGridSnapEnabled: Boolean(settings.paneGridSnapEnabled),
       settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
       theme: typeof settings.theme === 'string' && settings.theme ? settings.theme : DEFAULT_THEME_KEY,
       customThemes: (settings.customThemes && typeof settings.customThemes === 'object') ? settings.customThemes : {},
+      background: normalizeBackgroundKey(settings.background),
     };
   },
 
@@ -974,6 +1018,103 @@ export const settingsManager = {
     row.appendChild(copy);
     row.appendChild(controls);
     return row;
+  },
+
+  _createBackgroundPicker() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'settings-background-picker';
+
+    const copy = document.createElement('div');
+    copy.className = 'settings-copy';
+
+    const label = document.createElement('div');
+    label.className = 'settings-label';
+    label.textContent = 'Background';
+
+    const description = document.createElement('p');
+    description.className = 'dw-paragraph';
+    description.textContent = 'Curated Darkflow artwork.';
+
+    copy.appendChild(label);
+    copy.appendChild(description);
+
+    const gallery = document.createElement('div');
+    gallery.className = 'settings-background-gallery';
+    gallery.setAttribute('role', 'radiogroup');
+    gallery.setAttribute('aria-label', 'Background');
+
+    const buttons = [];
+    const syncSelection = () => {
+      const activeKey = normalizeBackgroundKey(this._settings.background);
+      for (const button of buttons) {
+        const active = button.dataset.backgroundKey === activeKey;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-checked', active ? 'true' : 'false');
+        button.tabIndex = active ? 0 : -1;
+      }
+    };
+
+    for (const preset of BACKGROUND_PRESETS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'settings-background-option';
+      button.classList.toggle('is-none', preset.key === NO_BACKGROUND_KEY);
+      button.dataset.backgroundKey = preset.key;
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-label', preset.label + '. ' + preset.description);
+      button.title = preset.description;
+
+      const preview = document.createElement('span');
+      preview.className = 'settings-background-preview';
+      preview.setAttribute('aria-hidden', 'true');
+      if (preset.thumbnail) {
+        const image = document.createElement('img');
+        image.src = preset.thumbnail;
+        image.alt = '';
+        image.loading = 'lazy';
+        image.decoding = 'async';
+        preview.appendChild(image);
+      }
+
+      const check = document.createElement('span');
+      check.className = 'settings-background-check';
+      check.setAttribute('aria-hidden', 'true');
+      check.textContent = '\u2713';
+
+      const optionLabel = document.createElement('span');
+      optionLabel.className = 'settings-background-label';
+      optionLabel.textContent = preset.label;
+
+      button.appendChild(preview);
+      button.appendChild(check);
+      button.appendChild(optionLabel);
+      button.addEventListener('click', () => {
+        this._setBackground(preset.key);
+        syncSelection();
+      });
+
+      buttons.push(button);
+      gallery.appendChild(button);
+    }
+
+    gallery.addEventListener('keydown', (event) => {
+      const current = buttons.indexOf(event.target);
+      if (current < 0) return;
+      let next = current;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (current + 1) % buttons.length;
+      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (current - 1 + buttons.length) % buttons.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = buttons.length - 1;
+      else return;
+      event.preventDefault();
+      buttons[next].click();
+      buttons[next].focus();
+    });
+
+    syncSelection();
+    wrapper.appendChild(copy);
+    wrapper.appendChild(gallery);
+    return wrapper;
   },
 
   _promptImportTheme(onAdded) {
@@ -1752,8 +1893,14 @@ export const settingsManager = {
     });
     header.addEventListener('pointermove', (event) => {
       if (!dragFrom) return;
-      const x = Math.max(0, Math.min(event.clientX - dragFrom.dx, window.innerWidth - 200));
-      const y = Math.max(0, Math.min(event.clientY - dragFrom.dy, window.innerHeight - 80));
+      const x = Math.max(0, Math.min(
+        event.clientX - dragFrom.dx,
+        window.innerWidth - modal.offsetWidth
+      ));
+      const y = Math.max(0, Math.min(
+        event.clientY - dragFrom.dy,
+        window.innerHeight - modal.offsetHeight
+      ));
       modal.style.left = x + 'px';
       modal.style.top = y + 'px';
     });
@@ -2010,6 +2157,20 @@ export const settingsManager = {
 
     appearanceSection.appendChild(appearanceTitle);
     appearanceSection.appendChild(this._createThemeRow());
+    appearanceSection.appendChild(this._createBackgroundPicker());
+
+    const visualsTitle = document.createElement('h3');
+    visualsTitle.className = 'dw-heading';
+    visualsTitle.textContent = 'Visual effects';
+    appearanceSection.appendChild(visualsTitle);
+    appearanceSection.appendChild(this._createCheckboxRow(
+      'Game visual effects',
+      'Add optional planet and terrain ambience, spell and combat feedback, and a slow red pulse while you are at 40% health or less. Game text, controls, and combatbrief settings are never changed.',
+      !!this._draftSettings.visualEffectsEnabled,
+      (checked) => {
+        this._draftSettings.visualEffectsEnabled = checked;
+      }
+    ));
 
     const terminalTitle = document.createElement('h3');
     terminalTitle.className = 'dw-heading';

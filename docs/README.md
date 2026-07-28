@@ -27,6 +27,7 @@ Darkwind-specific package to its supporting documentation.
 | --- | --- |
 | [Client](gmcp-darkwind-client.md) | Subscriptions, terminal geometry, and media refresh |
 | [Character avatar](gmcp-darkwind-char-avatar.md) | Character image pushes |
+| [Visual effects](gmcp-darkwind-visual.md) | Optional planet/terrain ambience, combat and spell cues, low-health presentation, and allowlisted builder previews |
 | [Room image](gmcp-darkwind-room-image.md) | Room image pushes and preload behavior |
 | [Divine](gmcp-darkwind-divine.md) | Patron, pressure, omens, and divine events |
 | [Sky](gmcp-darkwind-sky.md) | Game time, sky stages, moons, and world bodies |
@@ -47,6 +48,7 @@ Darkwind-specific package to its supporting documentation.
 | [Lag](gmcp-darkwind-lag.md) | Server driver-health request/response |
 | [Fishing](gmcp-darkwind-fishing.md) | Interactive fishing session protocol |
 | [Cyberware](gmcp-darkwind-cyberware.md) | Implant list, detail, and image flow |
+| [Street Samurai](gmcp-darkwind-street-samurai.md) | Live Cortex dashboard state and window lifecycle |
 | [Room playlist](gmcp-darkwind-room-playlist.md) | Shared room jukebox state, actions, and reports |
 
 The [legacy MapData v1 document](gmcp-darkwind-mapdata.md) is historical. The
@@ -67,6 +69,7 @@ These documents cover the embedded relay that lets an LLM or CLI drive a MUD:
 | Document | Coverage |
 | --- | --- |
 | [Darkwind desktop client](desktop.md) | Electron architecture, packaging, updates, Steam depots, and releases |
+| [Curated backgrounds](backgrounds.md) | Preset catalog, ultrawide tiling, persistence, and asset requirements |
 | [Web client blueprint](BLUEPRINT-webclient.md) | Original transport and browser-client design |
 | [Web client plan](PLAN-webclient.md) | Original implementation and deployment plan |
 | [RFC 2549 debug](rfc2549-debug.md) | Debug surface for the optional RFC 2549 transport mode |

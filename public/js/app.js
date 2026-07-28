@@ -16,6 +16,8 @@ import { linuxRescueManager } from './linux-rescue-manager.js';
 import { lagMonitor } from './lag-monitor.js';
 import { soundPanel } from './sound-panel.js';
 import { fishingManager } from './fishing-manager.js';
+import { combatVisualManager } from './combat-visual-manager.js';
+import { visualEffectsManager } from './visual-effects-manager.js';
 import { roomPlaylistManager } from './room-playlist-manager.js';
 import { soundManager } from './sound-manager.js';
 import { settingsManager } from './settings-manager.js';
@@ -29,6 +31,7 @@ import { sendAutomaticCommand } from './input.js';
 import { PRODUCT_NAME, gameTitle } from './brand.js';
 import { initRfc2549Debug } from './rfc2549-debug.js';
 import { initializeDesktopUpdates } from './desktop-integration.js';
+import { streetSamuraiDashboardManager } from './street-samurai-dashboard-manager.js';
 
 // ── Initialize DOM refs ─────────────────────────────────────────────
 initDom();
@@ -412,12 +415,15 @@ dom.mobilePanelsBtn.addEventListener('click', function() {
 // ── Panels Menu ─────────────────────────────────────────────────────
 document.getElementById('panels-menu-btn').addEventListener('click', function(e) {
   e.stopPropagation();
-  document.getElementById('panels-menu').classList.toggle('open');
+  const menu = document.getElementById('panels-menu');
+  const isOpen = menu.classList.toggle('open');
+  document.getElementById('toolbar').classList.toggle('panels-menu-active', isOpen);
 });
 
 // Close dropdowns on outside click
 document.addEventListener('click', function() {
   document.getElementById('panels-menu').classList.remove('open');
+  document.getElementById('toolbar').classList.remove('panels-menu-active');
 });
 
 // ── Init ────────────────────────────────────────────────────────────
@@ -474,6 +480,7 @@ if (dom.protocolSelect) {
 loadHistory();
 panelManager.init();
 windowManager.init();
+streetSamuraiDashboardManager.init();
 connectionOverlay.init();
 ideManager.init();
 snoopManager.init();
@@ -485,6 +492,8 @@ linuxRescueManager.init();
 lagMonitor.init();
 soundPanel.init();
 fishingManager.init();
+combatVisualManager.init();
+visualEffectsManager.init();
 roomPlaylistManager.init();
 
 window.lagDebug = {

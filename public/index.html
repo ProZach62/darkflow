@@ -14,12 +14,49 @@
 <link rel="manifest" href="site.webmanifest">
 <link rel="stylesheet" href="css/main.css">
 <link rel="stylesheet" href="css/panels.css">
+<link rel="stylesheet" href="css/combat-visual.css">
+<link rel="stylesheet" href="css/visual-effects.css">
 <link rel="stylesheet" href="css/windows.css">
+<link rel="stylesheet" href="css/street-samurai-dashboard.css">
 <link rel="stylesheet" href="css/ide.css">
 <link rel="stylesheet" href="css/fishing.css">
 <link rel="stylesheet" href="css/room-playlist.css">
 </head>
 <body>
+
+<div id="app-background" aria-hidden="true"></div>
+<div id="visual-effects-root" aria-hidden="true" hidden>
+  <div class="visual-effects-planet"></div>
+  <div class="visual-effects-terrain"></div>
+  <div class="visual-effects-low-health"></div>
+  <div class="visual-effects-spell-cast">
+    <div class="visual-effects-fire">
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+      <span class="visual-fire-flame"></span>
+    </div>
+    <div class="visual-effects-frost"></div>
+    <div class="visual-effects-lightning">
+      <span class="visual-lightning-arc"></span>
+      <span class="visual-lightning-arc"></span>
+      <span class="visual-lightning-arc"></span>
+      <span class="visual-lightning-arc"></span>
+      <span class="visual-lightning-arc"></span>
+      <span class="visual-lightning-arc"></span>
+    </div>
+  </div>
+  <div class="visual-effects-outgoing-damage"></div>
+  <div class="visual-effects-incoming-damage"></div>
+</div>
 
 <div id="toolbar">
   <div class="toolbar-left">

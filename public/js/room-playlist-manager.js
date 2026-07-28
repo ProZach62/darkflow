@@ -8,6 +8,7 @@ import {
 } from './room-playlist-core.mjs';
 
 const PKG_STATE = 'Darkwind.Room.Playlist.State';
+const PKG_OPEN = 'Darkwind.Room.Playlist.Open';
 const PKG_ACTION = 'Darkwind.Room.Playlist.Action';
 const PKG_REPORT = 'Darkwind.Room.Playlist.Report';
 const SETTINGS_KEY = 'darkwind-room-playlist-settings';
@@ -80,6 +81,7 @@ export const roomPlaylistManager = {
     if (this.initialized) return;
     this.initialized = true;
     gmcp.on(PKG_STATE, (data) => this.receiveState(data));
+    gmcp.on(PKG_OPEN, (data) => this.receiveOpen(data));
     gmcp.on('Room.Info', (data) => this.handleRoomInfo(data));
     document.addEventListener('dw:connectionstate', (event) => {
       if (!event.detail || event.detail.state !== 'connected') this.stopPlayback();
@@ -126,6 +128,14 @@ export const roomPlaylistManager = {
       this.applyAuthoritativeState();
     }
     this.render();
+  },
+
+  receiveOpen(data) {
+    this.receiveState(data);
+    if (!this.state.enabled) return;
+    document.dispatchEvent(new CustomEvent('darkflow:room-playlist-open', {
+      detail: this.state,
+    }));
   },
 
   handleRoomInfo(data) {

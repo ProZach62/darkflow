@@ -41,6 +41,8 @@ branded Darkflow.
 | Support String | Messages | Direction | Documentation |
 | --- | --- | --- | --- |
 | `Darkwind.Char.Avatar 1` | `Darkwind.Char.Avatar` | Server -> Client | [Character avatar](gmcp-darkwind-char-avatar.md) |
+| `Darkwind.Combat 1` | `State`, `Events`, `Resync` | Mixed | [Visual combat](gmcp-darkwind-combat.md) |
+| `Darkwind.Visual 1` | `State`, `Events`, `Preview` | Server -> Client | [Visual effects](gmcp-darkwind-visual.md) |
 | `Darkwind.Room.Image 1` | `Darkwind.Room.Image` | Server -> Client | [Room image](gmcp-darkwind-room-image.md) |
 | `Darkwind.Divine 1` | `Darkwind.Divine` | Server -> Client | [Divine state](gmcp-darkwind-divine.md) |
 | `Darkwind.Sky 1` | `Darkwind.Sky` | Server -> Client | [Sky](gmcp-darkwind-sky.md) |
@@ -63,7 +65,8 @@ branded Darkflow.
 | `Darkwind.Lag 1` | `Get`, `Status` | Mixed | [Lag](gmcp-darkwind-lag.md) |
 | `Darkwind.Fishing 1` | Interactive fishing session messages | Mixed | [Fishing](gmcp-darkwind-fishing.md) |
 | `Darkwind.Cyberware 1` | `List`, `Details`, `Image` | Mixed | [Cyberware](gmcp-darkwind-cyberware.md) |
-| `Darkwind.Room.Playlist 1` | `State`, `Action`, `Report` | Mixed | [Room playlist](gmcp-darkwind-room-playlist.md) |
+| `Darkwind.StreetSamurai 1` | Root dashboard snapshot | Server -> Client | [Street Samurai](gmcp-darkwind-street-samurai.md) |
+| `Darkwind.Room.Playlist 1` | `State`, `Open`, `Action`, `Report` | Mixed | [Room playlist](gmcp-darkwind-room-playlist.md) |
 
 ## Historical Packages
 

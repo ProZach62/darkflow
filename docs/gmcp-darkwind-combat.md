@@ -1,0 +1,164 @@
+# Darkwind.Combat GMCP Protocol
+
+`Darkwind.Combat 1` carries recipient-safe combat presentation data for
+Darkflow's visual Combat pane. It complements the standard `Char` packages; it
+does not replace combat authority or provide a second set of hit points.
+
+The client advertises `Darkwind.Combat 1` only when the visual combat manager
+and renderer are available. The server does not advertise this package back to
+the client.
+
+## Messages
+
+| Message | Direction | Purpose |
+| --- | --- | --- |
+| `Darkwind.Combat.State` | Server -> Client | Recoverable encounter lifecycle and actor snapshot |
+| `Darkwind.Combat.Events` | Server -> Client | Ordered, bounded batches of transient outcomes |
+| `Darkwind.Combat.Resync` | Client -> Server | Request current state without replaying stale effects |
+
+## Readiness And Text Fallback
+
+Advertising the package is necessary but is not permission to suppress combat
+text. Darkflow also sends a fresh, explicit client subscription:
+
+```json
+{
+  "features": {
+    "combatPane": true
+  }
+}
+```
+
+`combatPane: true` means that the renderer is initialized and the only visual
+combat surface is visible and able to present events. Darkflow sends
+`combatPane: false` when that surface is closed, hidden, collapsed, disabled
+by Zork-only mode, disconnected, or unable to render.
+
+The server suppresses a routine swing for one recipient only after accepting
+its corresponding event and only when every server-side eligibility gate
+passes. Missing capability, stale or absent readiness, screenreader mode,
+channel filters, queue failure, reconnect, and the operator kill switch all
+fail open to the existing terminal text.
+
+To bootstrap a hidden pane without creating a readiness deadlock, the server
+may send an active State with `visual_enabled: true` and `effective: false`.
+Darkflow opens the pane without stealing command focus, sends
+`combatPane: true`, and requests a Resync. The swing that triggered that
+bootstrap still appears as terminal text; suppression can begin only after the
+fresh readiness update succeeds.
+
+## `Darkwind.Combat.State`
+
+State is a recoverable snapshot, not an animation command:
+
+```json
+{
+  "epoch": "connection-7",
+  "encounter_id": "encounter-12",
+  "seq": 17,
+  "visual_enabled": true,
+  "effective": true,
+  "active": true,
+  "current_target_id": "actor-2",
+  "actors": [
+    { "id": "self", "name": "Acer", "role": "self" },
+    { "id": "actor-2", "name": "an ash drake", "role": "target" }
+  ],
+  "outcome": "",
+  "summary": "Combat begins against an ash drake."
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `epoch` | Opaque connection epoch. A change invalidates all earlier encounter and event data. |
+| `encounter_id` | Opaque, session-scoped encounter identity. It changes for a new target object even when the display name is unchanged. |
+| `seq` | Latest sequence covered by the snapshot. |
+| `visual_enabled` | Saved character preference from `combatbrief visual`. |
+| `effective` | Whether guarded visual presentation is currently effective. |
+| `active` | Whether an encounter is active. |
+| `current_target_id` | Actor id staged as the current target. |
+| `actors` | Recipient-safe roster. IDs never expose LPC object paths. |
+| `outcome` | Empty while active; final values may include `victory`, `defeat`, `fled`, `target-lost`, or `disconnected`. |
+| `summary` | Short accessible lifecycle summary. |
+
+`Char.Vitals` remains authoritative for player HP. `Char.Enemy` remains
+authoritative for the current target's HP, condition, and art.
+`Darkwind.Char.Avatar` remains authoritative for player art. Additional actor
+entries are compact context or threat indicators, not a private-stat feed.
+
+## `Darkwind.Combat.Events`
+
+Events are transient and arrive in ordered, bounded batches:
+
+```json
+{
+  "epoch": "connection-7",
+  "encounter_id": "encounter-12",
+  "first_seq": 18,
+  "last_seq": 20,
+  "events": [
+    {
+      "seq": 18,
+      "kind": "attack",
+      "perspective": "outgoing",
+      "actor_id": "self",
+      "target_id": "actor-2",
+      "result": "critical",
+      "damage": 42,
+      "absorbed": 3,
+      "summary": "You critically hit an ash drake for 42 damage."
+    }
+  ],
+  "overflow": {
+    "omitted": 0,
+    "hits": 0,
+    "damage": 0
+  }
+}
+```
+
+Version 1 uses `kind: "attack"` and the results `hit`, `critical`, `miss`,
+`dodge`, and `absorb`. `perspective` is `outgoing`, `incoming`, or
+`observed`. Numeric fields and numeric wording are omitted when the player's
+existing `combatbrief damage` toggle is off.
+
+Darkflow rejects events from an older epoch or encounter, ignores duplicate or
+out-of-order sequence numbers, and bounds its presentation history. Overflow
+is summarized instead of expanding into another combat log. Current HP and
+State snapshots take priority over cosmetic event playback.
+
+## `Darkwind.Combat.Resync`
+
+Direction: `Client -> Server`
+
+```text
+Darkwind.Combat.Resync
+```
+
+An empty object is also valid:
+
+```text
+Darkwind.Combat.Resync {}
+```
+
+The server replies with the current `Darkwind.Combat.State` and refreshes the
+authoritative `Char.Vitals`, `Char.Enemy`, and player-avatar snapshots. It does
+not replay old attack animations. Darkflow requests this after reopening the
+pane during an encounter and as part of a full handshake/subscription refresh.
+
+## Pane And Accessibility Behavior
+
+The existing `enemy` panel id is retained. When visual combat is inactive it
+uses the compact Enemy renderer; an active visual State changes its title and
+renderer to Combat. On desktop, each encounter takes over that pane as an
+expanded, centered floating window and keeps it above the other workspace
+panes without stealing command focus. On mobile, it opens as the active Combat
+sheet. The pane is hidden as soon as the encounter ends. Closing or collapsing
+it during combat restores server text fallback without changing the saved
+character preference.
+
+Both health bars expose progressbar semantics. Server-provided summaries feed
+a rate-limited polite live region. Reduced-motion mode removes lunges, shakes,
+flashes, moving damage numbers, and crossfades while preserving static outcome
+badges and summaries.

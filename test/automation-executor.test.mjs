@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 
 class CustomEventMock {
   constructor(type, options = {}) {
@@ -67,7 +68,7 @@ const { aliasManager } = await import('../public/js/alias-manager.js');
 const { triggerManager } = await import('../public/js/trigger-manager.js');
 const { timerManager } = await import('../public/js/timer-manager.js');
 const { functionManager } = await import('../public/js/function-manager.js');
-const { soundManager } = await import('../public/js/sound-manager.js');
+const { isKnownSound, soundManager } = await import('../public/js/sound-manager.js');
 const {
   executeAutomationSteps,
   executeAliasLine,
@@ -105,6 +106,18 @@ function messagesAndSends() {
     },
   };
 }
+
+test('wayshard travel sound is registered with its WAV asset', () => {
+  assert.equal(isKnownSound('spell', 'wayshard-travel'), true);
+  assert.equal(
+    soundManager.resolveDebugPath('spell', 'wayshard-travel'),
+    '/assets/sounds/wayshard-travel.wav'
+  );
+  assert.equal(
+    existsSync(new URL('../public/assets/sounds/wayshard-travel.wav', import.meta.url)),
+    true
+  );
+});
 
 test('alias steps can toggle triggers by pattern', () => {
   resetManagers();

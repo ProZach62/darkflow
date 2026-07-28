@@ -67,6 +67,7 @@ export const SOUND_MAP = {
   'spell/lightning': '/assets/sounds/spell-lightning.mp3',
   'spell/heal': '/assets/sounds/spell-heal.mp3',
   'spell/buff': '/assets/sounds/spell-buff.mp3',
+  'spell/wayshard-travel': '/assets/sounds/wayshard-travel.wav',
   'skill/use': '/assets/sounds/skill-use.mp3',
   'skill/success': '/assets/sounds/skill-success.mp3',
   'skill/fail': '/assets/sounds/skill-fail.mp3',

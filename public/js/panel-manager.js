@@ -37,9 +37,13 @@ import {
 } from './live-map-source.js';
 
 const MOBILE_BREAKPOINT_PX = 700;
-const MOBILE_PRIMARY_PANELS = ['room', 'vitals', 'guildVitals', 'xpmon', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
+const MOBILE_PRIMARY_PANELS = ['enemy', 'room', 'vitals', 'guildVitals', 'xpmon', 'sky', 'omens', 'buffs', 'inventory', 'map', 'chat', 'quests', 'achievements'];
 const AVATAR_CHARGE_TICK_MS = 2000;
 const PANEL_STORAGE_VERSION = 2;
+const COMBAT_VISUAL_LAYOUT_VERSION = 3;
+const COMBAT_VISUAL_WIDTH = 580;
+const COMBAT_VISUAL_HEIGHT = 465;
+const COMBAT_VISUAL_LAYER = 10;
 const TERMINAL_PANEL_ID = 'terminal';
 const FLOAT_GRID_SIZE = 16;
 const FLOAT_PANEL_MIN_W = 200;
@@ -119,6 +123,9 @@ export const panelManager = {
   _characterSubscriptionSyncSent: false,
   _commChannelPlayersRequested: false,
   _panelCloseHandlers: {},
+  _panelLifecycleHandlers: {},
+  _panelTitleOverrides: {},
+  _panelRenderFailures: new Set(),
   _buffTimer: null,
   _skyTimer: null,
   _avatarMeterTicker: null,
@@ -128,6 +135,7 @@ export const panelManager = {
   _avatarChargeSync: null,
   _draggingEnemyPanel: false,
   _syncEnemyPanelAfterDrag: false,
+  _combatVisualPresentationActive: false,
   _pendingPanelRenders: new Set(),
   _panelRenderFrame: null,
   _mobile: {
@@ -188,6 +196,9 @@ export const panelManager = {
     document.addEventListener('darkflow:room-playlist-state', (event) => {
       this.handleRoomPlaylistState(event.detail);
     });
+    document.addEventListener('darkflow:room-playlist-open', (event) => {
+      this.handleRoomPlaylistOpen(event.detail);
+    });
     this._initialized = true;
     this._notifyWorkspaceLayoutChanged();
   },
@@ -197,6 +208,14 @@ export const panelManager = {
       ? data
       : { enabled: false };
     this._renderPanel('roomPlaylist');
+  },
+
+  handleRoomPlaylistOpen(data) {
+    this.gmcpData.roomPlaylist = data && typeof data === 'object'
+      ? data
+      : { enabled: false };
+    if (!this.gmcpData.roomPlaylist.enabled) return;
+    this.openPanel('roomPlaylist');
   },
 
   _hydrateMapCaches() {
@@ -351,6 +370,9 @@ export const panelManager = {
   },
 
   _snapFloatSizeToGrid(id, width, height) {
+    if (id === 'enemy' && this._combatVisualPresentationActive) {
+      return { width: COMBAT_VISUAL_WIDTH, height: COMBAT_VISUAL_HEIGHT };
+    }
     const min = this._getFloatMinSize(id);
     return {
       width: Math.max(min.width, this._snapToFloatGrid(width)),
@@ -589,6 +611,10 @@ export const panelManager = {
         snapBottom,
         font: source.font,
         mapZoom: id === 'map' ? normalizeMapZoom(source.mapZoom) : undefined,
+        combatVisualExpanded: id === 'enemy' ? !!source.combatVisualExpanded : undefined,
+        combatVisualLayoutVersion: id === 'enemy'
+          ? (Number(source.combatVisualLayoutVersion) || (source.combatVisualExpanded ? 1 : 0))
+          : undefined,
       };
     }
 
@@ -834,6 +860,10 @@ export const panelManager = {
         // absolute floatX/floatY only.
         font: (s.font && typeof s.font === 'object') ? s.font : undefined,
         mapZoom: id === 'map' ? normalizeMapZoom(s.mapZoom) : undefined,
+        combatVisualExpanded: id === 'enemy' ? !!s.combatVisualExpanded : undefined,
+        combatVisualLayoutVersion: id === 'enemy'
+          ? (Number(s.combatVisualLayoutVersion) || (s.combatVisualExpanded ? 1 : 0))
+          : undefined,
       };
     }
     this.state.panels = panels;
@@ -864,7 +894,7 @@ export const panelManager = {
     this._characterSubscriptionSyncSent = false;
     this._commChannelPlayersRequested = false;
     this.buildPanelsMenu();
-    this.closeMobileSheet();
+    this.closeMobileSheet('zork-only-mode');
     this._applyDockStateToDom();
   },
 
@@ -895,6 +925,11 @@ export const panelManager = {
     this.state.docks[side] = collapsed;
     this._applyDockStateToDom();
     this.saveState();
+    for (const [id, panelState] of Object.entries(this.state.panels)) {
+      if (panelState && panelState.dock === side) {
+        this._notifyPanelLifecycle(id, collapsed ? 'dock-collapse' : 'dock-expand');
+      }
+    }
   },
 
   toggleMobileSheet() {
@@ -912,10 +947,11 @@ export const panelManager = {
     this._renderMobileSheet();
   },
 
-  closeMobileSheet() {
+  closeMobileSheet(reason = 'mobile-sheet-close') {
     if (!this._mobile.overlayEl) return;
     this._mobile.sheetOpen = false;
     this._mobile.overlayEl.classList.remove('open');
+    this._notifyPanelLifecycle('enemy', reason);
   },
 
   _ensureTerminalAnchors() {
@@ -1058,9 +1094,10 @@ export const panelManager = {
     header.className = 'panel-header';
     header.dataset.panelId = id;
 
+    const panelTitle = this._panelTitleOverrides[id] || def.title;
     const title = document.createElement('span');
     title.className = 'panel-title';
-    title.textContent = def.title;
+    title.textContent = panelTitle;
 
     const controls = document.createElement('span');
     controls.className = 'panel-controls';
@@ -1125,7 +1162,7 @@ export const panelManager = {
     el.appendChild(header);
     el.appendChild(body);
 
-    const panel = { el, headerEl: header, bodyEl: body, title: def.title, mapZoomControls };
+    const panel = { el, headerEl: header, bodyEl: body, title: panelTitle, mapZoomControls };
     this.panels[id] = panel;
     if (mapZoomControls) this._syncMapZoomControls(id);
     this._placePanelElement(id, el, st);
@@ -1448,6 +1485,7 @@ export const panelManager = {
   },
 
   _syncEnemyPanelVisibility() {
+    if (this.gmcpData.combatVisual && this.gmcpData.combatVisual.visualEnabled) return;
     if (this._draggingEnemyPanel) {
       this._syncEnemyPanelAfterDrag = true;
       return;
@@ -1458,11 +1496,15 @@ export const panelManager = {
     if (!st) return;
 
     if (inCombat) {
-      this._showEnemyPanel();
+      this._showEnemyPanel('show');
       return;
     }
 
-    this._hideEnemyPanel();
+    this._hideEnemyPanel('hide');
+  },
+
+  syncEnemyPanelVisibility() {
+    this._syncEnemyPanelVisibility();
   },
 
   _captureFloatPanelGeometry(id) {
@@ -1483,7 +1525,7 @@ export const panelManager = {
     }
   },
 
-  _showEnemyPanel() {
+  _showEnemyPanel(reason = 'show') {
     const st = this.state.panels.enemy;
     if (!st) return;
     const wasHidden = !st.visible
@@ -1503,9 +1545,10 @@ export const panelManager = {
     if (cb) cb.checked = true;
     this._renderMobileSheet();
     this.saveState();
+    this._notifyPanelLifecycle('enemy', reason);
   },
 
-  _hideEnemyPanel() {
+  _hideEnemyPanel(reason = 'hide') {
     const st = this.state.panels.enemy;
     if (!st) return;
     this._captureFloatPanelGeometry('enemy');
@@ -1520,22 +1563,143 @@ export const panelManager = {
     }
     this._renderMobileSheet();
     this.saveState();
+    this._notifyPanelLifecycle('enemy', reason);
   },
 
-  _keepEnemyPanelAbove() {
-    if (!this._hasActiveEnemy()) return;
+  showEnemyPanelForCombat() {
+    if (appState.zorkOnlyMode) return;
+    const st = this.state.panels.enemy;
+    if (!st) return;
+    this._combatVisualPresentationActive = true;
+    if (!this._mobile.enabled) {
+      st.dock = 'float';
+      st.collapsed = false;
+      st.snapLeft = false;
+      st.snapTop = false;
+      st.snapRight = false;
+      st.snapBottom = false;
+      delete st.panelAnchor;
+      this._applyCombatVisualPresentation(st);
+    }
+    this._showEnemyPanel('combat-auto-open');
+    if (this._mobile.enabled) {
+      this._mobile.activePanelId = 'enemy';
+      this.openMobileSheet();
+      this._renderMobileSheet();
+      this._notifyPanelLifecycle('enemy', 'mobile-combat-open');
+      return;
+    }
+    this._centerEnemyPanelForCombat();
+    this._keepEnemyPanelAbove(true);
+    this.saveState();
+    this._notifyPanelLifecycle('enemy', 'combat-positioned');
+  },
+
+  hideEnemyPanelAfterCombat() {
+    this._combatVisualPresentationActive = false;
+    this._hideEnemyPanel('combat-auto-hide');
+  },
+
+  _applyCombatVisualPresentation(st) {
+    if (!st) return false;
+    const changed = Number(st.floatW) !== COMBAT_VISUAL_WIDTH
+      || Number(st.floatH) !== COMBAT_VISUAL_HEIGHT
+      || Number(st.zLayer) !== COMBAT_VISUAL_LAYER;
+    st.floatW = COMBAT_VISUAL_WIDTH;
+    st.floatH = COMBAT_VISUAL_HEIGHT;
+    st.zLayer = COMBAT_VISUAL_LAYER;
+    st.floatZ = this._getEffectivePaneZIndex('enemy', st);
+    return changed;
+  },
+
+  prepareCombatVisualLayout() {
+    const st = this.state.panels.enemy;
+    if (!st) return false;
+    const savedLayoutVersion = Number(st.combatVisualLayoutVersion)
+      || (st.combatVisualExpanded ? 1 : 0);
+    if (savedLayoutVersion >= COMBAT_VISUAL_LAYOUT_VERSION) return false;
+    // Mobile uses the managed bottom sheet rather than saved floating
+    // geometry. Leave the desktop migration pending until desktop activation.
+    if (this._mobile.enabled) return false;
+
+    st.combatVisualExpanded = true;
+    st.combatVisualLayoutVersion = COMBAT_VISUAL_LAYOUT_VERSION;
+    const oldWidth = Number(st.floatW) || COMBAT_VISUAL_WIDTH;
+    const changed = this._applyCombatVisualPresentation(st);
+    if (!st.snapLeft && !st.snapRight) {
+      const centeredX = Number(st.floatX || 0) - ((st.floatW - oldWidth) / 2);
+      st.floatX = Math.round(Math.max(8, Math.min(window.innerWidth - st.floatW - 8, centeredX)));
+    }
+    const panel = this.panels.enemy;
+    if (panel && panel.el) this._applyFloatPosition(panel.el, st);
+    this.saveState();
+    return changed;
+  },
+
+  _centerEnemyPanelForCombat() {
+    const st = this.state.panels.enemy;
+    const panel = this.panels.enemy;
+    if (!st || !panel || !panel.el || this._mobile.enabled) return false;
+
+    st.dock = 'float';
+    st.collapsed = false;
+    st.snapLeft = false;
+    st.snapTop = false;
+    st.snapRight = false;
+    st.snapBottom = false;
+    delete st.panelAnchor;
+    if (panel.bodyEl && panel.bodyEl.classList) {
+      panel.bodyEl.classList.remove('collapsed');
+    }
+    const collapseBtn = panel.el.querySelector('.panel-collapse');
+    if (collapseBtn) collapseBtn.innerHTML = '&#x25B2;';
+
+    if (!panel.el.classList.contains('floating')) {
+      this._makeFloat(panel.el, st);
+      const floatBtn = panel.el.querySelector('.panel-float');
+      if (floatBtn) {
+        floatBtn.title = 'Dock';
+        floatBtn.innerHTML = '&#x25A3;';
+      }
+    }
+
+    // Grid snapping is useful for normal panes, but the requested combat
+    // presentation has an exact frame. Restore it after any float conversion.
+    this._applyCombatVisualPresentation(st);
+    const bounds = this._getSnapBounds();
+    const width = Number(st.floatW) || PANEL_DEFS.enemy.defaultFloatW;
+    const height = Number(st.floatH) || PANEL_DEFS.enemy.defaultFloatH;
+    st.floatX = Math.round(bounds.left +
+      Math.max(0, (bounds.right - bounds.left - width) / 2));
+    st.floatY = Math.round(bounds.top +
+      Math.max(0, (bounds.bottom - bounds.top - height) / 2));
+    this._applyFloatPosition(panel.el, st);
+    return true;
+  },
+
+  _keepEnemyPanelAbove(force = false) {
+    const visualCombatActive = !!(
+      this.gmcpData.combatVisual
+      && this.gmcpData.combatVisual.visualEnabled
+      && this.gmcpData.combatVisual.active
+    );
+    if (!force && !this._hasActiveEnemy() && !visualCombatActive) return;
     const st = this.state.panels.enemy;
     const panel = this.panels.enemy;
     if (!st || !panel || st.dock !== 'float' || this._mobile.enabled) return;
     if (panel.el.style.display === 'none') return;
     const highest = Object.entries(this.state.panels).reduce((max, [id, state]) => {
+      if (id === 'enemy') return max;
       const current = this.panels[id];
-      if (!state || !current || state.dock !== 'float') return max;
+      if (!state || !current || !current.el || !current.el.style
+          || state.dock !== 'float') return max;
       if (current.el.style.display === 'none') return max;
       return Math.max(max, Number(current.el.style.zIndex) || this._getEffectivePaneZIndex(id, state));
     }, 0);
-    if ((Number(panel.el.style.zIndex) || this._getEffectivePaneZIndex('enemy', st)) >= highest) return;
-    panel.el.style.zIndex = String(Math.max(highest + 1, this._getFocusedPaneZIndex('enemy', st)));
+    const combatZ = Math.max(highest + 1,
+      this._getFocusedPaneZIndex('enemy', st));
+    if (Number(panel.el.style.zIndex) === combatZ) return;
+    panel.el.style.zIndex = String(combatZ);
   },
 
   _getSnapBounds() {
@@ -1711,7 +1875,7 @@ export const panelManager = {
     this._mobile.activePanelId = null;
 
     document.body.classList.add('mobile-panel-mode');
-    this.closeMobileSheet();
+    this.closeMobileSheet('mobile-mode-reset');
     this._normalizeStateForMobile();
     this._resetLivePanels();
     this.buildPanelsMenu();
@@ -1730,7 +1894,7 @@ export const panelManager = {
     if (!this._mobile.enabled) return;
     this._mobile.enabled = false;
     this._mobile.sheetOpen = false;
-    this.closeMobileSheet();
+    this.closeMobileSheet('mobile-mode-reset');
     document.body.classList.remove('mobile-panel-mode');
 
     this._resetLivePanels();
@@ -1908,6 +2072,7 @@ export const panelManager = {
     const cb = p.el.querySelector('.panel-collapse');
     if (cb) cb.innerHTML = collapsed ? '&#x25BC;' : '&#x25B2;';
     this.saveState();
+    this._notifyPanelLifecycle(id, collapsed ? 'collapse' : 'expand');
   },
 
   closePanel(id) {
@@ -1938,6 +2103,7 @@ export const panelManager = {
     if (id === 'areaMap') exitMapData2Browse();
     this.saveState();
     this.syncGmcpSubscriptions('panel-close', false);
+    this._notifyPanelLifecycle(id, 'close');
   },
 
   registerPanelCloseHandler(id, handler) {
@@ -1949,6 +2115,116 @@ export const panelManager = {
     if (!id) return;
     if (handler && this._panelCloseHandlers[id] !== handler) return;
     delete this._panelCloseHandlers[id];
+  },
+
+  registerPanelLifecycleHandler(id, handler) {
+    if (!id || typeof handler !== 'function') return;
+    if (!this._panelLifecycleHandlers[id]) this._panelLifecycleHandlers[id] = new Set();
+    this._panelLifecycleHandlers[id].add(handler);
+  },
+
+  unregisterPanelLifecycleHandler(id, handler) {
+    const handlers = this._panelLifecycleHandlers[id];
+    if (!handlers) return;
+    if (handler) handlers.delete(handler);
+    else handlers.clear();
+    if (!handlers.size) delete this._panelLifecycleHandlers[id];
+  },
+
+  getPanelPresentationState(id) {
+    const st = this.state.panels[id];
+    const panel = this.panels[id];
+    const visible = !!(
+      st
+      && st.visible
+      && panel
+      && panel.el
+      && (!panel.el.style || panel.el.style.display !== 'none')
+    );
+    const dockAvailable = !!(
+      st
+      && (st.dock === 'float' || !this.state.docks[st.dock])
+    );
+    const mobileAvailable = !this._mobile.enabled || !!(
+      this._mobile.sheetOpen
+      && this._mobile.activePanelId === id
+    );
+    const ready = !!(
+      visible
+      && !st.collapsed
+      && dockAvailable
+      && mobileAvailable
+      && !this._panelRenderFailures.has(id)
+      && !appState.zorkOnlyMode
+    );
+    return {
+      id,
+      visible,
+      collapsed: !!(st && st.collapsed),
+      dock: st ? st.dock : '',
+      mobileMode: !!this._mobile.enabled,
+      mobileSheetOpen: !!(this._mobile.enabled && this._mobile.sheetOpen),
+      mobilePanelActive: !!(
+        this._mobile.enabled
+        && this._mobile.activePanelId === id
+      ),
+      ready,
+    };
+  },
+
+  _notifyPanelLifecycle(id, reason) {
+    const handlers = this._panelLifecycleHandlers[id];
+    if (!handlers || !handlers.size) return;
+    const detail = {
+      ...this.getPanelPresentationState(id),
+      reason,
+    };
+    for (const handler of [...handlers]) {
+      try {
+        handler(detail);
+      } catch (error) {
+        console.error(`Panel lifecycle handler failed for ${id}`, error);
+      }
+    }
+  },
+
+  setPanelTitle(id, title) {
+    const panel = this.panels[id];
+    const nextTitle = title || (PANEL_DEFS[id] && PANEL_DEFS[id].title) || id;
+    if (PANEL_DEFS[id] && nextTitle === PANEL_DEFS[id].title) {
+      delete this._panelTitleOverrides[id];
+    } else {
+      this._panelTitleOverrides[id] = nextTitle;
+    }
+    if (panel) {
+      panel.title = nextTitle;
+      const titleEl = panel.headerEl && panel.headerEl.querySelector
+        ? panel.headerEl.querySelector('.panel-title')
+        : null;
+      if (titleEl) titleEl.textContent = nextTitle;
+    }
+    if (this._mobile.enabled) this._renderMobileSheet();
+  },
+
+  setCombatVisualState(model) {
+    const visualEnabled = !!(model && model.visualEnabled);
+    if (visualEnabled) this.gmcpData.combatVisual = model;
+    else {
+      delete this.gmcpData.combatVisual;
+      this._combatVisualPresentationActive = false;
+    }
+    const panel = this.panels.enemy;
+    if (panel && panel.el && panel.el.classList) {
+      panel.el.classList.toggle('combat-visual-host', visualEnabled);
+    }
+    return this._renderPanel('enemy');
+  },
+
+  showCombatVisualError() {
+    const panel = this.panels.enemy;
+    if (!panel || !panel.bodyEl) return;
+    panel.bodyEl.innerHTML =
+      '<div class="panel-inactive placeholder">Combat view unavailable; text fallback is active.</div>';
   },
 
   openPanel(id) {
@@ -1967,6 +2243,7 @@ export const panelManager = {
     if (id === 'enemy') this._bringPanelToFront(id);
     this.saveState();
     this.syncGmcpSubscriptions('panel-open', false);
+    this._notifyPanelLifecycle(id, 'open');
   },
 
   createDynamicPanel(id, title, dock, order, onClose, options = {}) {
@@ -2451,9 +2728,34 @@ export const panelManager = {
 
   _renderPanel(id) {
     const p = this.panels[id];
-    if (!p) return;
+    if (!p) return false;
     const renderer = panelRenderers[id];
-    if (renderer) renderer(p.bodyEl, this.gmcpData[id]);
+    if (!renderer) return false;
+    const data = id === 'enemy'
+      && this.gmcpData.combatVisual
+      && this.gmcpData.combatVisual.visualEnabled
+      ? {
+        combatVisual: true,
+        model: this.gmcpData.combatVisual,
+        enemy: this.gmcpData.enemy,
+        vitals: this.gmcpData.vitals,
+        avatar: this.gmcpData.avatar,
+      }
+      : this.gmcpData[id];
+    try {
+      renderer(p.bodyEl, data);
+      this._panelRenderFailures.delete(id);
+      return true;
+    } catch (error) {
+      if (id === 'enemy' && data && data.combatVisual) {
+        this._panelRenderFailures.add(id);
+        console.error('Combat visual renderer failed', error);
+        this.showCombatVisualError();
+        this._notifyPanelLifecycle(id, 'render-error');
+        return false;
+      }
+      throw error;
+    }
   },
 
   _syncBuffTimer() {
@@ -2595,9 +2897,10 @@ export const panelManager = {
   },
 
   _getPanelTitle(id) {
-    if (PANEL_DEFS[id]) return PANEL_DEFS[id].title;
     const panel = this.panels[id];
-    return panel && panel.title ? panel.title : id;
+    if (panel && panel.title) return panel.title;
+    if (PANEL_DEFS[id]) return PANEL_DEFS[id].title;
+    return id;
   },
 
   _renderMobileSheet() {
@@ -2649,6 +2952,7 @@ export const panelManager = {
     }
 
     this._syncMobilePanelVisibility();
+    if (this._mobile.enabled) this._notifyPanelLifecycle('enemy', 'mobile-render');
   },
 
   _syncMobilePanelVisibility() {
@@ -3097,6 +3401,9 @@ export const panelManager = {
       }
       this._updateAvatarMeter(this.gmcpData.vitals);
       this._renderPanel('vitals');
+      if (this.gmcpData.combatVisual && this.gmcpData.combatVisual.visualEnabled) {
+        this._renderPanel('enemy');
+      }
     });
 
     gmcp.on('Darkwind.GuildVitals', (data) => {
@@ -3336,6 +3643,9 @@ export const panelManager = {
         loading: false,
       };
       this._renderPanel('avatar');
+      if (this.gmcpData.combatVisual && this.gmcpData.combatVisual.visualEnabled) {
+        this._renderPanel('enemy');
+      }
     });
 
     gmcp.on('Darkwind.Room.Image', (data) => {

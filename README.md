@@ -10,6 +10,7 @@ The app is intentionally lightweight: Express serves static files, the browser c
 - **ANSI terminal rendering**: persistent ANSI parser for SGR colors/styles, split escape sequences, URL links, highlights, Giphy replay controls, scrollback virtualization, pause mode, and split history/live mode.
 - **Connection resilience**: client version fetch before connect, auto-reconnect, stalled-socket watchdog, byte counters, diagnostics via `window.wsDebug`, and Ctrl+K full GMCP/media resync.
 - **Dockable interface**: left/right sidebars, floating panels, drag/drop ordering, snapping, collapse/close controls, mobile panel sheet, and persisted panel layout.
+- **Curated backgrounds**: selectable workspace artwork repeats horizontally for standard, ultrawide, and super-ultrawide displays.
 - **Player panels**: avatar, status, vitals, worth, stats, room, room image, group, inventory, enemy, chat, quests, achievements, and dynamic server-driven panels.
 - **Map system**: generic `Room.Info` learning plus server-authoritative `Darkwind.MapData2 2` sync, area browsing, safe speedwalk verification, and tile-based rendering.
 - **Server-driven windows**: `Darkwind.Window` modals/panels for login and in-game UI, including forms, buttons, updates, submits, actions, and close notifications.
@@ -118,6 +119,7 @@ docker run -p 3000:3000 darkflow-client
 │   ├── site.webmanifest         # PWA/app metadata
 │   ├── version.json             # Runtime client version
 │   ├── assets/
+│   │   ├── backgrounds/         # Curated seamless workspace backgrounds and thumbnails
 │   │   ├── brand/               # Darkflow logos, favicons, app icons
 │   │   ├── tiles/               # Terrain and player map tiles
 │   │   └── login-background.jpg
@@ -156,7 +158,8 @@ docker run -p 3000:3000 darkflow-client
 
 Darkflow supports standard `Core`, `Char`, `Room`, `Comm`, `Group`, and `Game`
 families plus Darkwind-specific panels, media, mapping, builder tools, windows,
-completion, connection diagnostics, fishing, cyberware, and shared-room media.
+completion, connection diagnostics, fishing, cyberware, the Street Samurai
+Cortex dashboard, and shared-room media.
 
 The [Darkflow GMCP Package Index](docs/gmcp-darkwind-index.md) is the canonical,
 handshake-aligned catalog. It lists every advertised support string and links

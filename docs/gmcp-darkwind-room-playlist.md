@@ -15,6 +15,7 @@ Darkwind.Room.Playlist 1
 | Message | Direction | Purpose |
 | --- | --- | --- |
 | `Darkwind.Room.Playlist.State` | Server -> Client | Replace the authoritative room jukebox snapshot |
+| `Darkwind.Room.Playlist.Open` | Server -> Client | Open the Jukebox pane after an explicit player inspection |
 | `Darkwind.Room.Playlist.Action` | Client -> Server | Add, remove, reorder, pause, resume, skip, or vote |
 | `Darkwind.Room.Playlist.Report` | Client -> Server | Report player readiness, completion, or playback error |
 
@@ -70,6 +71,11 @@ An unavailable room sends:
 }
 ```
 
+`Open` carries the same snapshot shape as `State`, but is reserved for a
+player-driven interaction such as `look at jukebox`. Routine room entry,
+reconnect, queue, and playback updates use `State` and must not open a pane the
+player closed.
+
 Entries require an 11-character YouTube `video_id`. The client clamps titles,
 durations, positions, queue size, and numeric state before rendering.
 
@@ -121,5 +127,6 @@ Reports include the current entry id:
 | `error` | `code` | Report a YouTube player error |
 
 Darkflow dispatches a `darkflow:room-playlist-state` DOM event with each
-normalized State payload so browser extensions can observe the feature without
+normalized snapshot and a `darkflow:room-playlist-open` event for explicit
+inspection requests, so browser extensions can observe the feature without
 mutating the manager's internal state.
