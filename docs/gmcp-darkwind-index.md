@@ -66,7 +66,7 @@ branded Darkflow.
 | `Darkwind.Fishing 1` | Interactive fishing session messages | Mixed | [Fishing](gmcp-darkwind-fishing.md) |
 | `Darkwind.Cyberware 1` | `List`, `Details`, `Image` | Mixed | [Cyberware](gmcp-darkwind-cyberware.md) |
 | `Darkwind.StreetSamurai 1` | Root dashboard snapshot | Server -> Client | [Street Samurai](gmcp-darkwind-street-samurai.md) |
-| `Darkwind.Room.Playlist 1` | `State`, `Action`, `Report` | Mixed | [Room playlist](gmcp-darkwind-room-playlist.md) |
+| `Darkwind.Room.Playlist 1` | `State`, `Open`, `Action`, `Report` | Mixed | [Room playlist](gmcp-darkwind-room-playlist.md) |
 
 ## Historical Packages
 

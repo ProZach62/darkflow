@@ -160,6 +160,28 @@ test('jukebox state updates do not automatically open its pane', () => {
   }
 });
 
+test('explicit jukebox inspection opens its pane', () => {
+  const originalGmcpData = panelManager.gmcpData;
+  const originalOpenPanel = panelManager.openPanel;
+  let openedId = '';
+
+  try {
+    panelManager.gmcpData = {};
+    panelManager.openPanel = (id) => { openedId = id; };
+
+    panelManager.handleRoomPlaylistOpen({
+      enabled: true,
+      room_id: '/domains/darkwind/roads/cot',
+    });
+
+    assert.equal(panelManager.gmcpData.roomPlaylist.enabled, true);
+    assert.equal(openedId, 'roomPlaylist');
+  } finally {
+    panelManager.gmcpData = originalGmcpData;
+    panelManager.openPanel = originalOpenPanel;
+  }
+});
+
 test('docking a map queues a render for the new sidebar dimensions', () => {
   const originalPanels = panelManager.panels;
   const originalState = panelManager.state;

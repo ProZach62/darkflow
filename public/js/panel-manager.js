@@ -196,6 +196,9 @@ export const panelManager = {
     document.addEventListener('darkflow:room-playlist-state', (event) => {
       this.handleRoomPlaylistState(event.detail);
     });
+    document.addEventListener('darkflow:room-playlist-open', (event) => {
+      this.handleRoomPlaylistOpen(event.detail);
+    });
     this._initialized = true;
     this._notifyWorkspaceLayoutChanged();
   },
@@ -205,6 +208,14 @@ export const panelManager = {
       ? data
       : { enabled: false };
     this._renderPanel('roomPlaylist');
+  },
+
+  handleRoomPlaylistOpen(data) {
+    this.gmcpData.roomPlaylist = data && typeof data === 'object'
+      ? data
+      : { enabled: false };
+    if (!this.gmcpData.roomPlaylist.enabled) return;
+    this.openPanel('roomPlaylist');
   },
 
   _hydrateMapCaches() {
