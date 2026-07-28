@@ -1,6 +1,6 @@
 {
   "name": "darkflow-client",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Darkwind game client powered by Darkflow",
   "main": "desktop/main.cjs",
   "author": {
@@ -23,8 +23,8 @@
     "desktop:dist:mac": "electron-builder --mac --publish never",
     "desktop:dist:win": "electron-builder --win --publish never",
     "desktop:dist:linux": "electron-builder --linux --publish never",
-    "desktop:release:mac": "electron-builder --mac --publish never --config.mac.forceCodeSigning=true",
-    "desktop:release:win": "electron-builder --win --publish never --config.win.forceCodeSigning=true",
+    "desktop:release:mac": "electron-builder --mac --publish never --config.mac.identity=null --config.mac.hardenedRuntime=false --config.mac.notarize=false",
+    "desktop:release:win": "electron-builder --win --publish never",
     "desktop:release:linux": "electron-builder --linux --publish never",
     "desktop:validate-release": "node desktop/validate-release.cjs",
     "desktop:steam": "electron-builder --dir --publish never --config.extraMetadata.darkflowDistribution=steam",
@@ -71,9 +71,10 @@
       "category": "public.app-category.games",
       "electronUpdaterCompatibility": ">=2.16",
       "forceCodeSigning": false,
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
+      "identity": null,
       "icon": "public/assets/brand/darkflow-icon-512.png",
-      "notarize": true,
+      "notarize": false,
       "target": [
         {
           "target": "dmg",

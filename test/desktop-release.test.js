@@ -11,13 +11,18 @@ const {
   validatePlatformRelease,
 } = require('../desktop/validate-release.cjs');
 
-test('production desktop scripts require signing while local packages remain available', () => {
-  assert.equal(packageMetadata.build.mac.notarize, true);
-  assert.equal(packageMetadata.build.mac.hardenedRuntime, true);
+test('desktop release scripts explicitly produce unsigned packages', () => {
+  assert.equal(packageMetadata.build.mac.identity, null);
+  assert.equal(packageMetadata.build.mac.notarize, false);
+  assert.equal(packageMetadata.build.mac.hardenedRuntime, false);
   assert.match(packageMetadata.scripts['desktop:release:mac'],
-    /mac\.forceCodeSigning=true/);
-  assert.match(packageMetadata.scripts['desktop:release:win'],
-    /win\.forceCodeSigning=true/);
+    /mac\.identity=null/);
+  assert.match(packageMetadata.scripts['desktop:release:mac'],
+    /mac\.notarize=false/);
+  assert.match(packageMetadata.scripts['desktop:release:mac'],
+    /mac\.hardenedRuntime=false/);
+  assert.doesNotMatch(packageMetadata.scripts['desktop:release:win'],
+    /forceCodeSigning=true/);
   assert.doesNotMatch(packageMetadata.scripts['desktop:dist:mac'],
     /forceCodeSigning/);
   assert.doesNotMatch(packageMetadata.scripts['desktop:dist:win'],

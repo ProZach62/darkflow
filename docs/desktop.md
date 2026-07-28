@@ -83,20 +83,19 @@ Desktop auto-updates do not replace web update detection. Browser sessions
 continue polling `/api/version` and offer the existing refresh action when a
 new web deployment is available.
 
-macOS update builds must be signed, and direct macOS downloads should also be
-notarized. Windows releases should be Authenticode-signed to avoid an unknown
-publisher warning. The release workflow expects these repository secrets:
+Direct desktop packages are currently released unsigned on every platform.
+macOS users must approve the application through Gatekeeper and manually
+download and install each new version because Electron cannot auto-update an
+unsigned macOS application. Windows users should expect an unknown-publisher
+SmartScreen warning, but installed direct builds can still use the NSIS update
+path. Linux AppImage builds can also use the published update metadata.
 
-| Platform | Required GitHub secrets |
-| --- | --- |
-| macOS | `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` |
-| Windows | `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` |
-
-Production CI uses `desktop:release:*` commands that fail rather than publish
-an unsigned macOS or Windows build. Local `desktop:dist:*` commands remain
-available for unsigned development packages. CI also verifies the macOS
-signature and notarization ticket, the Windows Authenticode signature, every
-expected installer and blockmap, and the platform-specific updater metadata.
+The release workflow deliberately supplies no signing credentials. It still
+verifies every expected installer and blockmap, checks the platform-specific
+updater metadata and checksums, and refuses tags whose version does not match
+the application or whose commit is not on `main`. A future signed release line
+should restore signature and notarization checks before signing credentials are
+added to CI.
 
 ## Releasing
 
@@ -104,13 +103,13 @@ Keep the web runtime version, npm package version, and desktop application
 version synchronized:
 
 ```bash
-npm run version:set -- 1.5.0
+npm run version:set -- 1.5.1
 npm test
 git add package.json package-lock.json public/version.json
-git commit -m "Release Darkwind desktop 1.5.0"
-git tag -a v1.5.0 -m "Darkwind desktop 1.5.0"
+git commit -m "Release Darkwind desktop 1.5.1"
+git tag -a v1.5.1 -m "Darkwind desktop 1.5.1"
 git push origin main
-git push origin refs/tags/v1.5.0
+git push origin refs/tags/v1.5.1
 ```
 
 Pushing a matching `v*` tag runs `.github/workflows/desktop-release.yml`. It
@@ -149,8 +148,9 @@ Before publishing, verify an installed build rather than only `npm run desktop`:
 
 1. Launch it and confirm it connects to Darkwind and survives minimize/restore.
 2. Exercise map, audio/YouTube, settings import/export, IDE, and external links.
-3. Install an older signed direct build, publish a higher prerelease in a test
-   repository/channel, and verify download plus restart-to-install.
+3. On Windows and Linux, install an older direct build, publish a higher
+   prerelease in a test repository/channel, and verify download plus
+   restart-to-install. On macOS, verify the documented manual upgrade path.
 4. Launch a Steam build with `--steam` and confirm the update menu says Steam
    manages updates and no GitHub request is made.
 5. Confirm `npm start` still serves the browser client and its refresh banner.
