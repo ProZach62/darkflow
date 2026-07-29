@@ -59,6 +59,7 @@ State is a recoverable snapshot, not an animation command:
   "visual_enabled": true,
   "effective": true,
   "active": true,
+  "current_actor_id": "self",
   "current_target_id": "actor-2",
   "actors": [
     { "id": "self", "name": "Acer", "role": "self" },
@@ -77,15 +78,25 @@ State is a recoverable snapshot, not an animation command:
 | `visual_enabled` | Saved character preference from `combatbrief visual`. |
 | `effective` | Whether guarded visual presentation is currently effective. |
 | `active` | Whether an encounter is active. |
-| `current_target_id` | Actor id staged as the current target. |
+| `current_actor_id` | Actor id staged on the left side. It is `self` while the recipient is fighting; a passive observer receives the stable identity of the actual combatant instead. |
+| `current_target_id` | Actor id staged on the right side opposite `current_actor_id`. An observed pair retains the same orientation when its attack direction reverses. |
 | `actors` | Recipient-safe roster. IDs never expose LPC object paths. |
 | `outcome` | Empty while active; final values may include `victory`, `defeat`, `fled`, `target-lost`, or `disconnected`. |
 | `summary` | Short accessible lifecycle summary. |
 
-`Char.Vitals` remains authoritative for player HP. `Char.Enemy` remains
-authoritative for the current target's HP, condition, and art.
-`Darkwind.Char.Avatar` remains authoritative for player art. Additional actor
-entries are compact context or threat indicators, not a private-stat feed.
+In observed group combat, the server may update `current_actor_id` as another
+player acts against the same right-side focus without changing
+`encounter_id`. This preserves pane position, history, and manual-close state
+instead of presenting every group swing as a new encounter.
+
+When `current_actor_id` is `self`, `Char.Vitals` remains authoritative for
+player HP, `Char.Enemy` remains authoritative for the current target's HP,
+condition, and art, and `Darkwind.Char.Avatar` remains authoritative for
+player art. A passive observer must not reuse those recipient-private
+snapshots for somebody else's fight: actor names come from the State roster,
+while health and art remain unavailable or use non-private placeholders.
+Additional actor entries are compact context or threat indicators, not a
+private-stat feed.
 
 ## `Darkwind.Combat.Events`
 

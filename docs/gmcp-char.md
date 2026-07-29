@@ -114,9 +114,12 @@ Darkflow also accepts a generic shape with `name`, `hp`, `mhp` or `maxhp`,
 
 The optional [Darkwind.Combat](gmcp-darkwind-combat.md) package changes the
 existing Enemy pane into a visual Combat scene during an active encounter, but
-does not replace this message. `Char.Enemy` remains authoritative for the
-staged target's name, HP, condition, and art; Combat State supplies lifecycle
-and roster identity, while Combat Events supply transient outcomes.
+does not replace this message. During the recipient's own fight,
+`Char.Enemy` remains authoritative for the staged target's name, HP,
+condition, and art. A passive observed fight instead uses the Combat State
+roster for participant identity and does not reuse recipient-private or stale
+`Char.Enemy` values. Combat State supplies lifecycle and roster identity,
+while Combat Events supply transient outcomes.
 
 ## Char.Items
 

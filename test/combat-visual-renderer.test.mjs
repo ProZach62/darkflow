@@ -257,9 +257,9 @@ test('incoming perspective anchors damage over the player even when event IDs ar
   assert.match(body.innerHTML, /combat-live-region[^>]*>Incoming critical hit • 42 damage<\/div>/);
 });
 
-test('passive observed combat labels private target health unavailable', () => {
+test('passive observed combat shows the actual fighter without private health', () => {
   const body = bodyElement();
-  let model = combatModel();
+  let model = combatModel({ current_actor_id: 'threat-1' });
   model = reduceCombatEvents(model, {
     epoch: 'epoch-1',
     encounter_id: 'encounter-1',
@@ -287,6 +287,21 @@ test('passive observed combat labels private target health unavailable', () => {
   assert.match(body.innerHTML, /aria-valuetext="Unavailable"/);
   assert.match(body.innerHTML, /<span>HP<\/span><span>Unavailable<\/span>/);
   assert.doesNotMatch(body.innerHTML, /aria-valuenow="99"/);
+  assert.doesNotMatch(body.innerHTML, /aria-valuenow="80"/);
+
+  const playerCard = body.innerHTML.match(
+    /<article class="combatant-card combatant-player[\s\S]*?<\/article>/,
+  )[0];
+  const targetCard = body.innerHTML.match(
+    /<article class="combatant-card combatant-target[\s\S]*?<\/article>/,
+  )[0];
+  assert.match(playerCard, /&lt;b&gt;extra threat&lt;\/b&gt;/);
+  assert.match(playerCard, /combatant-player is-event-actor/);
+  assert.match(playerCard, /aria-valuetext="Unavailable"/);
+  assert.match(targetCard, /combatant-target is-impact-target/);
+  assert.match(targetCard, /aria-valuetext="Unavailable"/);
+  assert.doesNotMatch(body.innerHTML, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.doesNotMatch(body.innerHTML, /combat-threat-chip/);
 });
 
 test('own-combat target health remains synchronizing before Char.Enemy arrives', () => {
