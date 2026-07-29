@@ -107,6 +107,9 @@ const {
 const { gmcp, normalizeSubscriptionPayload } = await import('../public/js/gmcp.js');
 const { settingsManager } = await import('../public/js/settings-manager.js');
 const { state } = await import('../public/js/state.js');
+const {
+  createDefaultVisualEffectPreferences,
+} = await import('../public/js/visual-effects-settings.mjs');
 
 test('visual effects stay opt-in, combine persistent state with bounded event cues, and clean up safely', () => {
   const originalSendSubscriptions = gmcp.sendSubscriptions;
@@ -146,6 +149,7 @@ test('visual effects stay opt-in, combine persistent state with bounded event cu
     visualEffectsManager.fallbackWorld = createVisualWorldState();
     visualEffectsManager.health = reduceHealthState();
     visualEffectsManager.enabled = false;
+    visualEffectsManager.effectPreferences = createDefaultVisualEffectPreferences();
     visualEffectsManager.reducedMotion = false;
     visualEffectsManager.root = null;
     visualEffectsManager._authoritativeWorld = false;
@@ -155,7 +159,11 @@ test('visual effects stay opt-in, combine persistent state with bounded event cu
     visualEffectsManager._preview = null;
     visualEffectsManager._previewTimer = null;
     visualEffectsManager._resetCooldowns();
-    state.settings = { ...state.settings, visualEffectsEnabled: true };
+    state.settings = {
+      ...state.settings,
+      visualEffectsEnabled: true,
+      visualEffectPreferences: createDefaultVisualEffectPreferences(),
+    };
 
     visualEffectsManager.init();
 
@@ -379,6 +387,51 @@ test('visual effects stay opt-in, combine persistent state with bounded event cu
     gmcp.dispatch('Char.Vitals', { hp: 30 });
     assert.equal(root.classList.contains('is-low-health'), true);
 
+    const selectivePreferences = {
+      ...createDefaultVisualEffectPreferences(),
+      planetAmbience: false,
+      lowHealth: false,
+      incomingDamage: false,
+      spellCasts: false,
+    };
+    visualEffectsManager.handleSettingsChanged({
+      visualEffectsEnabled: true,
+      visualEffectPreferences: selectivePreferences,
+    });
+    assert.equal(root.classList.contains('is-planet-markas'), false);
+    assert.equal(root.classList.contains('is-terrain-forest'), true);
+    assert.equal(root.classList.contains('is-low-health'), false);
+    clock = 5000;
+    assert.equal(visualEffectsManager.playIncomingDamage(3), false);
+    assert.equal(visualEffectsManager.playOutgoingDamage(3), true);
+    assert.equal(visualEffectsManager.playSpellCast('fire', 3), false);
+    visualEffectsManager._clearTransientEffects();
+    assert.equal(visualEffectsManager.handlePreview({ kind: 'planet', value: 'tekal' }), false);
+    assert.equal(visualEffectsManager.handlePreview({ kind: 'terrain', value: 'arctic' }), true);
+    visualEffectsManager.handlePreview({ kind: 'clear' });
+
+    const lowHealthOnly = Object.fromEntries(
+      Object.keys(createDefaultVisualEffectPreferences()).map((key) => [key, key === 'lowHealth'])
+    );
+    visualEffectsManager.handleSettingsChanged({
+      visualEffectsEnabled: true,
+      visualEffectPreferences: lowHealthOnly,
+    });
+    assert.equal(subscriptions.at(-1).features.visualEffects, false,
+      'low health is derived from Char.Vitals and does not require the visual event stream');
+    assert.equal(root.classList.contains('is-low-health'), true);
+    assert.equal(root.classList.contains('is-terrain-forest'), false);
+    assert.equal(visualEffectsManager.playOutgoingDamage(3), false);
+
+    visualEffectsManager.handleSettingsChanged({
+      visualEffectsEnabled: true,
+      visualEffectPreferences: createDefaultVisualEffectPreferences(),
+    });
+    assert.equal(subscriptions.at(-1).features.visualEffects, true);
+    assert.equal(root.classList.contains('is-planet-markas'), true);
+    assert.equal(root.classList.contains('is-terrain-forest'), true);
+    assert.equal(root.classList.contains('is-low-health'), true);
+
     gmcp.dispatch('Darkwind.Visual.Preview', { kind: 'terrain', value: 'arctic' });
     const disablePreviewTimer = visualEffectsManager._previewTimer;
     assert.equal(root.classList.contains('is-preview-terrain'), true,
@@ -435,6 +488,19 @@ test('visual effects stay opt-in, combine persistent state with bounded event cu
     assert.equal(settingsManager._normalizeSettings({
       visualEffectsEnabled: true,
     }).visualEffectsEnabled, true);
+    const normalizedSettings = settingsManager._normalizeSettings({
+      visualEffectsEnabled: true,
+      visualEffectPreferences: {
+        incomingDamage: false,
+        unknownEffect: false,
+      },
+    });
+    assert.equal(normalizedSettings.visualEffectPreferences.incomingDamage, false);
+    assert.equal(normalizedSettings.visualEffectPreferences.planetAmbience, true);
+    assert.equal(Object.hasOwn(
+      normalizedSettings.visualEffectPreferences,
+      'unknownEffect'
+    ), false);
   } finally {
     visualEffectsManager._clearAllVisuals();
     visualEffectsManager.initialized = false;
@@ -443,6 +509,7 @@ test('visual effects stay opt-in, combine persistent state with bounded event cu
     visualEffectsManager.fallbackWorld = createVisualWorldState();
     visualEffectsManager.health = reduceHealthState();
     visualEffectsManager.enabled = false;
+    visualEffectsManager.effectPreferences = createDefaultVisualEffectPreferences();
     visualEffectsManager.reducedMotion = false;
     visualEffectsManager.root = null;
     visualEffectsManager._authoritativeWorld = false;

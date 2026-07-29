@@ -16,6 +16,7 @@ import {
   isSocketOpen,
   socketReadyStateName,
 } from './socket-state.js';
+import { visualEffectsSubscriptionEnabled } from './visual-effects-settings.mjs';
 
 const WS_DIAG_LIMIT = 100;
 const WS_HEALTH_INTERVAL_MS = 5000;
@@ -229,7 +230,7 @@ function scheduleHandshakeGuard(forWs) {
       full: true,
       panels: panelManager.getSubscriptionPanels(),
       features: {
-        visualEffects: settingsManager.get('visualEffectsEnabled'),
+        visualEffects: visualEffectsSubscriptionEnabled(state.settings),
         tutorialPane: tutorialManager.isReadyForSubscription(),
       },
     });
@@ -699,7 +700,7 @@ export async function connect() {
         full: true,
         panels: panelManager.getSubscriptionPanels(),
         features: {
-          visualEffects: settingsManager.get('visualEffectsEnabled'),
+          visualEffects: visualEffectsSubscriptionEnabled(state.settings),
           tutorialPane: tutorialManager.isReadyForSubscription(),
         },
       });

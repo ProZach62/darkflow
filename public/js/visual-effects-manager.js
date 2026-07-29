@@ -9,6 +9,11 @@ import {
   reduceVisualWorldState,
   normalizeVisualPreview,
 } from './visual-effects-core.mjs';
+import {
+  createDefaultVisualEffectPreferences,
+  normalizeVisualEffectPreferences,
+  visualEffectsSubscriptionEnabled,
+} from './visual-effects-settings.mjs';
 
 const SETTINGS_CHANGED_EVENT = 'darkwind:settings-changed';
 const CONNECTION_STATE_EVENT = 'dw:connectionstate';
@@ -24,6 +29,17 @@ const PREVIEW_CLASSES = [
 const MOTION_CLASSES = {
   incoming: 'dw-visual-impact-shake',
   outgoing: 'dw-visual-attack-lunge',
+};
+const TRANSIENT_EFFECT_KEYS = {
+  incoming: 'incomingDamage',
+  outgoing: 'outgoingDamage',
+  spell: 'spellCasts',
+};
+const PREVIEW_EFFECT_KEYS = {
+  planet: 'planetAmbience',
+  terrain: 'terrainAmbience',
+  'low-health': 'lowHealth',
+  transition: 'worldTransitions',
 };
 const EFFECT_CONFIG = {
   incoming: {
@@ -66,10 +82,6 @@ function reducedMotionQuery() {
   }
 }
 
-function visualEffectsEnabled(settings = appState.settings) {
-  return !!(settings && settings.visualEffectsEnabled);
-}
-
 function safeIntensity(value) {
   return Math.max(1, Math.min(3, Math.round(Number(value) || 1)));
 }
@@ -90,6 +102,7 @@ export const visualEffectsManager = {
   fallbackWorld: createVisualWorldState(),
   health: reduceHealthState(),
   enabled: false,
+  effectPreferences: createDefaultVisualEffectPreferences(),
   reducedMotion: false,
   root: null,
   _authoritativeWorld: false,
@@ -113,7 +126,10 @@ export const visualEffectsManager = {
       : null;
     this._motionQuery = reducedMotionQuery();
     this.reducedMotion = !!(this._motionQuery && this._motionQuery.matches);
-    this.enabled = visualEffectsEnabled();
+    this.enabled = !!(appState.settings && appState.settings.visualEffectsEnabled);
+    this.effectPreferences = normalizeVisualEffectPreferences(
+      appState.settings && appState.settings.visualEffectPreferences
+    );
 
     gmcp.on('Darkwind.Visual.Events', (payload) => this.handleEvents(payload));
     // Accept the singular spelling defensively for mixed development builds.
@@ -178,10 +194,30 @@ export const visualEffectsManager = {
     return this.enabled;
   },
 
+  isEffectEnabled(key) {
+    return this.enabled && this.effectPreferences[key] !== false;
+  },
+
+  isSubscriptionEnabled(settings = null) {
+    if (settings) return visualEffectsSubscriptionEnabled(settings);
+    return visualEffectsSubscriptionEnabled({
+      visualEffectsEnabled: this.enabled,
+      visualEffectPreferences: this.effectPreferences,
+    });
+  },
+
   handleSettingsChanged(settings) {
-    const nextEnabled = visualEffectsEnabled(settings);
+    const previousSubscription = this.isSubscriptionEnabled();
+    const nextEnabled = !!(settings && settings.visualEffectsEnabled);
+    const nextPreferences = normalizeVisualEffectPreferences(
+      settings && settings.visualEffectPreferences
+    );
     const changed = nextEnabled !== this.enabled;
+    const preferencesChanged = Object.keys(nextPreferences).some(
+      (key) => nextPreferences[key] !== this.effectPreferences[key]
+    );
     this.enabled = nextEnabled;
+    this.effectPreferences = nextPreferences;
 
     if (this.root) this.root.hidden = !this.enabled;
     if (!this.enabled) {
@@ -189,11 +225,14 @@ export const visualEffectsManager = {
       this._resetCooldowns();
       this._clearAllVisuals();
     } else if (this.root) {
+      if (preferencesChanged) this._clearAllVisuals();
       this._applyWorldContext(this._currentWorld());
       this._applyHealth();
     }
 
-    if (changed) this._syncSubscription('visual-effects-setting');
+    if (changed || previousSubscription !== this.isSubscriptionEnabled()) {
+      this._syncSubscription('visual-effects-setting');
+    }
   },
 
   handleEvents(payload) {
@@ -256,7 +295,7 @@ export const visualEffectsManager = {
       this._clearPreview();
       return true;
     }
-    if (!this.enabled || !this.root) return false;
+    if (!this.isEffectEnabled(PREVIEW_EFFECT_KEYS[preview.kind]) || !this.root) return false;
     if (typeof document !== 'undefined' && document.hidden) return false;
 
     this._clearPreview();
@@ -302,7 +341,9 @@ export const visualEffectsManager = {
 
   _playTransient(type, value, intensity = value) {
     if (!this.initialized) this.init();
-    if (!this.enabled || !this.root || !EFFECT_CONFIG[type]) return false;
+    if (!this.isEffectEnabled(TRANSIENT_EFFECT_KEYS[type])
+        || !this.root
+        || !EFFECT_CONFIG[type]) return false;
     if (typeof document !== 'undefined' && document.hidden) return false;
 
     const now = this._now();
@@ -428,11 +469,19 @@ export const visualEffectsManager = {
   _applyWorldContext(context, animate = false) {
     if (!this.root || !this.root.classList) return;
     this.root.classList.remove(...PLANET_CLASSES, ...TERRAIN_CLASSES);
-    if (context && context.planet) this.root.classList.add('is-planet-' + context.planet);
-    if (context && context.terrains && context.terrains[0]) {
+    if (this.isEffectEnabled('planetAmbience') && context && context.planet) {
+      this.root.classList.add('is-planet-' + context.planet);
+    }
+    if (this.isEffectEnabled('terrainAmbience')
+        && context
+        && context.terrains
+        && context.terrains[0]) {
       this.root.classList.add('is-terrain-' + context.terrains[0]);
     }
-    if (animate && context && context.reason === 'wayshard') {
+    if (this.isEffectEnabled('worldTransitions')
+        && animate
+        && context
+        && context.reason === 'wayshard') {
       this.root.classList.remove('is-world-transition');
       void this.root.offsetWidth;
       this.root.classList.add('is-world-transition');
@@ -446,7 +495,10 @@ export const visualEffectsManager = {
 
   _applyHealth() {
     if (!this.root || !this.root.classList) return;
-    this.root.classList.toggle('is-low-health', !!this.health.lowHealth);
+    this.root.classList.toggle(
+      'is-low-health',
+      this.isEffectEnabled('lowHealth') && !!this.health.lowHealth
+    );
   },
 
   _clearPersistentVisuals() {
@@ -474,7 +526,7 @@ export const visualEffectsManager = {
   _syncSubscription(reason) {
     gmcp.sendSubscriptions({
       reason,
-      features: { visualEffects: this.enabled },
+      features: { visualEffects: this.isSubscriptionEnabled() },
     });
   },
 
