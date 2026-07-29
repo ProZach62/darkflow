@@ -5,6 +5,7 @@ import { panelManager } from './panel-manager.js';
 import { windowManager } from './window-manager.js';
 import { fishingManager } from './fishing-manager.js';
 import { combatVisualManager } from './combat-visual-manager.js';
+import { tutorialManager } from './tutorial-manager.js';
 import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
 import { settingsManager } from './settings-manager.js';
 import { timerManager } from './timer-manager.js';
@@ -223,14 +224,16 @@ function scheduleHandshakeGuard(forWs) {
       hadText: (health.lastInboundTextAt || 0) >= openAt,
     });
     gmcp.sendHandshake();
-    gmcp.sendSubscriptions({
+    const sent = gmcp.sendSubscriptions({
       reason: 'handshake-retry',
       full: true,
       panels: panelManager.getSubscriptionPanels(),
       features: {
         visualEffects: settingsManager.get('visualEffectsEnabled'),
+        tutorialPane: tutorialManager.isReadyForSubscription(),
       },
     });
+    if (sent) tutorialManager.handleConnected('handshake-retry');
   }, HANDSHAKE_RESEND_DELAY_MS);
 }
 
@@ -298,6 +301,7 @@ function finalizeDisconnect() {
   gmcp.reset();
   state.tabObservability.lastSentState = null;
   combatVisualManager.handleDisconnect();
+  tutorialManager.handleDisconnect();
   panelManager.resetData();
   fishingManager.handleDisconnect();
   // Keep auth windows (login/charselect/newchar) alive across a drop:
@@ -690,14 +694,18 @@ export async function connect() {
       startWatchdog();
       panelManager.resetData();
       gmcp.sendHandshake();
-      gmcp.sendSubscriptions({
+      const sent = gmcp.sendSubscriptions({
         reason: wasReconnect ? 'reconnect' : 'login',
         full: true,
         panels: panelManager.getSubscriptionPanels(),
         features: {
           visualEffects: settingsManager.get('visualEffectsEnabled'),
+          tutorialPane: tutorialManager.isReadyForSubscription(),
         },
       });
+      if (sent) {
+        tutorialManager.handleConnected(wasReconnect ? 'reconnect' : 'login');
+      }
       timerManager.startAutoTimers();
     };
 
