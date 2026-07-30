@@ -656,8 +656,9 @@ function combatHealthHtml(side, name, health) {
 function combatArtHtml(side, combatant, loadedImages, failedImages, event, impactSide) {
   const hasGeneratedImage = !!combatant.image;
   const generatedImageFailed = hasGeneratedImage && failedImages.has(combatant.image);
+  const usesNpcFallbackImage = combatant.image === NPC_FALLBACK_IMAGE;
   const isNpcFallback = side === 'target' && combatant.isNpc &&
-    (!hasGeneratedImage || generatedImageFailed);
+    (!hasGeneratedImage || generatedImageFailed || usesNpcFallbackImage);
   const fallbackImage = side === 'target' && combatant.isNpc
     ? NPC_FALLBACK_IMAGE
     : PLAYER_FALLBACK_IMAGE;

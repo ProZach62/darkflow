@@ -104,7 +104,8 @@ Darkwind's native shape is:
   "enemy_cursp": 20,
   "enemy_maxsp": 30,
   "enemy_hp_string": "wounded",
-  "enemy_image": "https://example.invalid/enemy.png"
+  "enemy_is_npc": 1,
+  "enemy_image": "/assets/generic-monster.png"
 }
 ```
 
@@ -116,7 +117,11 @@ The optional [Darkwind.Combat](gmcp-darkwind-combat.md) package changes the
 existing Enemy pane into a visual Combat scene during an active encounter, but
 does not replace this message. During the recipient's own fight,
 `Char.Enemy` remains authoritative for the staged target's name, HP,
-condition, and art. A passive observed fight instead uses the Combat State
+condition, NPC identity, and art. `enemy_is_npc` is `1` for NPC targets and
+`0` for player targets, allowing the client to choose the correct missing-art
+fallback without guessing from health text. Until generated NPC art is cached,
+Darkwind sends `/assets/generic-monster.png` as `enemy_image`; a later
+`Char.Enemy` update replaces it with the generated URL. A passive observed fight instead uses the Combat State
 roster for participant identity and does not reuse recipient-private or stale
 `Char.Enemy` values. Combat State supplies lifecycle and roster identity,
 while Combat Events supply transient outcomes.

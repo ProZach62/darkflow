@@ -143,7 +143,8 @@ test('Char.Vitals and Char.Enemy remain authoritative for combatant health and a
       enemy_name: 'an ash drake',
       enemy_curhp: 328,
       enemy_maxhp: 800,
-      enemy_hp_string: 'badly wounded',
+      enemy_hp_string: 'None',
+      enemy_is_npc: 1,
       enemy_image: '/enemies/ash-drake.png',
     },
   });
@@ -162,6 +163,7 @@ test('Char.Vitals and Char.Enemy remain authoritative for combatant health and a
   });
   assert.equal(view.player.image, '/avatars/acer.png');
   assert.equal(view.target.image, '/enemies/ash-drake.png');
+  assert.equal(view.target.isNpc, true);
   assert.deepEqual(view.threats.map((threat) => threat.name), ['a cinder whelp']);
 });
 
