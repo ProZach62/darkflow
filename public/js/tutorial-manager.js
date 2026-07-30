@@ -322,6 +322,13 @@ export const tutorialManager = {
     if (next.reason === 'directions') this.routeVisible = true;
 
     if (next.status === 'active') {
+      // The server keeps a Continue gate for text clients. Visual clients
+      // acknowledge it immediately so each objective is one player-facing step.
+      if (next.awaitingContinue
+          && next.actions.includes('continue')
+          && this.sendAction('continue')) {
+        return true;
+      }
       this._renderSafely();
       this._announce(next);
       return true;
@@ -466,6 +473,11 @@ export const tutorialManager = {
 
     for (const action of ACTION_ORDER) {
       if (!this.model.actions.includes(action)) continue;
+      if (action === 'continue'
+          && this.model.awaitingContinue
+          && this.pendingAction === 'continue') {
+        continue;
+      }
       if (action === 'hint' && this.hintVisible) continue;
       const button = createElement(
         'button',

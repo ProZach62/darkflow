@@ -78,6 +78,14 @@ function activePayload(overrides = {}) {
   };
 }
 
+function actionablePayload(overrides = {}) {
+  return activePayload({
+    awaiting_continue: 0,
+    actions: ['hint', 'directions', 'skip'],
+    ...overrides,
+  });
+}
+
 function resetManager() {
   tutorialManager._clearPendingTimer();
   tutorialManager._clearRenderRecovery();
@@ -131,12 +139,12 @@ test('state handling auto-renders active state, rejects stale state, and preserv
     tutorialManager._announce = () => { announcements++; };
     tutorialManager.hide = () => { hides++; };
 
-    assert.equal(tutorialManager.handleState(activePayload()), true);
+    assert.equal(tutorialManager.handleState(actionablePayload()), true);
     assert.equal(renders, 1);
     assert.equal(announcements, 1);
 
     tutorialManager.routeVisible = true;
-    assert.equal(tutorialManager.handleState(activePayload({
+    assert.equal(tutorialManager.handleState(actionablePayload({
       seq: 8,
       route: {
         place: 'Erga',
@@ -147,13 +155,13 @@ test('state handling auto-renders active state, rejects stale state, and preserv
     })), true);
     assert.equal(tutorialManager.routeVisible, true);
 
-    assert.equal(tutorialManager.handleState(activePayload({
+    assert.equal(tutorialManager.handleState(actionablePayload({
       seq: 8,
       reason: 'duplicate',
     })), false);
     assert.equal(renders, 2);
 
-    tutorialManager.handleState(activePayload({
+    tutorialManager.handleState(actionablePayload({
       seq: 9,
       step: {
         ...activePayload().step,
@@ -164,7 +172,7 @@ test('state handling auto-renders active state, rejects stale state, and preserv
     }));
     assert.equal(tutorialManager.routeVisible, false);
 
-    tutorialManager.handleState(activePayload({
+    tutorialManager.handleState(actionablePayload({
       seq: 10,
       status: 'finished',
       awaiting_continue: 0,
@@ -175,6 +183,64 @@ test('state handling auto-renders active state, rejects stale state, and preserv
     tutorialManager._renderSafely = original.renderSafely;
     tutorialManager._announce = original.announce;
     tutorialManager.hide = original.hide;
+  }
+});
+
+test('awaiting Continue is acknowledged before the actionable state is announced', () => {
+  resetManager();
+  const original = {
+    send: gmcp.send,
+    renderSafely: tutorialManager._renderSafely,
+    announce: tutorialManager._announce,
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+  };
+  const sends = [];
+  const timers = [];
+  let renders = 0;
+  let announcements = 0;
+  try {
+    gmcp.send = (name, payload) => {
+      sends.push([name, payload]);
+      return true;
+    };
+    tutorialManager._renderSafely = () => { renders++; };
+    tutorialManager._announce = () => { announcements++; };
+    globalThis.setTimeout = (callback, delay) => {
+      timers.push({ callback, delay });
+      return timers.length;
+    };
+    globalThis.clearTimeout = () => {};
+
+    assert.equal(tutorialManager.handleState(activePayload()), true);
+    assert.deepEqual(sends[0], [
+      'Darkwind.Tutorial.Action',
+      {
+        action: 'continue',
+        epoch: 'manager-epoch',
+        seq: 7,
+        step_id: 'look',
+      },
+    ]);
+    assert.equal(tutorialManager.pendingAction, 'continue');
+    assert.equal(renders, 1, 'the objective renders while acknowledgement is pending');
+    assert.equal(announcements, 0, 'the compatibility gate is not a separate step');
+    assert.equal(timers[0].delay, TUTORIAL_ACTION_TIMEOUT_MS);
+
+    assert.equal(tutorialManager.handleState(actionablePayload({
+      seq: 8,
+      reason: 'continue',
+    })), true);
+    assert.equal(tutorialManager.pendingAction, '');
+    assert.equal(renders, 2);
+    assert.equal(announcements, 1, 'only the actionable objective is announced');
+  } finally {
+    tutorialManager._clearPendingTimer();
+    gmcp.send = original.send;
+    tutorialManager._renderSafely = original.renderSafely;
+    tutorialManager._announce = original.announce;
+    globalThis.setTimeout = original.setTimeout;
+    globalThis.clearTimeout = original.clearTimeout;
   }
 });
 
@@ -203,7 +269,7 @@ test('presentation control hides stale hover and a newer State restores it', () 
     assert.equal(tutorialManager.presentationAllowed, false);
     assert.equal(hides, 1);
 
-    assert.equal(tutorialManager.handleState(activePayload({
+    assert.equal(tutorialManager.handleState(actionablePayload({
       seq: 8,
       reason: 'presentation',
     })), true);

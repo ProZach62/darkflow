@@ -29,8 +29,13 @@ detached. A successful recovery advertises readiness again and requests a fresh
 authoritative State.
 
 An active state opens the hover automatically without taking keyboard focus.
-Finished, skipped, and disconnected states remove it. Minimizing produces a
-small restore chip and never changes server progress.
+When the server sends an `awaiting_continue` state, Darkflow immediately sends
+the authorized Continue action and presents the objective as one actionable
+player-facing step. It does not announce or require a separate explanation
+phase. If the automatic acknowledgement cannot be delivered or times out, the
+Continue control returns as a recovery fallback. Finished, skipped, and
+disconnected states remove the hover. Minimizing produces a small restore chip
+and never changes server progress.
 
 ## `Darkwind.Tutorial.State`
 
@@ -72,7 +77,7 @@ Direction: server to client.
 | `seq` | Monotonically increasing state sequence within an epoch. Darkflow rejects equal or older frames. |
 | `tutorial_version` | State schema version. Version 2 is required by `Darkwind.Tutorial 1`. |
 | `status` | `not_started`, `active`, `skipped`, or `finished`. |
-| `awaiting_continue` | The server is waiting for an explicit Continue action. |
+| `awaiting_continue` | The server is waiting for a Continue acknowledgement. Darkflow sends it automatically for the visual tutorial. |
 | `chapter` | Stable chapter id plus one-based chapter progress and display title. |
 | `step` | Stable objective id, overall progress, safe display copy, example command, and semantic target. |
 | `route` | `null`, or `{place, directions, text}` for a server-computed route. |
@@ -126,8 +131,11 @@ and step id let the server reject a click from a stale rendered state. Skip
 requires a second, explicit confirmation in Darkflow before this message is
 sent.
 
-The client never advances progress locally. It disables repeated actions until
-the server returns a newer State.
+The client never advances progress locally. For visual tutorials it
+automatically sends an authorized `continue` when an objective is gated, then
+waits for the server's newer actionable State. This removes the redundant
+Continue phase without bypassing server authority. Other repeated actions
+remain disabled until the server returns a newer State.
 
 ## `Darkwind.Tutorial.Resync`
 
@@ -148,9 +156,11 @@ sequence are advisory; the server remains authoritative.
 ## Accessibility and fallback
 
 The hover is a labelled complementary region, uses native controls and
-progress semantics, and announces each accepted State sequence once in a
-dedicated polite live region. It does not bind Escape or take focus when it
-opens. Motion and target pulsing stop under `prefers-reduced-motion`.
+progress semantics, and announces each actionable State sequence once in a
+dedicated polite live region. The automatically acknowledged compatibility
+gate is not announced as a separate step. The hover does not bind Escape or
+take focus when it opens. Motion and target pulsing stop under
+`prefers-reduced-motion`.
 
 If the package is unsupported or `tutorialPane` is false, the game continues
 the complete text tutorial through the normal `tutorial` command surface.
