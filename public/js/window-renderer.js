@@ -21,7 +21,9 @@ function setAttr(el, schema) {
 
 // ── Main render entry ───────────────────────────────────────────────
 export function renderLayout(schema, buttonHandler, options = {}) {
-  return renderNode(schema, buttonHandler, options);
+  const root = renderNode(schema, buttonHandler, options);
+  bindDependentSelects(root);
+  return root;
 }
 
 function renderNode(schema, buttonHandler, options) {
@@ -634,7 +636,48 @@ function renderSelectInput(schema) {
     }
   }
   if (schema.id) sel.setAttribute('data-dw-input', schema.id);
+  if (schema.dependsOn && schema.optionsByValue && typeof schema.optionsByValue === 'object') {
+    sel._dwDependsOn = String(schema.dependsOn);
+    sel._dwOptionsByValue = schema.optionsByValue;
+  }
   return wrapField(schema.label, sel, schema);
+}
+
+export function dependentSelectOptions(optionsByValue, sourceValue) {
+  if (!optionsByValue || typeof optionsByValue !== 'object') return [];
+  const options = optionsByValue[String(sourceValue)];
+  return Array.isArray(options) ? options : [];
+}
+
+function replaceSelectOptions(select, options) {
+  const previousValue = select.value;
+  select.textContent = '';
+
+  for (const option of options) {
+    if (!option || option.value === undefined || option.value === null) continue;
+    const el = document.createElement('option');
+    el.value = String(option.value);
+    el.textContent = option.label || String(option.value);
+    if (el.value === previousValue) el.selected = true;
+    select.appendChild(el);
+  }
+}
+
+function bindDependentSelects(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return;
+  const inputs = Array.from(root.querySelectorAll('[data-dw-input]'));
+
+  for (const select of inputs) {
+    if (!select._dwDependsOn || !select._dwOptionsByValue) continue;
+    const source = inputs.find((input) =>
+      input.getAttribute('data-dw-input') === select._dwDependsOn);
+    if (!source) continue;
+
+    const sync = () => replaceSelectOptions(select,
+      dependentSelectOptions(select._dwOptionsByValue, source.value));
+    source.addEventListener('change', sync);
+    sync();
+  }
 }
 
 function renderCheckboxInput(schema) {

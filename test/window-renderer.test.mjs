@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   countDirectPlayerRows,
+  dependentSelectOptions,
   usesNpcDialogueMultiColumnChoices,
   usesPlayerRowMultiColumnGrid,
 } from '../public/js/window-renderer.js';
@@ -34,4 +35,20 @@ test('non-charselect player row grids do not switch layout', () => {
 test('npc dialogue choices switch to columns only for long choice lists', () => {
   assert.equal(usesNpcDialogueMultiColumnChoices(8), false);
   assert.equal(usesNpcDialogueMultiColumnChoices(9), true);
+});
+
+test('dependent selects resolve options from the controlling value', () => {
+  const optionsByValue = {
+    basics: [{ value: 'inventory', label: 'inventory' }],
+    combat: [{ value: 'kill', label: 'kill' }, { value: 'engage', label: 'engage' }],
+  };
+
+  assert.deepEqual(dependentSelectOptions(optionsByValue, 'basics'), [
+    { value: 'inventory', label: 'inventory' },
+  ]);
+  assert.deepEqual(dependentSelectOptions(optionsByValue, 'combat'), [
+    { value: 'kill', label: 'kill' },
+    { value: 'engage', label: 'engage' },
+  ]);
+  assert.deepEqual(dependentSelectOptions(optionsByValue, 'missing'), []);
 });
