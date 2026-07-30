@@ -13,5 +13,9 @@ test('desktop update states produce concise banner content', () => {
     message: 'Darkwind 1.5.0 is ready to install.',
     action: 'Restart and update',
   });
+  assert.deepEqual(formatUpdateMessage({ state: 'manual', version: '1.5.3' }), {
+    message: 'Darkwind 1.5.3 is available. Download the macOS installer to update.',
+    action: 'Download installer',
+  });
   assert.equal(formatUpdateMessage({ state: 'disabled' }), null);
 });
