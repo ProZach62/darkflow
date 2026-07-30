@@ -13,32 +13,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Verify tag and signing configuration
+      - name: Verify release tag
         shell: bash
-        env:
-          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
+          case "$VERSION" in
+            *-*) echo "Desktop production releases require a stable semantic version."; exit 1 ;;
+          esac
           test "$GITHUB_REF_NAME" = "v$VERSION"
-          test -n "$MAC_CSC_LINK"
-          test -n "$MAC_CSC_KEY_PASSWORD"
-          test -n "$APPLE_ID"
-          test -n "$APPLE_APP_SPECIFIC_PASSWORD"
-          test -n "$APPLE_TEAM_ID"
-          test -n "$WIN_CSC_LINK"
-          test -n "$WIN_CSC_KEY_PASSWORD"
+          TAG_COMMIT="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          git fetch origin main
+          git merge-base --is-ancestor "$TAG_COMMIT" origin/main
 
   build:
     needs: verify
@@ -47,14 +40,17 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            command: desktop:dist:mac
+            command: desktop:release:mac
             artifact: desktop-macos
+            platform: mac
           - os: windows-latest
-            command: desktop:dist:win
+            command: desktop:release:win
             artifact: desktop-windows
+            platform: win
           - os: ubuntu-latest
-            command: desktop:dist:linux
+            command: desktop:release:linux
             artifact: desktop-linux
+            platform: linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -65,14 +61,8 @@ jobs:
       - run: npm ci
       - name: Build desktop packages
         run: npm run ${{ matrix.command }}
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - name: Validate update artifacts and metadata
+        run: npm run desktop:validate-release -- ${{ matrix.platform }} dist/desktop
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -90,10 +80,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
+      - name: Validate complete release payload
+        run: node desktop/validate-release.cjs all release-assets
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
