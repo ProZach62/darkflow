@@ -96,6 +96,8 @@ test('visual Enemy renderer escapes server text and exposes accessible health ba
   assert.match(body.innerHTML, /aria-valuenow="41"/);
   assert.match(body.innerHTML, /class="combat-threat-chip">&lt;b&gt;extra threat&lt;\/b&gt;/);
   assert.match(body.innerHTML, /is-placeholder/);
+  assert.match(body.innerHTML, /combat-art-target is-fallback/);
+  assert.match(body.innerHTML, /src="\/assets\/generic-monster\.png"/);
   assert.doesNotMatch(body.innerHTML, /Visual combat active/);
   assert.doesNotMatch(body.innerHTML, /combat-sync-state/);
 });

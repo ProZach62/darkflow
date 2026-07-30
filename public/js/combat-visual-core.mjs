@@ -1,3 +1,5 @@
+import { isNpcEnemy } from './image-fallbacks.js';
+
 const VALID_RESULTS = new Set(['hit', 'critical', 'miss', 'dodge', 'absorb']);
 
 export const COMBAT_HISTORY_LIMIT = 5;
@@ -383,6 +385,7 @@ export function buildCombatView(current, sources = {}) {
         || 'Current target',
       image: observerView ? '' : safeText(enemy.enemy_image, 2048),
       condition: observerView ? '' : safeText(enemy.enemy_hp_string, 160),
+      isNpc: !observerView && isNpcEnemy(enemy),
       health: !observerView && enemyName
         ? healthSnapshot(enemy.enemy_curhp, enemy.enemy_maxhp)
         : unavailableHealthSnapshot(observerView ? 'unavailable' : 'synchronizing'),
