@@ -26,6 +26,11 @@ import {
 } from './background-manager.js';
 import { createAutomationEditor } from './settings-automation.js';
 import { listGmcpVariables } from './gmcp-variables.js';
+import {
+  createDefaultVisualEffectPreferences,
+  normalizeVisualEffectPreferences,
+  VISUAL_EFFECT_OPTIONS,
+} from './visual-effects-settings.mjs';
 
 const SETTINGS_STORAGE_KEY = 'darkwind-client-settings';
 const ALIAS_STORAGE_KEY = 'darkwind-client-aliases-v1';
@@ -129,6 +134,7 @@ export const settingsManager = {
     outputScrollbackPreset: DEFAULT_OUTPUT_SCROLLBACK_PRESET,
     screenReaderMode: false,
     visualEffectsEnabled: false,
+    visualEffectPreferences: createDefaultVisualEffectPreferences(),
     terminalWidthColumns: null,
     workspaceLayout: 'classic',
     paneGridSnapEnabled: false,
@@ -876,6 +882,7 @@ export const settingsManager = {
       tabObservabilityEnabled: Boolean(settings.tabObservabilityEnabled),
       screenReaderMode: Boolean(settings.screenReaderMode),
       visualEffectsEnabled: Boolean(settings.visualEffectsEnabled),
+      visualEffectPreferences: normalizeVisualEffectPreferences(settings.visualEffectPreferences),
       terminalWidthColumns: this._normalizeTerminalWidthColumns(settings.terminalWidthColumns),
       workspaceLayout: settings.workspaceLayout === 'floating' ? 'floating' : 'classic',
       paneGridSnapEnabled: Boolean(settings.paneGridSnapEnabled),
@@ -1232,6 +1239,76 @@ export const settingsManager = {
     row.appendChild(copy);
 
     return row;
+  },
+
+  _createVisualEffectsSettings() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'settings-visual-effects';
+
+    wrapper.appendChild(this._createCheckboxRow(
+      'Game visual effects',
+      'Enable visual presentation across the game. Individual effects can be selected below without changing game text, controls, or combatbrief settings.',
+      !!this._draftSettings.visualEffectsEnabled,
+      (checked) => {
+        this._draftSettings.visualEffectsEnabled = checked;
+      }
+    ));
+
+    const details = document.createElement('details');
+    details.className = 'settings-visual-effects-details';
+
+    const summary = document.createElement('summary');
+    summary.className = 'settings-visual-effects-summary';
+
+    const summaryLabel = document.createElement('span');
+    summaryLabel.textContent = 'Individual effects';
+
+    const summaryStatus = document.createElement('span');
+    summaryStatus.className = 'settings-visual-effects-count';
+
+    const effectsList = document.createElement('div');
+    effectsList.className = 'settings-visual-effects-list';
+
+    const updateSummary = () => {
+      const preferences = normalizeVisualEffectPreferences(
+        this._draftSettings.visualEffectPreferences
+      );
+      const enabledCount = VISUAL_EFFECT_OPTIONS.filter(
+        (option) => preferences[option.key]
+      ).length;
+      summaryStatus.textContent = enabledCount + ' of ' + VISUAL_EFFECT_OPTIONS.length + ' enabled';
+    };
+
+    summary.appendChild(summaryLabel);
+    summary.appendChild(summaryStatus);
+    details.appendChild(summary);
+
+    const preferences = normalizeVisualEffectPreferences(
+      this._draftSettings.visualEffectPreferences
+    );
+    this._draftSettings.visualEffectPreferences = preferences;
+
+    for (const option of VISUAL_EFFECT_OPTIONS) {
+      const row = this._createCheckboxRow(
+        option.label,
+        option.description,
+        preferences[option.key],
+        (checked) => {
+          this._draftSettings.visualEffectPreferences = {
+            ...normalizeVisualEffectPreferences(this._draftSettings.visualEffectPreferences),
+            [option.key]: checked,
+          };
+          updateSummary();
+        }
+      );
+      row.classList.add('settings-visual-effect-row');
+      effectsList.appendChild(row);
+    }
+
+    updateSummary();
+    details.appendChild(effectsList);
+    wrapper.appendChild(details);
+    return wrapper;
   },
 
   _createAudioSettingsPanel() {
@@ -2163,14 +2240,7 @@ export const settingsManager = {
     visualsTitle.className = 'dw-heading';
     visualsTitle.textContent = 'Visual effects';
     appearanceSection.appendChild(visualsTitle);
-    appearanceSection.appendChild(this._createCheckboxRow(
-      'Game visual effects',
-      'Add optional planet and terrain ambience, spell and combat feedback, and a slow red pulse while you are at 40% health or less. Game text, controls, and combatbrief settings are never changed.',
-      !!this._draftSettings.visualEffectsEnabled,
-      (checked) => {
-        this._draftSettings.visualEffectsEnabled = checked;
-      }
-    ));
+    appearanceSection.appendChild(this._createVisualEffectsSettings());
 
     const terminalTitle = document.createElement('h3');
     terminalTitle.className = 'dw-heading';

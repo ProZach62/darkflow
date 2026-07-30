@@ -92,6 +92,7 @@ export function createCombatVisualState(options = {}) {
     visualEnabled: false,
     effective: false,
     active: false,
+    currentActorId: '',
     currentTargetId: '',
     actors: [],
     outcome: '',
@@ -120,6 +121,7 @@ export function normalizeCombatState(payload) {
     visualEnabled: protocolBoolean(payload.visual_enabled),
     effective: protocolBoolean(payload.effective),
     active: protocolBoolean(payload.active),
+    currentActorId: safeText(payload.current_actor_id, 96),
     currentTargetId: safeText(payload.current_target_id, 96),
     actors: normalizeActors(payload.actors),
     outcome: safeText(payload.outcome, 48).toLowerCase(),
@@ -152,6 +154,7 @@ export function reduceCombatState(current, payload, receivedAt = Date.now()) {
     visualEnabled: normalized.visualEnabled,
     effective: normalized.effective,
     active: normalized.active,
+    currentActorId: normalized.currentActorId,
     currentTargetId: normalized.currentTargetId,
     actors: normalized.actors,
     outcome: normalized.outcome,
@@ -305,20 +308,49 @@ export function buildCombatView(current, sources = {}) {
   const model = current || createCombatVisualState();
   const actors = Array.isArray(model.actors) ? model.actors : [];
   const selfActor = actors.find((actor) => actor.role === 'self' || actor.id === 'self');
-  const targetActor = actors.find((actor) => actor.id === model.currentTargetId)
-    || actors.find((actor) => actor.role === 'target');
   const enemy = sources.enemy && typeof sources.enemy === 'object' ? sources.enemy : {};
   const vitals = sources.vitals && typeof sources.vitals === 'object' ? sources.vitals : {};
   const avatar = sources.avatar && typeof sources.avatar === 'object' ? sources.avatar : {};
   const enemyName = activeEnemyName(enemy);
-  const observedOnly = !enemyName && (
-    (model.currentEvent && model.currentEvent.perspective === 'observed')
-    || model.history.some((event) => event.perspective === 'observed')
-  );
   const selfId = selfActor ? selfActor.id : 'self';
-  const targetId = targetActor ? targetActor.id : model.currentTargetId;
+  const latestEvent = model.currentEvent
+    || model.history[model.history.length - 1]
+    || null;
+  const latestObservedEvent = latestEvent && latestEvent.perspective === 'observed'
+    ? latestEvent
+    : null;
+  const encounterEvents = model.currentEvent
+    ? model.history.concat(model.currentEvent)
+    : model.history;
+  const hasRecipientPerspective = encounterEvents.some((event) =>
+    event.perspective === 'outgoing' || event.perspective === 'incoming'
+  );
+  // Newer servers identify the primary combatant explicitly. For older or
+  // mixed-version sessions, an observed event still gives us enough
+  // recipient-safe identity to avoid putting the bystander in the fight.
+  // Event perspective outranks possibly stale Char.Enemy data, but any own
+  // incoming/outgoing event keeps the recipient anchored on the left.
+  const inferredActorId = latestObservedEvent && !hasRecipientPerspective
+    ? latestObservedEvent.actorId
+    : selfId;
+  const currentActorId = model.currentActorId || inferredActorId;
+  const currentActor = actors.find((actor) => actor.id === currentActorId)
+    || selfActor;
+  const observerView = !!(currentActor && currentActor.id !== selfId);
+  const inferredTargetId = observerView && latestObservedEvent
+    ? latestObservedEvent.targetId
+    : '';
+  const requestedTargetId = model.currentTargetId || inferredTargetId;
+  const targetActor = actors.find((actor) => actor.id === requestedTargetId)
+    || actors.find((actor) => actor.role === 'target');
+  const playerId = currentActor ? currentActor.id : selfId;
+  const targetId = targetActor ? targetActor.id : requestedTargetId;
   const additionalActors = actors.filter((actor) =>
-    actor.id !== selfId && actor.id !== targetId && actor.role !== 'target'
+    actor.id !== selfId
+      && actor.id !== playerId
+      && actor.id !== targetId
+      && actor.role !== 'self'
+      && actor.role !== 'target'
   );
 
   return {
@@ -336,19 +368,24 @@ export function buildCombatView(current, sources = {}) {
     history: model.history.slice(-model.limits.history),
     overflow: { ...model.overflow },
     player: {
-      id: selfId,
-      name: (selfActor && selfActor.name) || safeText(avatar.name, 120) || 'You',
-      image: safeText(avatar.url, 2048),
-      health: healthSnapshot(vitals.hp, vitals.maxhp),
+      id: playerId,
+      name: (currentActor && currentActor.name)
+        || (observerView ? 'Combatant' : safeText(avatar.name, 120) || 'You'),
+      image: observerView ? '' : safeText(avatar.url, 2048),
+      health: observerView
+        ? unavailableHealthSnapshot('unavailable')
+        : healthSnapshot(vitals.hp, vitals.maxhp),
     },
     target: {
       id: targetId,
-      name: enemyName || (targetActor && targetActor.name) || 'Current target',
-      image: safeText(enemy.enemy_image, 2048),
-      condition: safeText(enemy.enemy_hp_string, 160),
-      health: enemyName
+      name: (!observerView && enemyName)
+        || (targetActor && targetActor.name)
+        || 'Current target',
+      image: observerView ? '' : safeText(enemy.enemy_image, 2048),
+      condition: observerView ? '' : safeText(enemy.enemy_hp_string, 160),
+      health: !observerView && enemyName
         ? healthSnapshot(enemy.enemy_curhp, enemy.enemy_maxhp)
-        : unavailableHealthSnapshot(observedOnly ? 'unavailable' : 'synchronizing'),
+        : unavailableHealthSnapshot(observerView ? 'unavailable' : 'synchronizing'),
     },
     threats: additionalActors.slice(0, 4).map((actor) => ({
       id: actor.id,

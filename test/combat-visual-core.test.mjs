@@ -18,6 +18,7 @@ function activeState(overrides = {}) {
     visual_enabled: true,
     effective: false,
     active: true,
+    current_actor_id: 'self',
     current_target_id: 'enemy-1',
     actors: [
       { id: 'self', name: 'Acer', role: 'self' },
@@ -55,6 +56,7 @@ test('State accepts LPC-style numeric and string protocol booleans', () => {
   assert.equal(model.visualEnabled, true);
   assert.equal(model.effective, true);
   assert.equal(model.active, true);
+  assert.equal(model.currentActorId, 'self');
 });
 
 test('a new connection epoch or encounter clears transient combat history', () => {
@@ -161,6 +163,252 @@ test('Char.Vitals and Char.Enemy remain authoritative for combatant health and a
   assert.equal(view.player.image, '/avatars/acer.png');
   assert.equal(view.target.image, '/enemies/ash-drake.png');
   assert.deepEqual(view.threats.map((threat) => threat.name), ['a cinder whelp']);
+});
+
+test('explicit observed-combat identity puts the actual attacker on the left', () => {
+  let model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'fighter-1',
+    current_target_id: 'enemy-1',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'fighter-1', name: 'Dagnon', role: 'combatant' },
+      { id: 'enemy-1', name: 'an ash drake', role: 'target' },
+    ],
+  }));
+  model = reduceCombatEvents(model, {
+    epoch: 'connection-a',
+    encounter_id: 'encounter-a',
+    events: [event(11, {
+      perspective: 'observed',
+      actor_id: 'fighter-1',
+      target_id: 'enemy-1',
+      summary: 'Dagnon hits an ash drake for 12 damage.',
+    })],
+  });
+  model = takeNextCombatEvent(model).state;
+
+  const view = buildCombatView(model, {
+    vitals: { hp: 624, maxhp: 800 },
+    avatar: { name: 'Acer', url: '/avatars/acer.png' },
+    // Stale private snapshots must not leak into a passive observer view.
+    enemy: {
+      enemy_name: 'a stale target',
+      enemy_curhp: 328,
+      enemy_maxhp: 800,
+      enemy_hp_string: 'badly wounded',
+      enemy_image: '/enemies/stale.png',
+    },
+  });
+
+  assert.equal(view.player.id, 'fighter-1');
+  assert.equal(view.player.name, 'Dagnon');
+  assert.equal(view.player.image, '');
+  assert.deepEqual(view.player.health, {
+    known: false,
+    current: 0,
+    max: 0,
+    percent: 0,
+    status: 'unavailable',
+  });
+  assert.equal(view.target.id, 'enemy-1');
+  assert.equal(view.target.name, 'an ash drake');
+  assert.equal(view.target.image, '');
+  assert.equal(view.target.condition, '');
+  assert.equal(view.target.health.status, 'unavailable');
+  assert.deepEqual(view.threats, []);
+});
+
+test('explicit observed orientation stays stable when the target counterattacks', () => {
+  let model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'fighter-1',
+    current_target_id: 'enemy-1',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'fighter-1', name: 'Dagnon', role: 'combatant' },
+      { id: 'enemy-1', name: 'an ash drake', role: 'target' },
+    ],
+  }));
+  model = reduceCombatEvents(model, {
+    epoch: 'connection-a',
+    encounter_id: 'encounter-a',
+    events: [event(11, {
+      perspective: 'observed',
+      actor_id: 'enemy-1',
+      target_id: 'fighter-1',
+      summary: 'An ash drake hits Dagnon for 12 damage.',
+    })],
+  });
+  model = takeNextCombatEvent(model).state;
+
+  const view = buildCombatView(model, {
+    vitals: { hp: 624, maxhp: 800 },
+    avatar: { name: 'Acer', url: '/avatars/acer.png' },
+    enemy: { enemy_name: 'None' },
+  });
+
+  assert.equal(view.player.id, 'fighter-1');
+  assert.equal(view.player.name, 'Dagnon');
+  assert.equal(view.target.id, 'enemy-1');
+  assert.equal(view.target.name, 'an ash drake');
+  assert.equal(view.event.actorId, 'enemy-1');
+  assert.equal(view.event.targetId, 'fighter-1');
+});
+
+test('group combat can rotate the observed fighter without resetting the encounter', () => {
+  let model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'fighter-1',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'fighter-1', name: 'Dagnon', role: 'combatant' },
+      { id: 'enemy-1', name: 'an ash drake', role: 'target' },
+    ],
+  }));
+  model = reduceCombatEvents(model, {
+    epoch: 'connection-a',
+    encounter_id: 'encounter-a',
+    events: [event(11, {
+      perspective: 'observed',
+      actor_id: 'fighter-1',
+      target_id: 'enemy-1',
+    })],
+  });
+
+  model = reduceCombatState(model, activeState({
+    seq: 11,
+    current_actor_id: 'fighter-2',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'fighter-1', name: 'Dagnon', role: 'threat' },
+      { id: 'fighter-2', name: 'Nyx', role: 'combatant' },
+      { id: 'enemy-1', name: 'an ash drake', role: 'target' },
+    ],
+  }));
+
+  const view = buildCombatView(model, {
+    vitals: { hp: 624, maxhp: 800 },
+    avatar: { name: 'Acer', url: '/avatars/acer.png' },
+    enemy: { enemy_name: 'None' },
+  });
+
+  assert.equal(model.encounterId, 'encounter-a');
+  assert.equal(model.history.length, 1);
+  assert.equal(view.player.id, 'fighter-2');
+  assert.equal(view.player.name, 'Nyx');
+  assert.equal(view.target.id, 'enemy-1');
+  assert.deepEqual(view.threats.map((threat) => threat.name), ['Dagnon']);
+});
+
+test('an overflowed observed fighter never falls back to the viewer', () => {
+  const model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'threat-other',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'enemy-1', name: 'an ash drake', role: 'target' },
+      {
+        id: 'threat-other',
+        name: 'Other combatants',
+        role: 'threat',
+      },
+    ],
+  }));
+
+  const view = buildCombatView(model, {
+    vitals: { hp: 624, maxhp: 800 },
+    avatar: { name: 'Acer', url: '/avatars/acer.png' },
+    enemy: { enemy_name: 'None' },
+  });
+
+  assert.equal(view.player.id, 'threat-other');
+  assert.equal(view.player.name, 'Other combatants');
+  assert.equal(view.player.image, '');
+  assert.equal(view.player.health.status, 'unavailable');
+  assert.equal(view.target.id, 'enemy-1');
+  assert.equal(view.target.name, 'an ash drake');
+  assert.deepEqual(view.threats, []);
+});
+
+test('own combat remains self-left while unrelated observed events arrive', () => {
+  let model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'self',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'enemy-1', name: 'an ash drake', role: 'target' },
+      { id: 'fighter-1', name: 'Dagnon', role: 'threat' },
+    ],
+  }));
+  model = reduceCombatEvents(model, {
+    epoch: 'connection-a',
+    encounter_id: 'encounter-a',
+    events: [event(11, {
+      perspective: 'observed',
+      actor_id: 'fighter-1',
+      target_id: 'enemy-1',
+      summary: 'Dagnon hits an ash drake for 12 damage.',
+    })],
+  });
+  model = takeNextCombatEvent(model).state;
+
+  const view = buildCombatView(model, {
+    vitals: { hp: 624, maxhp: 800 },
+    avatar: { name: 'Acer', url: '/avatars/acer.png' },
+    enemy: {
+      enemy_name: 'an ash drake',
+      enemy_curhp: 328,
+      enemy_maxhp: 800,
+      enemy_image: '/enemies/ash-drake.png',
+    },
+  });
+
+  assert.equal(view.player.id, 'self');
+  assert.equal(view.player.name, 'Acer');
+  assert.equal(view.player.image, '/avatars/acer.png');
+  assert.equal(view.player.health.known, true);
+  assert.equal(view.player.health.current, 624);
+  assert.equal(view.target.id, 'enemy-1');
+  assert.equal(view.target.name, 'an ash drake');
+});
+
+test('older State infers the observed attacker from the latest event', () => {
+  let model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: undefined,
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'enemy-1', name: 'an ash drake', role: 'target' },
+      { id: 'fighter-1', name: 'Dagnon', role: 'threat' },
+    ],
+  }));
+  model = reduceCombatEvents(model, {
+    epoch: 'connection-a',
+    encounter_id: 'encounter-a',
+    events: [event(11, {
+      perspective: 'observed',
+      actor_id: 'fighter-1',
+      target_id: 'enemy-1',
+      summary: 'Dagnon hits an ash drake for 12 damage.',
+    })],
+  });
+  model = takeNextCombatEvent(model).state;
+
+  const view = buildCombatView(model, {
+    vitals: { hp: 624, maxhp: 800 },
+    avatar: { name: 'Acer', url: '/avatars/acer.png' },
+    enemy: {
+      enemy_name: 'a stale private target',
+      enemy_curhp: 99,
+      enemy_maxhp: 100,
+      enemy_image: '/enemies/stale.png',
+    },
+  });
+
+  assert.equal(view.player.id, 'fighter-1');
+  assert.equal(view.player.name, 'Dagnon');
+  assert.equal(view.player.image, '');
+  assert.equal(view.player.health.status, 'unavailable');
+  assert.equal(view.target.id, 'enemy-1');
+  assert.equal(view.target.name, 'an ash drake');
+  assert.equal(view.target.image, '');
+  assert.equal(view.target.health.status, 'unavailable');
+  assert.deepEqual(view.threats, []);
 });
 
 test('reduced-motion preference safely follows matchMedia', () => {

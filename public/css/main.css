@@ -894,6 +894,53 @@ body.zork-only-mode #toolbar-connect-fields {
   margin-top: 2px;
 }
 
+.settings-visual-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-visual-effects-details {
+  margin-left: 24px;
+  padding-left: 12px;
+  border-left: 2px solid var(--df-border);
+}
+
+.settings-visual-effects-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  color: var(--df-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-visual-effects-summary:focus-visible {
+  outline: 2px solid var(--df-accent-blue);
+  outline-offset: 2px;
+}
+
+.settings-visual-effects-count {
+  color: var(--df-muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.settings-visual-effects-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+  padding: 12px 0 2px;
+}
+
+.settings-visual-effect-row {
+  min-width: 0;
+}
+
 .settings-copy {
   display: flex;
   flex-direction: column;
@@ -2751,6 +2798,10 @@ html[data-background-active="true"] #output-shell {
 @media (max-width: 700px) {
   .dw-modal.settings-modal {
     resize: none;
+  }
+
+  .settings-visual-effects-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .settings-modal .dw-modal-header {

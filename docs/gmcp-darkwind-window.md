@@ -86,6 +86,10 @@ The current client supports only these node types.
 - `progress`
 - `image`
 - `youtube_embed`
+- `ansi_text`
+- `npc_dialogue`
+- `player_row`
+- `finger_profile`
 - `street_samurai_dashboard`
 
 #### Input nodes
@@ -127,10 +131,14 @@ lineHeight, textTransform
 | `progress` | `value`, `color`, `label` |
 | `image` | `src`, `alt`, `loading`, `loadingText` |
 | `youtube_embed` | `src`, `url`, `title` |
+| `ansi_text` | `text` |
+| `npc_dialogue` | `npc`, `title`, `text`, `choices` |
+| `player_row` | Character summary fields used by login and `who` |
+| `finger_profile` | Structured player profile fields |
 | `street_samurai_dashboard` | `state`, `active_tab`; see [Street Samurai](gmcp-darkwind-street-samurai.md) |
 | `text`, `password` | `label`, `value`, `placeholder` |
 | `number` | `label`, `value`, `min`, `max`, `step` |
-| `select` | `label`, `value`, `options[]` with `value` and optional `label` |
+| `select` | `label`, `value`, `options[]` with `value` and optional `label`; optional `dependsOn` and `optionsByValue` for cascading selects |
 | `checkbox` | `label`, `checked` |
 | `button` | `text`, `label`, `action` |
 | `hidden` | `value` |
@@ -142,6 +150,12 @@ For buttons, the supported `action` values are:
 - `action`
 
 `submit` buttons are treated as primary buttons by the client. `close` buttons dispatch a local close flow and do not send `Darkwind.Window.Action`.
+
+For a dependent `select`, `dependsOn` names another input node by `id` and
+`optionsByValue` maps each controlling value to that select's option array. The
+client replaces the dependent options immediately when the controlling input
+changes and selects the first available option when the previous value is not
+present.
 
 ## Runtime Behavior
 

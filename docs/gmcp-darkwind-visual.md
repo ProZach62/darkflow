@@ -6,8 +6,10 @@ alters the separate `combatbrief visual` Combat pane.
 
 Darkflow advertises the capability in `Core.Supports.Set`. Delivery is also
 gated by the explicit `features.visualEffects` client subscription, which is
-`true` only while the player's local **Game visual effects** setting is
-enabled. The setting defaults to off.
+`true` only while the player's local **Game visual effects** master setting is
+enabled and at least one server-fed individual effect is selected. The master
+setting defaults to off. Existing profiles and profiles without individual
+preferences default every individual effect to on.
 
 The server sends only allowlisted semantic facts. Darkflow owns all CSS,
 colors, timing, motion, and intensity clamping; messages cannot inject markup,
@@ -137,14 +139,15 @@ state. Darkflow accepts only these exact payloads:
 | `transition` | Replays the transition over the current world ambience without changing cached room state. It takes no `value`. |
 | `clear` | Ends an active preview immediately and restores current authoritative presentation. It takes no `value`. |
 
-Non-clear previews require the local **Game visual effects** setting to be
-enabled and expire after a fixed client-owned five seconds. The server cannot
-choose selectors, URLs, styles, or timing; extra presentation fields are
-ignored, and unknown or incorrectly shaped `kind`/`value` pairs are rejected.
-Planet and terrain previews temporarily replace only their rendered class.
-Incoming `Darkwind.Visual.State` and `Char.Vitals` messages continue updating
-their normal client models, and the newest real state is rendered when the
-preview ends.
+Non-clear previews require the local **Game visual effects** master setting and
+the corresponding planet, terrain, low-health, or wayshard-transition
+individual effect to be enabled. They expire after a fixed client-owned five
+seconds. The server cannot choose selectors, URLs, styles, or timing; extra
+presentation fields are ignored, and unknown or incorrectly shaped
+`kind`/`value` pairs are rejected. Planet and terrain previews temporarily
+replace only their rendered class. Incoming `Darkwind.Visual.State` and
+`Char.Vitals` messages continue updating their normal client models, and the
+newest real state is rendered when the preview ends.
 
 Preview state also clears on disable, page hiding, disconnect, and
 `Darkwind.Session.Recovered`. Preview-only low-health and transition classes
@@ -160,8 +163,10 @@ The overlay is `aria-hidden`, never receives pointer input, and does not affect
 game controls or terminal output.
 
 Transient events are not replayed after reconnect. Hiding the page clears
-active transient treatments. Disabling clears every rendered treatment but
-keeps the latest normalized room and vitals context warm so re-enabling applies
+active transient treatments. Disabling the master clears every rendered
+treatment. Changing individual selections clears active treatments and
+immediately restores the persistent effects that remain enabled. Both paths
+keep the latest normalized room and vitals context warm so re-enabling applies
 the correct ambience and low-health state immediately. Disconnect and
 `Darkwind.Session.Recovered` clear all cached presentation state; session
 recovery also republishes the current `features.visualEffects` subscription.
