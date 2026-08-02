@@ -11,6 +11,7 @@ const races = [
   'arctic-elf',
   'barbarian',
   'crannian-gnome',
+  'crinos',
   'darkwinder',
   'desert-dwarf',
   'desert-nomad',
@@ -38,6 +39,7 @@ const races = [
   'thraxian',
   'uruk',
   'wayfarian',
+  'wolf',
   'yugoloth',
 ];
 
@@ -49,7 +51,7 @@ test('bundles one default portrait for every supported gender and race pair', as
     .filter((name) => name.endsWith('.png'))
     .sort();
 
-  assert.equal(expected.length, 62);
+  assert.equal(expected.length, 66);
   assert.deepEqual(actual, expected);
   await Promise.all(expected.map((name) => access(resolve(avatarDir, name))));
 });
