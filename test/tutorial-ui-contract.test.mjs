@@ -20,6 +20,11 @@ test('tutorial hover is dedicated, accessible, nonmodal, and initialized', () =>
   assert.match(app, /tutorialManager\.init\(\)/);
   assert.match(html, /css\/tutorial\.css/);
   assert.doesNotMatch(manager, /panelManager/);
+  assert.match(
+    manager,
+    /action === 'continue'[\s\S]{0,120}pendingAction === 'continue'/,
+    'automatic Continue acknowledgement must not render as a separate step',
+  );
 });
 
 test('connection lifecycle advertises capability, resyncs, and clears stale UI', () => {

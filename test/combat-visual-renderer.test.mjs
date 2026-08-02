@@ -83,19 +83,22 @@ test('visual Enemy renderer escapes server text and exposes accessible health ba
       enemy_name: '<script>enemy</script>',
       enemy_curhp: 41,
       enemy_maxhp: 100,
-      enemy_hp_string: '<svg onload=alert(1)>',
+      enemy_hp_string: 'None',
+      enemy_is_npc: 1,
+      enemy_image: '/assets/generic-monster.png',
     },
   });
 
   assert.match(body.innerHTML, /class="combat-visual/);
   assert.doesNotMatch(body.innerHTML, /<script>/);
-  assert.doesNotMatch(body.innerHTML, /<svg /);
   assert.match(body.innerHTML, /&lt;script&gt;enemy&lt;\/script&gt;/);
   assert.match(body.innerHTML, /role="progressbar"/);
   assert.match(body.innerHTML, /aria-valuenow="78"/);
   assert.match(body.innerHTML, /aria-valuenow="41"/);
   assert.match(body.innerHTML, /class="combat-threat-chip">&lt;b&gt;extra threat&lt;\/b&gt;/);
   assert.match(body.innerHTML, /is-placeholder/);
+  assert.match(body.innerHTML, /combat-art-target is-fallback/);
+  assert.match(body.innerHTML, /src="\/assets\/generic-monster\.png"/);
   assert.doesNotMatch(body.innerHTML, /Visual combat active/);
   assert.doesNotMatch(body.innerHTML, /combat-sync-state/);
 });

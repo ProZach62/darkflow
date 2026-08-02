@@ -35,6 +35,7 @@ test('Darkflow server can be embedded on an ephemeral loopback port', async (t) 
     headers: { Cookie: 'darkflow-desktop-token=desktop-test-token' },
   });
   assert.equal(response.status, 200);
+  assert.match(response.headers.get('cache-control') || '', /no-store/);
   assert.deepEqual(await response.json(), { version: expectedVersion });
   assert.equal(server.listening, true);
 

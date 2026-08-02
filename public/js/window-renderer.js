@@ -1,6 +1,11 @@
 import { LAYOUT_TYPES, INPUT_TYPES, DISPLAY_TYPES, STYLE_ALLOWLIST } from './window-types.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
 import { renderStreetSamuraiDashboard } from './street-samurai-dashboard.js';
+import {
+  NPC_FALLBACK_IMAGE,
+  applyNpcImageFallback,
+  npcImageSource,
+} from './image-fallbacks.js';
 
 const NPC_DIALOGUE_MULTICOLUMN_CHOICE_THRESHOLD = 8;
 
@@ -214,9 +219,9 @@ function renderNpcDialogue(schema, buttonHandler) {
   const img = document.createElement('img');
   img.alt = npc.name ? npc.name + ' portrait' : 'NPC portrait';
   img.draggable = false;
-  img.src = npc.image || '/assets/avatar-ghost.svg';
+  img.src = npcImageSource(npc.image);
   img.addEventListener('error', () => {
-    if (!img.src.endsWith('/assets/avatar-ghost.svg')) img.src = '/assets/avatar-ghost.svg';
+    applyNpcImageFallback(img);
   });
   portraitWrap.appendChild(img);
 
@@ -749,7 +754,16 @@ export function updateElements(container, updates) {
     if (upd.style) applyStyle(el, upd.style);
 
     // Text content (headings, paragraphs, text, buttons)
-    if (upd.text !== undefined) {
+    if (upd.text !== undefined &&
+        el.classList.contains('dw-npc-dialogue-portrait')) {
+      el.textContent = '';
+      const img = document.createElement('img');
+      img.alt = 'NPC portrait';
+      img.draggable = false;
+      img.src = NPC_FALLBACK_IMAGE;
+      img.addEventListener('error', () => applyNpcImageFallback(img));
+      el.appendChild(img);
+    } else if (upd.text !== undefined) {
       el.textContent = upd.text;
     }
 
@@ -788,9 +802,10 @@ export function updateElements(container, updates) {
       if (!img) {
         img = document.createElement('img');
         img.draggable = false;
+        img.addEventListener('error', () => applyNpcImageFallback(img));
         el.appendChild(img);
       }
-      img.src = upd.src;
+      img.src = npcImageSource(upd.src);
       if (upd.alt) img.alt = upd.alt;
     }
 

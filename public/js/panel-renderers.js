@@ -15,6 +15,12 @@ import {
   openImagePreviewPane,
 } from './image-preview.js';
 import { buildCombatView } from './combat-visual-core.mjs';
+import {
+  NPC_FALLBACK_IMAGE,
+  PLAYER_FALLBACK_IMAGE,
+  applyNpcImageFallback,
+  isNpcEnemy,
+} from './image-fallbacks.js';
 
 // Click-to-walk: clicking a mapped room on the LIVE map speedwalks there
 // over the active live map source. Steps are verified by the next authoritative
@@ -648,14 +654,26 @@ function combatHealthHtml(side, name, health) {
 }
 
 function combatArtHtml(side, combatant, loadedImages, failedImages, event, impactSide) {
-  const hasImage = !!combatant.image;
-  const image = hasImage ? combatant.image : '/assets/avatar-ghost.svg';
+  const hasGeneratedImage = !!combatant.image;
+  const generatedImageFailed = hasGeneratedImage && failedImages.has(combatant.image);
+  const usesNpcFallbackImage = combatant.image === NPC_FALLBACK_IMAGE;
+  const isNpcFallback = side === 'target' && combatant.isNpc &&
+    (!hasGeneratedImage || generatedImageFailed || usesNpcFallbackImage);
+  const fallbackImage = side === 'target' && combatant.isNpc
+    ? NPC_FALLBACK_IMAGE
+    : PLAYER_FALLBACK_IMAGE;
+  const image = isNpcFallback ? fallbackImage :
+    (hasGeneratedImage ? combatant.image : fallbackImage);
   const loadedClass = loadedImages.has(image) ? ' is-loaded' : '';
   const failedClass = failedImages.has(image) ? ' is-error' : '';
   const classes = 'combat-art combat-art-' + side +
-    (hasImage ? ' has-image' : ' is-placeholder') + loadedClass + failedClass;
+    (isNpcFallback ? ' is-fallback' :
+      (hasGeneratedImage ? ' has-image' : ' is-placeholder')) +
+    loadedClass + failedClass;
   let html = '<div class="' + classes + '"><img src="' + escHtml(image) +
-    '" data-combat-image="' + escHtml(image) + '" alt="" draggable="false">';
+    '" data-combat-image="' + escHtml(image) + '"' +
+    (combatant.isNpc ? ' data-combat-fallback="' + NPC_FALLBACK_IMAGE + '"' : '') +
+    ' alt="" draggable="false">';
   if (event && impactSide === side) {
     html += '<div class="combat-impact-badge" aria-hidden="true">' +
       escHtml(COMBAT_RESULT_LABELS[event.result] || event.result) + '</div>';
@@ -808,20 +826,33 @@ function renderCombatVisual(bodyEl, data) {
   if (typeof bodyEl.querySelectorAll === 'function') {
     for (const img of bodyEl.querySelectorAll('.combat-art img')) {
       const wrap = img.parentElement;
-      const imageKey = img.getAttribute('data-combat-image') || img.src || '';
+      const imageKey = () => img.getAttribute('data-combat-image') || img.src || '';
       const markLoaded = () => {
-        if (imageKey) {
-          loadedImages.add(imageKey);
-          failedImages.delete(imageKey);
+        const key = imageKey();
+        if (key) {
+          loadedImages.add(key);
+          failedImages.delete(key);
         }
-        if (wrap && wrap.classList) wrap.classList.add('is-loaded');
+        if (wrap && wrap.classList) {
+          wrap.classList.remove('is-error');
+          wrap.classList.add('is-loaded');
+        }
       };
       const markFailed = () => {
-        if (imageKey) failedImages.add(imageKey);
+        const key = imageKey();
+        const fallback = img.getAttribute('data-combat-fallback') || '';
+        if (fallback && key !== fallback) {
+          if (key) failedImages.add(key);
+          img.setAttribute('data-combat-image', fallback);
+          if (wrap && wrap.classList) wrap.classList.remove('is-error');
+          img.src = fallback;
+          return;
+        }
+        if (key) failedImages.add(key);
         if (wrap && wrap.classList) wrap.classList.add('is-error');
       };
-      img.addEventListener('load', markLoaded, { once: true });
-      img.addEventListener('error', markFailed, { once: true });
+      img.addEventListener('load', markLoaded);
+      img.addEventListener('error', markFailed);
       if (img.complete && img.naturalWidth > 0) markLoaded();
     }
   }
@@ -1660,9 +1691,11 @@ export const panelRenderers = {
     const prev = bodyEl._enemyState || {};
     const sameEnemy = prev.name === data.enemy_name;
     const sameImage = prev.image === (data.enemy_image || '');
+    const npcEnemy = isNpcEnemy(data);
+    const sameNpcType = prev.isNpc === npcEnemy;
 
     // Fast path: same enemy + same image — just update bars in place
-    if (sameEnemy && sameImage) {
+    if (sameEnemy && sameImage && sameNpcType) {
       renderVitalBar(bodyEl, 'HP', data.enemy_curhp, data.enemy_maxhp || 100);
       if (data.enemy_maxsp > 0) {
         renderVitalBar(bodyEl, 'SP', data.enemy_cursp, data.enemy_maxsp);
@@ -1676,21 +1709,31 @@ export const panelRenderers = {
 
     // Full rebuild
     bodyEl.innerHTML = '';
-    bodyEl._enemyState = { name: data.enemy_name, image: data.enemy_image || '' };
+    bodyEl._enemyState = {
+      name: data.enemy_name,
+      image: data.enemy_image || '',
+      isNpc: npcEnemy,
+    };
 
     const row = document.createElement('div');
     row.className = 'enemy-row';
 
     // Left: image
-    if (data.enemy_image) {
+    if (data.enemy_image || npcEnemy) {
       const imgWrap = document.createElement('div');
       imgWrap.className = 'enemy-image';
       const img = document.createElement('img');
-      img.src = data.enemy_image;
+      img.src = data.enemy_image || NPC_FALLBACK_IMAGE;
       img.alt = data.enemy_name;
       img.draggable = false;
       img.addEventListener('load', () => imgWrap.classList.add('enemy-image-loaded'));
-      img.addEventListener('error', () => imgWrap.classList.add('enemy-image-error'));
+      img.addEventListener('error', () => {
+        if (npcEnemy && applyNpcImageFallback(img)) {
+          imgWrap.classList.remove('enemy-image-error');
+          return;
+        }
+        imgWrap.classList.add('enemy-image-error');
+      });
       imgWrap.appendChild(img);
       row.appendChild(imgWrap);
     }
