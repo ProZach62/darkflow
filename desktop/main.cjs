@@ -91,6 +91,8 @@ async function startDesktopApp() {
 
   updater = createDesktopUpdater({
     enabled: app.isPackaged && !steamDistribution,
+    platform: process.platform,
+    openExternal,
     sendStatus: sendUpdateStatus,
   });
 
@@ -329,9 +331,10 @@ function sendUpdateStatus(status) {
 }
 
 function openExternal(url) {
-  if (!isSafeExternalUrl(url)) return;
-  shell.openExternal(url).catch((error) => {
+  if (!isSafeExternalUrl(url)) return Promise.resolve(false);
+  return shell.openExternal(url).then(() => true).catch((error) => {
     console.error('[desktop] failed to open external URL:', error);
+    return false;
   });
 }
 

@@ -86,9 +86,11 @@ new web deployment is available.
 Direct desktop packages are currently released unsigned on every platform.
 macOS users must approve the application through Gatekeeper and manually
 download and install each new version because Electron cannot auto-update an
-unsigned macOS application. Windows users should expect an unknown-publisher
-SmartScreen warning, but installed direct builds can still use the NSIS update
-path. Linux AppImage builds can also use the published update metadata.
+unsigned macOS application. The in-app update action therefore opens the exact
+versioned universal DMG instead of offering a restart that cannot install.
+Windows users should expect an unknown-publisher SmartScreen warning, but
+installed direct builds can still use the NSIS update path. Linux AppImage
+builds can also use the published update metadata.
 
 The release workflow deliberately supplies no signing credentials. It still
 verifies every expected installer and blockmap, checks the platform-specific

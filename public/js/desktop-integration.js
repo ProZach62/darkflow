@@ -12,6 +12,11 @@ function formatUpdateMessage(status) {
         message: `Darkwind${version} is ready to install.`,
         action: 'Restart and update',
       };
+    case 'manual':
+      return {
+        message: `Darkwind${version} is available. Download the macOS installer to update.`,
+        action: 'Download installer',
+      };
     case 'current':
       return { message: 'Darkwind is up to date.', temporary: true };
     case 'error':
@@ -57,7 +62,7 @@ export function initializeDesktopUpdates({ banner, message, action }) {
 
   action.addEventListener('click', (event) => {
     event.preventDefault();
-    const operation = currentState === 'downloaded'
+    const operation = ['downloaded', 'manual'].includes(currentState)
       ? desktop.installUpdate()
       : desktop.checkForUpdates();
     Promise.resolve(operation).catch(() => {});
