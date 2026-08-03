@@ -24,6 +24,7 @@ try {
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const DESKTOP_COOKIE_NAME = 'darkflow-desktop-token';
+const HOWLER_CORE_PATH = require.resolve('howler/dist/howler.core.min.js');
 
 function hasDesktopSession(req) {
   if (process.env.DARKFLOW_DESKTOP !== '1') return true;
@@ -77,6 +78,10 @@ app.get('/api/version', (req, res) => {
 app.get('/ping', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.status(204).end();
+});
+
+app.get('/vendor/howler.core.min.js', (req, res) => {
+  res.sendFile(HOWLER_CORE_PATH);
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

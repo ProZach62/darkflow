@@ -192,6 +192,7 @@ The generated source sheet is stored as `Gemini_Generated_Image_itemzcitemzcitem
 - Keep `/api/version` backed by `public/version.json`; the client uses it for update detection and GMCP `Core.Hello`.
 - Keep the visible product name as **Darkflow**, but do not rename existing `Darkwind.*` GMCP packages without a coordinated server compatibility plan.
 - The settings export format remains `darkwind-client-settings-export` for backward compatibility, even though download filenames now use `darkflow-settings-...json`.
+- Keep browser game audio behind `sound-manager.js` and `howler-audio-engine.js`; the server exposes the pinned Howler core runtime at `/vendor/howler.core.min.js` for both web and Electron clients.
 - Use `window.wsDebug.snapshot()` and `window.wsDebug.exportAll()` for connection diagnostics.
 - Use `window.mapDebug.summary()`, `window.mapDebug.exportAll()`, and `window.mapDebug.clearData()` for map diagnostics.
 
@@ -214,4 +215,5 @@ licenses:
 | [Electron](https://github.com/electron/electron) | MIT |
 | [electron-updater](https://github.com/electron-userland/electron-builder) | MIT |
 | [express](https://github.com/expressjs/express) | MIT |
+| [howler.js](https://howlerjs.com/) | MIT |
 | [ws](https://github.com/websockets/ws) | MIT |

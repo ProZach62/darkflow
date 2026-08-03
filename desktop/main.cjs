@@ -199,12 +199,13 @@ async function runSmokeTest() {
       return {
         title: document.title,
         desktopApi: Boolean(window.darkflowDesktop),
+        howler: typeof window.Howl === 'function' && Boolean(window.Howler),
         info,
         config,
       };
     })()`);
 
-    if (!result.desktopApi || result.info.productName !== PRODUCT_NAME
+    if (!result.desktopApi || !result.howler || result.info.productName !== PRODUCT_NAME
         || result.config.host !== 'darkwind.ai' || result.config.port !== 4242) {
       throw new Error(`Unexpected smoke-test state: ${JSON.stringify(result)}`);
     }

@@ -1,8 +1,14 @@
+import { createHowlerAudioEngine } from './howler-audio-engine.js';
+
 const SOUND_STORAGE_KEY = 'darkwind-sound-settings';
 const SOUND_ASSET_ROOT = '/assets/sounds/';
-const AUDIO_UNLOCK_FALLBACK_SOUND = '/assets/sounds/quest-accept.mp3';
 const DEFAULT_VOLUME = 0.7;
 const SUPPRESSED_SOUND_CATEGORIES = new Set(['discussion']);
+const STREAMING_SOUND_KEYS = new Set([
+  'ambient/darkwind-theme',
+  'ambient/combat-music',
+  'combat/combat-music',
+]);
 
 export const SOUND_CATEGORIES = [
   'combat',
@@ -138,8 +144,9 @@ function clampVolume(value, fallback = 0.7) {
   return Math.max(0, Math.min(1, number));
 }
 
-class SoundManager {
-  constructor() {
+export class SoundManager {
+  constructor(audioEngine = createHowlerAudioEngine()) {
+    this.audioEngine = audioEngine;
     this.settings = this._loadSettings();
     this.audioCache = new Map();
     this.oneShotSounds = new Set();
@@ -147,7 +154,7 @@ class SoundManager {
     this.loopMetadata = new Map();
     this.pendingSounds = [];
     this.pendingLoops = [];
-    this.audioUnlocked = false;
+    this.audioUnlocked = this.audioEngine.isUnlocked();
     this.isPageVisible = !document.hidden;
     this.listeners = new Set();
     this.suppressionWarnings = new Set();
@@ -155,6 +162,8 @@ class SoundManager {
     this.audioUnlockInFlight = false;
     this.audioUnlockWarningShown = false;
     this.lastPlayResult = null;
+    this.audioEngine.setGlobalVolume(this.settings.volume);
+    this.audioEngine.onUnlock(() => this._onAudioUnlocked());
     this._setupAudioUnlock();
     this._setupVisibilityHandling();
   }
@@ -223,17 +232,20 @@ class SoundManager {
     if (this.audioUnlockInFlight) return Promise.resolve(false);
     this.audioUnlockInFlight = true;
 
-    const silentAudio = new Audio();
-    silentAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-    silentAudio.volume = 0.01;
-
-    return silentAudio.play().then(() => {
+    return this.audioEngine.unlock().then((unlocked) => {
       this.audioUnlockInFlight = false;
-      this._onAudioUnlocked();
-      return true;
+      if (unlocked) this._onAudioUnlocked();
+      return unlocked;
     }).catch((error) => {
       this.audioUnlockInFlight = false;
-      return this._unlockWithQueuedAudio(error);
+      if (!this.audioUnlockWarningShown) {
+        this.audioUnlockWarningShown = true;
+        console.warn('[SoundManager] Audio unlock failed', {
+          error,
+          settings: this.getSettings(),
+        });
+      }
+      return false;
     });
   }
 
@@ -263,57 +275,6 @@ class SoundManager {
     for (const item of loops) this.loop(item.category, item.sound, item.id, item.volume);
   }
 
-  _unlockWithQueuedAudio(unlockError) {
-    const pending = this.pendingSounds.shift();
-    if (!pending) {
-      return this._unlockWithFallbackAudio(unlockError);
-    }
-
-    const audio = this._getAudio(pending.category, pending.sound);
-    const playback = audio.cloneNode(true);
-    playback.volume = clampVolume((pending.volume === undefined ? 1 : pending.volume) * this.settings.volume, 1);
-
-    return playback.play().then(() => {
-      this.audioUnlocked = true;
-      this._trackOneShot(playback, pending.category, pending.sound);
-      this._drainPendingAudio();
-      this._emitChange();
-      return true;
-    }).catch((playError) => {
-      this.pendingSounds.unshift(pending);
-      console.warn('[SoundManager] Audio unlock failed', {
-        unlockError,
-        playError,
-        pending,
-        settings: this.getSettings(),
-      });
-      return false;
-    });
-  }
-
-  _unlockWithFallbackAudio(unlockError) {
-    const fallbackAudio = new Audio(AUDIO_UNLOCK_FALLBACK_SOUND);
-    fallbackAudio.volume = 0.001;
-    return fallbackAudio.play().then(() => {
-      this.audioUnlocked = true;
-      this._trackOneShot(fallbackAudio, 'quest', 'accept');
-      this._drainPendingAudio();
-      this._emitChange();
-      return true;
-    }).catch((playError) => {
-      if (!this.audioUnlockWarningShown) {
-        this.audioUnlockWarningShown = true;
-        console.warn('[SoundManager] Audio unlock failed', {
-          unlockError,
-          playError,
-          fallback: AUDIO_UNLOCK_FALLBACK_SOUND,
-          settings: this.getSettings(),
-        });
-      }
-      return false;
-    });
-  }
-
   _isCategory(category) {
     return SOUND_CATEGORIES.includes(category);
   }
@@ -326,13 +287,15 @@ class SoundManager {
     return SOUND_ASSET_ROOT + category + '-' + sound + '.mp3';
   }
 
-  _getAudio(category, sound) {
+  _getSound(category, sound) {
     const key = category + '/' + sound;
     if (this.audioCache.has(key)) return this.audioCache.get(key);
-    const audio = new Audio(this._resolveSoundPath(category, sound));
-    audio.preload = 'auto';
-    this.audioCache.set(key, audio);
-    return audio;
+    const handle = this.audioEngine.create(this._resolveSoundPath(category, sound), {
+      html5: STREAMING_SOUND_KEYS.has(key),
+      preload: true,
+    });
+    this.audioCache.set(key, handle);
+    return handle;
   }
 
   _shouldPlay(category) {
@@ -381,53 +344,86 @@ class SoundManager {
       this._emitChange();
       return;
     }
-    const audio = this._getAudio(category, sound);
-    const playback = audio.cloneNode(true);
-    playback.volume = clampVolume((volume === undefined ? 1 : volume) * this.settings.volume, 1);
-    this._trackOneShot(playback, category, sound);
-    playback.play().then(() => {
+    const handle = this._getSound(category, sound);
+    const sourceVolume = clampVolume(volume === undefined ? 1 : volume, 1);
+    const playbackId = this.audioEngine.play(handle, { volume: sourceVolume });
+    if (playbackId === null) {
+      this._recordPlaybackFailure(category, sound, handle, sourceVolume, 'HowlerPlayError', 'No playback ID returned');
+      return;
+    }
+    this._trackOneShot(handle, playbackId, category, sound, sourceVolume);
+  }
+
+  _trackOneShot(handle, playbackId, category, sound, sourceVolume) {
+    const token = {
+      handle,
+      playbackId,
+      listeners: [],
+    };
+    const cleanup = () => this._cleanupOneShot(token);
+    const onPlay = () => {
       this.lastPlayResult = {
         ok: true,
         category,
         sound,
-        src: playback.currentSrc || playback.src,
-        volume: playback.volume,
+        src: handle.src,
+        volume: clampVolume(sourceVolume * this.settings.volume, 1),
         at: new Date().toISOString(),
       };
-    }).catch((error) => {
-      this.oneShotSounds.delete(playback);
-      this.lastPlayResult = {
-        ok: false,
-        category,
-        sound,
-        src: playback.currentSrc || playback.src,
-        volume: playback.volume,
-        errorName: error && error.name,
-        errorMessage: error && error.message,
-        at: new Date().toISOString(),
-      };
-      if (error && error.name !== 'NotAllowedError') {
-        console.warn('Failed to play sound ' + category + '/' + sound, error);
-      }
-    });
-  }
+    };
+    const onLoadError = (_id, error) => {
+      cleanup();
+      this._recordPlaybackFailure(category, sound, handle, sourceVolume, 'HowlerLoadError', error);
+    };
+    const onPlayError = (_id, error) => {
+      cleanup();
+      this._recordPlaybackFailure(category, sound, handle, sourceVolume, 'HowlerPlayError', error);
+      this.audioEngine.markLocked();
+      this.audioUnlocked = false;
+      this.pendingSounds.push({ category, sound, volume: sourceVolume });
+      this._emitChange();
+    };
 
-  _trackOneShot(audio, category, sound) {
-    this.oneShotSounds.add(audio);
-    const cleanup = () => this.oneShotSounds.delete(audio);
-    audio.addEventListener('ended', cleanup, { once: true });
-    audio.addEventListener('pause', () => {
-      if (audio.ended) cleanup();
-    });
-    audio.addEventListener('error', cleanup, { once: true });
+    token.listeners.push(
+      ['play', onPlay, playbackId],
+      ['end', cleanup, playbackId],
+      ['stop', cleanup, playbackId],
+      ['loaderror', onLoadError, undefined],
+      ['playerror', onPlayError, playbackId]
+    );
+    this.oneShotSounds.add(token);
+    for (const [event, callback, id] of token.listeners) {
+      this.audioEngine.once(handle, event, callback, id);
+    }
     this.lastPlayResult = {
       ok: null,
       category,
       sound,
-      src: audio.currentSrc || audio.src,
-      volume: audio.volume,
+      src: handle.src,
+      volume: clampVolume(sourceVolume * this.settings.volume, 1),
       at: new Date().toISOString(),
     };
+  }
+
+  _cleanupOneShot(token) {
+    if (!this.oneShotSounds.delete(token)) return;
+    for (const [event, callback, id] of token.listeners) {
+      this.audioEngine.off(token.handle, event, callback, id);
+    }
+  }
+
+  _recordPlaybackFailure(category, sound, handle, sourceVolume, errorName, error) {
+    this.lastPlayResult = {
+      ok: false,
+      category,
+      sound,
+      src: handle.src,
+      volume: clampVolume(sourceVolume * this.settings.volume, 1),
+      errorName,
+      errorMessage: error && error.message ? error.message : String(error || ''),
+      at: new Date().toISOString(),
+    };
+    console.warn('Failed to play sound ' + category + '/' + sound, error);
   }
 
   loop(category, sound, id, volume) {
@@ -436,43 +432,51 @@ class SoundManager {
     this.loopMetadata.set(id, { category, sound, volume });
     if (!this._shouldPlay(category) || !this.isPageVisible) return;
     if (!this.audioUnlocked) {
-      this.pendingLoops = this.pendingLoops.filter((item) => item.id !== id);
-      this.pendingLoops.push({ category, sound, id, volume });
+      this._queueLoop({ category, sound, id, volume });
       this._emitChange();
       return;
     }
     this.stopById(id, false);
-    const audio = this._getAudio(category, sound);
-    const playback = audio.cloneNode(true);
-    playback.volume = clampVolume((volume === undefined ? 1 : volume) * this.settings.volume, 1);
-    playback.loop = true;
-    this.loopingSounds.set(id, playback);
-    playback.play().catch((error) => {
-      this.loopingSounds.delete(id);
-      if (error && error.name !== 'NotAllowedError') {
-        console.warn('Failed to loop sound ' + category + '/' + sound, error);
-      }
-    });
+    const handle = this._getSound(category, sound);
+    const sourceVolume = clampVolume(volume === undefined ? 1 : volume, 1);
+    const playbackId = this.audioEngine.play(handle, { volume: sourceVolume, loop: true });
+    if (playbackId === null) return;
+
+    const token = { handle, playbackId, listeners: [] };
+    const onLoadError = (_failedId, error) => {
+      this._removeLoopToken(id, token, false);
+      console.warn('Failed to load loop ' + category + '/' + sound, error);
+    };
+    const onPlayError = (_failedId, error) => {
+      this._removeLoopToken(id, token, false);
+      this.audioEngine.markLocked();
+      this.audioUnlocked = false;
+      this._queueLoop({ category, sound, id, volume });
+      this._emitChange();
+      console.warn('Failed to loop sound ' + category + '/' + sound, error);
+    };
+    token.listeners.push(
+      ['loaderror', onLoadError, undefined],
+      ['playerror', onPlayError, playbackId]
+    );
+    this.loopingSounds.set(id, token);
+    for (const [event, callback, eventId] of token.listeners) {
+      this.audioEngine.once(handle, event, callback, eventId);
+    }
   }
 
   stopById(id, clearMetadata = true) {
-    const audio = this.loopingSounds.get(id);
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
-      this.loopingSounds.delete(id);
-    }
+    const token = this.loopingSounds.get(id);
+    if (token) this._removeLoopToken(id, token, true);
     this.pendingLoops = this.pendingLoops.filter((item) => item.id !== id);
     if (clearMetadata) this.loopMetadata.delete(id);
   }
 
   stopCategory(category, clearMetadata = true) {
-    for (const [id, audio] of this.loopingSounds.entries()) {
+    for (const [id, token] of this.loopingSounds.entries()) {
       const metadata = this.loopMetadata.get(id);
       if (metadata && metadata.category === category) {
-        audio.pause();
-        audio.currentTime = 0;
-        this.loopingSounds.delete(id);
+        this._removeLoopToken(id, token, true);
         if (clearMetadata) this.loopMetadata.delete(id);
       }
     }
@@ -485,13 +489,25 @@ class SoundManager {
   }
 
   stopAll(clearMetadata = true) {
-    for (const audio of this.loopingSounds.values()) {
-      audio.pause();
-      audio.currentTime = 0;
+    for (const [id, token] of this.loopingSounds.entries()) {
+      this._removeLoopToken(id, token, true);
     }
-    this.loopingSounds.clear();
     this.pendingLoops = [];
     if (clearMetadata) this.loopMetadata.clear();
+  }
+
+  _queueLoop(item) {
+    this.pendingLoops = this.pendingLoops.filter((pending) => pending.id !== item.id);
+    this.pendingLoops.push(item);
+  }
+
+  _removeLoopToken(id, token, stopPlayback) {
+    if (this.loopingSounds.get(id) !== token) return;
+    this.loopingSounds.delete(id);
+    for (const [event, callback, eventId] of token.listeners) {
+      this.audioEngine.off(token.handle, event, callback, eventId);
+    }
+    if (stopPlayback) this.audioEngine.stop(token.handle, token.playbackId);
   }
 
   _resumeLoops() {
@@ -557,6 +573,7 @@ class SoundManager {
 
   importSettings(settings) {
     this.settings = this._normalizeSettings(settings || {});
+    this.audioEngine.setGlobalVolume(this.settings.volume);
     if (!this.settings.enabled) this.stopAll(false);
     else this._resumeLoops();
     this._saveSettings();
@@ -575,10 +592,7 @@ class SoundManager {
 
   setVolume(volume) {
     this.settings.volume = clampVolume(volume);
-    for (const [id, audio] of this.loopingSounds.entries()) {
-      const metadata = this.loopMetadata.get(id);
-      audio.volume = clampVolume((metadata && metadata.volume !== undefined ? metadata.volume : 1) * this.settings.volume, 1);
-    }
+    this.audioEngine.setGlobalVolume(this.settings.volume);
     this._saveSettings();
   }
 
@@ -596,6 +610,7 @@ class SoundManager {
 
   resetSettings() {
     this.settings = this._normalizeSettings({});
+    this.audioEngine.setGlobalVolume(this.settings.volume);
     this.suppressionWarnings.clear();
     this._saveSettings();
   }

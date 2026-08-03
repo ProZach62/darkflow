@@ -39,6 +39,13 @@ test('Darkflow server can be embedded on an ephemeral loopback port', async (t) 
   assert.deepEqual(await response.json(), { version: expectedVersion });
   assert.equal(server.listening, true);
 
+  const howlerResponse = await fetch(`http://127.0.0.1:${address.port}/vendor/howler.core.min.js`, {
+    headers: { Cookie: 'darkflow-desktop-token=desktop-test-token' },
+  });
+  assert.equal(howlerResponse.status, 200);
+  assert.match(howlerResponse.headers.get('content-type') || '', /javascript/);
+  assert.match(await howlerResponse.text(), /howler\.js v2\.2\.4/);
+
   const socket = new WebSocket(`ws://127.0.0.1:${address.port}/proxy`, {
     origin: 'https://untrusted.example',
   });
