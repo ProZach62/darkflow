@@ -248,8 +248,10 @@ body {
     var(--df-panel);
 }
 
-#toolbar.panels-menu-active {
-  z-index: 11000;
+#toolbar.panels-menu-active,
+#toolbar.audio-menu-active {
+  /* Floating panes top out at 11000, including the combat-pane boost. */
+  z-index: 12010;
 }
 
 .toolbar-left {

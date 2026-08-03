@@ -106,9 +106,11 @@ class SoundPanel {
     this.expanded = !!expanded;
     const expandedEl = this.panel.querySelector('.sound-widget-expanded');
     const indicator = this.panel.querySelector('.sound-widget-indicator');
+    const toolbar = this.root.closest('#toolbar');
     expandedEl.hidden = !this.expanded;
     indicator.setAttribute('aria-expanded', this.expanded ? 'true' : 'false');
     this.panel.classList.toggle('expanded', this.expanded);
+    if (toolbar) toolbar.classList.toggle('audio-menu-active', this.expanded);
     this._saveExpandedState();
   }
 
