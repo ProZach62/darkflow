@@ -249,7 +249,8 @@ body {
 }
 
 #toolbar.panels-menu-active,
-#toolbar.audio-menu-active {
+#toolbar.audio-menu-active,
+#toolbar.notifications-menu-active {
   /* Floating panes top out at 11000, including the combat-pane boost. */
   z-index: 12010;
 }

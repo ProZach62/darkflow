@@ -337,6 +337,8 @@ export const notificationManager = {
   },
 
   renderMenu() {
+    const toolbar = this.els.wrap && this.els.wrap.closest('#toolbar');
+    if (toolbar) toolbar.classList.toggle('notifications-menu-active', this.state.open);
     if (!this.els.menu || !this.els.list) return;
 
     this.els.menu.classList.toggle('open', this.state.open);
