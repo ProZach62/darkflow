@@ -21,6 +21,7 @@ import { visualEffectsManager } from './visual-effects-manager.js';
 import { tutorialManager } from './tutorial-manager.js';
 import { roomPlaylistManager } from './room-playlist-manager.js';
 import { soundManager } from './sound-manager.js';
+import { loginThemeManager } from './login-theme-manager.js';
 import { settingsManager } from './settings-manager.js';
 import { flushPendingMapSave } from './map-data-v2.js';
 import { aliasManager } from './alias-manager.js';
@@ -481,6 +482,7 @@ if (dom.protocolSelect) {
 loadHistory();
 panelManager.init();
 windowManager.init();
+loginThemeManager.init();
 streetSamuraiDashboardManager.init();
 connectionOverlay.init();
 ideManager.init();
