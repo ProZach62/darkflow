@@ -90,6 +90,7 @@ export const SOUND_MAP = {
   'ambient/fire': '/assets/sounds/ambient-fire.mp3',
   'ambient/wind': '/assets/sounds/ambient-wind.mp3',
   'ambient/combat-music': '/assets/sounds/ambient-combat-music.mp3',
+  'ambient/darkwind-theme': '/assets/sounds/darkwind-theme.mp3',
   'fishing/cast': '/assets/sounds/fishing-cast.mp3',
   'fishing/splash': '/assets/sounds/fishing-splash.mp3',
   'fishing/hook': '/assets/sounds/fishing-hook.mp3',
