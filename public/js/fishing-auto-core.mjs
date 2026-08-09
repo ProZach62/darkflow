@@ -524,6 +524,7 @@ export function createFightController(rawParams, opts = {}) {
   // losing - and a lost fight reports an escape, not a suspiciously good catch.
   // Suppressing drops is the only lever, and that happens for free here.
   let dropUntilMs = 0;
+  let dropHeld = false;
 
   // How long a drop must last to bring reported accuracy down to target.
   //
@@ -538,27 +539,46 @@ export function createFightController(rawParams, opts = {}) {
     return (overlapMs + GRACE_MS) / plan.targetAccuracy - elapsedMs;
   }
 
-  function shaperWantsDrop(s) {
-    if (st.elapsedMs < dropUntilMs) return true;
+  // Returns null when no drop is wanted, or the hold value to force.
+  //
+  // A drop commits to driving the bar at one end of the track for its whole
+  // duration, chosen at the start as whichever end is further from the fish.
+  //
+  // Two weaker versions of this did not work, both for the same reason - a
+  // wide catch window. On the `easy` profile the window is 16 units of a
+  // 100-unit track, and merely releasing leaves 1% of fights reporting
+  // accuracy of exactly 1.000, because the bar never travels far enough to
+  // leave it. Re-deciding the direction every frame is worse still (2%): the
+  // choice flips as the fish crosses the bar, and the bar can end up parked at
+  // a clamp the fish keeps wandering back into.
+  //
+  // Committing to one end works because the fish does not stay there. It
+  // retargets across 5..95, so a bar pinned at the bottom is only overlapped
+  // while the fish is low, and the gap opens on its own.
+  function shaperDecision(s) {
+    if (st.elapsedMs < dropUntilMs) return dropHeld;
 
     const simElapsed = Number.isFinite(s.elapsedMs) ? s.elapsedMs : 0;
     const simOverlap = Number.isFinite(s.overlapMs) ? s.overlapMs : 0;
-    if (simElapsed < T.shaperWarmupMs || simElapsed <= 0) return false;
+    if (simElapsed < T.shaperWarmupMs || simElapsed <= 0) return null;
 
     const live = simOverlap / simElapsed;
-    if (live <= plan.targetAccuracy + T.accuracyTolerance) return false;
+    if (live <= plan.targetAccuracy + T.accuracyTolerance) return null;
 
     const needed = neededDropMs(simOverlap, simElapsed) - T.reacquireAllowanceMs;
 
     // Too small to be worth doing: grace would swallow most of it, and
     // rounding up to the minimum would overshoot. Let the excess build until a
     // full-sized drop is actually warranted.
-    if (needed < T.dropOffMinMs) return false;
+    if (needed < T.dropOffMinMs) return null;
 
     const jitter = randRange(rand, T.dropJitterMin, T.dropJitterMax);
     dropUntilMs = st.elapsedMs + Math.min(needed, T.dropOffMaxMs) * jitter;
+    // Drive to whichever end of the track the fish is further from, and hold
+    // that choice for the whole drop.
+    dropHeld = s.fishPos < 50;
     st.dropOffs += 1;
-    return true;
+    return dropHeld;
   }
 
   // minFightMs stall (PRD 4.30).
@@ -644,9 +664,10 @@ export function createFightController(rawParams, opts = {}) {
       st.stallSteps += 1;
       return stall;
     }
-    if (shaperWantsDrop(s)) {
+    const drop = shaperDecision(s);
+    if (drop !== null) {
       st.shaperSteps += 1;
-      return false;
+      return drop;
     }
     return trackingHold(s);
   }

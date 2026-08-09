@@ -7,6 +7,7 @@
 import { gmcp } from './gmcp.js';
 import { panelManager } from './panel-manager.js';
 import { soundManager } from './sound-manager.js';
+import { fishingAuto } from './fishing-auto.js';
 import { createFightSim, computeAccuracy, castPowerAt, PROGRESS_START } from './fishing-core.mjs';
 
 const REEL_LOOP_ID = 'fishing-reel';
@@ -135,6 +136,8 @@ export const fishingManager = {
     gmcp.on(PKG.ART, (data) => this._onArt(data));
     gmcp.on(PKG.END, (data) => this._onEnd(data));
 
+    fishingAuto.attach(this);
+
     panelManager.registerPanelCloseHandler('fishing', () => {
       if (this.session) gmcp.send(PKG.CANCEL, { session: this.session.id });
       this._reset('idle');
@@ -179,6 +182,9 @@ export const fishingManager = {
     this._tensionWarned = false;
     this.fightParams = data.params || {};
     this.sim = createFightSim(this.fightParams, data.seed || 1);
+    // Same params and seed the simulation just got, so the Auto-Angler models
+    // the fight that is actually running rather than the raw message.
+    fishingAuto.onFight(this.fightParams, data.seed || 1);
     this.fightMeta = data.fish || {};
     this._burst();
     soundManager.loop('fishing', 'reel', REEL_LOOP_ID, 0.6);
@@ -192,6 +198,7 @@ export const fishingManager = {
     this._stopLoop();
     soundManager.stopById(REEL_LOOP_ID);
     this.phase = 'caught';
+    fishingAuto.onServerVerdict('caught', data);
     this.lastCatch = data.fish || {};
     this.lastRewards = data.rewards || {};
     if (this.lastCatch.id && this.lastCatch.artUrl) {
@@ -209,6 +216,7 @@ export const fishingManager = {
     soundManager.stopById(REEL_LOOP_ID);
     this.phase = 'escaped';
     this.escapeReason = data.reason || 'slack';
+    fishingAuto.onServerVerdict(this.escapeReason, data);
     if (this.escapeReason === 'snap') {
       soundManager.play('fishing', 'snap');
       this._shake();
@@ -243,6 +251,9 @@ export const fishingManager = {
   // that survives a reconnect keeps its dead nonce and every input is
   // silently discarded server-side.
   handleDisconnect() {
+    // Notified before the early return: the Auto-Angler can be armed with no
+    // session open, and a dropped socket still matters to it.
+    fishingAuto.onDisconnect();
     if (!this.session && this.phase === 'idle') return;
     this._reset('idle');
     this.endMessage = 'Connection lost. Type "fish" to start a new session.';
@@ -256,6 +267,7 @@ export const fishingManager = {
     this.phase = phase;
     this.sim = null;
     this.held = false;
+    fishingAuto.onSessionReset(phase);
     if (phase === 'idle') this.session = null;
   },
 
@@ -408,6 +420,7 @@ export const fishingManager = {
     };
     const castDown = (ev) => {
       if (this.phase !== 'ready') return;
+      fishingAuto.notifyManualInput();
       ev.preventDefault();
       ev.stopPropagation();
       castPointerId = ev.pointerId;
@@ -448,6 +461,10 @@ export const fishingManager = {
     stage.addEventListener('pointerdown', (ev) => {
       if (ev.target === this.els.closeBtn ||
         ev.target.closest('.fishing-powerwrap')) return;
+      // A press anywhere on the stage is the player taking the fight over.
+      // The close button is excluded: that ends the session rather than
+      // claiming control, and reports its own reason.
+      fishingAuto.notifyManualInput();
       stage.focus();
       if (this.phase === 'bite') { ev.preventDefault(); this._sendHook(); return; }
       if (this.phase === 'fight') { ev.preventDefault(); this.held = true; }
@@ -462,6 +479,7 @@ export const fishingManager = {
       if (ev.code !== 'Space') return;
       ev.preventDefault();
       if (ev.repeat) return;
+      fishingAuto.notifyManualInput();
       if (this.phase === 'bite') this._sendHook();
       else if (this.phase === 'fight') this.held = true;
     });
@@ -603,10 +621,17 @@ export const fishingManager = {
           return;
         }
       } else if (this.phase === 'fight' && this.sim) {
-        const outcome = this.sim.step(dt, this.held);
+        // Auto-Angler delegation point. Guarded by isActive() so that with the
+        // addon off this costs one boolean test and nothing else - in
+        // particular it does not call getState(), which allocates per frame.
+        const held = fishingAuto.isActive()
+          ? fishingAuto.resolveHeld(this.held, this.sim.getState(), dt)
+          : this.held;
+        const outcome = this.sim.step(dt, held);
         this._paintFight();
         if (outcome) {
           this._sendResult(outcome);
+          fishingAuto.onFightEnd(outcome);
           this.phase = 'resolving';
           this._stopLoop();
           return;
