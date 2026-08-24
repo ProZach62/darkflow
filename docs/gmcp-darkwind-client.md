@@ -124,10 +124,21 @@ progress fields from `Char.Vitals`.
 | `hp`, `maxhp` | Current and maximum hit points |
 | `sp`, `maxsp` | Current and maximum spell points |
 | `level_pct` | Integer percent toward the next player level |
+| `rested`, `rested_max` | Current and maximum rested-combat-XP bank |
+| `rested_pct` | Server-computed rested-bank percentage |
+| `rested_bonus_pct` | Additional combat XP percentage while the bank remains |
+| `rested_tier` | Stable last-rest tier key: `hearth` or `road` |
+| `rested_accrual_pct_per_hour` | Percentage of a level banked per offline hour at that tier |
+| `rested_seconds_to_cap` | Offline seconds required to fill the remaining bank at that tier |
 | `carry`, `maxcarry` | Current carried weight and maximum carry capacity |
 | `encumberance` | Server-side quadratic encumbrance value |
 | `encumberance_pct` | Linear carried-weight percent |
 | `encumberance_label` | Human-readable encumbrance state |
+
+When `rested` and a positive `rested_max` are present, the Vitals panel places
+a compact Rested XP reserve meter between level progress and carry load. Empty
+banks are shown as inactive rather than as a danger state. Older and non-Darkwind
+servers that omit the optional rested fields do not receive an empty meter.
 
 ### `Darkwind.GuildVitals`
 

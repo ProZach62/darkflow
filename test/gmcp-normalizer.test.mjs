@@ -52,6 +52,26 @@ test('normalizes Aardwolf-style vitals aliases', () => {
   assert.equal(frame.data.string, 'HP:415/1479 SP:151/1121 MV:375/541');
 });
 
+test('preserves Darkwind rested vitals fields', () => {
+  const frame = normalizeGmcpFrame('Char.Vitals', {
+    hp: 415,
+    maxhp: 1479,
+    rested: 2400,
+    rested_max: 5715,
+    rested_pct: 41,
+    rested_bonus_pct: 100,
+    rested_tier: 'road',
+    rested_accrual_pct_per_hour: 1,
+    rested_seconds_to_cap: 1193400,
+  });
+
+  assert.equal(frame.data.rested, 2400);
+  assert.equal(frame.data.rested_max, 5715);
+  assert.equal(frame.data.rested_bonus_pct, 100);
+  assert.equal(frame.data.rested_tier, 'road');
+  assert.equal(frame.data.rested_seconds_to_cap, 1193400);
+});
+
 test('normalizes root Comm.Channel messages', () => {
   const frame = normalizeGmcpFrame('comm.channel', {
     chan: 'gossip',

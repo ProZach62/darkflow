@@ -60,6 +60,12 @@ following fields have visible behavior:
 | `sp`, `maxsp` | Spell-point bar; optional as a pair |
 | `fp`, `maxfp` | Movement bar; optional as a pair |
 | `level_pct` | Percent toward the next player level |
+| `rested`, `rested_max` | Current and maximum rested-combat-XP bank |
+| `rested_pct` | Server-computed rested-bank percentage |
+| `rested_bonus_pct` | Additional combat XP percentage while the bank remains |
+| `rested_tier` | Stable last-rest tier key: `hearth` or `road` |
+| `rested_accrual_pct_per_hour` | Percentage of a level banked per offline hour at that tier |
+| `rested_seconds_to_cap` | Offline seconds required to fill the remaining bank at that tier |
 | `carry`, `maxcarry` | Carry-load reverse meter |
 | `encumberance_label` | Carry-meter tooltip |
 | `opponent` | Embedded enemy object processed like `Char.Enemy` |
