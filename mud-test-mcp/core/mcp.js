@@ -138,7 +138,7 @@ export function createMcpServer() {
 
   server.registerTool('mud_run_script', {
     title: 'Run a scripted test sequence',
-    description: 'Run an ordered list of steps and return a per-step pass/fail report. Each step is one of: {send, expect_contains[], expect_not_contains[], expect_regex[]} | {gmcp: "Pkg.Name", expect_equals:{}, expect_contains[]} | {read:true, expect_contains[]} | {wait_ms}. Use a success step for the happy path and a graceful-failure step (expect_not_contains a traceback) for the error path. Provide sessionId to reuse a connected session (recommended); or omit to run in a throwaway session against the env default target (MUD_HOST/MUD_CHARACTER/MUD_PASSWORD), for single-tenant setups.',
+    description: 'Run an ordered list of steps and return a per-step pass/fail report. A non-empty step label is announced in-game as `gossip Test: <label>` before that step runs, followed by `gossip Test result: Success` or `gossip Test result: Failure - <reason>`. Each step is one of: {send, expect_contains[], expect_not_contains[], expect_regex[]} | {gmcp: "Pkg.Name", expect_equals:{}, expect_contains[]} | {read:true, expect_contains[]} | {wait_ms}. Use a success step for the happy path and a graceful-failure step (expect_not_contains a traceback) for the error path. Provide sessionId to reuse a connected session (recommended); or omit to run in a throwaway session against the env default target (MUD_HOST/MUD_CHARACTER/MUD_PASSWORD), for single-tenant setups.',
     inputSchema: {
       sessionId: z.string().optional(),
       steps: z.array(z.record(z.string(), z.any())),

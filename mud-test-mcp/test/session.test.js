@@ -13,6 +13,7 @@ const { IAC, GA, WILL, TELOPT_GMCP } = constants;
 // Minimal scriptable MUD: drives name -> password -> in-game, frames every
 // prompt with IAC GA, and pushes a GMCP Room.Info frame on login and on `look`.
 function startFakeMud() {
+  const commands = [];
   const roomFrame = (name) => wrapGmcp(Buffer.from(`Room.Info ${JSON.stringify({ name, num: 1 })}`, 'utf8'));
   const prompt = (sock) => { sock.write('> '); sock.write(Buffer.from([IAC, GA])); };
 
@@ -39,23 +40,32 @@ function startFakeMud() {
           sock.write('Temple Square\nA quiet temple stands here.\n');
           sock.write(roomFrame('Temple Square'));
           prompt(sock);
-        } else if (cmd === 'look') {
-          sock.write('Temple Square\nA quiet temple stands here.\n');
-          sock.write(roomFrame('Temple Square'));
-          prompt(sock);
-        } else if (cmd === 'get nonexistent') {
-          sock.write("That isn't here.\n");
-          prompt(sock);
         } else {
-          sock.write(`You ${cmd}.\n`);
-          prompt(sock);
+          commands.push(cmd);
+          if (cmd === 'look') {
+            sock.write('Temple Square\nA quiet temple stands here.\n');
+            sock.write(roomFrame('Temple Square'));
+            prompt(sock);
+          } else if (cmd === 'start async') {
+            sock.write('Started.\n');
+            prompt(sock);
+            setTimeout(() => {
+              if (!sock.destroyed) sock.write('A delayed bell rings.\n');
+            }, 5);
+          } else if (cmd === 'get nonexistent') {
+            sock.write("That isn't here.\n");
+            prompt(sock);
+          } else {
+            sock.write(`You ${cmd}.\n`);
+            prompt(sock);
+          }
         }
       }
     });
   });
 
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, commands }));
   });
 }
 
@@ -114,6 +124,101 @@ test('runScript reports pass and fail per step', async () => {
   assert.equal(report.results[1].pass, true);
   assert.equal(report.results[2].pass, true);
   assert.equal(report.results[3].pass, false);
+
+  session.close();
+  server.close();
+});
+
+test('runScript honors a script-level stop_on_fail setting', async () => {
+  const { server, port, commands } = await startFakeMud();
+  const { session } = await connectedSession(port);
+
+  const report = await runScript(session, {
+    stop_on_fail: true,
+    steps: [
+      { send: 'get nonexistent', expect_contains: ['You get it.'] },
+      { send: 'look', expect_contains: ['Temple Square'] },
+    ],
+  });
+
+  assert.equal(report.passed, false);
+  assert.equal(report.run, 1);
+  assert.deepEqual(commands, ['get nonexistent']);
+
+  session.close();
+  server.close();
+});
+
+test('runScript gossips each non-empty label and result around its step', async () => {
+  const { server, port, commands } = await startFakeMud();
+  const { session } = await connectedSession(port);
+
+  const report = await runScript(session, {
+    steps: [
+      { send: 'look', label: 'inspect the room', expect_contains: ['Temple Square'] },
+      { wait_ms: 1, label: 'wait for\nthe next pulse' },
+      { send: 'get nonexistent', expect_contains: ["isn't here"] },
+    ],
+  });
+
+  assert.equal(report.passed, true);
+  assert.deepEqual(commands, [
+    'gossip Test: inspect the room',
+    'look',
+    'gossip Test result: Success',
+    'gossip Test: wait for the next pulse',
+    'gossip Test result: Success',
+    'get nonexistent',
+  ]);
+  assert.doesNotMatch(report.results[0].output, /gossip Test:/);
+
+  session.close();
+  server.close();
+});
+
+test('runScript gossips assertion reasons for failed labeled steps', async () => {
+  const { server, port, commands } = await startFakeMud();
+  const { session } = await connectedSession(port);
+
+  const report = await runScript(session, {
+    steps: [
+      { send: 'get nonexistent', label: 'find the missing item', expect_contains: ['You get it.'] },
+    ],
+  });
+
+  assert.equal(report.passed, false);
+  assert.deepEqual(commands, [
+    'gossip Test: find the missing item',
+    'get nonexistent',
+    'gossip Test result: Failure - expected to contain "You get it."',
+  ]);
+
+  session.close();
+  server.close();
+});
+
+test('label gossip preserves async output for a following read step', async () => {
+  const { server, port, commands } = await startFakeMud();
+  const { session } = await connectedSession(port);
+
+  const report = await runScript(session, {
+    steps: [
+      { send: 'start async' },
+      { wait_ms: 20, label: 'wait for the delayed event' },
+      { read: true, label: 'inspect the delayed event', expect_contains: ['A delayed bell rings.'] },
+    ],
+  });
+
+  assert.equal(report.passed, true);
+  assert.deepEqual(commands, [
+    'start async',
+    'gossip Test: wait for the delayed event',
+    'gossip Test result: Success',
+    'gossip Test: inspect the delayed event',
+    'gossip Test result: Success',
+  ]);
+  assert.match(report.results[2].output, /A delayed bell rings\./);
+  assert.doesNotMatch(report.results[2].output, /gossip Test:/);
 
   session.close();
   server.close();

@@ -25,6 +25,9 @@ steps:
     expect_equals: { name: "Temple Square" }
 ```
 
+Set top-level `stop_on_fail: true` when later steps depend on earlier setup or
+preflight checks. The runner then stops after the first failed step.
+
 ## Step kinds
 
 Each step is exactly one of:
@@ -56,7 +59,7 @@ payload, and `expect_equals` is a subset match against the structured data.
 
 | Field | Applies to | Meaning |
 |-------|-----------|---------|
-| `label` | any | Human description shown in the report. |
+| `label` | any | Human description shown in the report and announced as `gossip Test: <label>` before the step, followed by its success or failure result. |
 | `quiet_ms` | `send` | Override the per-command quiet-settle window. |
 | `timeout_ms` | `send` | Override the per-command hard timeout. |
 
@@ -77,6 +80,12 @@ or `1` (any fail).
   whole lines, so wording tweaks don't make tests brittle.
 - Use `gmcp` steps to assert structured state (room name, vitals) instead of
   scraping text when the data is available.
+- Labels are public test-progress messages on the gossip channel. Do not put
+  secrets in them; line breaks and other control characters are normalized to
+  spaces before the command is sent. Each labeled step follows with
+  `Test result: Success` or `Test result: Failure - <reason>`. Announcement
+  responses are isolated from assertions, including pending output consumed by
+  a `read` step.
 
 ### Example
 
