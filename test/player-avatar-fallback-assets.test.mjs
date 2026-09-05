@@ -4,6 +4,12 @@ import { access, readdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  BUNDLED_PORTRAIT_GENDERS,
+  BUNDLED_PORTRAIT_RACES,
+  bundledPortraitFor,
+} from '../public/js/image-fallbacks.js';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const avatarDir = resolve(root, 'public/assets/avatars');
 const genders = ['female', 'male'];
@@ -52,4 +58,18 @@ test('bundles one default portrait for every supported gender and race pair', as
   assert.equal(expected.length, 62);
   assert.deepEqual(actual, expected);
   await Promise.all(expected.map((name) => access(resolve(avatarDir, name))));
+});
+
+test('the client-side portrait list matches the shipped assets', () => {
+  assert.deepEqual([...BUNDLED_PORTRAIT_GENDERS].sort(), [...genders].sort());
+  assert.deepEqual([...BUNDLED_PORTRAIT_RACES].sort(), [...races].sort());
+});
+
+test('bundledPortraitFor only produces URLs for shipped race and gender pairs', () => {
+  assert.equal(bundledPortraitFor('High Elf', 'Female'), '/assets/avatars/female-high-elf.png');
+  assert.equal(bundledPortraitFor('stone dwarf', 'MALE'), '/assets/avatars/male-stone-dwarf.png');
+  assert.equal(bundledPortraitFor('High Elf', 'other'), '');
+  assert.equal(bundledPortraitFor('../../etc', 'male'), '');
+  assert.equal(bundledPortraitFor('', 'female'), '');
+  assert.equal(bundledPortraitFor(undefined, undefined), '');
 });

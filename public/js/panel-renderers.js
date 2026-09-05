@@ -697,7 +697,7 @@ function combatArtHtml(side, combatant, loadedImages, failedImages, event, impac
     (!hasGeneratedImage || generatedImageFailed || usesNpcFallbackImage);
   const fallbackImage = side === 'target' && combatant.isNpc
     ? NPC_FALLBACK_IMAGE
-    : PLAYER_FALLBACK_IMAGE;
+    : (combatant.fallbackImage || PLAYER_FALLBACK_IMAGE);
   const image = isNpcFallback ? fallbackImage :
     (hasGeneratedImage ? combatant.image : fallbackImage);
   const loadedClass = loadedImages.has(image) ? ' is-loaded' : '';
@@ -708,7 +708,7 @@ function combatArtHtml(side, combatant, loadedImages, failedImages, event, impac
     loadedClass + failedClass;
   let html = '<div class="' + classes + '"><img src="' + escHtml(image) +
     '" data-combat-image="' + escHtml(image) + '"' +
-    (combatant.isNpc ? ' data-combat-fallback="' + NPC_FALLBACK_IMAGE + '"' : '') +
+    combatFallbackAttributes(combatant, image, fallbackImage) +
     ' alt="" draggable="false">';
   if (event && impactSide === side) {
     html += '<div class="combat-impact-badge" aria-hidden="true">' +
@@ -719,6 +719,20 @@ function combatArtHtml(side, combatant, loadedImages, failedImages, event, impac
     }
   }
   return html + '</div>';
+}
+
+// Failure chain for the DOM stage image: the next candidate lives in
+// data-combat-fallback and the one after it in data-combat-final, so a
+// failed generated portrait tries the bundled race portrait before the
+// generic placeholder.
+function combatFallbackAttributes(combatant, image, fallbackImage) {
+  if (combatant.isNpc) return ' data-combat-fallback="' + NPC_FALLBACK_IMAGE + '"';
+  const chain = [fallbackImage, PLAYER_FALLBACK_IMAGE]
+    .filter((candidate, index, all) => candidate && candidate !== image && all.indexOf(candidate) === index);
+  let attributes = '';
+  if (chain[0]) attributes += ' data-combat-fallback="' + escHtml(chain[0]) + '"';
+  if (chain[1]) attributes += ' data-combat-final="' + escHtml(chain[1]) + '"';
+  return attributes;
 }
 
 function combatEventLabel(event) {
@@ -834,6 +848,9 @@ function combatHudHtml(view, event, eventLabel, announcement) {
 function combatTokenHudHtml(side, combatant, sideClass) {
   let html = '<div class="combat-token-hud combat-token-hud-' + side + sideClass + '">';
   html += '<div class="combat-hud-name"><span>' + escHtml(combatant.name) + '</span></div>';
+  if (combatant.descriptor) {
+    html += '<div class="combat-hud-descriptor">' + escHtml(combatant.descriptor) + '</div>';
+  }
   html += combatHealthHtml(side, combatant.name, combatant.health);
   if (side === 'target' && combatant.condition) {
     html += '<div class="combat-target-condition">' + escHtml(combatant.condition) + '</div>';
@@ -898,7 +915,7 @@ function renderCombatCanvas(bodyEl, data, view, classes) {
   host.hud.innerHTML = combatHudHtml(view, event, eventLabel, announcement);
   host.stage.update(view, {
     room: data.room,
-    playerFallback: PLAYER_FALLBACK_IMAGE,
+    playerFallback: [view.player.fallbackImage, PLAYER_FALLBACK_IMAGE].filter(Boolean),
     targetFallback: view.target.isNpc ? NPC_FALLBACK_IMAGE : PLAYER_FALLBACK_IMAGE,
   });
   bodyEl._enemyState = null;
@@ -910,6 +927,7 @@ function renderCombatVisual(bodyEl, data) {
     enemy: data.enemy,
     vitals: data.vitals,
     avatar: data.avatar,
+    status: data.status,
   });
   const event = view.event;
   const classes = combatEventClasses(view, event);
@@ -941,6 +959,9 @@ function renderCombatVisual(bodyEl, data) {
   html += '<div class="combat-stage">';
   html += '<article class="combatant-card combatant-player' + classes.playerClass + '">';
   html += '<div class="combatant-name"><span>' + escHtml(view.player.name) + '</span></div>';
+  if (view.player.descriptor) {
+    html += '<div class="combat-descriptor">' + escHtml(view.player.descriptor) + '</div>';
+  }
   html += combatArtHtml('player', view.player, loadedImages, failedImages, event, impactSide);
   html += combatHealthHtml('player', view.player.name, view.player.health);
   html += '</article>';
@@ -981,6 +1002,10 @@ function renderCombatVisual(bodyEl, data) {
         if (fallback && key !== fallback) {
           if (key) failedImages.add(key);
           img.setAttribute('data-combat-image', fallback);
+          const final = img.getAttribute('data-combat-final') || '';
+          if (final && final !== fallback) img.setAttribute('data-combat-fallback', final);
+          else img.removeAttribute('data-combat-fallback');
+          img.removeAttribute('data-combat-final');
           if (wrap && wrap.classList) wrap.classList.remove('is-error');
           img.src = fallback;
           return;

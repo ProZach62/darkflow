@@ -1093,6 +1093,18 @@
   white-space: nowrap;
 }
 
+[data-panel-id="enemy"] .combat-hud-descriptor,
+[data-panel-id="enemy"] .combat-descriptor {
+  overflow: hidden;
+  color: var(--df-muted);
+  font-size: calc(9px * var(--pane-font-scale, 1));
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #000;
+}
+
 [data-panel-id="enemy"] .combat-hud-name::after {
   content: "";
   position: absolute;
@@ -1170,6 +1182,10 @@
 
   [data-panel-id="enemy"] .combat-hud-name {
     font-size: calc(20px * var(--pane-font-scale, 1));
+  }
+
+  [data-panel-id="enemy"] .combat-hud-descriptor {
+    font-size: calc(12px * var(--pane-font-scale, 1));
   }
 
   [data-panel-id="enemy"] .combat-visual-canvas .combat-health-track {

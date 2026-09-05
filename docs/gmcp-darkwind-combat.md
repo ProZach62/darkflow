@@ -92,7 +92,10 @@ instead of presenting every group swing as a new encounter.
 When `current_actor_id` is `self`, `Char.Vitals` remains authoritative for
 player HP, `Char.Enemy` remains authoritative for the current target's HP,
 condition, and art, and `Darkwind.Char.Avatar` remains authoritative for
-player art. A passive observer must not reuse those recipient-private
+player art. The sticky `Char.Status` snapshot supplies the recipient's race,
+class, and gender as descriptor text under the player token, and maps that
+race and gender pair to the bundled portrait used only while no avatar URL
+is available or the generated portrait fails to load. A passive observer must not reuse those recipient-private
 snapshots for somebody else's fight: actor names come from the State roster,
 while health and art remain unavailable or use non-private placeholders.
 Additional actor entries are compact context or threat indicators, not a

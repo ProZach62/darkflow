@@ -51,6 +51,11 @@ export function isCanvasStageSupported(doc) {
   }
 }
 
+function fallbackList(value) {
+  if (Array.isArray(value)) return value.filter((item) => typeof item === 'string' && item);
+  return typeof value === 'string' && value ? [value] : [];
+}
+
 function hexToRgb(hex) {
   const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
   if (!match) return null;
@@ -129,10 +134,10 @@ export function createCombatStage(doc, options = {}) {
       this._reducedMotion = !!view.reducedMotion;
       this._backdrop = resolveStageBackdrop(sources.room);
       this._ensureImage(this._backdrop.tile, '');
-      this._ensureImage(view.player.image, sources.playerFallback || '');
-      this._ensureImage(view.target.image, sources.targetFallback || '');
-      this._playerFallback = sources.playerFallback || '';
-      this._targetFallback = sources.targetFallback || '';
+      this._playerFallback = fallbackList(sources.playerFallback);
+      this._targetFallback = fallbackList(sources.targetFallback);
+      this._ensureImage(view.player.image, this._playerFallback);
+      this._ensureImage(view.target.image, this._targetFallback);
 
       const event = view.event;
       if (event && Number.isFinite(Number(event.seq)) && !this._playedSeqs.has(event.seq)) {
@@ -194,10 +199,13 @@ export function createCombatStage(doc, options = {}) {
       return !!element.parentNode;
     },
 
+    // Loads `url`, then each fallback in turn as earlier candidates fail.
     _ensureImage(url, fallback) {
-      const key = url || fallback;
+      const fallbacks = fallbackList(fallback);
+      const key = url || fallbacks[0];
+      const rest = url ? fallbacks : fallbacks.slice(1);
       if (!key || !ImageCtor || this._images.has(key)) return;
-      const entry = { img: null, status: 'loading', fallback };
+      const entry = { img: null, status: 'loading', fallbacks: rest };
       this._images.set(key, entry);
       try {
         const img = new ImageCtor();
@@ -208,7 +216,8 @@ export function createCombatStage(doc, options = {}) {
         };
         img.onerror = () => {
           entry.status = 'failed';
-          if (fallback && fallback !== key) this._ensureImage(fallback, '');
+          const next = rest.find((candidate) => candidate !== key);
+          if (next) this._ensureImage(next, rest.slice(rest.indexOf(next) + 1));
           if (!this.running) this.start();
         };
         img.src = key;
@@ -219,10 +228,11 @@ export function createCombatStage(doc, options = {}) {
     },
 
     _imageFor(url, fallback) {
-      const primary = url ? this._images.get(url) : null;
-      if (primary && primary.status === 'loaded') return primary.img;
-      const backup = fallback ? this._images.get(fallback) : null;
-      if (backup && backup.status === 'loaded') return backup.img;
+      const candidates = (url ? [url] : []).concat(fallbackList(fallback));
+      for (const candidate of candidates) {
+        const entry = this._images.get(candidate);
+        if (entry && entry.status === 'loaded') return entry.img;
+      }
       return null;
     },
 

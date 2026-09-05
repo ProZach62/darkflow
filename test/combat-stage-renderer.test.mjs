@@ -317,3 +317,26 @@ test('image failures fall back to the NPC placeholder without throwing', () => {
   runFrame(3000);
   assert.ok(stage.frames > 0);
 });
+
+test('status descriptor shows under the player name and its portrait loads before the ghost', () => {
+  const body = bodyElement();
+  createdImages.length = 0;
+  panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: combatModel({ encounter_id: 'encounter-status' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+    status: { race: 'Stone Dwarf', class: 'Fighter', gender: 'Male' },
+  });
+  const html = deepHtml(body);
+  assert.match(html, /combat-hud-descriptor">Male Stone Dwarf \u00b7 Fighter</);
+  assert.ok(createdImages.some((img) => img.src === '/assets/avatars/male-stone-dwarf.png'),
+    'bundled race portrait requested');
+  assert.ok(!createdImages.some((img) => img.src === '/assets/avatar-ghost.svg'),
+    'ghost placeholder is not requested while the bundled portrait is still loading');
+  const bundled = createdImages.find((img) => img.src === '/assets/avatars/male-stone-dwarf.png');
+  bundled.fail();
+  assert.ok(createdImages.some((img) => img.src === '/assets/avatar-ghost.svg'),
+    'ghost placeholder requested after the bundled portrait fails');
+});
