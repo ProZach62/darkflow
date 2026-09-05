@@ -601,6 +601,9 @@ export function createCombatStage(doc, options = {}) {
           target.restore();
         }
       };
+      // Cloak and tail are live overlays (spring-lagged), so a baked sheet
+      // leaves them out and they draw here behind the body.
+      if (geo.tail && sheet.rigAligned) this._drawTail(c, geo, material, secondary);
       if (geo.cloak && sheet.rigAligned) this._drawCloak(c, geo, material, secondary);
       if (flashMix > 0 && this._tintCanvas !== false) {
         const tint = this._tintSurface(Math.ceil(placement.width) + 4, Math.ceil(placement.height) + 4);
