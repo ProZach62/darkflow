@@ -121,14 +121,18 @@ To replace a baked sheet with painted art, bake it at four times the size
 for crisp control images, split the cells, and paint each cell with an
 image model under a structure control:
 
-\
- is a ComfyUI graph for one cell: checkpoint,
+```js
+const big = await window.combatDebug.bakeSpriteSheet('humanoid', 'male-scro', 4);
+// big.canvas is the 4096 px sheet, big.names the pose order, big.frame the cell size.
+```
+
+`scripts/comfyui-sprite-cell.json` is a ComfyUI graph for one cell: checkpoint,
 prompts, Canny edges from the cell, ControlNet Union, sampler, save. It uses
 core nodes only; add IPAdapter plus for cross-pose consistency and a
 background-removal node before assembly.
 
- places finished frames (matched by pose
+`scripts/sprite-sheet-assemble.py` places finished frames (matched by pose
 name) into a new sheet at the requested cell size, scales the manifest's
 frame size, unit, ground anchor, frame origins, and per-frame anchors to
-match, and sets  to false. Run it with any Python that has
+match, and sets `rigAligned` to false. Run it with any Python that has
 Pillow, for example ComfyUI's bundled interpreter.
