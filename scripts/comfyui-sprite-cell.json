@@ -1,6 +1,6 @@
 {
-  "last_node_id": 13,
-  "last_link_id": 18,
+  "last_node_id": 16,
+  "last_link_id": 22,
   "nodes": [
     {
       "id": 1,
@@ -64,7 +64,7 @@
         200
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -103,7 +103,7 @@
         120
       ],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -182,7 +182,7 @@
         100
       ],
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -256,7 +256,7 @@
         200
       ],
       "flags": {},
-      "order": 9,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -359,7 +359,7 @@
         300
       ],
       "flags": {},
-      "order": 10,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -419,7 +419,7 @@
         60
       ],
       "flags": {},
-      "order": 11,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -459,7 +459,7 @@
         400
       ],
       "flags": {},
-      "order": 12,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {
@@ -489,7 +489,7 @@
         300
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -516,7 +516,7 @@
         130
       ],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -535,7 +535,7 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            1
+            19
           ],
           "slot_index": 0
         },
@@ -558,12 +558,173 @@
         1
       ],
       "title": "Pixel art LoRA (bypass with Ctrl+B for painted art)"
+    },
+    {
+      "id": 16,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        840
+      ],
+      "size": [
+        340,
+        380
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            22
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "locked-idle.png",
+        "image"
+      ],
+      "title": "Locked idle frame (character reference)"
+    },
+    {
+      "id": 14,
+      "type": "IPAdapterUnifiedLoader",
+      "pos": [
+        440,
+        760
+      ],
+      "size": [
+        340,
+        80
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 19
+        },
+        {
+          "name": "ipadapter",
+          "type": "IPADAPTER",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            20
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "ipadapter",
+          "type": "IPADAPTER",
+          "links": [
+            21
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "IPAdapterUnifiedLoader"
+      },
+      "widgets_values": [
+        "PLUS (high strength)"
+      ],
+      "title": "IPAdapter Unified Loader (needs ComfyUI IPAdapter plus)"
+    },
+    {
+      "id": 15,
+      "type": "IPAdapterAdvanced",
+      "pos": [
+        440,
+        880
+      ],
+      "size": [
+        340,
+        280
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 20
+        },
+        {
+          "name": "ipadapter",
+          "type": "IPADAPTER",
+          "link": 21
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 22
+        },
+        {
+          "name": "image_negative",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "attn_mask",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "clip_vision",
+          "type": "CLIP_VISION",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "IPAdapterAdvanced"
+      },
+      "widgets_values": [
+        0.6,
+        "linear",
+        "concat",
+        0,
+        1,
+        "V only"
+      ],
+      "title": "IPAdapter Advanced (weight 0.6; bypass for the first idle test)"
     }
   ],
   "links": [
     [
       1,
-      13,
+      15,
       0,
       9,
       0,
@@ -704,6 +865,38 @@
       13,
       1,
       "CLIP"
+    ],
+    [
+      19,
+      13,
+      0,
+      14,
+      0,
+      "MODEL"
+    ],
+    [
+      20,
+      14,
+      0,
+      15,
+      0,
+      "MODEL"
+    ],
+    [
+      21,
+      14,
+      1,
+      15,
+      1,
+      "IPADAPTER"
+    ],
+    [
+      22,
+      16,
+      0,
+      15,
+      2,
+      "IMAGE"
     ]
   ],
   "groups": [
@@ -713,7 +906,7 @@
         20,
         -20,
         2020,
-        980
+        1260
       ],
       "color": "#3f5a64",
       "font_size": 24
