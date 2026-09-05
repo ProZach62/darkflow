@@ -1,6 +1,6 @@
 {
-  "last_node_id": 12,
-  "last_link_id": 16,
+  "last_node_id": 13,
+  "last_link_id": 18,
   "nodes": [
     {
       "id": 1,
@@ -22,7 +22,7 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            1
+            17
           ],
           "slot_index": 0
         },
@@ -30,8 +30,7 @@
           "name": "CLIP",
           "type": "CLIP",
           "links": [
-            2,
-            3
+            18
           ],
           "slot_index": 1
         },
@@ -65,7 +64,7 @@
         200
       ],
       "flags": {},
-      "order": 3,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -88,7 +87,7 @@
         "Node name for S&R": "CLIPTextEncode"
       },
       "widgets_values": [
-        "painted game sprite, side view, full body, a male orc warrior, olive green skin, full plate cuirass with spiked pauldrons and brass trim, tassets over dark red breeches, steel greaves and gauntlets, dark red cloak, empty hands, no weapon, neutral back of head with no face, feet on the ground, clean edges, flat lighting, plain solid background, consistent character design"
+        "pixel art, 16-bit, game sprite, side view, full body, a male orc warrior, olive green skin, full plate cuirass with spiked pauldrons and brass trim, tassets over dark red breeches, steel greaves and gauntlets, dark red cloak, empty hands, no weapon, neutral back of head with no face, feet on the ground, limited palette, clean pixel edges, plain solid background, consistent character design"
       ],
       "title": "Positive prompt (paste the brief here)"
     },
@@ -104,7 +103,7 @@
         120
       ],
       "flags": {},
-      "order": 4,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -127,7 +126,7 @@
         "Node name for S&R": "CLIPTextEncode"
       },
       "widgets_values": [
-        "weapon, sword, rapier, shield, helmet, face, eyes, background scenery, text, watermark, blurry, extra limbs, cropped"
+        "weapon, sword, rapier, shield, helmet, face, eyes, background scenery, text, watermark, blurry, smooth, painterly, gradient, extra limbs, cropped"
       ],
       "title": "Negative prompt"
     },
@@ -136,7 +135,7 @@
       "type": "LoadImage",
       "pos": [
         40,
-        300
+        420
       ],
       "size": [
         340,
@@ -183,7 +182,7 @@
         100
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -257,7 +256,7 @@
         200
       ],
       "flags": {},
-      "order": 6,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -308,11 +307,11 @@
         "Node name for S&R": "ControlNetApplyAdvanced"
       },
       "widgets_values": [
-        0.8,
+        0.7,
         0,
         0.8
       ],
-      "title": "Apply ControlNet (strength 0.8, end 0.8)"
+      "title": "Apply ControlNet (strength 0.7 for pixel art, 0.8 painted)"
     },
     {
       "id": 8,
@@ -326,7 +325,7 @@
         110
       ],
       "flags": {},
-      "order": 7,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -360,7 +359,7 @@
         300
       ],
       "flags": {},
-      "order": 8,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -420,7 +419,7 @@
         60
       ],
       "flags": {},
-      "order": 9,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -460,7 +459,7 @@
         400
       ],
       "flags": {},
-      "order": 10,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -490,7 +489,7 @@
         300
       ],
       "flags": {},
-      "order": 11,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -504,12 +503,67 @@
         "Node name for S&R": "PreviewImage"
       },
       "title": "Edge map check"
+    },
+    {
+      "id": 13,
+      "type": "LoraLoader",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        340,
+        130
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 17
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2,
+            3
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoraLoader"
+      },
+      "widgets_values": [
+        "pixel-art-xl.safetensors",
+        1,
+        1
+      ],
+      "title": "Pixel art LoRA (bypass with Ctrl+B for painted art)"
     }
   ],
   "links": [
     [
       1,
-      1,
+      13,
       0,
       9,
       0,
@@ -517,7 +571,7 @@
     ],
     [
       2,
-      1,
+      13,
       1,
       2,
       0,
@@ -525,7 +579,7 @@
     ],
     [
       3,
-      1,
+      13,
       1,
       3,
       0,
@@ -634,6 +688,22 @@
       11,
       0,
       "IMAGE"
+    ],
+    [
+      17,
+      1,
+      0,
+      13,
+      0,
+      "MODEL"
+    ],
+    [
+      18,
+      1,
+      1,
+      13,
+      1,
+      "CLIP"
     ]
   ],
   "groups": [
