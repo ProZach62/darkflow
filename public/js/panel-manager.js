@@ -3390,6 +3390,13 @@ export const panelManager = {
       this.openPanel('connection');
     });
 
+    // DPS Meter: fed by dps-meter-manager over the same document-event seam,
+    // so the meter never has to reach into the renderer.
+    document.addEventListener('dw:dps-update', (event) => {
+      this.gmcpData.dps = event.detail;
+      this._renderPanel('dps');
+    });
+
     gmcp.on('Char.Vitals', (data) => {
       this._syncSubscriptionsAfterCharacterData();
       const fullVitals = isFullVitalsPayload(data);

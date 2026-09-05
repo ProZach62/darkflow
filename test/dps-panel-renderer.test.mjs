@@ -1,0 +1,205 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+globalThis.localStorage = {
+  getItem() { return null; },
+  setItem() {},
+  removeItem() {},
+};
+globalThis.document = {
+  hidden: false,
+  addEventListener() {},
+  removeEventListener() {},
+  createElement() {
+    return {
+      style: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      appendChild() {},
+      setAttribute() {},
+      addEventListener() {},
+      removeEventListener() {},
+    };
+  },
+};
+globalThis.window = {
+  addEventListener() {},
+  removeEventListener() {},
+  matchMedia() {
+    return { matches: false, addEventListener() {}, removeEventListener() {} };
+  },
+};
+
+const { panelRenderers } = await import('../public/js/panel-renderers.js');
+const {
+  createDpsState,
+  reduceDpsEvents,
+  reduceDpsState,
+  selectDpsView,
+} = await import('../public/js/dps-meter-core.mjs');
+
+const NOW = 1_000_000;
+
+function stateFrame(overrides = {}) {
+  return {
+    epoch: 'connection-7',
+    encounter_id: 'encounter-12',
+    seq: 1,
+    active: true,
+    current_actor_id: 'self',
+    current_target_id: 'actor-2',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'actor-2', name: 'an ash drake', role: 'target' },
+    ],
+    ...overrides,
+  };
+}
+
+function eventFrame(events, overrides = {}) {
+  return {
+    epoch: 'connection-7',
+    encounter_id: 'encounter-12',
+    events,
+    ...overrides,
+  };
+}
+
+function swing(seq, overrides = {}) {
+  return {
+    seq,
+    kind: 'attack',
+    perspective: 'outgoing',
+    actor_id: 'self',
+    target_id: 'actor-2',
+    result: 'hit',
+    damage: 100,
+    ...overrides,
+  };
+}
+
+test('dps pane waits for combat before it shows numbers', () => {
+  const bodyEl = { innerHTML: '' };
+  panelRenderers.dps(bodyEl, null);
+  assert.match(bodyEl.innerHTML, /Waiting for combat/);
+});
+
+test('dps pane renders a live fight with its target and totals', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+
+  let state = reduceDpsState(createDpsState(), stateFrame(), NOW);
+  state = reduceDpsEvents(state, eventFrame([
+    swing(1, { damage: 400 }),
+    swing(2, { result: 'critical', damage: 600 }),
+  ]), NOW);
+
+  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 10_000));
+
+  assert.match(bodyEl.innerHTML, /dps-panel-active/);
+  assert.match(bodyEl.innerHTML, /an ash drake/);
+  assert.match(bodyEl.innerHTML, /1,000/, 'total damage is shown');
+  assert.match(bodyEl.innerHTML, /600/, 'best hit is shown');
+  assert.match(bodyEl.innerHTML, /data-dps-action="reset"/);
+});
+
+test('dps pane names the idle state instead of a stale target', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+
+  let state = reduceDpsState(createDpsState(), stateFrame(), NOW);
+  state = reduceDpsEvents(state, eventFrame([swing(1, { damage: 400 })]), NOW);
+  state = reduceDpsState(state, stateFrame({ active: false, outcome: 'victory' }), NOW + 4000);
+
+  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 5000));
+
+  assert.match(bodyEl.innerHTML, /Idle/);
+  assert.match(bodyEl.innerHTML, /Last fight DPS/);
+  assert.doesNotMatch(bodyEl.innerHTML, /dps-panel-active/);
+});
+
+test('dps pane explains missing damage numbers rather than showing zeroes', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+
+  let state = reduceDpsState(createDpsState(), stateFrame(), NOW);
+  state = reduceDpsEvents(state, eventFrame([
+    { seq: 1, kind: 'attack', perspective: 'outgoing', result: 'hit', summary: 'You hit an ash drake.' },
+  ]), NOW);
+
+  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 1000));
+
+  assert.match(bodyEl.innerHTML, /combatbrief damage/);
+  // The damage figures are dashed out rather than shown as an unearned zero.
+  assert.doesNotMatch(bodyEl.innerHTML, /0\.00/);
+  assert.match(bodyEl.innerHTML, /--/);
+  // Swing counts are still true and stay on screen.
+  assert.match(bodyEl.innerHTML, /Swings/);
+});
+
+test('dps pane keeps a real session total when only the live fight lacks numbers', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+
+  // A first fight reported numbers, then the player turned them off.
+  let state = reduceDpsState(createDpsState(), stateFrame(), NOW);
+  state = reduceDpsEvents(state, eventFrame([swing(1, { damage: 750 })]), NOW);
+  state = reduceDpsState(state, stateFrame({ active: false }), NOW + 2000);
+
+  const second = stateFrame({ encounter_id: 'encounter-13' });
+  state = reduceDpsState(state, second, NOW + 3000);
+  state = reduceDpsEvents(state, eventFrame([
+    { seq: 1, kind: 'attack', perspective: 'outgoing', result: 'hit', summary: 'You hit.' },
+  ], { encounter_id: 'encounter-13' }), NOW + 3000);
+
+  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 4000));
+
+  assert.match(bodyEl.innerHTML, /combatbrief damage/, 'the live fight is flagged');
+  assert.match(bodyEl.innerHTML, /750/, 'the banked session total survives');
+});
+
+test('dps pane shows a dash for a rate it cannot compute yet', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+  panelRenderers.dps(bodyEl, selectDpsView(createDpsState(), NOW));
+  assert.match(bodyEl.innerHTML, /--/);
+  assert.match(bodyEl.innerHTML, /No combat recorded yet/);
+});
+
+test('dps pane lists recent fights newest first', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+
+  let state = createDpsState();
+  for (const [id, name, damage] of [
+    ['encounter-1', 'an ash drake', 400],
+    ['encounter-2', 'a cave bat', 90],
+  ]) {
+    const frame = stateFrame({
+      encounter_id: id,
+      actors: [
+        { id: 'self', name: 'Acer', role: 'self' },
+        { id: 'actor-2', name, role: 'target' },
+      ],
+    });
+    state = reduceDpsState(state, frame, NOW);
+    state = reduceDpsEvents(state, eventFrame([swing(1, { damage })], { encounter_id: id }), NOW);
+    state = reduceDpsState(state, { ...frame, active: false }, NOW + 2000);
+  }
+
+  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 3000));
+
+  const batIndex = bodyEl.innerHTML.indexOf('a cave bat');
+  const drakeIndex = bodyEl.innerHTML.indexOf('an ash drake');
+  assert.ok(batIndex > -1 && drakeIndex > -1, 'both fights are listed');
+  assert.ok(batIndex < drakeIndex, 'the most recent fight is listed first');
+});
+
+test('dps pane escapes a hostile target name', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+
+  const state = reduceDpsState(createDpsState(), stateFrame({
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'actor-2', name: '<img src=x onerror=alert(1)>', role: 'target' },
+    ],
+  }), NOW);
+
+  panelRenderers.dps(bodyEl, selectDpsView(state, NOW));
+
+  assert.doesNotMatch(bodyEl.innerHTML, /<img src=x/);
+  assert.match(bodyEl.innerHTML, /&lt;img/);
+});

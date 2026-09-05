@@ -17,6 +17,7 @@ import { lagMonitor } from './lag-monitor.js';
 import { soundPanel } from './sound-panel.js';
 import { fishingManager } from './fishing-manager.js';
 import { combatVisualManager } from './combat-visual-manager.js';
+import { dpsMeterManager } from './dps-meter-manager.js';
 import { visualEffectsManager } from './visual-effects-manager.js';
 import { tutorialManager } from './tutorial-manager.js';
 import { roomPlaylistManager } from './room-playlist-manager.js';
@@ -496,9 +497,15 @@ lagMonitor.init();
 soundPanel.init();
 fishingManager.init();
 combatVisualManager.init();
+dpsMeterManager.init();
 visualEffectsManager.init();
 tutorialManager.init();
 roomPlaylistManager.init();
+
+window.dpsDebug = {
+  snapshot: () => dpsMeterManager.getSnapshot(),
+  reset: () => dpsMeterManager.resetSession(),
+};
 
 window.lagDebug = {
   snapshot: () => lagMonitor.getSnapshot(),
