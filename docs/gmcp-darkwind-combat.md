@@ -190,8 +190,14 @@ the current exchange, threats, history, and the live region stay in the DOM so
 the accessibility contract above is unchanged.
 
 The figures are drawn from a pose rig rather than image assets. The player's
-guild picks the weapon (blade, staff, bow, or unarmed claws), race scales the
-body, and NPC targets use a hunched beast form. Each event blends the actor
+wielded and worn items from `Char.Items` shape the figure: the main-hand
+item's name picks the weapon (blade, knife, axe, blunt, polearm, staff, bow,
+or bare hands when nothing is wielded), an off-hand item is drawn in the
+left hand, a shield rides the left forearm, head armor draws a helmet, and
+body armor thickens the torso. Weapon kind is a keyword heuristic over the
+item name because the protocol carries no weapon type; an unrecognized name,
+or no inventory yet, falls back to the guild's weapon. Race scales the body,
+and NPC targets use a hunched beast form. Each event blends the actor
 through windup and strike poses and the victim through recoil, dodge, or guard
 poses; bows and staves add a projectile between the figures. Pose names are
 the seam for future sprite sheets.

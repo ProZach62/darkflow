@@ -82,7 +82,7 @@ const SCALE_BY_RACE = Object.freeze({
   dragon: 1.25,
 });
 
-export const WEAPONS = Object.freeze(['blade', 'staff', 'bow', 'claws']);
+export const WEAPONS = Object.freeze(['blade', 'knife', 'axe', 'blunt', 'polearm', 'staff', 'bow', 'claws']);
 
 function slug(value) {
   return String(value === undefined || value === null ? '' : value)
@@ -91,14 +91,37 @@ function slug(value) {
     .replace(/^-+|-+$/g, '');
 }
 
+// The equipment profile (from Char.Items) outranks guild: a wielded item
+// with a recognized kind sets the weapon, an inventory with nothing wielded
+// means bare hands, and an unrecognized name keeps the guild weapon.
+function weaponFromEquipment(equipment, guildWeapon) {
+  if (!equipment) return { weapon: guildWeapon, offKind: '' };
+  const main = equipment.mainHand;
+  const off = equipment.offHand;
+  let weapon = guildWeapon;
+  if (!main) weapon = 'claws';
+  else if (main.kind && WEAPONS.includes(main.kind)) weapon = main.kind;
+  const offKind = off && off.kind && WEAPONS.includes(off.kind) ? off.kind : '';
+  return { weapon, offKind };
+}
+
 export function resolveFigure(combatant = {}, side = 'player') {
   const isBeast = side === 'target' && !!combatant.isNpc;
   const guild = slug(combatant.guild);
   const race = slug(combatant.race);
+  const equipment = isBeast ? null : (combatant.equipment || null);
+  const held = isBeast
+    ? { weapon: 'claws', offKind: '' }
+    : weaponFromEquipment(equipment, WEAPON_BY_GUILD[guild] || 'blade');
   return {
     kind: isBeast ? 'beast' : 'humanoid',
     proportions: isBeast ? BEAST : HUMANOID,
-    weapon: isBeast ? 'claws' : (WEAPON_BY_GUILD[guild] || 'blade'),
+    weapon: held.weapon,
+    offKind: held.offKind,
+    shield: !!(equipment && equipment.shield),
+    helmet: !!(equipment && equipment.helmet),
+    armor: !!(equipment && equipment.bodyArmor),
+    twoHanded: !!(equipment && equipment.twoHanded),
     scale: isBeast ? 1.08 : (SCALE_BY_RACE[race] || 1),
     facing: side === 'player' ? 1 : -1,
   };
@@ -140,10 +163,16 @@ export const POSES = Object.freeze({
   recoil: pose({ lean: -0.5, hop: 0.1, headTilt: -0.35, rShoulder: 0.95, rElbow: -1.7, lShoulder: 0.8, lElbow: -1.6, rHip: -0.4, rKnee: -0.45, lHip: 0.35, lKnee: -0.35, weapon: 0.9 }),
   dodge: pose({ lean: -0.65, hop: 0.36, headTilt: -0.2, rShoulder: 0.6, rElbow: -1.2, lShoulder: 0.4, lElbow: -1.0, rHip: 0.95, rKnee: -1.5, lHip: 0.85, lKnee: -1.45, weapon: 0.6 }),
   guard: pose({ lean: -0.12, rShoulder: 1.15, rElbow: -2.05, lShoulder: 1.05, lElbow: -2.0, rHip: 0.25, lHip: -0.2, weapon: 1.3 }),
+  raise: pose({ lean: -0.22, rShoulder: -2.7, rElbow: -0.4, lShoulder: 0.4, lElbow: -0.5, rHip: -0.2, lHip: 0.25, weapon: 0.2 }),
+  chop: pose({ lean: 0.48, hop: 0.05, rShoulder: 1.15, rElbow: 0.3, lShoulder: -0.5, lElbow: -0.3, rHip: 0.75, rKnee: -0.5, lHip: -0.55, lKnee: -0.25, weapon: 0.95 }),
 });
 
 export const STRIKE_POSE_BY_WEAPON = Object.freeze({
   blade: 'strike',
+  knife: 'thrust',
+  axe: 'chop',
+  blunt: 'chop',
+  polearm: 'thrust',
   staff: 'cast',
   bow: 'loose',
   claws: 'maul',
@@ -151,6 +180,10 @@ export const STRIKE_POSE_BY_WEAPON = Object.freeze({
 
 const WINDUP_POSE_BY_WEAPON = Object.freeze({
   blade: 'windup',
+  knife: 'windup',
+  axe: 'raise',
+  blunt: 'raise',
+  polearm: 'windup',
   staff: 'windup',
   bow: 'draw',
   claws: 'windup',
@@ -267,6 +300,7 @@ export function figureGeometry(figure, joints, x, groundY, unit) {
   const lKneePos = limb(hip, p.thigh * u, joints.lHip, facing);
   const lFoot = limb(lKneePos, p.shin * u, joints.lHip + joints.lKnee, facing);
   const weaponAngle = joints.rShoulder + lean + joints.rElbow + joints.weapon;
+  const offAngle = joints.lShoulder + lean + joints.lElbow + joints.weapon;
   return {
     unit: u,
     facing,
@@ -288,9 +322,16 @@ export function figureGeometry(figure, joints, x, groundY, unit) {
       // Direction the weapon points, as a unit vector.
       dx: Math.sin(weaponAngle) * facing,
       dy: Math.cos(weaponAngle),
+      offKind: figure.offKind || '',
+      offDx: Math.sin(offAngle) * facing,
+      offDy: Math.cos(offAngle),
     },
+    shield: !!figure.shield,
+    helmet: !!figure.helmet,
+    armor: !!figure.armor,
+    twoHanded: !!figure.twoHanded,
     limbWidth: p.limbWidth * u,
-    torsoWidth: p.torsoWidth * u,
+    torsoWidth: p.torsoWidth * u * (figure.armor ? 1.25 : 1),
   };
 }
 

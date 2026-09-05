@@ -486,9 +486,11 @@ export function createCombatStage(doc, options = {}) {
       this._drawLimb(c, geo.legs.left.hip, geo.legs.left.knee, geo.legs.left.foot, geo.limbWidth * 0.95, bodyColor, ringColor, 0.55, flashMix);
       this._drawLimb(c, geo.arms.left.shoulder, geo.arms.left.elbow, geo.arms.left.hand, geo.limbWidth * 0.85, bodyColor, ringColor, 0.55, flashMix);
       if (figure.weapon === 'bow') this._drawWeapon(c, geo, ringColor, side);
+      else this._drawOffHand(c, geo, ringColor);
       this._drawTorso(c, geo, bodyColor, ringColor, flashMix);
       this._drawLimb(c, geo.legs.right.hip, geo.legs.right.knee, geo.legs.right.foot, geo.limbWidth, bodyColor, ringColor, 0.9, flashMix);
       this._drawHead(c, geo.head, side, combatant, ringColor, isActor, flashMix);
+      if (geo.helmet) this._drawHelmet(c, geo.head, geo.facing);
       this._drawLimb(c, geo.arms.right.shoulder, geo.arms.right.elbow, geo.arms.right.hand, geo.limbWidth * 0.9, bodyColor, ringColor, 0.9, flashMix);
       if (figure.weapon !== 'bow') this._drawWeapon(c, geo, ringColor, side);
       c.restore();
@@ -523,6 +525,14 @@ export function createCombatStage(doc, options = {}) {
       c.lineWidth = geo.torsoWidth;
       c.strokeStyle = flashMix > 0 ? rgba('#fff4e6', 0.4 + 0.6 * flashMix) : fill;
       c.stroke();
+      if (geo.armor) {
+        c.lineWidth = geo.torsoWidth * 0.55;
+        c.strokeStyle = 'rgba(184, 191, 199, 0.55)';
+        c.beginPath();
+        c.moveTo(geo.hip.x + (geo.shoulder.x - geo.hip.x) * 0.15, geo.hip.y + (geo.shoulder.y - geo.hip.y) * 0.15);
+        c.lineTo(geo.hip.x + (geo.shoulder.x - geo.hip.x) * 0.92, geo.hip.y + (geo.shoulder.y - geo.hip.y) * 0.92);
+        c.stroke();
+      }
       // Chest highlight so the torso reads as a volume, not a line.
       c.lineWidth = Math.max(1, geo.torsoWidth * 0.25);
       c.strokeStyle = 'rgba(255, 255, 255, 0.1)';
@@ -536,69 +546,192 @@ export function createCombatStage(doc, options = {}) {
 
     _drawWeapon(c, geo, ringColor, side) {
       const w = geo.weapon;
-      const u = geo.unit;
+      if (w.kind === 'bow') {
+        this._drawBow(c, geo, w);
+        return;
+      }
+      this._drawHeldWeapon(c, geo, w.kind, w.hand, w.dx, w.dy, ringColor, geo.twoHanded ? 1.2 : 1);
+      void side;
+    },
+
+    _drawOffHand(c, geo, ringColor) {
+      const w = geo.weapon;
+      if (geo.shield) this._drawShieldArm(c, geo, ringColor);
+      else if (w.offKind && w.offKind !== 'bow') {
+        this._drawHeldWeapon(c, geo, w.offKind, w.offHand, w.offDx, w.offDy, ringColor, 0.85);
+      }
+    },
+
+    // One-handed weapon shapes, all drawn from the hand along (dx, dy).
+    _drawHeldWeapon(c, geo, kind, hand, dx, dy, ringColor, size) {
+      const u = geo.unit * size;
+      const tip = (length) => ({ x: hand.x + dx * u * length, y: hand.y + dy * u * length });
+      const across = (point, length) => ({ x: point.x - dy * u * length, y: point.y + dx * u * length });
       c.save();
       c.lineCap = 'round';
-      if (w.kind === 'blade') {
-        c.lineWidth = Math.max(2, u * 0.09);
+      c.lineJoin = 'round';
+      if (kind === 'blade' || kind === 'knife') {
+        const length = kind === 'knife' ? 0.55 : 1.15;
+        c.lineWidth = Math.max(2, u * (kind === 'knife' ? 0.07 : 0.09));
         c.strokeStyle = '#d9dee3';
         c.shadowColor = 'rgba(255, 255, 255, 0.35)';
         c.shadowBlur = u * 0.15;
         c.beginPath();
-        c.moveTo(w.hand.x, w.hand.y);
-        c.lineTo(w.hand.x + w.dx * u * 1.15, w.hand.y + w.dy * u * 1.15);
+        c.moveTo(hand.x, hand.y);
+        const end = tip(length);
+        c.lineTo(end.x, end.y);
         c.stroke();
         c.shadowBlur = 0;
         c.lineWidth = Math.max(2, u * 0.07);
         c.strokeStyle = '#8a6a3c';
+        const guardA = across(hand, 0.18);
+        const guardB = across(hand, -0.18);
         c.beginPath();
-        c.moveTo(w.hand.x - w.dy * u * 0.18, w.hand.y + w.dx * u * 0.18);
-        c.lineTo(w.hand.x + w.dy * u * 0.18, w.hand.y - w.dx * u * 0.18);
+        c.moveTo(guardA.x, guardA.y);
+        c.lineTo(guardB.x, guardB.y);
         c.stroke();
-      } else if (w.kind === 'staff') {
+      } else if (kind === 'axe' || kind === 'blunt') {
         c.lineWidth = Math.max(2, u * 0.08);
         c.strokeStyle = '#8a6a3c';
         c.beginPath();
-        c.moveTo(w.hand.x - w.dx * u * 0.7, w.hand.y - w.dy * u * 0.7);
-        c.lineTo(w.hand.x + w.dx * u * 1.0, w.hand.y + w.dy * u * 1.0);
+        c.moveTo(hand.x, hand.y);
+        const end = tip(kind === 'axe' ? 0.95 : 0.85);
+        c.lineTo(end.x, end.y);
+        c.stroke();
+        c.fillStyle = '#c9ced4';
+        c.strokeStyle = '#eef2f5';
+        c.lineWidth = 1;
+        if (kind === 'axe') {
+          const neck = tip(0.72);
+          const edgeA = across(tip(0.98), 0.34);
+          const edgeB = across(tip(0.5), 0.3);
+          c.beginPath();
+          c.moveTo(neck.x, neck.y);
+          c.lineTo(edgeA.x, edgeA.y);
+          c.lineTo(edgeB.x, edgeB.y);
+          c.closePath();
+          c.fill();
+          c.stroke();
+        } else {
+          const head = tip(0.85);
+          c.beginPath();
+          c.arc(head.x, head.y, u * 0.17, 0, Math.PI * 2);
+          c.fill();
+          c.stroke();
+        }
+      } else if (kind === 'polearm') {
+        c.lineWidth = Math.max(2, u * 0.07);
+        c.strokeStyle = '#8a6a3c';
+        const butt = tip(-0.7);
+        const neck = tip(1.35);
+        c.beginPath();
+        c.moveTo(butt.x, butt.y);
+        c.lineTo(neck.x, neck.y);
+        c.stroke();
+        c.fillStyle = '#d9dee3';
+        const point = tip(1.75);
+        const barbA = across(neck, 0.12);
+        const barbB = across(neck, -0.12);
+        c.beginPath();
+        c.moveTo(point.x, point.y);
+        c.lineTo(barbA.x, barbA.y);
+        c.lineTo(barbB.x, barbB.y);
+        c.closePath();
+        c.fill();
+      } else if (kind === 'staff') {
+        c.lineWidth = Math.max(2, u * 0.08);
+        c.strokeStyle = '#8a6a3c';
+        const butt = tip(-0.7);
+        const top = tip(1.0);
+        c.beginPath();
+        c.moveTo(butt.x, butt.y);
+        c.lineTo(top.x, top.y);
         c.stroke();
         c.fillStyle = rgba(ringColor, 0.95);
         c.shadowColor = rgba(ringColor, 0.9);
         c.shadowBlur = u * 0.35;
         c.beginPath();
-        c.arc(w.hand.x + w.dx * u * 1.0, w.hand.y + w.dy * u * 1.0, u * 0.13, 0, Math.PI * 2);
+        c.arc(top.x, top.y, u * 0.13, 0, Math.PI * 2);
         c.fill();
-      } else if (w.kind === 'bow') {
-        const cx = w.offHand.x;
-        const cy = w.offHand.y;
-        const r = u * 0.75;
-        c.lineWidth = Math.max(2, u * 0.08);
-        c.strokeStyle = '#a07a45';
-        c.beginPath();
-        c.arc(cx, cy, r, -Math.PI / 2 + (geo.facing > 0 ? 0 : Math.PI), Math.PI / 2 + (geo.facing > 0 ? 0 : Math.PI), geo.facing < 0);
-        c.stroke();
-        c.lineWidth = 1;
-        c.strokeStyle = 'rgba(230, 230, 230, 0.7)';
-        c.beginPath();
-        c.moveTo(cx, cy - r);
-        c.lineTo(w.hand.x, w.hand.y);
-        c.lineTo(cx, cy + r);
-        c.stroke();
       } else {
+        // Claws or bare hands.
         c.lineWidth = Math.max(1.5, u * 0.05);
         c.strokeStyle = '#e8e0d0';
-        for (const hand of [w.hand, w.offHand]) {
-          for (let i = -1; i <= 1; i++) {
-            const angle = Math.atan2(w.dy, w.dx) + i * 0.32;
-            c.beginPath();
-            c.moveTo(hand.x, hand.y);
-            c.lineTo(hand.x + Math.cos(angle) * u * 0.32, hand.y + Math.sin(angle) * u * 0.32);
-            c.stroke();
-          }
+        for (let i = -1; i <= 1; i++) {
+          const angle = Math.atan2(dy, dx) + i * 0.32;
+          c.beginPath();
+          c.moveTo(hand.x, hand.y);
+          c.lineTo(hand.x + Math.cos(angle) * u * 0.32, hand.y + Math.sin(angle) * u * 0.32);
+          c.stroke();
         }
       }
       c.restore();
-      void side;
+    },
+
+    _drawBow(c, geo, w) {
+      const u = geo.unit;
+      const cx = w.offHand.x;
+      const cy = w.offHand.y;
+      const r = u * 0.75;
+      c.save();
+      c.lineCap = 'round';
+      c.lineWidth = Math.max(2, u * 0.08);
+      c.strokeStyle = '#a07a45';
+      c.beginPath();
+      c.arc(cx, cy, r, -Math.PI / 2 + (geo.facing > 0 ? 0 : Math.PI), Math.PI / 2 + (geo.facing > 0 ? 0 : Math.PI), geo.facing < 0);
+      c.stroke();
+      c.lineWidth = 1;
+      c.strokeStyle = 'rgba(230, 230, 230, 0.7)';
+      c.beginPath();
+      c.moveTo(cx, cy - r);
+      c.lineTo(w.hand.x, w.hand.y);
+      c.lineTo(cx, cy + r);
+      c.stroke();
+      c.restore();
+    },
+
+    // Shield strapped to the left forearm, following its angle.
+    _drawShieldArm(c, geo, ringColor) {
+      const u = geo.unit;
+      const arm = geo.arms.left;
+      const angle = Math.atan2(arm.hand.y - arm.elbow.y, arm.hand.x - arm.elbow.x);
+      const cx = (arm.hand.x + arm.elbow.x) / 2;
+      const cy = (arm.hand.y + arm.elbow.y) / 2;
+      c.save();
+      c.translate(cx, cy);
+      c.rotate(angle);
+      c.fillStyle = '#2a2f36';
+      c.strokeStyle = rgba(ringColor, 0.9);
+      c.lineWidth = Math.max(2, u * 0.07);
+      c.beginPath();
+      c.ellipse(0, 0, u * 0.5, u * 0.34, 0, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+      c.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      c.beginPath();
+      c.arc(0, 0, u * 0.12, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+    },
+
+    // Helmet cap over the portrait disc.
+    _drawHelmet(c, head, facing) {
+      const r = head.r;
+      c.save();
+      c.lineCap = 'round';
+      c.lineWidth = Math.max(3, r * 0.22);
+      c.strokeStyle = '#b8bfc7';
+      c.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      c.shadowBlur = r * 0.2;
+      c.beginPath();
+      c.arc(head.x, head.y, r * 1.02, Math.PI * 1.12, Math.PI * 1.88);
+      c.stroke();
+      c.lineWidth = Math.max(2, r * 0.1);
+      c.beginPath();
+      c.moveTo(head.x + facing * r * 0.05, head.y - r * 0.95);
+      c.lineTo(head.x + facing * r * 0.05, head.y - r * 0.35);
+      c.stroke();
+      c.restore();
     },
 
     _drawHead(c, head, side, combatant, ringColor, isActor, flashMix) {

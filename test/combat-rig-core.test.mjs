@@ -86,3 +86,47 @@ test('geometry stands the figure on the ground line, faces the right way, and st
   assert.ok(enemyStrike.arms.right.hand.x < enemyStrike.hip.x, 'the enemy strikes toward the left');
   assert.ok(enemyStrike.shoulder.x < enemyStrike.hip.x, 'a beast leans toward its prey');
 });
+
+test('equipment outranks guild for the weapon and adds shield, helmet, and armor', () => {
+  const armed = resolveFigure({
+    guild: 'Mage',
+    equipment: {
+      mainHand: { name: 'a great axe', kind: 'axe' },
+      offHand: null,
+      shield: true,
+      helmet: true,
+      bodyArmor: true,
+      twoHanded: false,
+    },
+  }, 'player');
+  assert.equal(armed.weapon, 'axe');
+  assert.equal(armed.offKind, '');
+  assert.equal(armed.shield, true);
+  assert.equal(armed.helmet, true);
+  assert.equal(armed.armor, true);
+
+  const bare = resolveFigure({ guild: 'Fighter', equipment: { mainHand: null, offHand: null, shield: false, helmet: false, bodyArmor: false, twoHanded: false } }, 'player');
+  assert.equal(bare.weapon, 'claws', 'an inventory with nothing wielded means bare hands');
+
+  const unknown = resolveFigure({ guild: 'Ranger', equipment: { mainHand: { name: 'Whisper', kind: '' }, offHand: { name: 'a dirk', kind: 'knife' }, shield: false, helmet: false, bodyArmor: false, twoHanded: false } }, 'player');
+  assert.equal(unknown.weapon, 'bow', 'an unrecognized main-hand name keeps the guild weapon');
+  assert.equal(unknown.offKind, 'knife');
+
+  const noInventory = resolveFigure({ guild: 'Ranger', equipment: null }, 'player');
+  assert.equal(noInventory.weapon, 'bow');
+
+  const beast = resolveFigure({ isNpc: true, equipment: { mainHand: { name: 'a sword', kind: 'blade' } } }, 'target');
+  assert.equal(beast.weapon, 'claws', 'beasts ignore equipment');
+
+  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.05, 'axe').to, 'raise');
+  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.15, 'blunt').to, 'chop');
+  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.15, 'polearm').to, 'thrust');
+  for (const weapon of WEAPONS) assert.ok(STRIKE_POSE_BY_WEAPON[weapon] in POSES, weapon + ' has a strike pose');
+
+  const geo = figureGeometry(armed, resolvePose(null, 0, { reducedMotion: true }), 100, 300, 40);
+  assert.equal(geo.shield, true);
+  assert.equal(geo.helmet, true);
+  const plain = figureGeometry(resolveFigure({}, 'player'), resolvePose(null, 0, { reducedMotion: true }), 100, 300, 40);
+  assert.ok(geo.torsoWidth > plain.torsoWidth, 'armor thickens the torso');
+  assert.equal(typeof geo.weapon.offDx, 'number');
+});

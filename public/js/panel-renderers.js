@@ -928,6 +928,7 @@ function renderCombatVisual(bodyEl, data) {
     vitals: data.vitals,
     avatar: data.avatar,
     status: data.status,
+    inventory: data.inventory,
   });
   const event = view.event;
   const classes = combatEventClasses(view, event);

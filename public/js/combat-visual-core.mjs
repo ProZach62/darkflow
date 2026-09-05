@@ -1,4 +1,5 @@
 import { bundledPortraitFor } from './image-fallbacks.js';
+import { equipmentProfile } from './combat-equipment-core.mjs';
 
 import { isNpcEnemy } from './image-fallbacks.js';
 
@@ -339,6 +340,7 @@ export function buildCombatView(current, sources = {}) {
   const vitals = sources.vitals && typeof sources.vitals === 'object' ? sources.vitals : {};
   const avatar = sources.avatar && typeof sources.avatar === 'object' ? sources.avatar : {};
   const status = sources.status && typeof sources.status === 'object' ? sources.status : {};
+  const inventory = Array.isArray(sources.inventory) ? sources.inventory : null;
   const enemyName = activeEnemyName(enemy);
   const selfId = selfActor ? selfActor.id : 'self';
   const latestEvent = model.currentEvent
@@ -406,6 +408,9 @@ export function buildCombatView(current, sources = {}) {
       // Char.Status describes the recipient only. An observed fight never
       // borrows it for somebody else's token.
       ...(observerView ? emptyDescriptor() : playerDescriptor(status)),
+      // Wielded and worn items from Char.Items, recipient-only for the
+      // same reason as the descriptor above.
+      equipment: observerView ? null : equipmentProfile(inventory),
     },
     target: {
       id: targetId,

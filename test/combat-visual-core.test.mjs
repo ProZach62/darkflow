@@ -464,3 +464,28 @@ test('observed combat never borrows the recipient status for the staged fighter'
   assert.equal(view.player.descriptor, '');
   assert.equal(view.player.fallbackImage, '');
 });
+
+test('inventory shapes the player equipment and observers never inherit it', () => {
+  const model = reduceCombatState(createCombatVisualState(), activeState());
+  const items = [
+    { id: 's', name: 'a steel sword (main weapon)', attrib: 'l' },
+    { id: 'b', name: 'a buckler (used as shield)', attrib: 'w' },
+  ];
+  const view = buildCombatView(model, { inventory: items });
+  assert.equal(view.player.equipment.mainHand.kind, 'blade');
+  assert.equal(view.player.equipment.shield, true);
+  assert.equal(view.target.equipment, undefined);
+
+  const none = buildCombatView(model, {});
+  assert.equal(none.player.equipment, null, 'no inventory received yet');
+
+  const observed = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'ally-1',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'ally-1', name: 'Bryn', role: 'ally' },
+      { id: 'enemy-1', name: 'an ash drake', role: 'target' },
+    ],
+  }));
+  assert.equal(buildCombatView(observed, { inventory: items }).player.equipment, null);
+});

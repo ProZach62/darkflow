@@ -340,3 +340,30 @@ test('status descriptor shows under the player name and its portrait loads befor
   assert.ok(createdImages.some((img) => img.src === '/assets/avatar-ghost.svg'),
     'ghost placeholder requested after the bundled portrait fails');
 });
+
+test('inventory equipment reaches the stage figure', () => {
+  const body = bodyElement();
+  panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: combatModel({ encounter_id: 'encounter-gear' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+    status: { race: 'Northman', class: 'Mage', gender: 'Female' },
+    inventory: [
+      { id: 's1', name: 'a steel sword (main weapon)', attrib: 'l' },
+      { id: 'b1', name: 'a round shield (used as shield)', attrib: 'w' },
+      { id: 'h1', name: 'an iron helm (worn on head)', attrib: 'w' },
+    ],
+  });
+  const stage = body._combatStageHost.stage;
+  const equipment = stage._view.player.equipment;
+  assert.equal(equipment.mainHand.kind, 'blade', 'the wielded sword outranks the mage guild staff');
+  assert.equal(equipment.shield, true);
+  assert.equal(equipment.helmet, true);
+  const canvas = findCanvas(body);
+  canvas.drawLog.length = 0;
+  runFrame(4000);
+  // Only the strapped shield rotates the context; ground shadows draw ellipses too.
+  assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield drawn on the left forearm');
+});
