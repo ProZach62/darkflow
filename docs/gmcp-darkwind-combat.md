@@ -180,13 +180,21 @@ badges and summaries.
 ## Canvas Stage
 
 When the browser provides a 2D canvas, the Combat pane draws its stage on a
-canvas: a backdrop chosen from the room's canonical terrain tile, two token
-discs holding the player and target portraits, and per-event effects (lunge,
+canvas: a backdrop chosen from the room's canonical terrain tile, two
+procedural fighter figures whose heads are the player and target portraits,
+and per-event effects (lunge,
 slash arcs and burst for `hit`/`critical`, a whiff arc for `miss`, a sidestep
 with afterimage for `dodge`, and a shield bubble for `absorb`). Damage numbers
 and result badges are drawn on the canvas; names, health bars, condition text,
 the current exchange, threats, history, and the live region stay in the DOM so
 the accessibility contract above is unchanged.
+
+The figures are drawn from a pose rig rather than image assets. The player's
+guild picks the weapon (blade, staff, bow, or unarmed claws), race scales the
+body, and NPC targets use a hunched beast form. Each event blends the actor
+through windup and strike poses and the victim through recoil, dodge, or guard
+poses; bows and staves add a projectile between the figures. Pose names are
+the seam for future sprite sheets.
 
 The stage plays each accepted event once, keyed by `seq` within the epoch and
 encounter, and ignores repeated publishes of the same beat. Portraits come from
