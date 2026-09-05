@@ -142,7 +142,7 @@ test('sheet keys go from character to race to kind, and only for the recipient',
 
 test('a race sheet takes over from the kind sheet once it is ready, and cloak overrides parse', async () => {
   class FakeImage {
-    set src(value) { this._src = value; setTimeout(() => { if (this.onload) this.onload(); }, this._src.includes('scro') ? 4 : 0); }
+    set src(value) { this._src = value; setTimeout(() => { if (this.onload) this.onload(); }, this._src.includes('scro') ? 40 : 0); }
     get src() { return this._src; }
   }
   const fetchImpl = async (url) => {
@@ -154,9 +154,9 @@ test('a race sheet takes over from the kind sheet once it is ready, and cloak ov
   const library = createSpriteLibrary({ fetch: fetchImpl, Image: FakeImage });
   const keys = ['characters/grash', 'male-scro', 'humanoid'];
   assert.equal(library.pick(keys), null);
-  await new Promise((resolve) => setTimeout(resolve, 2));
+  await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(library.pick(keys).key, 'humanoid', 'kind sheet is ready first');
-  await new Promise((resolve) => setTimeout(resolve, 8));
+  await new Promise((resolve) => setTimeout(resolve, 60));
   const picked = library.pick(keys);
   assert.equal(picked.key, 'male-scro', 'the more specific sheet wins once loaded');
   assert.equal(picked.sheet.cloak, '#4d1414');

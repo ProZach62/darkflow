@@ -85,6 +85,10 @@ const WEAPON_BY_GUILD = Object.freeze({
   dragon: 'claws',
 });
 
+// Guilds whose staff is a focus: they cast with it and the stage draws an
+// orb and a bolt. Anyone else holding a staff swings it.
+const CASTER_GUILDS = new Set(['mage', 'acolyte', 'druid', 'artificer', 'psionicist']);
+
 const SCALE_BY_RACE = Object.freeze({
   pixie: 0.72,
   faerie: 0.76,
@@ -148,9 +152,18 @@ export function resolveFigure(combatant = {}, side = 'player') {
     helmet: !!(equipment && equipment.helmet),
     armor: !!(equipment && equipment.bodyArmor),
     twoHanded: !!(equipment && equipment.twoHanded),
+    caster: !isBeast && CASTER_GUILDS.has(guild),
     scale: isBeast ? 1.08 : (SCALE_BY_RACE[race] || 1),
     facing: side === 'player' ? 1 : -1,
   };
+}
+
+// The weapon kind that drives poses. A staff in a non-caster's hands is
+// swung like a blade rather than cast with.
+export function poseWeaponFor(figure) {
+  if (!figure) return 'blade';
+  if (figure.weapon === 'staff' && !figure.caster) return 'blade';
+  return figure.weapon || 'blade';
 }
 
 // Joint parameters. Shoulder angles measure from straight down, positive
@@ -179,19 +192,23 @@ function pose(overrides) {
 
 export const POSES = Object.freeze({
   idle: REST,
-  windup: pose({ lean: -0.2, rShoulder: -1.6, rElbow: -1.1, lShoulder: 0.55, lElbow: -0.6, weapon: -0.4, rearFootX: -0.08, frontFootX: -0.05 }),
-  strike: pose({ lean: 0.42, hop: 0.02, rShoulder: 1.75, rElbow: 0.1, lShoulder: -0.65, lElbow: -0.3, weapon: 0.55, frontFootX: 0.55, frontFootY: 0.02 }),
+  // Arm raised up and back with the blade above the head; the blend to
+  // strike passes through straight up (pi), so the swing comes over the top.
+  windup: pose({ lean: -0.2, rShoulder: 3.4, rElbow: -0.5, lShoulder: 0.55, lElbow: -0.6, weapon: 0.9, rearFootX: -0.08, frontFootX: -0.05 }),
+  strike: pose({ lean: 0.42, hop: 0.02, rShoulder: 1.2, rElbow: 0.15, lShoulder: -0.65, lElbow: -0.3, weapon: -0.6, frontFootX: 0.55, frontFootY: 0.02 }),
   thrust: pose({ lean: 0.34, rShoulder: 1.58, rElbow: 0.02, lShoulder: -0.75, weapon: -0.1, frontFootX: 0.62 }),
-  cast: pose({ lean: 0.08, rShoulder: 1.3, rElbow: 0.32, lShoulder: 1.1, lElbow: 0.22, weapon: -1.2, frontFootX: 0.2 }),
+  // The staff's head is drawn opposite the grip direction, so this points
+  // the grip back and down and the head forward at the target.
+  cast: pose({ lean: 0.08, rShoulder: 1.3, rElbow: 0.32, lShoulder: 1.1, lElbow: 0.22, weapon: -3.04, frontFootX: 0.2 }),
   draw: pose({ lean: 0.05, rShoulder: 1.0, rElbow: -2.3, lShoulder: 1.55, lElbow: 0.05, weapon: 0, frontFootX: 0.15 }),
   loose: pose({ lean: 0.12, rShoulder: 0.6, rElbow: -0.6, lShoulder: 1.55, lElbow: 0.05, weapon: 0, frontFootX: 0.15 }),
   maul: pose({ lean: 0.52, hop: 0.06, rShoulder: 1.4, rElbow: 0.5, lShoulder: 1.2, lElbow: 0.45, weapon: 0.4, frontFootX: 0.5, frontFootY: 0.04 }),
-  whiff: pose({ lean: 0.6, hop: 0.02, rShoulder: 1.95, rElbow: 0.25, lShoulder: -0.85, weapon: 0.7, frontFootX: 0.7 }),
+  whiff: pose({ lean: 0.6, hop: 0.02, rShoulder: 0.9, rElbow: 0.25, lShoulder: -0.85, weapon: -0.8, frontFootX: 0.7 }),
   recoil: pose({ lean: -0.52, hop: 0.06, headTilt: -0.35, rShoulder: 0.95, rElbow: -1.7, lShoulder: 0.8, lElbow: -1.6, weapon: 0.9, frontFootX: -0.12, rearFootX: -0.35, rearFootY: 0.06 }),
   dodge: pose({ lean: -0.42, hop: 0.3, headTilt: -0.15, rShoulder: 0.6, rElbow: -1.2, lShoulder: 0.4, lElbow: -1.0, weapon: 0.6, frontFootX: 0.05, frontFootY: 0.36, rearFootX: -0.05, rearFootY: 0.4 }),
   guard: pose({ lean: -0.12, rShoulder: 1.15, rElbow: -2.05, lShoulder: 1.05, lElbow: -2.0, weapon: 1.3, frontFootX: 0.08 }),
-  raise: pose({ lean: -0.24, rShoulder: -2.8, rElbow: -0.35, lShoulder: 0.4, lElbow: -0.5, weapon: 0.2, rearFootX: -0.08 }),
-  chop: pose({ lean: 0.5, hop: 0.04, rShoulder: 1.2, rElbow: 0.3, lShoulder: -0.5, lElbow: -0.3, weapon: 0.95, frontFootX: 0.55 }),
+  raise: pose({ lean: -0.24, rShoulder: 3.5, rElbow: -0.35, lShoulder: 0.4, lElbow: -0.5, weapon: 0.2, rearFootX: -0.08 }),
+  chop: pose({ lean: 0.5, hop: 0.04, rShoulder: 1.2, rElbow: 0.3, lShoulder: -0.5, lElbow: -0.3, weapon: -0.7, frontFootX: 0.55 }),
 });
 
 export const STRIKE_POSE_BY_WEAPON = Object.freeze({
@@ -455,6 +472,7 @@ export function figureGeometry(figure, joints, x, groundY, unit, options = {}) {
     helmet: !!figure.helmet,
     armor: !!figure.armor,
     twoHanded: !!figure.twoHanded,
+    caster: !!figure.caster,
     widths: {
       upperArm: p.upperArmWidth * u,
       forearm: p.forearmWidth * u,

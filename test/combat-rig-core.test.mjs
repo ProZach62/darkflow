@@ -10,6 +10,7 @@ const {
   figureHeight,
   posePhase,
   resolveFigure,
+  poseWeaponFor,
   resolvePose,
   solveLeg,
 } = await import('../public/js/combat-rig-core.mjs');
@@ -175,4 +176,40 @@ test('geometry stands the figure on the ground line, faces the right way, and ke
   assert.ok(enemyStrike.shoulder.x < enemyStrike.hip.x, 'a beast leans toward its prey');
   assert.equal(enemyStrike.tail, true);
   assert.equal(geo.cloak, true);
+});
+
+test('blade and axe swings come over the top, and strikes land pointing forward and down', () => {
+  const figure = resolveFigure({ guild: 'Fighter' }, 'player');
+  const at = (phase) => figureGeometry(figure, resolvePose(phase, 0, still), 100, 300, 40);
+  const windup = at({ from: 'windup', to: 'windup', t: 1 });
+  assert.ok(windup.arms.right.hand.y < windup.shoulder.y, 'windup carries the hand above the shoulder');
+  assert.ok(windup.weapon.dy < 0, 'blade points upward in the windup');
+  const mid = at({ from: 'windup', to: 'strike', t: 0.5, ease: 'settle' });
+  assert.ok(mid.arms.right.hand.y < windup.shoulder.y, 'mid-swing the hand is still overhead, not below the hip');
+  const strike = at({ from: 'strike', to: 'strike', t: 1 });
+  assert.ok(strike.weapon.dx > 0 && strike.weapon.dy > 0, 'the strike lands with the blade forward and down');
+  const raise = at({ from: 'raise', to: 'raise', t: 1 });
+  assert.ok(raise.arms.right.hand.y < raise.head.y, 'an axe is raised above the head');
+  const chop = at({ from: 'chop', to: 'chop', t: 1 });
+  assert.ok(chop.weapon.dx > 0 && chop.weapon.dy > 0, 'the chop lands forward and down');
+  const whiff = at({ from: 'whiff', to: 'whiff', t: 1 });
+  assert.ok(whiff.weapon.dy > 0, 'a whiff overextends downward');
+});
+
+test('a staff casts only for caster guilds; anyone else swings it', () => {
+  const mage = resolveFigure({ guild: 'Mage', equipment: { mainHand: { name: 'an oak staff', kind: 'staff' }, offHand: null, shield: false, helmet: false, bodyArmor: false, twoHanded: true } }, 'player');
+  assert.equal(mage.caster, true);
+  assert.equal(poseWeaponFor(mage), 'staff');
+  const monk = resolveFigure({ guild: 'Monk', equipment: { mainHand: { name: 'a bo staff', kind: 'staff' }, offHand: null, shield: false, helmet: false, bodyArmor: false, twoHanded: true } }, 'player');
+  assert.equal(monk.caster, false);
+  assert.equal(monk.weapon, 'staff');
+  assert.equal(poseWeaponFor(monk), 'blade', 'a monk swings the staff with the blade poses');
+  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.145, poseWeaponFor(monk)).to, 'strike');
+  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.145, poseWeaponFor(mage)).to, 'cast');
+  const idle = figureGeometry(mage, resolvePose(null, 0, still), 100, 300, 40);
+  assert.ok(idle.weapon.dy > 0, 'at rest the grip points down, so the staff head (drawn opposite) is up');
+  const cast = figureGeometry(mage, resolvePose({ from: 'cast', to: 'cast', t: 1 }, 0, still), 100, 300, 40);
+  assert.ok(-cast.weapon.dx > 0, 'in a cast the staff head (opposite the grip) points at the target');
+  assert.equal(figureGeometry(monk, resolvePose(null, 0, still), 100, 300, 40).caster, false);
+  assert.equal(resolveFigure({ isNpc: true, guild: 'Mage' }, 'target').caster, false, 'beasts never cast');
 });

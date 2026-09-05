@@ -21,6 +21,7 @@ import {
   MELEE_WEAPONS,
   figureGeometry,
   posePhase,
+  poseWeaponFor,
   resolveFigure,
   resolvePose,
 } from './combat-rig-core.mjs';
@@ -510,12 +511,13 @@ export function createCombatStage(doc, options = {}) {
             : (action.impactSide === side ? 'impact' : '');
           if (!role) continue;
           if (role === 'actor' && sample.progress < 0.4) isActor = true;
-          const candidate = posePhase(role, action, sample.progress, figure.weapon);
+          const poseWeapon = poseWeaponFor(figure);
+          const candidate = posePhase(role, action, sample.progress, poseWeapon);
           if (candidate) phase = candidate;
           // Stretch on the strike snap, squash on the landed hit.
           if (role === 'actor' && candidate && candidate.ease === 'snap' && candidate.t < 1) {
             stretch = Math.max(stretch, 1 + 0.06 * (1 - candidate.t));
-            if (MELEE_WEAPONS.includes(figure.weapon)) smear = candidate;
+            if (MELEE_WEAPONS.includes(poseWeapon)) smear = candidate;
           }
           if (role === 'impact' && action.landed && sample.progress >= 0.16) {
             const since = (sample.progress - 0.16) / 0.12;
@@ -1095,10 +1097,12 @@ export function createCombatStage(doc, options = {}) {
         c.fill();
         c.stroke();
       } else if (kind === 'staff') {
+        // The head of the staff sits opposite the grip direction, so a hand
+        // holding it pointed down carries the head above the shoulder at rest.
         c.lineWidth = Math.max(3, u * 0.09);
         c.strokeStyle = '#7a5a34';
-        const butt = tip(-0.75);
-        const top = tip(1.0);
+        const butt = tip(0.75);
+        const top = tip(-1.0);
         c.beginPath();
         c.moveTo(butt.x, butt.y);
         c.lineTo(top.x, top.y);
@@ -1106,12 +1110,25 @@ export function createCombatStage(doc, options = {}) {
         c.lineWidth = 1.2;
         c.strokeStyle = outline;
         c.stroke();
-        c.fillStyle = rgba(ringColor, 0.95);
-        c.shadowColor = rgba(ringColor, 0.9);
-        c.shadowBlur = u * 0.35;
-        c.beginPath();
-        c.arc(top.x, top.y, u * 0.14, 0, Math.PI * 2);
-        c.fill();
+        if (geo.caster) {
+          c.fillStyle = rgba(ringColor, 0.95);
+          c.shadowColor = rgba(ringColor, 0.9);
+          c.shadowBlur = u * 0.35;
+          c.beginPath();
+          c.arc(top.x, top.y, u * 0.14, 0, Math.PI * 2);
+          c.fill();
+        } else {
+          // A fighting staff: iron-shod ends instead of an orb.
+          c.lineWidth = Math.max(2, u * 0.05);
+          c.strokeStyle = '#b3bcc4';
+          for (const end of [top, butt]) {
+            const inner = { x: end.x + (hand.x - end.x) * 0.12, y: end.y + (hand.y - end.y) * 0.12 };
+            c.beginPath();
+            c.moveTo(end.x, end.y);
+            c.lineTo(inner.x, inner.y);
+            c.stroke();
+          }
+        }
       } else {
         // Claws or bare hands.
         c.lineWidth = Math.max(1.5, u * 0.05);
@@ -1254,7 +1271,8 @@ export function createCombatStage(doc, options = {}) {
       const actorView = this._view && this._view[action.actorSide];
       if (!actorView) return;
       const figure = resolveFigure(actorView, action.actorSide);
-      if (figure.weapon !== 'bow' && figure.weapon !== 'staff') return;
+      const casts = figure.weapon === 'staff' && figure.caster;
+      if (figure.weapon !== 'bow' && !casts) return;
       const start = 0.11;
       const end = 0.17;
       if (sample.progress < start || sample.progress > end) return;
