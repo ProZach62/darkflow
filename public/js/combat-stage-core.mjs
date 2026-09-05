@@ -206,7 +206,9 @@ export function sampleAction(action, now, options = {}) {
 
   if (!reducedMotion) {
     const lunge = lungeCurve(progress / 0.36);
-    actor.x = direction * lunge * 1.35;
+    // The strike pose steps the front foot forward, so the body itself only
+    // needs a short lunge to close distance.
+    actor.x = direction * lunge * 0.7;
     actor.y = -lunge * 0.18;
     actor.scale = 1 + lunge * 0.04;
 
@@ -224,8 +226,8 @@ export function sampleAction(action, now, options = {}) {
       const t = clamp01((progress - contactAt * 0.6) / 0.5);
       const slip = Math.sin(t * Math.PI);
       // Slip far enough to read as a sidestep but stay inside a narrow pane.
-      victim.x = direction * slip * 0.55;
-      victim.y = -slip * 0.3;
+      victim.x = direction * slip * 0.32;
+      victim.y = -slip * 0.22;
       victim.alpha = 1 - slip * 0.45;
     } else if (action.result === 'absorb' && progress >= contactAt) {
       const t = clamp01((progress - contactAt) / 0.4);

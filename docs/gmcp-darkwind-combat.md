@@ -202,6 +202,16 @@ through windup and strike poses and the victim through recoil, dodge, or guard
 poses; bows and staves add a projectile between the figures. Pose names are
 the seam for future sprite sheets.
 
+Bodies are shaded shapes rather than strokes: tapered limbs with an outline
+and a shade band, a torso that is wider at the shoulders than the hips, boots,
+hands, a belt, a cloak on humanoids and a tail on beasts that lag the body by
+a spring. Legs are solved by inverse kinematics toward planted feet, so a
+lunge moves the body while the rear foot stays put. Strikes anticipate, snap,
+and hold; a landed blow freezes both figures for a beat (hit-stop), squashes
+the victim, stretches the striker, draws a smear behind a melee swing, and
+kicks dust at the victim's feet. Reduced motion removes all of it and leaves
+the figures at rest.
+
 The stage plays each accepted event once, keyed by `seq` within the epoch and
 encounter, and ignores repeated publishes of the same beat. Portraits come from
 `Darkwind.Char.Avatar` and `Char.Enemy`; a failed image falls back to the
