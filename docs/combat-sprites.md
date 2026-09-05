@@ -53,6 +53,7 @@ or race sheet must still declare `kind` as `humanoid` or `beast`.
 | `unit` | Image pixels per body unit at scale 1. The stage scales the frame by its own unit divided by this, so a sheet drawn at 64 px per unit and one drawn at 128 px per unit render the same size. A humanoid stands about 2.9 units tall; see the rig for proportions. |
 | `anchor` | Ground point in frame pixels: where the figure's hip meets the floor line. The stage places this point on the stage ground under the fighter. |
 | `facing` | Direction the art faces, `right` or `left`. The stage mirrors the frame for the other side. |
+| `pixelated` | Optional. `true` draws the sheet with image smoothing off, for pixel art. The assembler's `--pixel` sets it. |
 | `cloak` | Optional. `false` hides the stage's cloak overlay because the art has its own; a `#rrggbb` color recolors it. |
 | `rigAligned` | `true` only for sheets baked from the rig. The stage then positions overlays from rig geometry. Hand-drawn art sets `false` and supplies anchors per frame. |
 | `frames` | One entry per pose name. Unknown names are ignored; `idle` is required. |
@@ -135,4 +136,6 @@ background-removal node before assembly.
 name) into a new sheet at the requested cell size, scales the manifest's
 frame size, unit, ground anchor, frame origins, and per-frame anchors to
 match, and sets `rigAligned` to false. Run it with any Python that has
-Pillow, for example ComfyUI's bundled interpreter.
+Pillow, for example ComfyUI's bundled interpreter. For pixel art pass
+`--pixel` (nearest-neighbor resize and the `pixelated` manifest flag) and
+optionally `--colors N` to quantize each frame to a palette.

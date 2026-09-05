@@ -10,6 +10,12 @@ Typical use, after generating and background-removing the 14 cells:
         --sheet public/assets/sprites/male-scro.png \
         --cell 512
 
+For 16-bit style art add --pixel (nearest-neighbor resize, manifest marked
+pixelated so the client draws it unsmoothed) and optionally --colors 32 to
+reduce each frame to a palette:
+
+    python scripts/sprite-sheet-assemble.py ... --cell 128 --pixel --colors 32
+
 Frames are matched by pose name anywhere in the file name (01-idle.png,
 idle.png, idle_00001_.png all work). Each frame is resized to the cell size
 and placed at the cell the manifest already assigns to that pose, so the
@@ -42,6 +48,15 @@ def scale_point(point, factor):
     return out
 
 
+def quantize_keep_alpha(image, colors):
+    """Palette-reduce the RGB channels while keeping the alpha channel intact."""
+    alpha = image.getchannel("A")
+    rgb = image.convert("RGB").quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    out = rgb.convert("RGBA")
+    out.putalpha(alpha)
+    return out
+
+
 def find_frame(frames_dir, pose):
     pattern = re.compile(r"(^|[^a-z])" + re.escape(pose) + r"([^a-z]|$)", re.IGNORECASE)
     matches = sorted(p for p in frames_dir.iterdir() if p.suffix.lower() == ".png" and pattern.search(p.stem))
@@ -56,6 +71,8 @@ def main():
     parser.add_argument("--cell", type=int, default=512, help="cell size in pixels for the new sheet (default 512)")
     parser.add_argument("--manifest-out", help="write the scaled manifest here instead of overwriting")
     parser.add_argument("--keep-rig-aligned", action="store_true", help="do not flip rigAligned to false")
+    parser.add_argument("--pixel", action="store_true", help="pixel art: resize with nearest-neighbor and mark the manifest pixelated so the client draws it without smoothing")
+    parser.add_argument("--colors", type=int, default=0, help="with --pixel, quantize each frame to this many colors (alpha preserved)")
     args = parser.parse_args()
 
     frames_dir = Path(args.frames)
@@ -79,7 +96,10 @@ def main():
             continue
         image = Image.open(source).convert("RGBA")
         if image.size != (args.cell, args.cell):
-            image = image.resize((args.cell, args.cell), Image.LANCZOS)
+            resample = Image.NEAREST if args.pixel else Image.LANCZOS
+            image = image.resize((args.cell, args.cell), resample)
+        if args.pixel and args.colors > 0:
+            image = quantize_keep_alpha(image, args.colors)
         cell_x = int(manifest["frames"][pose]["x"] * factor)
         cell_y = int(manifest["frames"][pose]["y"] * factor)
         sheet.alpha_composite(image, (cell_x, cell_y))
@@ -98,6 +118,8 @@ def main():
     scaled["anchor"] = scale_point(manifest["anchor"], factor)
     if not args.keep_rig_aligned:
         scaled["rigAligned"] = False
+    if args.pixel:
+        scaled["pixelated"] = True
     scaled_frames = {}
     for pose, frame in manifest["frames"].items():
         if pose in missing:

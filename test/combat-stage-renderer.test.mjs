@@ -41,7 +41,10 @@ function makeContext(log) {
       }
       return undefined;
     },
-    set() { return true; },
+    set(target, prop, value) {
+      if (prop === 'imageSmoothingEnabled') log.push(['set:imageSmoothingEnabled', [value]]);
+      return true;
+    },
   });
 }
 
@@ -415,5 +418,41 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
   const spriteDraws = canvas.drawLog.filter(([name, args]) => name === 'drawImage' && args.length === 9);
   assert.ok(spriteDraws.length >= 1, 'sheet frame drawn with a source rectangle');
   assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield still drawn over the sprite');
+  fetchManifest = null;
+});
+
+test('a pixelated sheet is drawn with image smoothing off', async () => {
+  fetchManifest = {
+    version: 1,
+    kind: 'humanoid',
+    image: '/assets/sprites/humanoid.png',
+    frameWidth: 128,
+    frameHeight: 128,
+    unit: 32,
+    anchor: { x: 64, y: 116 },
+    facing: 'right',
+    pixelated: true,
+    frames: { idle: { x: 0, y: 0 } },
+  };
+  const body = bodyElement();
+  createdImages.length = 0;
+  panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: combatModel({ encounter_id: 'encounter-pixel' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+  });
+  const stage = body._combatStageHost.stage;
+  runFrame(6000);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const sheetImage = createdImages.find((img) => img.src === '/assets/sprites/humanoid.png');
+  sheetImage.finishLoading();
+  assert.equal(stage._sprites.get('humanoid').sheet.pixelated, true);
+  const canvas = findCanvas(body);
+  canvas.drawLog.length = 0;
+  runFrame(6100);
+  const smoothing = canvas.drawLog.filter(([name]) => name === 'set:imageSmoothingEnabled').map(([, args]) => args[0]);
+  assert.ok(smoothing.includes(false), 'smoothing turned off for the sheet draw');
   fetchManifest = null;
 });

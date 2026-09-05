@@ -593,6 +593,7 @@ export function createCombatStage(doc, options = {}) {
       const draw = (target) => {
         for (const entry of frames) {
           target.save();
+          target.imageSmoothingEnabled = !sheet.pixelated;
           target.globalAlpha *= entry.alpha;
           if (placement.mirrored) {
             target.translate(placement.x + placement.width, placement.y);

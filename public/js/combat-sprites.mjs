@@ -111,6 +111,9 @@ export function normalizeSpriteManifest(raw, kind) {
     anchor,
     facing: raw.facing === 'left' ? -1 : 1,
     rigAligned: raw.rigAligned !== false,
+    // Pixel-art sheets are drawn with image smoothing off so scaled pixels
+    // stay square instead of blurring.
+    pixelated: raw.pixelated === true,
     cloak,
     frames,
   };
