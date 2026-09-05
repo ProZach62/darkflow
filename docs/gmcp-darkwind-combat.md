@@ -212,6 +212,11 @@ the victim, stretches the striker, draws a smear behind a melee swing, and
 kicks dust at the victim's feet. Reduced motion removes all of it and leaves
 the figures at rest.
 
+When a sprite sheet is shipped for a figure kind (see
+[combat-sprites.md](combat-sprites.md)), it replaces the procedural body
+while weapons, shield, helmet, cloak, and the portrait head keep drawing on
+top. A missing or invalid sheet falls back to the rig.
+
 The stage plays each accepted event once, keyed by `seq` within the epoch and
 encounter, and ignores repeated publishes of the same beat. Portraits come from
 `Darkwind.Char.Avatar` and `Char.Enemy`; a failed image falls back to the

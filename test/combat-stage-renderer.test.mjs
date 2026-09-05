@@ -101,9 +101,14 @@ function makeElement(tag, doc) {
   return el;
 }
 
+let fetchManifest = null;
 const fakeWindow = {
   devicePixelRatio: 2,
   Image: FakeImage,
+  fetch: async (url) => {
+    if (fetchManifest && url.endsWith('humanoid.json')) return { ok: true, json: async () => fetchManifest };
+    return { ok: false, json: async () => null };
+  },
   performance: { now: () => 1000 },
   addEventListener() {},
   removeEventListener() {},
@@ -366,4 +371,49 @@ test('inventory equipment reaches the stage figure', () => {
   runFrame(4000);
   // Only the strapped shield rotates the context; ground shadows draw ellipses too.
   assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield drawn on the left forearm');
+});
+
+test('a humanoid sprite sheet replaces the body and overlays keep drawing', async () => {
+  fetchManifest = {
+    version: 1,
+    kind: 'humanoid',
+    image: '/assets/sprites/humanoid.png',
+    frameWidth: 256,
+    frameHeight: 256,
+    unit: 64,
+    anchor: { x: 128, y: 232 },
+    facing: 'right',
+    rigAligned: false,
+    frames: {
+      idle: { x: 0, y: 0, anchors: { head: { x: 128, y: 60, r: 20 }, hand: { x: 150, y: 150 }, offHand: { x: 100, y: 150 } } },
+      strike: { x: 256, y: 0, anchors: { head: { x: 140, y: 64, r: 20 }, hand: { x: 200, y: 120 } } },
+    },
+  };
+  const body = bodyElement();
+  createdImages.length = 0;
+  panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: combatModel({ encounter_id: 'encounter-sprite' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+    status: { race: 'Northman', class: 'Fighter', gender: 'Female' },
+    inventory: [{ id: 's1', name: 'a steel sword (main weapon)', attrib: 'l' }, { id: 'b1', name: 'a shield (used as shield)', attrib: 'w' }],
+  });
+  const stage = body._combatStageHost.stage;
+  // The sheet is requested the first time a figure draws, not at render.
+  runFrame(4990);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const sheetImage = createdImages.find((img) => img.src === '/assets/sprites/humanoid.png');
+  assert.ok(sheetImage, 'sheet image requested after the manifest loads');
+  sheetImage.finishLoading();
+  assert.equal(stage._sprites.status('humanoid'), 'ready');
+  assert.equal(stage._sprites.status('beast'), 'failed', 'no beast sheet means the beast keeps the rig body');
+  const canvas = findCanvas(body);
+  canvas.drawLog.length = 0;
+  runFrame(5000);
+  const spriteDraws = canvas.drawLog.filter(([name, args]) => name === 'drawImage' && args.length === 9);
+  assert.ok(spriteDraws.length >= 1, 'sheet frame drawn with a source rectangle');
+  assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield still drawn over the sprite');
+  fetchManifest = null;
 });

@@ -24,6 +24,12 @@ import {
   resolveFigure,
   resolvePose,
 } from './combat-rig-core.mjs';
+import {
+  anchorToStage,
+  createSpriteLibrary,
+  placeSpriteFrame,
+  selectSpriteFrames,
+} from './combat-sprites.mjs';
 
 const MAX_CONCURRENT_ACTIONS = 3;
 // Body unit for the procedural figures, as a fraction of the stage radius.
@@ -96,6 +102,8 @@ export function createCombatStage(doc, options = {}) {
     ? win.performance.now()
     : Date.now()));
   const ImageCtor = options.Image || (win && win.Image) || (typeof Image !== 'undefined' ? Image : null);
+  const fetchImpl = options.fetch
+    || (win && typeof win.fetch === 'function' ? win.fetch.bind(win) : null);
 
   const element = doc.createElement('div');
   element.className = 'combat-stage-canvas-wrap';
@@ -133,6 +141,8 @@ export function createCombatStage(doc, options = {}) {
     _visibilityHandler: null,
     _lastFrameAt: 0,
     _hitStop: null,
+    _sprites: null,
+    _tintCanvas: null,
     _secondaryState: null,
     _lightDir: 1,
     frames: 0,
@@ -527,25 +537,124 @@ export function createCombatStage(doc, options = {}) {
       c.save();
       c.globalAlpha = token.alpha;
       if (flashMix > 0) material.flash = flashMix;
-      // Far side first: rear leg, cloak or tail, far arm, then torso, near
-      // leg, head, near arm, and finally the weapon in the near hand.
-      this._drawLeg(c, geo, geo.legs.rear, material, 0.72);
-      if (geo.tail) this._drawTail(c, geo, material, secondary);
-      if (geo.cloak) this._drawCloak(c, geo, material, secondary);
-      this._drawArm(c, geo, geo.arms.left, material, 0.72);
+      // A shipped sprite sheet replaces the body; overlays stay procedural
+      // and attach to the sheet's anchors (or rig geometry when the sheet
+      // was baked from the rig).
+      const sprite = this._sprites ? this._sprites.get(figure.kind) : null;
+      let head = geo.head;
+      if (sprite) {
+        const placed = this._drawSpriteBody(c, sprite, figure, phase, token, groundLine, unit, stretch, flashMix, secondary, geo, material);
+        if (placed) {
+          head = placed.head || geo.head;
+          if (placed.hand) geo.weapon.hand = placed.hand;
+          if (placed.offHand) { geo.weapon.offHand = placed.offHand; geo.arms.left.hand = placed.offHand; }
+        }
+      } else {
+        // Far side first: rear leg, cloak or tail, far arm, then torso, near
+        // leg, head, near arm, and finally the weapon in the near hand.
+        this._drawLeg(c, geo, geo.legs.rear, material, 0.72);
+        if (geo.tail) this._drawTail(c, geo, material, secondary);
+        if (geo.cloak) this._drawCloak(c, geo, material, secondary);
+        this._drawArm(c, geo, geo.arms.left, material, 0.72);
+      }
       if (figure.weapon === 'bow') this._drawBow(c, geo, geo.weapon);
       else this._drawOffHand(c, geo, material);
-      this._drawTorso(c, geo, material);
-      this._drawLeg(c, geo, geo.legs.front, material, 1);
-      this._drawNeck(c, geo, material);
-      this._drawHead(c, geo.head, side, combatant, material.ring, isActor, flashMix);
-      if (geo.helmet) this._drawHelmet(c, geo.head, geo.facing);
-      this._drawArm(c, geo, geo.arms.right, material, 1);
+      if (!sprite) {
+        this._drawTorso(c, geo, material);
+        this._drawLeg(c, geo, geo.legs.front, material, 1);
+        this._drawNeck(c, geo, material);
+      }
+      this._drawHead(c, head, side, combatant, material.ring, isActor, flashMix);
+      if (geo.helmet) this._drawHelmet(c, head, geo.facing);
+      if (!sprite) this._drawArm(c, geo, geo.arms.right, material, 1);
       if (figure.weapon !== 'bow') {
         if (smear) this._drawSmear(c, figure, joints, phase, token, groundLine, unit, material, smear);
         this._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, material.ring, geo.twoHanded ? 1.2 : 1, 1);
       }
       c.restore();
+    },
+
+    // Draws the sheet frames for the current phase (crossfading a blend),
+    // mirrored for left-facing figures, stretched about the ground line, and
+    // tinted through an offscreen canvas on a hit flash. Returns the stage
+    // positions of the overlay anchors.
+    _drawSpriteBody(c, sprite, figure, phase, token, groundLine, unit, stretch, flashMix, secondary, geo, material) {
+      const sheet = sprite.sheet;
+      const eased = phase ? (phase.ease === 'snap'
+        ? 1 - Math.pow(1 - Math.max(0, Math.min(1, phase.t)), 3)
+        : (phase.t < 0.5 ? 2 * phase.t * phase.t : 1 - Math.pow(-2 * phase.t + 2, 2) / 2)) : 0;
+      const frames = selectSpriteFrames(sheet, phase, eased);
+      const placement = placeSpriteFrame(sheet, unit, figure.scale, token.x, groundLine, figure.facing, stretch);
+      const draw = (target) => {
+        for (const entry of frames) {
+          target.save();
+          target.globalAlpha *= entry.alpha;
+          if (placement.mirrored) {
+            target.translate(placement.x + placement.width, placement.y);
+            target.scale(-1, 1);
+            target.drawImage(sprite.image, entry.frame.x, entry.frame.y, sheet.frameWidth, sheet.frameHeight,
+              0, 0, placement.width, placement.height);
+          } else {
+            target.drawImage(sprite.image, entry.frame.x, entry.frame.y, sheet.frameWidth, sheet.frameHeight,
+              placement.x, placement.y, placement.width, placement.height);
+          }
+          target.restore();
+        }
+      };
+      if (geo.cloak && sheet.rigAligned) this._drawCloak(c, geo, material, secondary);
+      if (flashMix > 0 && this._tintCanvas !== false) {
+        const tint = this._tintSurface(Math.ceil(placement.width) + 4, Math.ceil(placement.height) + 4);
+        if (tint) {
+          const tc = tint.getContext('2d');
+          tc.setTransform(1, 0, 0, 1, 0, 0);
+          tc.clearRect(0, 0, tint.width, tint.height);
+          tc.save();
+          tc.translate(2 - placement.x, 2 - placement.y);
+          draw(tc);
+          tc.restore();
+          tc.globalCompositeOperation = 'source-atop';
+          tc.fillStyle = 'rgba(255, 240, 224, ' + (0.35 + 0.65 * flashMix) + ')';
+          tc.fillRect(0, 0, tint.width, tint.height);
+          tc.globalCompositeOperation = 'source-over';
+          c.drawImage(tint, placement.x - 2, placement.y - 2);
+        } else {
+          draw(c);
+        }
+      } else {
+        draw(c);
+      }
+      // Overlay anchors: the target frame's anchors when the art supplies
+      // them, otherwise the rig's own geometry (correct for baked sheets).
+      const primary = frames[frames.length - 1].frame;
+      const result = { head: null, hand: null, offHand: null };
+      if (!sheet.rigAligned) {
+        if (primary.anchors.head) result.head = anchorToStage(placement, primary.anchors.head);
+        if (primary.anchors.hand) result.hand = anchorToStage(placement, primary.anchors.hand);
+        if (primary.anchors.offHand) result.offHand = anchorToStage(placement, primary.anchors.offHand);
+      }
+      return result;
+    },
+
+    _tintSurface(width, height) {
+      if (this._tintCanvas === false) return null;
+      if (!this._tintCanvas) {
+        try {
+          const surface = doc.createElement('canvas');
+          if (!surface || typeof surface.getContext !== 'function' || !surface.getContext('2d')) {
+            this._tintCanvas = false;
+            return null;
+          }
+          this._tintCanvas = surface;
+        } catch (error) {
+          this._tintCanvas = false;
+          return null;
+        }
+      }
+      if (this._tintCanvas.width < width || this._tintCanvas.height < height) {
+        this._tintCanvas.width = Math.max(this._tintCanvas.width, width);
+        this._tintCanvas.height = Math.max(this._tintCanvas.height, height);
+      }
+      return this._tintCanvas;
     },
 
     // Palette per side and body kind. Cloth carries the team hue; skin,
@@ -1359,6 +1468,11 @@ export function createCombatStage(doc, options = {}) {
     },
   };
 
+  stage._sprites = options.sprites || createSpriteLibrary({
+    fetch: fetchImpl,
+    Image: ImageCtor,
+    onReady: () => { if (!stage.running) stage.start(); },
+  });
   stage._observe();
   return stage;
 }
