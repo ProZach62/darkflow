@@ -43,6 +43,7 @@ function makeContext(log) {
     },
     set(target, prop, value) {
       if (prop === 'imageSmoothingEnabled') log.push(['set:imageSmoothingEnabled', [value]]);
+      if (prop === 'strokeStyle') log.push(['set:strokeStyle', [value]]);
       return true;
     },
   });
@@ -454,5 +455,49 @@ test('a pixelated sheet is drawn with image smoothing off', async () => {
   runFrame(6100);
   const smoothing = canvas.drawLog.filter(([name]) => name === 'set:imageSmoothingEnabled').map(([, args]) => args[0]);
   assert.ok(smoothing.includes(false), 'smoothing turned off for the sheet draw');
+  fetchManifest = null;
+});
+
+test('a sheet with weapons painted into the art suppresses weapon overlays but keeps the shield', async () => {
+  fetchManifest = {
+    version: 1,
+    kind: 'humanoid',
+    image: '/assets/sprites/humanoid.png',
+    frameWidth: 256,
+    frameHeight: 256,
+    unit: 64,
+    anchor: { x: 128, y: 232 },
+    facing: 'right',
+    weaponsInArt: true,
+    frames: { idle: { x: 0, y: 0 } },
+  };
+  const body = bodyElement();
+  createdImages.length = 0;
+  panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: combatModel({ encounter_id: 'encounter-armed-art' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+    inventory: [
+      { id: 's1', name: 'a steel sword (main weapon)', attrib: 'l' },
+      { id: 'b1', name: 'a round shield (used as shield)', attrib: 'w' },
+    ],
+  });
+  const stage = body._combatStageHost.stage;
+  runFrame(7000);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  createdImages.find((img) => img.src === '/assets/sprites/humanoid.png').finishLoading();
+  const canvas = findCanvas(body);
+  canvas.drawLog.length = 0;
+  runFrame(7100);
+  // The sword is drawn with a dashed-free tapered polygon plus a pommel stroke;
+  // its crossguard uses a moveTo/lineTo pair after a setLineDash-free path.
+  // The cheapest reliable signal: the shield rotates the context, the blade
+  // never does, and with weapons in the art the blade's bright edge stroke
+  // (a strokeStyle of the highlight white) never appears.
+  const strokes = canvas.drawLog.filter(([name]) => name === 'set:strokeStyle').map(([, args]) => args[0]);
+  assert.ok(!strokes.includes('rgba(255, 255, 255, 0.7)'), 'no blade edge highlight when weapons are in the art');
+  assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield still drawn');
   fetchManifest = null;
 });

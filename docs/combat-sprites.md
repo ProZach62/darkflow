@@ -54,6 +54,7 @@ or race sheet must still declare `kind` as `humanoid` or `beast`.
 | `anchor` | Ground point in frame pixels: where the figure's hip meets the floor line. The stage places this point on the stage ground under the fighter. |
 | `facing` | Direction the art faces, `right` or `left`. The stage mirrors the frame for the other side. |
 | `pixelated` | Optional. `true` draws the sheet with image smoothing off, for pixel art. The assembler's `--pixel` sets it. |
+| `weaponsInArt` | Optional. `true` means the frames already show the character's weapons, so the stage draws no weapon overlays (the shield still draws). The assembler's `--weapons-in-art` sets it. |
 | `cloak` | Optional. `false` hides the stage's cloak overlay because the art has its own; a `#rrggbb` color recolors it. |
 | `rigAligned` | `true` only for sheets baked from the rig. The stage then positions overlays from rig geometry. Hand-drawn art sets `false` and supplies anchors per frame. |
 | `frames` | One entry per pose name. Unknown names are ignored; `idle` is required. |
@@ -124,6 +125,11 @@ image model under a structure control:
 
 ```js
 const big = await window.combatDebug.bakeSpriteSheet('humanoid', 'male-scro', 4);
+// With the weapons in the frames, for painting an armed character:
+const armed = await window.combatDebug.bakeSpriteSheet('humanoid', 'male-scro', 4, {
+  weapons: true,
+  equipment: { mainHand: { name: 'a sword', kind: 'blade' }, offHand: { name: 'a sword', kind: 'blade' }, shield: false, helmet: false, bodyArmor: true, twoHanded: false },
+});
 // big.canvas is the 4096 px sheet, big.names the pose order, big.frame the cell size.
 ```
 

@@ -114,6 +114,9 @@ export function normalizeSpriteManifest(raw, kind) {
     // Pixel-art sheets are drawn with image smoothing off so scaled pixels
     // stay square instead of blurring.
     pixelated: raw.pixelated === true,
+    // The art already shows the character's weapons, so the stage must not
+    // draw its own on top.
+    weaponsInArt: raw.weaponsInArt === true,
     cloak,
     frames,
   };

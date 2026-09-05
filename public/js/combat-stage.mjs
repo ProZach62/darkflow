@@ -546,6 +546,7 @@ export function createCombatStage(doc, options = {}) {
       const sprite = this._sprites
         ? this._sprites.pick(spriteKeysFor({ ...combatant, observed: !!(this._view && this._view.observer) }, figure, side))
         : null;
+      const weaponsInArt = !!(sprite && sprite.sheet.weaponsInArt);
       let head = geo.head;
       if (sprite) {
         const placed = this._drawSpriteBody(c, sprite, figure, phase, token, groundLine, unit, stretch, flashMix, secondary, geo, material);
@@ -562,7 +563,10 @@ export function createCombatStage(doc, options = {}) {
         if (geo.cloak) this._drawCloak(c, geo, material, secondary);
         this._drawArm(c, geo, geo.arms.left, material, 0.72);
       }
-      if (figure.weapon === 'bow') this._drawBow(c, geo, geo.weapon);
+      if (weaponsInArt) {
+        // Art carries the weapons; keep the shield since armor is not in the art.
+        if (geo.shield) this._drawShieldArm(c, geo, material.ring);
+      } else if (figure.weapon === 'bow') this._drawBow(c, geo, geo.weapon);
       else this._drawOffHand(c, geo, material);
       if (!sprite) {
         this._drawTorso(c, geo, material);
@@ -572,7 +576,7 @@ export function createCombatStage(doc, options = {}) {
       this._drawHead(c, head, side, combatant, material.ring, isActor, flashMix);
       if (geo.helmet) this._drawHelmet(c, head, geo.facing);
       if (!sprite) this._drawArm(c, geo, geo.arms.right, material, 1);
-      if (figure.weapon !== 'bow') {
+      if (!weaponsInArt && figure.weapon !== 'bow') {
         if (smear) this._drawSmear(c, figure, joints, phase, token, groundLine, unit, material, smear);
         this._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, material.ring, geo.twoHanded ? 1.2 : 1, 1);
       }

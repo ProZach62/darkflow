@@ -48,6 +48,8 @@ test('manifest normalization keeps known poses and rejects unusable files', () =
   assert.equal(normalizeSpriteManifest(manifest(), 'humanoid').pixelated, false);
   assert.equal(normalizeSpriteManifest(manifest({ pixelated: true }), 'humanoid').pixelated, true);
   assert.equal(normalizeSpriteManifest(manifest({ pixelated: 'yes' }), 'humanoid').pixelated, false, 'only a real true enables it');
+  assert.equal(normalizeSpriteManifest(manifest(), 'humanoid').weaponsInArt, false);
+  assert.equal(normalizeSpriteManifest(manifest({ weaponsInArt: true }), 'humanoid').weaponsInArt, true);
 });
 
 test('frame selection crossfades between the two poses of a phase', () => {

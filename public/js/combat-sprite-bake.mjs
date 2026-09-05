@@ -20,7 +20,11 @@ export const BAKE_HIP_X = 128;
 // is written under that key, so a styled bake ships as its own file.
 // `scale` bakes at a multiple of the base 256 px cell (4 gives 1024 px cells)
 // for crisp control images; the manifest scales with it.
-export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale = 1) {
+// `options.equipment` is an equipment profile (see combat-equipment-core)
+// that shapes the figure, and `options.weapons` draws the held weapons into
+// the frames. Shipped sheets leave weapons out because the client overlays
+// them; a control image for a paint-over of an armed character wants them in.
+export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale = 1, options = {}) {
   const style = key ? spriteStyleFor(key) : null;
   if (key && !style) throw new Error('No sprite style registered for ' + key);
   if (style) kind = style.kind;
@@ -36,7 +40,10 @@ export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale =
   sheet.width = columns * FRAME;
   sheet.height = rows * FRAME;
   const c = sheet.getContext('2d');
-  const figure = resolveFigure(kind === 'beast' ? { isNpc: true } : { race: style ? key.split('-').slice(1).join('-') : '' }, kind === 'beast' ? 'target' : 'player');
+  const figure = resolveFigure(kind === 'beast'
+    ? { isNpc: true }
+    : { race: style ? key.split('-').slice(1).join('-') : '', equipment: options.equipment || null },
+  kind === 'beast' ? 'target' : 'player');
   // Bake facing right regardless of side so the sheet has one facing.
   figure.facing = 1;
   const material = stage._materials(kind === 'beast' ? 'target' : 'player', figure);
@@ -52,6 +59,11 @@ export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale =
     c.beginPath();
     c.rect(originX, originY, FRAME, FRAME);
     c.clip();
+    const ring = material.ring;
+    if (options.weapons && geo.weapon.offKind) {
+      // Off-hand weapon sits behind the body.
+      stage._drawHeldWeapon(c, geo, geo.weapon.offKind, geo.weapon.offHand, geo.weapon.offDx, geo.weapon.offDy, ring, 0.85, 0.75);
+    }
     if (style) {
       style.draw(c, geo, material);
     } else {
@@ -61,6 +73,11 @@ export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale =
       stage._drawLeg(c, geo, geo.legs.front, material, 1);
       stage._drawNeck(c, geo, material);
       stage._drawArm(c, geo, geo.arms.right, material, 1);
+    }
+    if (options.weapons && geo.weapon.kind !== 'bow') {
+      stage._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, ring, geo.twoHanded ? 1.2 : 1, 1);
+    } else if (options.weapons) {
+      stage._drawBow(c, geo, geo.weapon);
     }
     c.restore();
     frames[name] = {

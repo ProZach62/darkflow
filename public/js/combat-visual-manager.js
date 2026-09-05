@@ -77,13 +77,13 @@ export const combatVisualManager = {
     if (typeof window !== 'undefined') {
       // Development hooks; see docs/combat-sprites.md.
       window.combatDebug = {
-        bakeSpriteSheet: async (kind = 'humanoid', key = '', scale = 1) => {
+        bakeSpriteSheet: async (kind = 'humanoid', key = '', scale = 1, options = {}) => {
           const host = panelManager.panels.enemy && panelManager.panels.enemy.bodyEl
             ? panelManager.panels.enemy.bodyEl._combatStageHost
             : null;
           if (!host || !host.stage) throw new Error('Open the Combat pane first');
           const { bakeSpriteSheet } = await import('./combat-sprite-bake.mjs');
-          return bakeSpriteSheet(host.stage, document, kind, key, scale);
+          return bakeSpriteSheet(host.stage, document, kind, key, scale, options);
         },
         spriteStatus: (kind = 'humanoid') => {
           const host = panelManager.panels.enemy && panelManager.panels.enemy.bodyEl

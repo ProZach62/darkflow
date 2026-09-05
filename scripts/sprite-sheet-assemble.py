@@ -73,6 +73,7 @@ def main():
     parser.add_argument("--keep-rig-aligned", action="store_true", help="do not flip rigAligned to false")
     parser.add_argument("--pixel", action="store_true", help="pixel art: resize with nearest-neighbor and mark the manifest pixelated so the client draws it without smoothing")
     parser.add_argument("--colors", type=int, default=0, help="with --pixel, quantize each frame to this many colors (alpha preserved)")
+    parser.add_argument("--weapons-in-art", action="store_true", help="the frames include the character's weapons; the client will not draw its own on top")
     args = parser.parse_args()
 
     frames_dir = Path(args.frames)
@@ -120,6 +121,8 @@ def main():
         scaled["rigAligned"] = False
     if args.pixel:
         scaled["pixelated"] = True
+    if args.weapons_in_art:
+        scaled["weaponsInArt"] = True
     scaled_frames = {}
     for pose, frame in manifest["frames"].items():
         if pose in missing:
