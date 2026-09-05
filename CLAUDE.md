@@ -28,7 +28,8 @@ Darkflow, the web-based WebSocket client for the Darkwind LDMud game server (pla
 - `combat-stage.mjs` / `combat-stage-core.mjs` -- Canvas combat stage (tokens, backdrop, per-event effects); core is pure and unit-tested
 - `combat-rig-core.mjs` -- Procedural fighter rig for the stage: figure resolution (equipment or guild weapon, race scale, NPC beast), poses, and joint geometry; pure and unit-tested
 - `combat-equipment-core.mjs` -- Equipment profile from Char.Items (hands, shield, helmet, armor) with a keyword weapon classifier; pure and unit-tested
-- `combat-sprites.mjs` / `combat-sprite-bake.mjs` -- Sprite sheet manifest, loader, and placement for the stage figures (see `docs/combat-sprites.md`); bake tool renders a stand-in sheet from the rig
+- `combat-sprites.mjs` / `combat-sprite-bake.mjs` -- Sprite sheet manifest, loader (character, then gender-race, then kind), and placement for the stage figures (see `docs/combat-sprites.md`); bake tool renders a sheet from the rig or a registered style
+- `combat-sprite-art.mjs` -- Hand-authored vector bodies drawn over rig geometry for specific sheets (e.g. `male-scro`); used only while baking
 - `map-data-v2.js` -- Server-authoritative map model (MapData2): room graph + coords from the server, sync/version reconciliation, browse-area store
 - `map-renderer.js` -- CSS Grid tile map renderer (32x32 terrain tiles)
 - `window-manager.js` -- Server-driven GUI window rendering (Darkwind.Window)

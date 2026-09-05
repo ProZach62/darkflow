@@ -95,6 +95,7 @@ test('pose phases anticipate, snap, hold, and settle along the action timeline',
   assert.equal(posePhase('actor', hit, 0.05, 'axe').to, 'raise');
   assert.equal(posePhase('actor', hit, 0.145, 'blunt').to, 'chop');
   assert.equal(posePhase('actor', hit, 0.145, 'polearm').to, 'thrust');
+  assert.equal(posePhase('actor', hit, 0.145, 'rapier').to, 'thrust');
   assert.equal(posePhase('actor', hit, 0.145, 'claws').to, 'maul');
   assert.equal(posePhase('actor', { result: 'miss', landed: false }, 0.145).to, 'whiff');
 

@@ -14,6 +14,39 @@ import { POSES } from './combat-rig-core.mjs';
 
 export const SPRITE_MANIFEST_VERSION = 1;
 export const SPRITE_KINDS = Object.freeze(['humanoid', 'beast']);
+// A sheet key is a path fragment under the sprites folder: a body kind
+// (`humanoid`), a gender and race pair (`male-scro`), or a character
+// (`characters/elyndar`). Only these shapes become URLs.
+const SHEET_KEY_PATTERN = /^(?:characters\/)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function spriteSlug(value) {
+  return String(value === undefined || value === null ? '' : value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export function isSheetKey(key) {
+  return typeof key === 'string' && key.length <= 80 && SHEET_KEY_PATTERN.test(key);
+}
+
+// Sheets to try for a figure, most specific first. Only the recipient's
+// own token gets name and race keys: an observed fighter or a target has
+// no recipient-safe identity beyond its body kind and, for players, the
+// name shown in the roster.
+export function spriteKeysFor(combatant, figure, side) {
+  const keys = [];
+  const own = side === 'player' && combatant && !combatant.observed;
+  if (own) {
+    const name = spriteSlug(combatant.name);
+    if (name) keys.push('characters/' + name);
+    const gender = spriteSlug(combatant.gender);
+    const race = spriteSlug(combatant.race);
+    if (gender && race) keys.push(gender + '-' + race);
+  }
+  if (figure && SPRITE_KINDS.includes(figure.kind)) keys.push(figure.kind);
+  return keys.filter(isSheetKey);
+}
 
 function finite(value, fallback) {
   const n = Number(value);
@@ -37,6 +70,11 @@ export function normalizeSpriteManifest(raw, kind) {
   if (!raw || typeof raw !== 'object') return null;
   if (finite(raw.version, 0) !== SPRITE_MANIFEST_VERSION) return null;
   if (kind && raw.kind && raw.kind !== kind) return null;
+  // Optional cloak override: false hides the stage cloak (the art has its
+  // own), a hex color recolors it.
+  let cloak = true;
+  if (raw.cloak === false) cloak = false;
+  else if (typeof raw.cloak === 'string' && /^#[0-9a-f]{6}$/i.test(raw.cloak)) cloak = raw.cloak;
   const frameWidth = finite(raw.frameWidth, 0);
   const frameHeight = finite(raw.frameHeight, 0);
   const unit = finite(raw.unit, 0);
@@ -73,6 +111,7 @@ export function normalizeSpriteManifest(raw, kind) {
     anchor,
     facing: raw.facing === 'left' ? -1 : 1,
     rigAligned: raw.rigAligned !== false,
+    cloak,
     frames,
   };
 }
@@ -143,18 +182,18 @@ export function createSpriteLibrary(options = {}) {
   const onReady = typeof options.onReady === 'function' ? options.onReady : () => {};
   const entries = new Map();
 
-  function load(kind) {
-    if (!SPRITE_KINDS.includes(kind)) return null;
-    if (entries.has(kind)) return entries.get(kind);
-    const entry = { kind, status: 'loading', sheet: null, image: null };
-    entries.set(kind, entry);
+  function load(key) {
+    if (!isSheetKey(key)) return null;
+    if (entries.has(key)) return entries.get(key);
+    const entry = { key, status: 'loading', sheet: null, image: null };
+    entries.set(key, entry);
     if (!fetchImpl || !ImageCtor) {
       entry.status = 'unavailable';
       return entry;
     }
     let request;
     try {
-      request = fetchImpl(basePath + kind + '.json', { cache: 'force-cache' });
+      request = fetchImpl(basePath + key + '.json', { cache: 'force-cache' });
     } catch (error) {
       entry.status = 'failed';
       return entry;
@@ -162,7 +201,13 @@ export function createSpriteLibrary(options = {}) {
     Promise.resolve(request)
       .then((response) => (response && response.ok ? response.json() : null))
       .then((json) => {
-        const sheet = normalizeSpriteManifest(json, kind);
+        // A character or race sheet must still declare a body kind the
+        // rig knows; the key itself does not carry one.
+        const sheet = normalizeSpriteManifest(json, SPRITE_KINDS.includes(key) ? key : '');
+        if (sheet && !SPRITE_KINDS.includes(sheet.kind)) {
+          entry.status = 'failed';
+          return;
+        }
         if (!sheet) {
           entry.status = 'failed';
           return;
@@ -173,7 +218,7 @@ export function createSpriteLibrary(options = {}) {
         image.onload = () => {
           entry.image = image;
           entry.status = 'ready';
-          onReady(kind);
+          onReady(key);
         };
         image.onerror = () => {
           entry.status = 'failed';
@@ -188,12 +233,22 @@ export function createSpriteLibrary(options = {}) {
 
   return {
     load,
-    get(kind) {
-      const entry = load(kind);
+    get(key) {
+      const entry = load(key);
       return entry && entry.status === 'ready' ? entry : null;
     },
-    status(kind) {
-      const entry = entries.get(kind);
+    // First ready sheet in preference order. Every key is requested, so a
+    // more specific sheet that is still loading takes over on a later frame.
+    pick(keys) {
+      let best = null;
+      for (const key of keys || []) {
+        const entry = load(key);
+        if (!best && entry && entry.status === 'ready') best = entry;
+      }
+      return best;
+    },
+    status(key) {
+      const entry = entries.get(key);
       return entry ? entry.status : 'unloaded';
     },
     clear() {

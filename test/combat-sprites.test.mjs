@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 const {
   anchorToStage,
   createSpriteLibrary,
+  isSheetKey,
   normalizeSpriteManifest,
   placeSpriteFrame,
   selectSpriteFrames,
+  spriteKeysFor,
 } = await import('../public/js/combat-sprites.mjs');
 
 function manifest(overrides = {}) {
@@ -113,9 +115,52 @@ test('the library loads a sheet once, caches failures, and reports readiness', a
   assert.equal(library.status('beast'), 'failed');
   library.get('beast');
   assert.equal(requested.filter((url) => url.endsWith('beast.json')).length, 1, 'failure is cached');
-  assert.equal(library.load('dragon'), null, 'unknown kinds are refused');
+  assert.equal(library.load('../etc'), null, 'keys that are not sheet keys are refused');
 
   const offline = createSpriteLibrary({});
   assert.equal(offline.get('humanoid'), null);
   assert.equal(offline.status('humanoid'), 'unavailable');
+});
+
+test('sheet keys go from character to race to kind, and only for the recipient', () => {
+  const figure = { kind: 'humanoid' };
+  assert.deepEqual(spriteKeysFor({ name: 'Grash Ironjaw', gender: 'Male', race: 'Scro' }, figure, 'player'),
+    ['characters/grash-ironjaw', 'male-scro', 'humanoid']);
+  assert.deepEqual(spriteKeysFor({ name: 'Bryn', race: 'High Elf' }, figure, 'player'),
+    ['characters/bryn', 'humanoid'], 'no gender means no race key');
+  assert.deepEqual(spriteKeysFor({ name: 'Bryn', gender: 'male', race: 'Scro' }, figure, 'target'),
+    ['humanoid'], 'targets only get the body kind');
+  assert.deepEqual(spriteKeysFor({ name: 'Bryn', gender: 'male', race: 'Scro', observed: true }, figure, 'player'),
+    ['humanoid'], 'an observed fighter never gets identity keys');
+  assert.deepEqual(spriteKeysFor({ name: '../../x', gender: '..', race: 'Scro' }, { kind: 'beast' }, 'player'),
+    ['characters/x', 'beast'], 'names and races are slugged before becoming keys');
+  assert.equal(isSheetKey('characters/grash'), true);
+  assert.equal(isSheetKey('male-scro'), true);
+  assert.equal(isSheetKey('../etc'), false);
+  assert.equal(isSheetKey('characters/'), false);
+});
+
+test('a race sheet takes over from the kind sheet once it is ready, and cloak overrides parse', async () => {
+  class FakeImage {
+    set src(value) { this._src = value; setTimeout(() => { if (this.onload) this.onload(); }, this._src.includes('scro') ? 4 : 0); }
+    get src() { return this._src; }
+  }
+  const fetchImpl = async (url) => {
+    if (url.endsWith('humanoid.json')) return { ok: true, json: async () => manifest() };
+    if (url.endsWith('male-scro.json')) return { ok: true, json: async () => manifest({ image: '/assets/sprites/male-scro.png', cloak: '#4d1414' }) };
+    if (url.endsWith('characters/grash.json')) return { ok: true, json: async () => manifest({ kind: 'dragon' }) };
+    return { ok: false, json: async () => null };
+  };
+  const library = createSpriteLibrary({ fetch: fetchImpl, Image: FakeImage });
+  const keys = ['characters/grash', 'male-scro', 'humanoid'];
+  assert.equal(library.pick(keys), null);
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  assert.equal(library.pick(keys).key, 'humanoid', 'kind sheet is ready first');
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  const picked = library.pick(keys);
+  assert.equal(picked.key, 'male-scro', 'the more specific sheet wins once loaded');
+  assert.equal(picked.sheet.cloak, '#4d1414');
+  assert.equal(library.status('characters/grash'), 'failed', 'a sheet with an unknown body kind is refused');
+  assert.equal(normalizeSpriteManifest(manifest({ cloak: false }), 'humanoid').cloak, false);
+  assert.equal(normalizeSpriteManifest(manifest({ cloak: 'red' }), 'humanoid').cloak, true, 'non-hex colors are ignored');
 });

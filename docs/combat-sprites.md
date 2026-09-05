@@ -6,9 +6,23 @@ the procedural rig in `combat-rig-core.mjs` otherwise. Weapons, an off-hand
 item, shield, helmet, cloak, and the portrait head always draw on top, so
 equipment and identity work with any art.
 
-Sheets live in `public/assets/sprites/<kind>.png` with a manifest at
-`public/assets/sprites/<kind>.json`. Kinds are `humanoid` and `beast`. A
-missing or invalid sheet costs one request and falls back to the rig.
+Sheets live in `public/assets/sprites/` as a PNG plus a manifest with the
+same base name. A missing or invalid sheet costs one request and falls back
+to the next candidate, and finally to the rig.
+
+## Lookup order
+
+For the recipient's own fighter the stage tries, most specific first:
+
+1. `characters/<name>` where the name is the character name lowercased with
+   runs of non-alphanumerics replaced by `-` (`characters/grash-ironjaw`).
+2. `<gender>-<race>` from `Char.Status`, slugged the same way (`male-scro`).
+3. The body kind, `humanoid` or `beast`.
+
+Targets and observed fighters only get the body kind: nothing recipient-safe
+identifies them further. Every candidate is requested, so a more specific
+sheet that finishes loading later takes over on the next frame. A character
+or race sheet must still declare `kind` as `humanoid` or `beast`.
 
 ## Manifest
 
@@ -39,6 +53,7 @@ missing or invalid sheet costs one request and falls back to the rig.
 | `unit` | Image pixels per body unit at scale 1. The stage scales the frame by its own unit divided by this, so a sheet drawn at 64 px per unit and one drawn at 128 px per unit render the same size. A humanoid stands about 2.9 units tall; see the rig for proportions. |
 | `anchor` | Ground point in frame pixels: where the figure's hip meets the floor line. The stage places this point on the stage ground under the fighter. |
 | `facing` | Direction the art faces, `right` or `left`. The stage mirrors the frame for the other side. |
+| `cloak` | Optional. `false` hides the stage's cloak overlay because the art has its own; a `#rrggbb` color recolors it. |
 | `rigAligned` | `true` only for sheets baked from the rig. The stage then positions overlays from rig geometry. Hand-drawn art sets `false` and supplies anchors per frame. |
 | `frames` | One entry per pose name. Unknown names are ignored; `idle` is required. |
 
@@ -90,6 +105,8 @@ rig in the browser console while the client is open:
 
 ```js
 const baked = await window.combatDebug.bakeSpriteSheet('humanoid');
+// A hand-authored vector style from combat-sprite-art.mjs, written under its own key:
+const scro = await window.combatDebug.bakeSpriteSheet('humanoid', 'male-scro');
 ```
 
 `baked.png` is a data URL for the sheet image and `baked.manifest` is the

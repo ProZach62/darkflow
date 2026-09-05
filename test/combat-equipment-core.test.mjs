@@ -20,6 +20,7 @@ test('slot and name parsing match the Inventory panel', () => {
 test('weapon kinds come from name keywords with earlier rows winning', () => {
   assert.equal(classifyWeapon('a steel sword (main weapon)'), 'blade');
   assert.equal(classifyWeapon('a jagged dagger'), 'knife');
+  assert.equal(classifyWeapon('a slender rapier (main weapon)'), 'rapier');
   assert.equal(classifyWeapon('a great axe'), 'axe');
   assert.equal(classifyWeapon('a spiked mace'), 'blunt');
   assert.equal(classifyWeapon('a longspear'), '', 'no word boundary means no match');

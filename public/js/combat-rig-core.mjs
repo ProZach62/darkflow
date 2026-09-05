@@ -107,8 +107,8 @@ const SCALE_BY_RACE = Object.freeze({
   dragon: 1.25,
 });
 
-export const WEAPONS = Object.freeze(['blade', 'knife', 'axe', 'blunt', 'polearm', 'staff', 'bow', 'claws']);
-export const MELEE_WEAPONS = Object.freeze(['blade', 'knife', 'axe', 'blunt', 'polearm', 'claws']);
+export const WEAPONS = Object.freeze(['blade', 'rapier', 'knife', 'axe', 'blunt', 'polearm', 'staff', 'bow', 'claws']);
+export const MELEE_WEAPONS = Object.freeze(['blade', 'rapier', 'knife', 'axe', 'blunt', 'polearm', 'claws']);
 
 function slug(value) {
   return String(value === undefined || value === null ? '' : value)
@@ -196,6 +196,7 @@ export const POSES = Object.freeze({
 
 export const STRIKE_POSE_BY_WEAPON = Object.freeze({
   blade: 'strike',
+  rapier: 'thrust',
   knife: 'thrust',
   axe: 'chop',
   blunt: 'chop',
@@ -207,6 +208,7 @@ export const STRIKE_POSE_BY_WEAPON = Object.freeze({
 
 const WINDUP_POSE_BY_WEAPON = Object.freeze({
   blade: 'windup',
+  rapier: 'windup',
   knife: 'windup',
   axe: 'raise',
   blunt: 'raise',

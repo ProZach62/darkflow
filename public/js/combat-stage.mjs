@@ -29,6 +29,7 @@ import {
   createSpriteLibrary,
   placeSpriteFrame,
   selectSpriteFrames,
+  spriteKeysFor,
 } from './combat-sprites.mjs';
 
 const MAX_CONCURRENT_ACTIONS = 3;
@@ -540,7 +541,9 @@ export function createCombatStage(doc, options = {}) {
       // A shipped sprite sheet replaces the body; overlays stay procedural
       // and attach to the sheet's anchors (or rig geometry when the sheet
       // was baked from the rig).
-      const sprite = this._sprites ? this._sprites.get(figure.kind) : null;
+      const sprite = this._sprites
+        ? this._sprites.pick(spriteKeysFor({ ...combatant, observed: !!(this._view && this._view.observer) }, figure, side))
+        : null;
       let head = geo.head;
       if (sprite) {
         const placed = this._drawSpriteBody(c, sprite, figure, phase, token, groundLine, unit, stretch, flashMix, secondary, geo, material);
@@ -604,7 +607,9 @@ export function createCombatStage(doc, options = {}) {
       // Cloak and tail are live overlays (spring-lagged), so a baked sheet
       // leaves them out and they draw here behind the body.
       if (geo.tail && sheet.rigAligned) this._drawTail(c, geo, material, secondary);
-      if (geo.cloak && sheet.rigAligned) this._drawCloak(c, geo, material, secondary);
+      if (geo.cloak && sheet.rigAligned && sheet.cloak !== false) {
+        this._drawCloak(c, geo, material, secondary, typeof sheet.cloak === 'string' ? sheet.cloak : '');
+      }
       if (flashMix > 0 && this._tintCanvas !== false) {
         const tint = this._tintSurface(Math.ceil(placement.width) + 4, Math.ceil(placement.height) + 4);
         if (tint) {
@@ -897,7 +902,7 @@ export function createCombatStage(doc, options = {}) {
       this._capsule(c, geo.shoulder, geo.neck, w, w * 0.9, material, material.skin, material.skinShade, 1);
     },
 
-    _drawCloak(c, geo, material, secondary) {
+    _drawCloak(c, geo, material, secondary, fillOverride = '') {
       const u = geo.unit;
       const t = geo.torso;
       const swing = secondary.angle;
@@ -915,7 +920,7 @@ export function createCombatStage(doc, options = {}) {
       c.lineTo(hemX, hemY);
       c.quadraticCurveTo(midX, top.y + length * 0.5, top.x, top.y);
       c.closePath();
-      c.fillStyle = material.clothShade;
+      c.fillStyle = fillOverride || material.clothShade;
       c.fill();
       c.lineWidth = 1.3;
       c.strokeStyle = material.outline;
@@ -981,9 +986,9 @@ export function createCombatStage(doc, options = {}) {
       c.lineCap = 'round';
       c.lineJoin = 'round';
       c.globalAlpha *= depth;
-      if (kind === 'blade' || kind === 'knife') {
-        const length = kind === 'knife' ? 0.55 : 1.2;
-        const width = u * (kind === 'knife' ? 0.09 : 0.13);
+      if (kind === 'blade' || kind === 'knife' || kind === 'rapier') {
+        const length = kind === 'knife' ? 0.55 : (kind === 'rapier' ? 1.3 : 1.2);
+        const width = u * (kind === 'knife' ? 0.09 : (kind === 'rapier' ? 0.06 : 0.13));
         const end = tip(length);
         const base = tip(0.08);
         // Blade as a tapered polygon with a bright edge.
@@ -1003,15 +1008,28 @@ export function createCombatStage(doc, options = {}) {
         c.lineWidth = Math.max(1, width * 0.25);
         c.strokeStyle = 'rgba(255, 255, 255, 0.7)';
         c.stroke();
-        // Crossguard and grip.
-        const guardA = across(hand, 0.2);
-        const guardB = across(hand, -0.2);
-        c.lineWidth = Math.max(2.5, u * 0.08);
-        c.strokeStyle = '#8a6a3c';
-        c.beginPath();
-        c.moveTo(guardA.x, guardA.y);
-        c.lineTo(guardB.x, guardB.y);
-        c.stroke();
+        if (kind === 'rapier') {
+          // Cup hilt: a swept guard bowl around the hand.
+          const bowl = tip(0.12);
+          c.fillStyle = '#b8903a';
+          c.beginPath();
+          c.arc(bowl.x, bowl.y, u * 0.16, Math.atan2(dy, dx) + Math.PI * 0.5, Math.atan2(dy, dx) + Math.PI * 1.5);
+          c.closePath();
+          c.fill();
+          c.lineWidth = 1.2;
+          c.strokeStyle = outline;
+          c.stroke();
+        } else {
+          // Crossguard and grip.
+          const guardA = across(hand, 0.2);
+          const guardB = across(hand, -0.2);
+          c.lineWidth = Math.max(2.5, u * 0.08);
+          c.strokeStyle = '#8a6a3c';
+          c.beginPath();
+          c.moveTo(guardA.x, guardA.y);
+          c.lineTo(guardB.x, guardB.y);
+          c.stroke();
+        }
         const pommel = tip(-0.22);
         c.strokeStyle = '#3d2c1b';
         c.lineWidth = Math.max(2.5, u * 0.09);

@@ -42,6 +42,7 @@ export const WEAPON_KEYWORDS = Object.freeze([
   ['polearm', /\bspears?\b|\bhalberds?\b|\bpikes?\b|\blances?\b|\bglaives?\b|\bbardiches?\b|\btridents?\b|\bpolearms?\b|\bnaginatas?\b/],
   ['axe', /\baxes?\b|\bhatchets?\b|\bcleavers?\b|\btomahawks?\b/],
   ['blunt', /\bmaces?\b|\bhammers?\b|\bclubs?\b|\bmauls?\b|\bflails?\b|\bmorningstars?\b|\bcudgels?\b|\bwarhammers?\b/],
+  ['rapier', /\brapiers?\b|\bestocs?\b|\bfoils?\b|\bepees?\b/],
   ['knife', /\bdaggers?\b|\bdirks?\b|\bknives\b|\bknife\b|\bstilettos?\b|\bfangs?\b|\bkukris?\b|\bshivs?\b/],
   ['blade', /\bswords?\b|\bblades?\b|\bscimitars?\b|\bsab(?:re|er)s?\b|\bkatanas?\b|\brapiers?\b|\bcutlass(?:es)?\b|\bfalchions?\b|\bclaymores?\b|\bbroadswords?\b|\blongswords?\b|\bgreatswords?\b/],
   ['claws', /\bclaws?\b|\bknuckles?\b|\bcestus\b|\bfists?\b/],
