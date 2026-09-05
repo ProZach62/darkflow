@@ -18,16 +18,23 @@ export const BAKE_HIP_X = 128;
 // `key` selects a hand-authored style from combat-sprite-art.mjs (for
 // example 'male-scro'); without one the rig's own body is baked. The sheet
 // is written under that key, so a styled bake ships as its own file.
-export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '') {
+// `scale` bakes at a multiple of the base 256 px cell (4 gives 1024 px cells)
+// for crisp control images; the manifest scales with it.
+export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale = 1) {
   const style = key ? spriteStyleFor(key) : null;
   if (key && !style) throw new Error('No sprite style registered for ' + key);
   if (style) kind = style.kind;
+  const factor = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const FRAME = BAKE_FRAME * factor;
+  const UNIT = BAKE_UNIT * factor;
+  const GROUND_Y = BAKE_GROUND_Y * factor;
+  const HIP_X = BAKE_HIP_X * factor;
   const names = Object.keys(POSES);
   const columns = Math.ceil(Math.sqrt(names.length));
   const rows = Math.ceil(names.length / columns);
   const sheet = doc.createElement('canvas');
-  sheet.width = columns * BAKE_FRAME;
-  sheet.height = rows * BAKE_FRAME;
+  sheet.width = columns * FRAME;
+  sheet.height = rows * FRAME;
   const c = sheet.getContext('2d');
   const figure = resolveFigure(kind === 'beast' ? { isNpc: true } : { race: style ? key.split('-').slice(1).join('-') : '' }, kind === 'beast' ? 'target' : 'player');
   // Bake facing right regardless of side so the sheet has one facing.
@@ -37,13 +44,13 @@ export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '') {
   names.forEach((name, index) => {
     const col = index % columns;
     const row = Math.floor(index / columns);
-    const originX = col * BAKE_FRAME;
-    const originY = row * BAKE_FRAME;
+    const originX = col * FRAME;
+    const originY = row * FRAME;
     const joints = resolvePose({ from: name, to: name, t: 1 }, 0, { reducedMotion: true });
-    const geo = figureGeometry(figure, joints, originX + BAKE_HIP_X, originY + BAKE_GROUND_Y, BAKE_UNIT);
+    const geo = figureGeometry(figure, joints, originX + HIP_X, originY + GROUND_Y, UNIT);
     c.save();
     c.beginPath();
-    c.rect(originX, originY, BAKE_FRAME, BAKE_FRAME);
+    c.rect(originX, originY, FRAME, FRAME);
     c.clip();
     if (style) {
       style.draw(c, geo, material);
@@ -72,14 +79,14 @@ export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '') {
     version: 1,
     kind,
     image: '/assets/sprites/' + (key || kind) + '.png',
-    frameWidth: BAKE_FRAME,
-    frameHeight: BAKE_FRAME,
-    unit: BAKE_UNIT,
-    anchor: { x: BAKE_HIP_X, y: BAKE_GROUND_Y },
+    frameWidth: FRAME,
+    frameHeight: FRAME,
+    unit: UNIT,
+    anchor: { x: HIP_X, y: GROUND_Y },
     facing: 'right',
     rigAligned: true,
     frames,
   };
   if (style && style.cloak !== undefined) manifest.cloak = style.cloak;
-  return { png: sheet.toDataURL('image/png'), manifest, columns, rows };
+  return { png: sheet.toDataURL('image/png'), manifest, columns, rows, canvas: sheet, names, frame: FRAME };
 }
