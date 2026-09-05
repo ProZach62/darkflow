@@ -24,6 +24,8 @@ Darkflow, the web-based WebSocket client for the Darkwind LDMud game server (pla
 - `output.js` -- Terminal output with requestAnimationFrame batching
 - `panel-manager.js` -- Panel lifecycle, drag/drop, edge snapping, GMCP data handlers
 - `panel-renderers.js` -- Render functions for each panel type
+- `combat-visual-manager.js` / `combat-visual-core.mjs` -- Darkwind.Combat state, event queue, readiness/text-fallback contract
+- `combat-stage.mjs` / `combat-stage-core.mjs` -- Canvas combat stage (tokens, backdrop, per-event effects); core is pure and unit-tested
 - `map-data-v2.js` -- Server-authoritative map model (MapData2): room graph + coords from the server, sync/version reconciliation, browse-area store
 - `map-renderer.js` -- CSS Grid tile map renderer (32x32 terrain tiles)
 - `window-manager.js` -- Server-driven GUI window rendering (Darkwind.Window)

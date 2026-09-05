@@ -173,3 +173,23 @@ Both health bars expose progressbar semantics. Server-provided summaries feed
 a rate-limited polite live region. Reduced-motion mode removes lunges, shakes,
 flashes, moving damage numbers, and crossfades while preserving static outcome
 badges and summaries.
+
+## Canvas Stage
+
+When the browser provides a 2D canvas, the Combat pane draws its stage on a
+canvas: a backdrop chosen from the room's canonical terrain tile, two token
+discs holding the player and target portraits, and per-event effects (lunge,
+slash arcs and burst for `hit`/`critical`, a whiff arc for `miss`, a sidestep
+with afterimage for `dodge`, and a shield bubble for `absorb`). Damage numbers
+and result badges are drawn on the canvas; names, health bars, condition text,
+the current exchange, threats, history, and the live region stay in the DOM so
+the accessibility contract above is unchanged.
+
+The stage plays each accepted event once, keyed by `seq` within the epoch and
+encounter, and ignores repeated publishes of the same beat. Portraits come from
+`Darkwind.Char.Avatar` and `Char.Enemy`; a failed image falls back to the
+bundled player or NPC placeholder. The frame loop stops when the pane is
+hidden, the tab is not visible, the encounter ends and no effect is still
+playing, or the canvas leaves the document. Without canvas support the pane
+renders the DOM card stage instead; readiness reporting is identical in both
+modes.

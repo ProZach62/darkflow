@@ -15,6 +15,7 @@ import {
   openImagePreviewPane,
 } from './image-preview.js';
 import { buildCombatView } from './combat-visual-core.mjs';
+import { createCombatStage, isCanvasStageSupported } from './combat-stage.mjs';
 import {
   NPC_FALLBACK_IMAGE,
   PLAYER_FALLBACK_IMAGE,
@@ -699,29 +700,7 @@ function combatEventLabel(event) {
   return label;
 }
 
-function renderCombatVisual(bodyEl, data) {
-  const view = buildCombatView(data.model, {
-    enemy: data.enemy,
-    vitals: data.vitals,
-    avatar: data.avatar,
-  });
-  const event = view.event;
-  const loadedImages = bodyEl._combatLoadedImages instanceof Set
-    ? bodyEl._combatLoadedImages
-    : new Set();
-  const failedImages = bodyEl._combatFailedImages instanceof Set
-    ? bodyEl._combatFailedImages
-    : new Set();
-  bodyEl._combatLoadedImages = loadedImages;
-  bodyEl._combatFailedImages = failedImages;
-  const resultClass = event ? ' combat-result-' + event.result : '';
-  const perspectiveClass = event && event.perspective
-    ? ' combat-perspective-' + event.perspective.replace(/[^a-z0-9_-]/g, '')
-    : '';
-  const motionClass = view.reducedMotion ? ' combat-visual-reduced' : '';
-  const effectiveClass = view.effective
-    ? ' combat-visual-effective'
-    : ' combat-visual-syncing';
+function combatEventClasses(view, event) {
   // Perspective is the recipient-safe source of truth. Keep the actor IDs for
   // observed combat, but never let an older/mixed server omit the player-side
   // impact treatment from an explicitly incoming event.
@@ -731,15 +710,29 @@ function renderCombatVisual(bodyEl, data) {
   const targetImpact = event && (outgoingEvent || event.targetId === view.target.id);
   const playerActor = event && (outgoingEvent || event.actorId === view.player.id);
   const targetActor = event && (incomingEvent || event.actorId === view.target.id);
+  const resultClass = event ? ' combat-result-' + event.result : '';
+  const perspectiveClass = event && event.perspective
+    ? ' combat-perspective-' + event.perspective.replace(/[^a-z0-9_-]/g, '')
+    : '';
   const impactSideClass = playerImpact
     ? ' combat-impact-player'
     : (targetImpact ? ' combat-impact-opponent' : '');
-  const impactSide = playerImpact ? 'player' : (targetImpact ? 'target' : '');
-  const playerClass = (playerImpact ? ' is-impact-target' : '') +
-    (playerActor ? ' is-event-actor' : '');
-  const targetClass = (targetImpact ? ' is-impact-target' : '') +
-    (targetActor ? ' is-event-actor' : '');
-  const eventLabel = combatEventLabel(event);
+  return {
+    rootClass: 'combat-visual' + resultClass + perspectiveClass + impactSideClass +
+      (view.effective ? ' combat-visual-effective' : ' combat-visual-syncing') +
+      (view.reducedMotion ? ' combat-visual-reduced' : ''),
+    impactSide: playerImpact ? 'player' : (targetImpact ? 'target' : ''),
+    playerClass: (playerImpact ? ' is-impact-target' : '') +
+      (playerActor ? ' is-event-actor' : ''),
+    targetClass: (targetImpact ? ' is-impact-target' : '') +
+      (targetActor ? ' is-event-actor' : ''),
+  };
+}
+
+// The polite live region only announces a beat once per event or state
+// change; every re-render in between leaves it empty so screen readers do
+// not hear the same exchange repeated.
+function combatAnnouncement(bodyEl, view, event, eventLabel) {
   let announcement = '';
   let announcementKey = '';
   if (event) {
@@ -749,34 +742,15 @@ function renderCombatVisual(bodyEl, data) {
     announcement = view.summary;
     announcementKey = view.epoch + ':' + view.encounterId + ':state:' + view.stateSeq;
   }
-  if (!announcementKey || bodyEl._combatAnnouncementKey === announcementKey) {
-    announcement = '';
-  } else {
-    bodyEl._combatAnnouncementKey = announcementKey;
-  }
-  let html = '<div class="combat-visual' + resultClass + perspectiveClass + impactSideClass +
-    effectiveClass + motionClass +
-    '" role="region" aria-label="Visual combat" data-encounter-id="' + escHtml(view.encounterId) + '">';
+  if (!announcementKey || bodyEl._combatAnnouncementKey === announcementKey) return '';
+  bodyEl._combatAnnouncementKey = announcementKey;
+  return announcement;
+}
 
-  html += '<div class="combat-stage">';
-  html += '<article class="combatant-card combatant-player' + playerClass + '">';
-  html += '<div class="combatant-name"><span>' + escHtml(view.player.name) + '</span></div>';
-  html += combatArtHtml('player', view.player, loadedImages, failedImages, event, impactSide);
-  html += combatHealthHtml('player', view.player.name, view.player.health);
-  html += '</article>';
-  html += '<div class="combat-versus" aria-hidden="true"><span>VS</span></div>';
-  html += '<article class="combatant-card combatant-target' + targetClass + '">';
-  html += '<div class="combatant-name"><span>' + escHtml(view.target.name) + '</span></div>';
-  html += combatArtHtml('target', view.target, loadedImages, failedImages, event, impactSide);
-  html += combatHealthHtml('target', view.target.name, view.target.health);
-  if (view.target.condition) {
-    html += '<div class="combat-target-condition">' + escHtml(view.target.condition) + '</div>';
-  }
-  html += '</article>';
-
-  html += '</div>';
-
-  html += '<div class="combat-current-event combat-current-' +
+// Everything below the stage: current exchange, threats, history, outcome,
+// and the live region. Shared by the canvas and DOM stages.
+function combatHudHtml(view, event, eventLabel, announcement) {
+  let html = '<div class="combat-current-event combat-current-' +
     escHtml(event ? event.result : 'waiting') + '"><span class="combat-event-glyph" aria-hidden="true"></span>' +
     '<span class="combat-event-copy"><strong>' + escHtml(eventLabel) + '</strong>';
   if (event && event.summary) {
@@ -819,6 +793,134 @@ function renderCombatVisual(bodyEl, data) {
   }
   html += '<div class="sr-only combat-live-region" role="status" aria-live="polite" aria-atomic="true">' +
     escHtml(announcement) + '</div>';
+  return html;
+}
+
+function combatTokenHudHtml(side, combatant, sideClass) {
+  let html = '<div class="combat-token-hud combat-token-hud-' + side + sideClass + '">';
+  html += '<div class="combat-hud-name"><span>' + escHtml(combatant.name) + '</span></div>';
+  html += combatHealthHtml(side, combatant.name, combatant.health);
+  if (side === 'target' && combatant.condition) {
+    html += '<div class="combat-target-condition">' + escHtml(combatant.condition) + '</div>';
+  }
+  return html + '</div>';
+}
+
+function combatStageDocument() {
+  return typeof document !== 'undefined' ? document : null;
+}
+
+function combatStageHost(bodyEl) {
+  const host = bodyEl._combatStageHost;
+  if (!host || !host.stage || host.stage.destroyed) return null;
+  if (!host.root || host.root.parentNode !== bodyEl) return null;
+  return host;
+}
+
+// Called whenever the Enemy pane stops showing visual combat so a detached
+// canvas never keeps a frame loop or image listeners alive.
+export function destroyCombatStage(bodyEl) {
+  const host = bodyEl && bodyEl._combatStageHost;
+  if (!host) return;
+  bodyEl._combatStageHost = null;
+  if (host.stage && typeof host.stage.destroy === 'function') host.stage.destroy();
+}
+
+function renderCombatCanvas(bodyEl, data, view, classes) {
+  const doc = combatStageDocument();
+  let host = combatStageHost(bodyEl);
+  if (!host) {
+    destroyCombatStage(bodyEl);
+    const stage = doc ? createCombatStage(doc) : null;
+    if (!stage) return false;
+    const root = doc.createElement('div');
+    root.setAttribute('role', 'region');
+    root.setAttribute('aria-label', 'Visual combat');
+    const stageEl = doc.createElement('div');
+    stageEl.className = 'combat-stage combat-stage-canvas-host';
+    stageEl.appendChild(stage.element);
+    const overlay = doc.createElement('div');
+    overlay.className = 'combat-stage-overlay';
+    stageEl.appendChild(overlay);
+    const hud = doc.createElement('div');
+    hud.className = 'combat-hud';
+    root.appendChild(stageEl);
+    root.appendChild(hud);
+    bodyEl.innerHTML = '';
+    bodyEl.appendChild(root);
+    host = { stage, root, overlay, hud };
+    bodyEl._combatStageHost = host;
+  }
+
+  const event = view.event;
+  const eventLabel = combatEventLabel(event);
+  const announcement = combatAnnouncement(bodyEl, view, event, eventLabel);
+  host.root.className = classes.rootClass + ' combat-visual-canvas';
+  host.root.setAttribute('data-encounter-id', view.encounterId || '');
+  host.overlay.innerHTML =
+    combatTokenHudHtml('player', view.player, classes.playerClass) +
+    combatTokenHudHtml('target', view.target, classes.targetClass);
+  host.hud.innerHTML = combatHudHtml(view, event, eventLabel, announcement);
+  host.stage.update(view, {
+    room: data.room,
+    playerFallback: PLAYER_FALLBACK_IMAGE,
+    targetFallback: view.target.isNpc ? NPC_FALLBACK_IMAGE : PLAYER_FALLBACK_IMAGE,
+  });
+  bodyEl._enemyState = null;
+  return true;
+}
+
+function renderCombatVisual(bodyEl, data) {
+  const view = buildCombatView(data.model, {
+    enemy: data.enemy,
+    vitals: data.vitals,
+    avatar: data.avatar,
+  });
+  const event = view.event;
+  const classes = combatEventClasses(view, event);
+
+  // The canvas stage is the primary presentation. When the environment has
+  // no 2D canvas (or the stage cannot be created), fall back to the DOM card
+  // stage rather than reporting a renderer failure: the pane still works,
+  // it just does not animate on a canvas.
+  if (isCanvasStageSupported(combatStageDocument())
+      && renderCombatCanvas(bodyEl, data, view, classes)) {
+    return;
+  }
+  destroyCombatStage(bodyEl);
+
+  const loadedImages = bodyEl._combatLoadedImages instanceof Set
+    ? bodyEl._combatLoadedImages
+    : new Set();
+  const failedImages = bodyEl._combatFailedImages instanceof Set
+    ? bodyEl._combatFailedImages
+    : new Set();
+  bodyEl._combatLoadedImages = loadedImages;
+  bodyEl._combatFailedImages = failedImages;
+  const impactSide = classes.impactSide;
+  const eventLabel = combatEventLabel(event);
+  const announcement = combatAnnouncement(bodyEl, view, event, eventLabel);
+  let html = '<div class="' + classes.rootClass +
+    '" role="region" aria-label="Visual combat" data-encounter-id="' + escHtml(view.encounterId) + '">';
+
+  html += '<div class="combat-stage">';
+  html += '<article class="combatant-card combatant-player' + classes.playerClass + '">';
+  html += '<div class="combatant-name"><span>' + escHtml(view.player.name) + '</span></div>';
+  html += combatArtHtml('player', view.player, loadedImages, failedImages, event, impactSide);
+  html += combatHealthHtml('player', view.player.name, view.player.health);
+  html += '</article>';
+  html += '<div class="combat-versus" aria-hidden="true"><span>VS</span></div>';
+  html += '<article class="combatant-card combatant-target' + classes.targetClass + '">';
+  html += '<div class="combatant-name"><span>' + escHtml(view.target.name) + '</span></div>';
+  html += combatArtHtml('target', view.target, loadedImages, failedImages, event, impactSide);
+  html += combatHealthHtml('target', view.target.name, view.target.health);
+  if (view.target.condition) {
+    html += '<div class="combat-target-condition">' + escHtml(view.target.condition) + '</div>';
+  }
+  html += '</article>';
+
+  html += '</div>';
+  html += combatHudHtml(view, event, eventLabel, announcement);
   html += '</div>';
 
   bodyEl.innerHTML = html;
@@ -1681,6 +1783,7 @@ export const panelRenderers = {
       renderCombatVisual(bodyEl, data);
       return;
     }
+    destroyCombatStage(bodyEl);
 
     if (!data || !data.enemy_name || data.enemy_name === 'None' || data.enemy_name === '') {
       bodyEl.innerHTML = '<div class="panel-inactive placeholder">No target</div>';

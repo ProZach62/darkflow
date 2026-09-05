@@ -2740,6 +2740,7 @@ export const panelManager = {
         enemy: this.gmcpData.enemy,
         vitals: this.gmcpData.vitals,
         avatar: this.gmcpData.avatar,
+        room: this.gmcpData.room,
       }
       : this.gmcpData[id];
     try {

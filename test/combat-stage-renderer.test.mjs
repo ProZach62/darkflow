@@ -1,0 +1,319 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+// A small DOM double with the parts the canvas combat stage relies on:
+// parent/child tracking (so a stage notices when innerHTML replaced it), a
+// 2D context stub that records draw calls, and a controllable frame loop.
+
+const frames = [];
+const createdImages = [];
+
+class FakeImage {
+  constructor() {
+    this.naturalWidth = 0;
+    this.naturalHeight = 0;
+    createdImages.push(this);
+  }
+  set src(value) {
+    this._src = value;
+  }
+  get src() {
+    return this._src;
+  }
+  finishLoading() {
+    this.naturalWidth = 128;
+    this.naturalHeight = 160;
+    if (this.onload) this.onload();
+  }
+  fail() {
+    if (this.onerror) this.onerror();
+  }
+}
+
+function makeContext(log) {
+  const gradient = { addColorStop() {} };
+  return new Proxy({}, {
+    get(target, prop) {
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient') return () => gradient;
+      if (prop === 'measureText') return () => ({ width: 10 });
+      if (typeof prop === 'string') {
+        return (...args) => { log.push([prop, args]); };
+      }
+      return undefined;
+    },
+    set() { return true; },
+  });
+}
+
+function makeElement(tag, doc) {
+  const el = {
+    tagName: tag,
+    ownerDocument: doc,
+    parentNode: null,
+    children: [],
+    attributes: {},
+    style: {},
+    className: '',
+    clientWidth: 640,
+    clientHeight: 320,
+    _innerHTML: '',
+    classList: { add() {}, remove() {}, toggle() {} },
+    get isConnected() {
+      let node = el;
+      while (node) {
+        if (node === doc.body) return true;
+        node = node.parentNode;
+      }
+      return false;
+    },
+    appendChild(child) {
+      if (child.parentNode) child.parentNode.removeChild(child);
+      child.parentNode = el;
+      el.children.push(child);
+      return child;
+    },
+    removeChild(child) {
+      const index = el.children.indexOf(child);
+      if (index >= 0) el.children.splice(index, 1);
+      child.parentNode = null;
+      return child;
+    },
+    setAttribute(name, value) { el.attributes[name] = String(value); },
+    getAttribute(name) { return el.attributes[name]; },
+    removeAttribute(name) { delete el.attributes[name]; },
+    addEventListener() {},
+    removeEventListener() {},
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    get innerHTML() { return el._innerHTML; },
+    set innerHTML(value) {
+      for (const child of el.children) child.parentNode = null;
+      el.children = [];
+      el._innerHTML = value;
+    },
+  };
+  if (tag === 'canvas') {
+    el.drawLog = [];
+    el.width = 0;
+    el.height = 0;
+    el.getContext = (kind) => (kind === '2d' ? makeContext(el.drawLog) : null);
+  }
+  return el;
+}
+
+const fakeWindow = {
+  devicePixelRatio: 2,
+  Image: FakeImage,
+  performance: { now: () => 1000 },
+  addEventListener() {},
+  removeEventListener() {},
+  matchMedia() {
+    return { matches: false, addEventListener() {}, removeEventListener() {} };
+  },
+  requestAnimationFrame(callback) {
+    frames.push(callback);
+    return frames.length;
+  },
+  cancelAnimationFrame() {},
+};
+
+const fakeDocument = {
+  hidden: false,
+  visibilityState: 'visible',
+  defaultView: fakeWindow,
+  addEventListener() {},
+  removeEventListener() {},
+  createElement(tag) { return makeElement(tag, fakeDocument); },
+};
+fakeDocument.body = makeElement('body', fakeDocument);
+fakeDocument.documentElement = makeElement('html', fakeDocument);
+
+globalThis.localStorage = {
+  getItem() { return null; },
+  setItem() {},
+  removeItem() {},
+};
+globalThis.document = fakeDocument;
+globalThis.window = fakeWindow;
+
+const { panelRenderers } = await import('../public/js/panel-renderers.js');
+const {
+  createCombatVisualState,
+  reduceCombatEvents,
+  reduceCombatState,
+  takeNextCombatEvent,
+} = await import('../public/js/combat-visual-core.mjs');
+
+function bodyElement() {
+  const body = makeElement('div', fakeDocument);
+  fakeDocument.body.appendChild(body);
+  return body;
+}
+
+function runFrame(time) {
+  const pending = frames.splice(0, frames.length);
+  for (const callback of pending) callback(time);
+  return pending.length;
+}
+
+function combatModel(overrides = {}) {
+  return reduceCombatState(createCombatVisualState(), {
+    epoch: 'epoch-1',
+    encounter_id: 'encounter-1',
+    seq: 4,
+    visual_enabled: 1,
+    effective: 1,
+    active: 1,
+    current_target_id: 'target-1',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'target-1', name: '<script>drake</script>', role: 'target' },
+    ],
+    summary: 'Combat begins.',
+    outcome: '',
+    ...overrides,
+  });
+}
+
+function findCanvas(body) {
+  const stack = [...body.children];
+  while (stack.length) {
+    const node = stack.shift();
+    if (node.tagName === 'canvas') return node;
+    stack.push(...node.children);
+  }
+  return null;
+}
+
+function deepHtml(el) {
+  return el._innerHTML + el.children.map(deepHtml).join('');
+}
+
+test('canvas stage renders the DOM overlay with escaped names and accessible health bars', () => {
+  const body = bodyElement();
+  panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: combatModel(),
+    vitals: { hp: 78, maxhp: 100 },
+    enemy: { enemy_name: '<script>drake</script>', enemy_curhp: 41, enemy_maxhp: 100, enemy_is_npc: 1, enemy_hp_string: 'bloodied' },
+    avatar: { url: 'https://media.example/acer.jpg', name: 'Acer' },
+    room: { terrain: 'forest' },
+  });
+
+  const root = body.children[0];
+  assert.ok(root, 'root element appended');
+  assert.match(root.className, /combat-visual-canvas/);
+  assert.match(root.className, /combat-visual-effective/);
+  assert.equal(root.getAttribute('aria-label'), 'Visual combat');
+  assert.equal(root.getAttribute('data-encounter-id'), 'encounter-1');
+  const canvas = findCanvas(body);
+  assert.ok(canvas, 'canvas mounted inside the stage');
+  assert.equal(canvas.width, 1280, 'canvas is sized for devicePixelRatio 2');
+  const html = deepHtml(body);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /&lt;script&gt;drake&lt;\/script&gt;/);
+  assert.match(html, /role="progressbar"/);
+  assert.match(html, /aria-valuenow="78"/);
+  assert.match(html, /aria-valuenow="41"/);
+  assert.match(html, /combat-target-condition">bloodied/);
+  assert.match(html, /combat-live-region[^>]*>Combat begins\./);
+  assert.ok(createdImages.some((img) => img.src === '/assets/tiles/forest.jpg'), 'terrain tile requested');
+  assert.ok(createdImages.some((img) => img.src === 'https://media.example/acer.jpg'), 'avatar requested');
+});
+
+test('re-rendering reuses the same canvas and plays each event once', () => {
+  const body = bodyElement();
+  let model = combatModel();
+  const render = (nextModel) => panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: nextModel,
+    vitals: { hp: 78, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 41, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+  });
+  render(model);
+  const canvas = findCanvas(body);
+  const stage = body._combatStageHost.stage;
+  runFrame(1000);
+  const framesBefore = stage.frames;
+
+  model = reduceCombatEvents(model, {
+    epoch: 'epoch-1',
+    encounter_id: 'encounter-1',
+    first_seq: 5,
+    last_seq: 5,
+    events: [{
+      seq: 5, kind: 'attack', perspective: 'outgoing', actor_id: 'self', target_id: 'target-1',
+      result: 'critical', damage: 42, summary: 'You critically hit a drake for 42 damage.',
+    }],
+  });
+  model = takeNextCombatEvent(model).state;
+  assert.ok(model.currentEvent, 'event is staged');
+  render(model);
+  assert.equal(findCanvas(body), canvas, 'same canvas survives a re-render');
+  assert.equal(stage._actions.length, 1, 'event queued as one action');
+  render(model);
+  render(model);
+  assert.equal(stage._actions.length, 1, 'repeated publishes of the same beat do not replay it');
+  assert.match(deepHtml(body), /You critically hit a drake for 42 damage\./);
+
+  runFrame(1100);
+  assert.ok(stage.frames > framesBefore, 'a frame was drawn after the event');
+  assert.ok(canvas.drawLog.some(([name]) => name === 'fillText' || name === 'strokeText'),
+    'damage number drawn on the canvas');
+});
+
+test('stage stops when the pane leaves visual combat and when its element is detached', () => {
+  const body = bodyElement();
+  panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: combatModel(),
+    vitals: { hp: 10, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+  });
+  const stage = body._combatStageHost.stage;
+  assert.equal(stage.running, true);
+
+  // Compact Enemy renderer takes the pane back: stage must be destroyed.
+  panelRenderers.enemy(body, { enemy_name: 'None' });
+  assert.equal(body._combatStageHost, null);
+  assert.equal(stage.destroyed, true);
+  assert.equal(stage.running, false);
+
+  // A detached stage stops on its own even if nobody called destroy.
+  const other = bodyElement();
+  panelRenderers.enemy(other, {
+    combatVisual: true,
+    model: combatModel({ encounter_id: 'encounter-2' }),
+    vitals: { hp: 10, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+  });
+  const second = other._combatStageHost.stage;
+  other.innerHTML = '<div class="panel-inactive placeholder">Combat view unavailable</div>';
+  assert.equal(second.running, true, 'nothing has told the stage to stop yet');
+  runFrame(2000);
+  assert.equal(second.running, false, 'loop halts once the element is gone');
+  assert.equal(second._rafId, 0, 'no further frame requested by the detached stage');
+});
+
+test('image failures fall back to the NPC placeholder without throwing', () => {
+  const body = bodyElement();
+  createdImages.length = 0;
+  panelRenderers.enemy(body, {
+    combatVisual: true,
+    model: combatModel(),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_image: 'https://media.example/drake.jpg', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+  });
+  const drake = createdImages.find((img) => img.src === 'https://media.example/drake.jpg');
+  assert.ok(drake);
+  drake.fail();
+  assert.ok(createdImages.some((img) => img.src === '/assets/generic-monster.png'),
+    'generic monster requested after the generated art fails');
+  const stage = body._combatStageHost.stage;
+  runFrame(3000);
+  assert.ok(stage.frames > 0);
+});
