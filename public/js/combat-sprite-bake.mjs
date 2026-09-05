@@ -20,7 +20,10 @@ export const BAKE_HIP_X = 128;
 // is written under that key, so a styled bake ships as its own file.
 // `scale` bakes at a multiple of the base 256 px cell (4 gives 1024 px cells)
 // for crisp control images; the manifest scales with it.
-export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale = 1) {
+// `options.headSilhouette` paints a plain head disc in each frame. Shipped
+// sheets leave the head empty because the portrait covers it, but a control
+// image for an image model needs a head outline or the model invents one.
+export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale = 1, options = {}) {
   const style = key ? spriteStyleFor(key) : null;
   if (key && !style) throw new Error('No sprite style registered for ' + key);
   if (style) kind = style.kind;
@@ -61,6 +64,22 @@ export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale =
       stage._drawLeg(c, geo, geo.legs.front, material, 1);
       stage._drawNeck(c, geo, material);
       stage._drawArm(c, geo, geo.arms.right, material, 1);
+    }
+    if (options.headSilhouette) {
+      const skin = style && style.palette && style.palette.skin ? style.palette.skin : material.skin;
+      const shade = style && style.palette && style.palette.skinShade ? style.palette.skinShade : material.skinShade;
+      c.beginPath();
+      c.arc(geo.head.x, geo.head.y, geo.head.r, 0, Math.PI * 2);
+      c.fillStyle = skin;
+      c.fill();
+      c.lineWidth = Math.max(1.5, geo.head.r * 0.08);
+      c.strokeStyle = '#0a0c0f';
+      c.stroke();
+      // Ear and jaw hint on the facing side so the model reads a profile.
+      c.fillStyle = shade;
+      c.beginPath();
+      c.arc(geo.head.x - figure.facing * geo.head.r * 0.55, geo.head.y + geo.head.r * 0.05, geo.head.r * 0.22, 0, Math.PI * 2);
+      c.fill();
     }
     c.restore();
     frames[name] = {

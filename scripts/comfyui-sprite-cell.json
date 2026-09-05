@@ -87,7 +87,7 @@
         "Node name for S&R": "CLIPTextEncode"
       },
       "widgets_values": [
-        "pixel art, 16-bit, game sprite, side view, full body, a male orc warrior, olive green skin, full plate cuirass with spiked pauldrons and brass trim, tassets over dark red breeches, steel greaves and gauntlets, dark red cloak, empty hands, no weapon, neutral back of head with no face, feet on the ground, limited palette, clean pixel edges, plain solid background, consistent character design"
+        "pixel art, 16-bit, game sprite, side view, full body, a male orc warrior, olive green skin, full plate cuirass with spiked pauldrons and brass trim, tassets over dark red breeches, steel greaves and gauntlets, dark red cloak, empty hands, no weapon, smooth featureless bald head, no face, exact pose of the reference outline, feet on the ground, limited palette, clean pixel edges, plain solid background, consistent character design"
       ],
       "title": "Positive prompt (paste the brief here)"
     },
@@ -126,7 +126,7 @@
         "Node name for S&R": "CLIPTextEncode"
       },
       "widgets_values": [
-        "weapon, sword, rapier, shield, helmet, face, eyes, background scenery, text, watermark, blurry, smooth, painterly, gradient, extra limbs, cropped"
+        "weapon, sword, rapier, shield, helmet, face, eyes, hair, ponytail, topknot, braid, beard, background scenery, text, watermark, blurry, smooth, painterly, gradient, extra limbs, cropped, arms at sides, standing still, different pose"
       ],
       "title": "Negative prompt"
     },
@@ -307,11 +307,11 @@
         "Node name for S&R": "ControlNetApplyAdvanced"
       },
       "widgets_values": [
-        0.7,
+        0.9,
         0,
-        0.8
+        1
       ],
-      "title": "Apply ControlNet (strength 0.7 for pixel art, 0.8 painted)"
+      "title": "Apply ControlNet (strength 0.9, full range: pose authority)"
     },
     {
       "id": 8,
@@ -711,14 +711,14 @@
         "Node name for S&R": "IPAdapterAdvanced"
       },
       "widgets_values": [
-        0.6,
-        "linear",
+        0.45,
+        "style transfer",
         "concat",
         0,
         1,
         "V only"
       ],
-      "title": "IPAdapter Advanced (weight 0.6; bypass for the first idle test)"
+      "title": "IPAdapter Advanced (style transfer 0.45: look only, not pose)"
     }
   ],
   "links": [
