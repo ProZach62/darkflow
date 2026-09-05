@@ -110,8 +110,8 @@ const fakeWindow = {
   devicePixelRatio: 2,
   Image: FakeImage,
   fetch: async (url) => {
-    if (fetchManifest && url.endsWith('humanoid.json')) return { ok: true, json: async () => fetchManifest };
-    return { ok: false, json: async () => null };
+    if (fetchManifest && url.endsWith('humanoid.json')) return { ok: true, text: async () => JSON.stringify(fetchManifest), json: async () => fetchManifest };
+    return { ok: false, text: async () => JSON.stringify(null), json: async () => null };
   },
   performance: { now: () => 1000 },
   addEventListener() {},
@@ -408,7 +408,7 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
   // The sheet is requested the first time a figure draws, not at render.
   runFrame(4990);
   await new Promise((resolve) => setTimeout(resolve, 5));
-  const sheetImage = createdImages.find((img) => img.src === '/assets/sprites/humanoid.png');
+  const sheetImage = createdImages.find((img) => img.src.startsWith('/assets/sprites/humanoid.png?v='));
   assert.ok(sheetImage, 'sheet image requested after the manifest loads');
   sheetImage.finishLoading();
   assert.equal(stage._sprites.status('humanoid'), 'ready');
@@ -447,7 +447,7 @@ test('a pixelated sheet is drawn with image smoothing off', async () => {
   const stage = body._combatStageHost.stage;
   runFrame(6000);
   await new Promise((resolve) => setTimeout(resolve, 5));
-  const sheetImage = createdImages.find((img) => img.src === '/assets/sprites/humanoid.png');
+  const sheetImage = createdImages.find((img) => img.src.startsWith('/assets/sprites/humanoid.png?v='));
   sheetImage.finishLoading();
   assert.equal(stage._sprites.get('humanoid').sheet.pixelated, true);
   const canvas = findCanvas(body);
@@ -487,7 +487,7 @@ test('a sheet with weapons painted into the art suppresses weapon overlays but k
   const stage = body._combatStageHost.stage;
   runFrame(7000);
   await new Promise((resolve) => setTimeout(resolve, 5));
-  createdImages.find((img) => img.src === '/assets/sprites/humanoid.png').finishLoading();
+  createdImages.find((img) => img.src.startsWith('/assets/sprites/humanoid.png?v=')).finishLoading();
   const canvas = findCanvas(body);
   canvas.drawLog.length = 0;
   runFrame(7100);

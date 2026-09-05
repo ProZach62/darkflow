@@ -13,7 +13,9 @@ import { spriteStyleFor } from './combat-sprite-art.mjs';
 export const BAKE_UNIT = 64;
 export const BAKE_FRAME = 256;
 export const BAKE_GROUND_Y = 232;
-export const BAKE_HIP_X = 128;
+// The hip sits left of center: figures face right, and a forward strike
+// needs more room in front of the body than behind it.
+export const BAKE_HIP_X = 100;
 
 // `key` selects a hand-authored style from combat-sprite-art.mjs (for
 // example 'male-scro'); without one the rig's own body is baked. The sheet

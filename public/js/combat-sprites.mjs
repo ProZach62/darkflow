@@ -179,6 +179,15 @@ export function anchorToStage(placement, anchor) {
   return out;
 }
 
+function manifestHash(text) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash.toString(16);
+}
+
 // Loads manifests and images on demand. One entry per kind; failures are
 // cached so a missing sheet costs one request, not one per frame.
 export function createSpriteLibrary(options = {}) {
@@ -199,13 +208,25 @@ export function createSpriteLibrary(options = {}) {
     }
     let request;
     try {
-      request = fetchImpl(basePath + key + '.json', { cache: 'force-cache' });
+      // Revalidate the manifest every load; a stale manifest against a new
+      // image misplaces every anchor.
+      request = fetchImpl(basePath + key + '.json', { cache: 'no-cache' });
     } catch (error) {
       entry.status = 'failed';
       return entry;
     }
+    let manifestText = '';
     Promise.resolve(request)
-      .then((response) => (response && response.ok ? response.json() : null))
+      .then((response) => (response && response.ok ? response.text() : null))
+      .then((text) => {
+        if (typeof text !== 'string') return null;
+        manifestText = text;
+        try {
+          return JSON.parse(text);
+        } catch (error) {
+          return null;
+        }
+      })
       .then((json) => {
         // A character or race sheet must still declare a body kind the
         // rig knows; the key itself does not carry one.
@@ -229,7 +250,9 @@ export function createSpriteLibrary(options = {}) {
         image.onerror = () => {
           entry.status = 'failed';
         };
-        image.src = sheet.image;
+        // Version the image by the manifest text so a re-baked sheet is never
+        // paired with a cached image from the previous bake.
+        image.src = sheet.image + (sheet.image.includes('?') ? '&' : '?') + 'v=' + manifestHash(manifestText);
       })
       .catch(() => {
         entry.status = 'failed';

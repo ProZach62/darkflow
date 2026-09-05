@@ -101,8 +101,8 @@ test('the library loads a sheet once, caches failures, and reports readiness', a
   }
   const fetchImpl = async (url) => {
     requested.push(url);
-    if (url.endsWith('humanoid.json')) return { ok: true, json: async () => manifest() };
-    return { ok: false, json: async () => null };
+    if (url.endsWith('humanoid.json')) return { ok: true, text: async () => JSON.stringify(manifest()), json: async () => manifest() };
+    return { ok: false, text: async () => JSON.stringify(null), json: async () => null };
   };
   const ready = [];
   const library = createSpriteLibrary({ fetch: fetchImpl, Image: FakeImage, onReady: (kind) => ready.push(kind) });
@@ -151,10 +151,10 @@ test('a race sheet takes over from the kind sheet once it is ready, and cloak ov
     get src() { return this._src; }
   }
   const fetchImpl = async (url) => {
-    if (url.endsWith('humanoid.json')) return { ok: true, json: async () => manifest() };
-    if (url.endsWith('male-scro.json')) return { ok: true, json: async () => manifest({ image: '/assets/sprites/male-scro.png', cloak: '#4d1414' }) };
-    if (url.endsWith('characters/grash.json')) return { ok: true, json: async () => manifest({ kind: 'dragon' }) };
-    return { ok: false, json: async () => null };
+    if (url.endsWith('humanoid.json')) return { ok: true, text: async () => JSON.stringify(manifest()), json: async () => manifest() };
+    if (url.endsWith('male-scro.json')) return { ok: true, text: async () => JSON.stringify(manifest({ image: '/assets/sprites/male-scro.png', cloak: '#4d1414' })), json: async () => manifest({ image: '/assets/sprites/male-scro.png', cloak: '#4d1414' }) };
+    if (url.endsWith('characters/grash.json')) return { ok: true, text: async () => JSON.stringify(manifest({ kind: 'dragon' })), json: async () => manifest({ kind: 'dragon' }) };
+    return { ok: false, text: async () => JSON.stringify(null), json: async () => null };
   };
   const library = createSpriteLibrary({ fetch: fetchImpl, Image: FakeImage });
   const keys = ['characters/grash', 'male-scro', 'humanoid'];
