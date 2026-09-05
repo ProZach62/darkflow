@@ -87,7 +87,7 @@
         "Node name for S&R": "CLIPTextEncode"
       },
       "widgets_values": [
-        "pixel art, 16-bit, game sprite, side view, full body, a male orc warrior, olive green skin, full plate cuirass with spiked pauldrons and brass trim, tassets over dark red breeches, steel greaves and gauntlets, dark red cloak, holding a straight sword in each hand, dual wielding, neutral back of head with no face, feet on the ground, limited palette, clean pixel edges, plain solid background, consistent character design"
+        "pixel art, 16-bit, game sprite, side view, full body, a male orc warrior, olive green skin, full plate cuirass with spiked pauldrons and brass trim, tassets over dark red breeches, steel greaves and gauntlets, dark red cloak, empty hands, no weapon, neutral back of head with no face, feet on the ground, limited palette, clean pixel edges, plain solid background, consistent character design"
       ],
       "title": "Positive prompt (paste the brief here)"
     },
@@ -126,7 +126,7 @@
         "Node name for S&R": "CLIPTextEncode"
       },
       "widgets_values": [
-        "shield, helmet, empty hands, single sword, three arms, face, eyes, background scenery, text, watermark, blurry, smooth, painterly, gradient, extra limbs, cropped"
+        "weapon, sword, rapier, shield, helmet, face, eyes, background scenery, text, watermark, blurry, smooth, painterly, gradient, extra limbs, cropped"
       ],
       "title": "Negative prompt"
     },
