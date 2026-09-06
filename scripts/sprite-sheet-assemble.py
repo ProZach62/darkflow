@@ -57,6 +57,109 @@ def quantize_keep_alpha(image, colors):
     return out
 
 
+def parse_color(text):
+    value = text.strip().lstrip("#")
+    if len(value) != 6:
+        raise SystemExit("colors are #rrggbb")
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def detect_head(image, color, tolerance, band=0.4):
+    """Find the head in a painted frame: the largest blob of skin-colored
+    pixels in the upper part of the figure. Returns {x, y, r} in frame
+    pixels, or None. Works on a reduced copy for speed."""
+    bbox = image.getbbox()
+    if not bbox:
+        return None
+    reduce = max(1, image.width // 160)
+    small = image.resize((image.width // reduce, image.height // reduce), Image.NEAREST)
+    width, height = small.size
+    pixels = small.load()
+    top = bbox[1] // reduce
+    limit = top + int(((bbox[3] - bbox[1]) // reduce) * band)
+    mask = bytearray(width * height)
+    for y in range(top, min(height, limit)):
+        for x in range(width):
+            r, g, b, a = pixels[x, y]
+            if a > 40 and all(abs(c - t) <= tolerance for c, t in zip((r, g, b), color)):
+                mask[y * width + x] = 1
+    seen = bytearray(width * height)
+    best = None
+    for start in range(len(mask)):
+        if not mask[start] or seen[start]:
+            continue
+        stack = [start]
+        seen[start] = 1
+        points = []
+        while stack:
+            index = stack.pop()
+            points.append(index)
+            x, y = index % width, index // width
+            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if 0 <= nx < width and 0 <= ny < height:
+                    n = ny * width + nx
+                    if mask[n] and not seen[n]:
+                        seen[n] = 1
+                        stack.append(n)
+        if best is None or len(points) > len(best):
+            best = points
+    if not best or len(best) < 12:
+        return None
+    xs = [p % width for p in best]
+    ys = [p // width for p in best]
+    cx = (sum(xs) / len(xs) + 0.5) * reduce
+    cy = (sum(ys) / len(ys) + 0.5) * reduce
+    radius = ((len(best) / 3.14159) ** 0.5) * reduce * 1.08
+    return {"x": round(cx, 2), "y": round(cy, 2), "r": round(radius, 2)}
+
+
+def detect_hand(image, head):
+    """Main-hand anchor from the figure's shape. In a right-facing side view
+    the weapon hand is the leading extremity between the shoulders and the
+    knees; when an arm is raised above the head, it is the topmost point.
+    Returns {x, y} in frame pixels, or None."""
+    bbox = image.getbbox()
+    if not bbox:
+        return None
+    alpha = image.getchannel("A").load()
+    width, height = image.size
+    figure_height = bbox[3] - bbox[1]
+    head_top = (head["y"] - head["r"]) if head else bbox[1] + figure_height * 0.08
+    if head and bbox[1] < head_top - head["r"] * 0.9:
+        # Something rises well above the head: a raised fist.
+        limit = bbox[1] + max(4, int(figure_height * 0.07))
+        xs, ys = [], []
+        for y in range(bbox[1], limit):
+            for x in range(bbox[0], bbox[2]):
+                if alpha[x, y] > 40:
+                    xs.append(x)
+                    ys.append(y)
+        if xs:
+            return {"x": round(sum(xs) / len(xs), 2), "y": round(sum(ys) / len(ys) + figure_height * 0.02, 2)}
+    band_top = int(head["y"] + head["r"] * 1.1) if head else int(bbox[1] + figure_height * 0.22)
+    band_bottom = int(bbox[3] - figure_height * 0.32)
+    best_x = -1
+    for y in range(max(bbox[1], band_top), min(bbox[3], band_bottom)):
+        for x in range(bbox[2] - 1, bbox[0] - 1, -1):
+            if alpha[x, y] > 40:
+                if x > best_x:
+                    best_x = x
+                break
+    if best_x < 0:
+        return None
+    # Average the opaque pixels near the leading edge to land inside the fist.
+    reach = max(6, int(figure_height * 0.05))
+    xs, ys = [], []
+    for y in range(max(bbox[1], band_top), min(bbox[3], band_bottom)):
+        for x in range(max(bbox[0], best_x - reach), best_x + 1):
+            if alpha[x, y] > 40:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        return None
+    return {"x": round(sum(xs) / len(xs), 2), "y": round(sum(ys) / len(ys), 2)}
+
+
 def find_frame(frames_dir, pose):
     pattern = re.compile(r"(^|[^a-z])" + re.escape(pose) + r"([^a-z]|$)", re.IGNORECASE)
     matches = sorted(p for p in frames_dir.iterdir() if p.suffix.lower() == ".png" and pattern.search(p.stem))
@@ -74,6 +177,9 @@ def main():
     parser.add_argument("--pixel", action="store_true", help="pixel art: resize with nearest-neighbor and mark the manifest pixelated so the client draws it without smoothing")
     parser.add_argument("--colors", type=int, default=0, help="with --pixel, quantize each frame to this many colors (alpha preserved)")
     parser.add_argument("--weapons-in-art", action="store_true", help="the frames include the character's weapons; the client will not draw its own on top")
+    parser.add_argument("--detect-head", metavar="#RRGGBB", help="skin color of the painted head; each frame's head anchor is detected from the largest blob of that color in the figure's upper part, and rigAligned is cleared so the portrait follows the art")
+    parser.add_argument("--head-tolerance", type=int, default=42, help="per-channel tolerance for --detect-head (default 42)")
+    parser.add_argument("--detect-hand", action="store_true", help="derive each frame's main-hand anchor from the figure's shape (leading extremity in the arm band, or the topmost point of a raised arm); the off-hand keeps the manifest anchor")
     args = parser.parse_args()
 
     frames_dir = Path(args.frames)
@@ -89,6 +195,9 @@ def main():
     rows = max(int(frame["y"]) // old_cell for frame in manifest["frames"].values()) + 1
     sheet = Image.new("RGBA", (columns * args.cell, rows * args.cell), (0, 0, 0, 0))
 
+    head_color = parse_color(args.detect_head) if args.detect_head else None
+    detected_heads = {}
+    detected_hands = {}
     missing = []
     for pose in poses:
         source = find_frame(frames_dir, pose)
@@ -101,6 +210,18 @@ def main():
             image = image.resize((args.cell, args.cell), resample)
         if args.pixel and args.colors > 0:
             image = quantize_keep_alpha(image, args.colors)
+        if head_color:
+            head = detect_head(image, head_color, args.head_tolerance)
+            if head:
+                detected_heads[pose] = head
+            else:
+                print(f"{pose:8s} head not found; keeping the manifest anchor")
+        if args.detect_hand:
+            hand = detect_hand(image, detected_heads.get(pose))
+            if hand:
+                detected_hands[pose] = hand
+            else:
+                print(f"{pose:8s} hand not found; keeping the manifest anchor")
         cell_x = int(manifest["frames"][pose]["x"] * factor)
         cell_y = int(manifest["frames"][pose]["y"] * factor)
         sheet.alpha_composite(image, (cell_x, cell_y))
@@ -117,7 +238,7 @@ def main():
     scaled["frameHeight"] = args.cell
     scaled["unit"] = round(manifest["unit"] * factor, 2)
     scaled["anchor"] = scale_point(manifest["anchor"], factor)
-    if not args.keep_rig_aligned:
+    if not args.keep_rig_aligned or detected_heads or detected_hands:
         scaled["rigAligned"] = False
     if args.pixel:
         scaled["pixelated"] = True
@@ -130,6 +251,10 @@ def main():
         entry = {"x": int(frame["x"] * factor), "y": int(frame["y"] * factor), "anchors": {}}
         for name, point in (frame.get("anchors") or {}).items():
             entry["anchors"][name] = scale_point(point, factor)
+        if pose in detected_heads:
+            entry["anchors"]["head"] = detected_heads[pose]
+        if pose in detected_hands:
+            entry["anchors"]["hand"] = detected_hands[pose]
         scaled_frames[pose] = entry
     scaled["frames"] = scaled_frames
 
