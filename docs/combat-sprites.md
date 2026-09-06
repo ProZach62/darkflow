@@ -163,7 +163,8 @@ median figure height lands on the rig's, and places each with its feet on
 the ground anchor, writing one frame per pose in grid order. Such frames
 carry no anchors of their own, so the assembler can derive them from the
 art: `--detect-head #rrggbb` finds each frame's head as the largest blob of
-the skin color in the figure's upper part, and `--detect-hand` takes the
+the skin color in the figure's upper part (`--head-band` narrows that part
+when bare arms in the skin color outweigh the head), and `--detect-hand` takes the
 main hand as the leading extremity in the arm band (or the topmost point
 of a raised arm). Either clears `rigAligned`. Without them, assemble with
 `--keep-rig-aligned` and nudge the manifest where an overlay sits off.

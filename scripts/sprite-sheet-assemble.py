@@ -179,6 +179,7 @@ def main():
     parser.add_argument("--weapons-in-art", action="store_true", help="the frames include the character's weapons; the client will not draw its own on top")
     parser.add_argument("--detect-head", metavar="#RRGGBB", help="skin color of the painted head; each frame's head anchor is detected from the largest blob of that color in the figure's upper part, and rigAligned is cleared so the portrait follows the art")
     parser.add_argument("--head-tolerance", type=int, default=42, help="per-channel tolerance for --detect-head (default 42)")
+    parser.add_argument("--head-band", type=float, default=0.4, help="fraction of the figure's height, from the top, searched by --detect-head (default 0.4); lower it when bare arms in the skin color outweigh the head")
     parser.add_argument("--detect-hand", action="store_true", help="derive each frame's main-hand anchor from the figure's shape (leading extremity in the arm band, or the topmost point of a raised arm); the off-hand keeps the manifest anchor")
     args = parser.parse_args()
 
@@ -211,7 +212,7 @@ def main():
         if args.pixel and args.colors > 0:
             image = quantize_keep_alpha(image, args.colors)
         if head_color:
-            head = detect_head(image, head_color, args.head_tolerance)
+            head = detect_head(image, head_color, args.head_tolerance, args.head_band)
             if head:
                 detected_heads[pose] = head
             else:
