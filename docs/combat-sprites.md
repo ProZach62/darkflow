@@ -23,7 +23,8 @@ For the recipient's own fighter the stage tries, most specific first:
    Northman without a `male-northman` sheet draws `male-human`. The
    elven kinds (Arctic Elf, High Elf, Shel-Zaranite, Silver Elf, Wayfarian)
    map to `elf`, and the dwarven kinds (Desert Dwarf, Rift Duergar, Stone
-   Dwarf) to `dwarf`.
+   Dwarf) to `dwarf`. A family can also be another race: Uruk map to
+   `scro`, so an Uruk without an `uruk` sheet draws the Scro one.
 4. The body kind, `humanoid` or `beast`.
 
 Targets and observed fighters only get the body kind: nothing recipient-safe
