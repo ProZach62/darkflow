@@ -139,6 +139,9 @@ export const fishingManager = {
     fishingAuto.attach(this);
 
     panelManager.registerPanelCloseHandler('fishing', () => {
+      // Closing the panel is the player taking over, and it reports as such
+      // rather than as the session ending.
+      fishingAuto.notifyManualInput();
       if (this.session) gmcp.send(PKG.CANCEL, { session: this.session.id });
       this._reset('idle');
       return true;
@@ -330,6 +333,7 @@ export const fishingManager = {
 
     stage.innerHTML = `
       <button type="button" class="fishing-close" title="Stop fishing">&#x2715;</button>
+      <div class="fishing-auto-badge" aria-hidden="true">AUTO</div>
       <img class="fishing-scene" alt="" draggable="false">
       <div class="fishing-water"></div>
       <div class="fishing-bobber"><div class="fishing-bobber-top"></div></div>
@@ -378,8 +382,21 @@ export const fishingManager = {
     `;
     bodyEl.appendChild(stage);
 
+    // Auto-Angler controls live outside the stage (PRD 4.5, 6.1): a press on
+    // the stage is the player taking over, and the toggle must not count as
+    // one. The button is a real <button> with its state in aria-pressed.
+    const autoStrip = document.createElement('div');
+    autoStrip.className = 'fishing-auto-strip';
+    autoStrip.innerHTML =
+      '<button type="button" class="fishing-auto-toggle dw-button" aria-pressed="false">Auto: OFF</button>' +
+      '<span class="fishing-auto-summary"></span>';
+    bodyEl.appendChild(autoStrip);
+
     this.els = {
       stage,
+      autoBadge: stage.querySelector('.fishing-auto-badge'),
+      autoToggle: autoStrip.querySelector('.fishing-auto-toggle'),
+      autoSummary: autoStrip.querySelector('.fishing-auto-summary'),
       closeBtn: stage.querySelector('.fishing-close'),
       scene: stage.querySelector('.fishing-scene'),
       bobber: stage.querySelector('.fishing-bobber'),
@@ -456,6 +473,11 @@ export const fishingManager = {
     this.els.powerWrap.addEventListener('pointerup', castUp);
     this.els.powerWrap.addEventListener('pointercancel', castUp);
 
+    this.els.autoToggle.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      fishingAuto.toggle();
+    });
+
     // Close: ends the session (the panel close handler sends Cancel).
     this.els.closeBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -502,6 +524,21 @@ export const fishingManager = {
 
     e.stage.dataset.phase = phase;
     e.stage.dataset.terrain = this.session ? this.session.terrain : '';
+
+    // Auto-Angler state (PRD 4.6): the stage border and badge say who is in
+    // control, the toggle reflects it, and the strip carries the run summary
+    // or, once stopped, the reason.
+    const auto = fishingAuto.panelState();
+    e.stage.dataset.auto = auto.enabled ? 'on' : 'off';
+    e.autoBadge.style.display = auto.enabled ? '' : 'none';
+    e.autoToggle.textContent = auto.enabled ? 'Auto: ON' : 'Auto: OFF';
+    e.autoToggle.setAttribute('aria-pressed', auto.enabled ? 'true' : 'false');
+    e.autoToggle.setAttribute('aria-label', auto.enabled
+      ? 'Auto-Angler is on. Press to stop it.'
+      : 'Auto-Angler is off. Press to start it.');
+    e.autoSummary.textContent = auto.enabled
+      ? auto.summary
+      : (auto.haltReason ? 'Auto-Angler stopped: ' + auto.haltReason : '');
 
     if (this.session && this.session.sceneArtUrl) {
       if (e.scene.src !== this.session.sceneArtUrl) e.scene.src = this.session.sceneArtUrl;
@@ -569,6 +606,18 @@ export const fishingManager = {
         ? 'Re-bait your hook to try again.' : '';
     } else {
       e.status.textContent = '';
+    }
+
+    if (auto.enabled) {
+      // Counters replace the manual hints: the hints describe what the player
+      // should do, and right now they should do nothing.
+      e.status.textContent = auto.summary;
+    } else if (auto.haltReason && (phase === 'idle' || phase === 'nobait' ||
+      phase === 'caught' || phase === 'escaped')) {
+      // Between actions the message area carries the halt reason (PRD 4.42);
+      // once the player is casting or fighting the normal text takes over.
+      e.message.textContent = (e.message.textContent ? e.message.textContent + ' ' : '') +
+        'Auto-Angler stopped: ' + auto.haltReason;
     }
   },
 

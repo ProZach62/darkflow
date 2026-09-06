@@ -317,3 +317,249 @@ test('a server verdict drops the controller even mid-fight', () => {
   assert.equal(fishingAuto.controller, null);
   fishingAuto.disable();
 });
+
+// ---- Cast, hook, and the loop ---------------------------------------------
+// The loop reaches the socket and the settings store only through the runtime
+// app.js injects, so both are captured here. _onOpen also touches the panel
+// manager and the bite path plays sounds; neither matters to these tests.
+
+const { HALT_REASONS } = await import('../public/js/fishing-auto.js');
+const { castReleaseMs } = await import('../public/js/fishing-auto-core.mjs');
+const { panelManager } = await import('../public/js/panel-manager.js');
+const { soundManager } = await import('../public/js/sound-manager.js');
+panelManager.openPanel = () => {};
+panelManager._renderPanel = () => {};
+soundManager.play = () => {};
+soundManager.loop = () => {};
+soundManager.stopById = () => {};
+
+// fishingManager.init() is never called here (it registers GMCP handlers), so
+// the hand-over it performs is done by hand.
+fishingAuto.attach(fishingManager);
+
+const commands = [];
+const saved = new Map();
+let connected = true;
+fishingAuto.configureRuntime({
+  sendCommand: (text) => { commands.push(text); return true; },
+  isConnected: () => connected,
+  loadSetting: (key) => saved.get(key),
+  saveSetting: (key, value) => { saved.set(key, value); },
+});
+
+function resetLoop() {
+  reset();
+  commands.length = 0;
+  saved.clear();
+  connected = true;
+  fishingAuto.castPower = TUNING.castPowerStart;
+  fishingAuto.powerOverride = null;
+  fishingAuto._baitAttempted = false;
+  fishingAuto.haltReason = '';
+}
+
+// Enable on an idle panel, open a baited session, and release the cast.
+function castAway(seed) {
+  fishingAuto.enable({ seed });
+  openSession();
+  clock += lastDelay();
+  fireLast();
+}
+
+test('a baited session opening casts at the adaptive power, released on the oscillator', () => {
+  resetLoop();
+  fishingAuto.enable({ seed: 11 });
+  openSession();
+  assert.equal(fishingManager.phase, 'casting');
+
+  const delay = lastDelay();
+  const j = TUNING.castPowerJitter;
+  assert.ok(delay >= castReleaseMs(TUNING.castPowerStart - j) && delay <= castReleaseMs(TUNING.castPowerStart + j),
+    'release timed for the target power, got ' + delay);
+
+  clock += delay;
+  assert.ok(fireLast());
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].kind, 'cast');
+  assert.ok(Math.abs(sent[0].power - TUNING.castPowerStart) <= j + 1, 'power ' + sent[0].power);
+  assert.equal(sent[0].power, castPowerAt(delay), 'the power is whatever the oscillator read at release');
+});
+
+test('a release that fires past a full oscillator period abandons the cast', () => {
+  resetLoop();
+  fishingAuto.enable({ seed: 11 });
+  openSession();
+  clock += 1300;
+  fireLast();
+  assert.equal(sent.length, 0);
+  assert.equal(fishingManager.phase, 'ready');
+  assert.equal(fishingAuto.enabled, true, 'an abandoned cast is not a halt');
+});
+
+test('a bite is hooked after a human-plausible delay inside the window', () => {
+  resetLoop();
+  castAway(3);
+  assert.equal(fishingManager.phase, 'waiting');
+
+  fishingManager._onBite({ session: 's1', windowMs: 2500 });
+  const delay = lastDelay();
+  assert.ok(delay >= TUNING.hookDelayFloorMs, 'never faster than a person: ' + delay);
+  assert.ok(delay <= 2500 * TUNING.hookWindowSafety, 'never spends the window: ' + delay);
+
+  assert.ok(fireLast());
+  assert.deepEqual(sent[sent.length - 1], { kind: 'hook' });
+  assert.equal(fishingManager.phase, 'hooking');
+});
+
+test('a short bite window caps the hook delay below the plausibility floor', () => {
+  resetLoop();
+  castAway(3);
+  fishingManager._onBite({ session: 's1', windowMs: 200 });
+  assert.ok(lastDelay() <= 200 * TUNING.hookWindowSafety, 'got ' + lastDelay());
+});
+
+test('a pending hook is cancelled when the session resets', () => {
+  resetLoop();
+  castAway(3);
+  fishingManager._onBite({ session: 's1', windowMs: 2500 });
+  const hook = scheduled[scheduled.length - 1];
+  openSession();
+  assert.equal(hook.cancelled, true);
+  assert.equal(hook.fired, false);
+});
+
+test('a confirmed catch tallies the run, raises cast power, and re-baits after a pause', () => {
+  resetLoop();
+  castAway(5);
+  fishingManager._onBite({ session: 's1', windowMs: 2500 });
+  fireLast();
+  fishingManager._onFight({ session: 's1', seed: 7, params: PARAMS });
+  assert.ok(fishingAuto.controller, 'the fight is being driven');
+
+  fishingManager._onCaught({ session: 's1', fish: { id: 'x', name: 'x' }, rewards: {} });
+  assert.equal(fishingAuto.controller, null);
+  assert.equal(fishingAuto.stats.landed, 1);
+  assert.equal(fishingAuto.stats.cycles, 1);
+  assert.equal(fishingAuto.castPower, TUNING.castPowerStart + TUNING.castPowerOnCatch);
+  assert.equal(saved.get('autofishCastPower'), fishingAuto.castPower, 'the new power is persisted');
+
+  const pause = lastDelay();
+  assert.ok(pause >= TUNING.cycleDelayMinMs && pause <= TUNING.cycleDelayMaxMs, 'cycle pause ' + pause);
+  commands.length = 0;
+  assert.ok(fireLast());
+  assert.deepEqual(commands, ['bait hook']);
+
+  const baitPause = lastDelay();
+  assert.ok(baitPause >= TUNING.baitDelayMinMs && baitPause <= TUNING.baitDelayMaxMs, 'bait pause ' + baitPause);
+  assert.ok(fireLast());
+  assert.deepEqual(commands, ['bait hook', 'fish']);
+
+  // The next Open is baited: the run continues with a fresh cast.
+  openSession();
+  assert.equal(fishingAuto.enabled, true);
+  assert.equal(fishingManager.phase, 'casting');
+});
+
+test('an escape counts by cause and lowers cast power; a timeout leaves it alone', () => {
+  resetLoop();
+  castAway(5);
+  fishingManager._onEscaped({ session: 's1', reason: 'snap' });
+  assert.equal(fishingAuto.stats.lost.snap, 1);
+  assert.equal(fishingAuto.castPower, TUNING.castPowerStart + TUNING.castPowerOnEscape);
+
+  const after = fishingAuto.castPower;
+  fishingManager._onEscaped({ session: 's1', reason: 'timeout' });
+  assert.equal(fishingAuto.stats.lost.timeout, 1);
+  assert.equal(fishingAuto.castPower, after, 'a missed bite says nothing about the fish');
+  assert.equal(fishingAuto.status().lost, 2);
+  assert.equal(fishingAuto.status().cycles, 2);
+});
+
+test('out of bait halts after exactly one failed bait cycle', () => {
+  resetLoop();
+  // The player switched the addon on with a session that had opened unbaited.
+  fishingManager._onOpen({ session: 's1', terrain: 'lake', skill: 100, baited: false });
+  fishingAuto.enable({ seed: 9 });
+  assert.deepEqual(commands, ['bait hook']);
+  assert.ok(fireLast());
+  assert.deepEqual(commands, ['bait hook', 'fish']);
+
+  fishingManager._onOpen({ session: 's2', terrain: 'lake', skill: 100, baited: false });
+  assert.equal(fishingAuto.enabled, false);
+  assert.equal(fishingAuto.haltReason, HALT_REASONS.NO_BAIT);
+  assert.deepEqual(commands, ['bait hook', 'fish'], 'no second bait attempt');
+  assert.equal(saved.get('autofishEnabled'), false);
+});
+
+test('enabling with no session opens one, but not while disconnected', () => {
+  resetLoop();
+  fishingAuto.enable({ seed: 1 });
+  assert.deepEqual(commands, ['fish']);
+  assert.equal(saved.get('autofishEnabled'), true);
+
+  resetLoop();
+  connected = false;
+  fishingAuto.enable({ seed: 1 });
+  assert.deepEqual(commands, []);
+});
+
+test('the session ending and a disconnect each halt the run with their reason', () => {
+  resetLoop();
+  castAway(1);
+  fishingManager._onEnd({ session: 's1' });
+  assert.equal(fishingAuto.enabled, false);
+  assert.equal(fishingAuto.haltReason, HALT_REASONS.SESSION_END);
+
+  resetLoop();
+  castAway(1);
+  fishingManager.handleDisconnect();
+  assert.equal(fishingAuto.enabled, false);
+  assert.equal(fishingAuto.haltReason, HALT_REASONS.DISCONNECTED);
+});
+
+test('a pinned cast power is used as-is and never adapted', () => {
+  resetLoop();
+  fishingAuto.enable({ seed: 2 });
+  fishingAuto.handleCommand(['power', '80']);
+  assert.equal(fishingAuto.powerOverride, 80);
+  assert.equal(saved.get('autofishPowerOverride'), 80);
+
+  openSession();
+  assert.ok(Math.abs(lastDelay() - castReleaseMs(80)) <= castReleaseMs(TUNING.castPowerJitter),
+    'release aimed at 80, got ' + lastDelay());
+
+  fishingManager._onCaught({ session: 's1', fish: {}, rewards: {} });
+  assert.equal(fishingAuto.castPower, TUNING.castPowerStart, 'adaptive power untouched while pinned');
+  assert.equal(fishingAuto.status().power, 80);
+
+  fishingAuto.handleCommand(['power', 'auto']);
+  assert.equal(fishingAuto.powerOverride, null);
+  assert.equal(saved.get('autofishPowerOverride'), null);
+});
+
+test('/autofish on and off switch the addon and record why it stopped', () => {
+  resetLoop();
+  fishingAuto.handleCommand(['on']);
+  assert.equal(fishingAuto.enabled, true);
+  fishingAuto.handleCommand(['off']);
+  assert.equal(fishingAuto.enabled, false);
+  assert.equal(fishingAuto.haltReason, HALT_REASONS.SWITCHED_OFF);
+  assert.equal(fishingAuto.status().phase, 'idle');
+  assert.equal(fishingAuto.panelState().haltReason, HALT_REASONS.SWITCHED_OFF);
+});
+
+test('init restores the persisted power, override, and armed state without sending anything', () => {
+  resetLoop();
+  saved.set('autofishCastPower', 70);
+  saved.set('autofishPowerOverride', 30);
+  saved.set('autofishEnabled', true);
+  fishingAuto.init();
+  assert.equal(fishingAuto.castPower, 70);
+  assert.equal(fishingAuto.powerOverride, 30);
+  assert.equal(fishingAuto.enabled, true);
+  assert.deepEqual(commands, [], 'a restored run waits for a session to open');
+
+  openSession();
+  assert.equal(fishingManager.phase, 'casting', 'and takes over when one does');
+  fishingAuto.disable();
+});

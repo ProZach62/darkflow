@@ -16,6 +16,7 @@ The app is intentionally lightweight: Express serves static files, the browser c
 - **Server-driven windows**: `Darkwind.Window` modals/panels for login and in-game UI, including forms, buttons, updates, submits, actions, and close notifications.
 - **Builder IDE**: `Darkwind.IDE` opens files in the browser, supports save/compile feedback, diagnostics, and close notifications.
 - **Command ergonomics**: command history, optional history-based Tab completion, server-authoritative completion, aliases, triggers, custom key mappings, and highlight rules.
+- **Auto-Angler**: `/autofish on` (or the Auto toggle in the Fishing panel) plays the whole fishing loop unattended: it baits, casts, hooks, plays the reel fight, and re-baits until the bait runs out, then stops and says why. Any click or key in the panel hands control straight back. `/autofish` prints the run counters and cast power, and `/autofish power <n>` pins the cast power. See `docs/fishing-auto-angler.md`.
 - **Announcements and media**: announcement inbox with unread state, Giphy popups, avatar media, room imagery, and media refresh support.
 - **Portable settings**: settings, aliases, highlights, triggers, and panel layouts can be exported/imported as JSON.
 - **Darkflow branding**: app icon, favicons, manifest, About modal, and hidden brand asset page at `/darkflow-brand.html`.
