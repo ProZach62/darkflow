@@ -135,6 +135,8 @@ test('sheet keys go from character to race to kind, and only for the recipient',
     ['characters/ulf', 'male-northman', 'male-human', 'humanoid'], 'human cultures fall through to the shared human sheet');
   assert.deepEqual(spriteKeysFor({ name: 'Esme', gender: 'female', race: 'Desert Nomad' }, figure, 'player'),
     ['characters/esme', 'female-desert-nomad', 'female-human', 'humanoid']);
+  assert.deepEqual(spriteKeysFor({ name: 'Tam', gender: 'male', race: 'Wayfarian' }, figure, 'player'),
+    ['characters/tam', 'male-wayfarian', 'humanoid'], 'a race outside every family gets no family key');
   assert.deepEqual(spriteKeysFor({ name: 'Bryn', race: 'High Elf' }, figure, 'player'),
     ['characters/bryn', 'humanoid'], 'no gender means no race key');
   assert.deepEqual(spriteKeysFor({ name: 'Bryn', gender: 'male', race: 'Scro' }, figure, 'target'),

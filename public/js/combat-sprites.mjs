@@ -40,8 +40,6 @@ export const SPRITE_RACE_FAMILIES = Object.freeze({
   'gypsy': 'human',
   'northman': 'human',
   'souvraeli': 'human',
-  'wayfarian': 'human',
-  'wayfarian-gypsy': 'human',
 });
 
 export function spriteRaceFamily(race) {
