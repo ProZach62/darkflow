@@ -58,7 +58,8 @@ globalThis.ResizeObserver = class ResizeObserver { observe() {} disconnect() {} 
 
 const { fishingManager } = await import('../public/js/fishing-manager.js');
 const { fishingAuto } = await import('../public/js/fishing-auto.js');
-const { createFightSim } = await import('../public/js/fishing-core.mjs');
+const { createFightSim, castPowerAt } = await import('../public/js/fishing-core.mjs');
+const { TUNING } = await import('../public/js/fishing-auto-core.mjs');
 
 // Rendering and sound are not what these tests are about, and they need a
 // fully built panel to work against.
@@ -123,8 +124,65 @@ function reset() {
   fishingAuto.disable();
   fishingAuto.enabled = false;
   fishingAuto.controller = null;
+  fishingAuto.cancelTimers();
   fishingManager._reset('idle');
   frames.length = 0;
+  sent.length = 0;
+  scheduled.length = 0;
+  clock = 0;
+}
+
+// ---- Outbound capture ------------------------------------------------------
+// The manager sends through gmcp.send; capturing at _sendCast / _sendHook
+// keeps the assertions on what the Auto-Angler decided rather than on wire
+// formatting, which fishing-manager already owns.
+
+const sent = [];
+const realSendCast = fishingManager._sendCast;
+const realSendHook = fishingManager._sendHook;
+
+fishingManager._sendCast = function captureCast(power) {
+  sent.push({ kind: 'cast', power });
+  this.phase = 'waiting';
+  if (this.session) this.session.baited = false;
+};
+fishingManager._sendHook = function captureHook() {
+  if (this.phase !== 'bite') return;
+  sent.push({ kind: 'hook' });
+  this.phase = 'hooking';
+};
+
+// ---- Controllable timers ---------------------------------------------------
+// Replacing _after rather than waiting on real timers keeps the tests fast and
+// exact, and makes the scheduled delay itself assertable - which is most of
+// what there is to check about cast release and hook reaction.
+
+const scheduled = [];
+fishingAuto._after = function captureAfter(delayMs, fn) {
+  const entry = { delayMs, fn, cancelled: false, fired: false };
+  scheduled.push(entry);
+  return entry;
+};
+fishingAuto.cancelTimers = function cancelCaptured() {
+  for (const entry of scheduled) entry.cancelled = true;
+};
+
+// Fire the most recently scheduled callback, honouring cancellation.
+function fireLast() {
+  const entry = scheduled[scheduled.length - 1];
+  if (!entry || entry.cancelled || entry.fired) return false;
+  entry.fired = true;
+  entry.fn();
+  return true;
+}
+
+function lastDelay() {
+  return scheduled.length ? scheduled[scheduled.length - 1].delayMs : null;
+}
+
+// Open a baited session, which is what triggers an automated cast.
+function openSession() {
+  fishingManager._onOpen({ session: 's1', terrain: 'lake', skill: 100, baited: true });
 }
 
 // ---- M8: zero footprint when disabled --------------------------------------

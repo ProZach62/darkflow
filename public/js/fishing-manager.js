@@ -162,6 +162,10 @@ export const fishingManager = {
     panelManager.openPanel('fishing');
     panelManager._renderPanel('fishing');
     this._render();
+    // Notified last, once the panel exists. An automated cast enters the same
+    // charging loop a manual one does, and that loop paints the power meter -
+    // starting it before the panel is built would dereference a null element.
+    fishingAuto.onSessionOpen(this.phase, this.session);
   },
 
   _onBite(data) {
@@ -170,6 +174,7 @@ export const fishingManager = {
     this.phase = 'bite';
     this._biteTimer = data.windowMs || 2500;
     this._biteWindow = this._biteTimer;
+    fishingAuto.onBite(this._biteWindow);
     soundManager.play('fishing', 'splash');
     this._render();
     this._startLoop();

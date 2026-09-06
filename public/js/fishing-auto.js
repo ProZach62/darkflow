@@ -11,7 +11,16 @@
 // argument unchanged while we are off.
 
 import { appendSystemMessage } from './output.js';
-import { createFightController } from './fishing-auto-core.mjs';
+import {
+  createFightController,
+  createRng,
+  castReleaseMs,
+  jitterPower,
+  isReleaseUsable,
+  hookDelayMs,
+  castPowerAt,
+  TUNING,
+} from './fishing-auto-core.mjs';
 
 // Params whose degradation means our model of the fight no longer matches the
 // fight the simulation is actually running.
@@ -58,6 +67,18 @@ export const fishingAuto = {
   // every fight, so the numbers describe the session they actually started.
   stats: null,
 
+  // Randomness for cast and hook timing. Reseeded on enable; tests replace it
+  // to make a run reproducible.
+  rand: null,
+
+  // Cast power the adaptive policy has settled on, before per-cast jitter.
+  castPower: TUNING.castPowerStart,
+
+  // Pending setTimeout handles, so a phase change can cancel work that is no
+  // longer wanted. A stale timer firing into a dead session is the classic way
+  // an addon like this sends nonsense to the server.
+  _timers: new Set(),
+
   // The fishing panel manager. Handed over by fishingManager.init() rather
   // than imported, so dependencies only ever flow fishing-manager ->
   // fishing-auto and there is no import cycle to reason about.
@@ -82,11 +103,12 @@ export const fishingAuto = {
 
   // ---- Enable / disable ----------------------------------------------------
 
-  enable() {
+  enable(opts = {}) {
     if (this.enabled) return;
     this._resetStats();
     this.stats.startedAt = Date.now();
     this.haltReason = '';
+    this.rand = createRng(Number.isFinite(opts.seed) ? opts.seed : (Date.now() % 2147483647));
     this.enabled = true;
     appendSystemMessage('Auto-Angler on.');
   },
@@ -97,8 +119,25 @@ export const fishingAuto = {
     if (!this.enabled) return;
     this.enabled = false;
     this.controller = null;
+    this.cancelTimers();
     this.haltReason = reason;
     appendSystemMessage('Auto-Angler off.' + (reason ? ' ' + reason : ''));
+  },
+
+  // ---- Timers --------------------------------------------------------------
+
+  _after(delayMs, fn) {
+    const id = setTimeout(() => {
+      this._timers.delete(id);
+      fn();
+    }, Math.max(0, delayMs));
+    this._timers.add(id);
+    return id;
+  },
+
+  cancelTimers() {
+    for (const id of this._timers) clearTimeout(id);
+    this._timers.clear();
   },
 
   isActive() {
@@ -118,6 +157,79 @@ export const fishingAuto = {
   notifyManualInput() {
     if (!this.enabled) return;
     this.disable(HALT_REASONS.MANUAL);
+  },
+
+  // ---- Cast and hook -------------------------------------------------------
+
+  // A session opened. `phase` is 'ready' when the hook is baited, 'nobait'
+  // otherwise. Baiting and restarting the loop belong to the next parent; for
+  // now a baited session is simply cast.
+  onSessionOpen(phase) {
+    if (!this.enabled) return;
+    this.cancelTimers();
+    if (phase === 'ready') this.beginCast();
+  },
+
+  // Charge and release a cast (PRD 4.14-4.17).
+  //
+  // The cast goes out through the manager's own _sendCast, and the power is
+  // read from the live oscillator at the moment of release rather than chosen
+  // and asserted. That is the point of timing the release instead of picking a
+  // number: the resulting Darkwind.Fishing.Cast is produced by exactly the code
+  // a manual cast runs through, so it cannot differ in form.
+  beginCast() {
+    const m = this.manager;
+    if (!m || m.phase !== 'ready') return;
+
+    const target = jitterPower(this.castPower, this.rand);
+
+    // Mirrors the castDown handler in fishing-manager's _build: enter the
+    // charging phase, mark the start, and let the loop animate the meter.
+    m.phase = 'casting';
+    m._castStart = performance.now();
+    m._render();
+    // The loop only animates the power meter, and its casting branch reads
+    // panel elements directly. Skip it if the panel is not built - the cast
+    // still goes out on schedule, it just charges invisibly.
+    if (m.els) m._startLoop();
+
+    this._after(castReleaseMs(target), () => this.releaseCast());
+  },
+
+  releaseCast() {
+    const m = this.manager;
+    if (!this.enabled || !m || m.phase !== 'casting') return;
+
+    const elapsed = performance.now() - m._castStart;
+    m._stopLoop();
+
+    // A release scheduled late is usually harmless - the power simply reads
+    // lower than intended, which is human enough. Past a full oscillator
+    // period the wave has wrapped and the reading means nothing, so abandon
+    // the cast and let the next cycle try again rather than send a number we
+    // did not intend.
+    if (!isReleaseUsable(elapsed)) {
+      m.phase = 'ready';
+      m._render();
+      return;
+    }
+
+    m._sendCast(castPowerAt(elapsed));
+  },
+
+  // A fish is biting. React after a human-plausible delay rather than on the
+  // frame the message arrived (PRD 4.18-4.20).
+  onBite(windowMs) {
+    if (!this.enabled) return;
+    this._after(hookDelayMs(windowMs, this.rand), () => {
+      // The window may have closed, the player may have taken over, or the
+      // session may have ended while this was pending. Hooking into any of
+      // those sends a message the server will discard at best.
+      if (!this.enabled) return;
+      const m = this.manager;
+      if (!m || m.phase !== 'bite') return;
+      m._sendHook();
+    });
   },
 
   // ---- Fight lifecycle -----------------------------------------------------
@@ -177,12 +289,15 @@ export const fishingAuto = {
   // ended, or the player closed the panel.
   onSessionReset() {
     this.controller = null;
+    // Any pending cast release or hook belongs to the phase we just left.
+    this.cancelTimers();
   },
 
   // The socket dropped. The server session nonce is dead, so anything we might
   // send from here would be silently discarded server-side.
   onDisconnect() {
     this.controller = null;
+    this.cancelTimers();
   },
 
   // ---- Manager hook --------------------------------------------------------
