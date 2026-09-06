@@ -29,6 +29,7 @@ Darkflow, the web-based WebSocket client for the Darkwind LDMud game server (pla
 - `combat-rig-core.mjs` -- Procedural fighter rig for the stage: figure resolution (equipment or guild weapon, race scale, NPC beast), poses, and joint geometry; pure and unit-tested
 - `combat-equipment-core.mjs` -- Equipment profile from Char.Items (hands, shield, helmet, armor) with a keyword weapon classifier; pure and unit-tested
 - `combat-sprites.mjs` / `combat-sprite-bake.mjs` -- Sprite sheet manifest, loader (character, then gender-race, then kind), and placement for the stage figures (see `docs/combat-sprites.md`); bake tool renders a sheet from the rig or a registered style
+- `scripts/sprite-sheet-split.py` -- Cuts a text-prompt-generated sheet into normalized per-pose frames (background removal, ground-line fit)
 - `scripts/sprite-sheet-assemble.py` / `scripts/comfyui-sprite-cell.json` -- Paint-over pipeline: assemble painted frames into a sheet and scale its manifest; ComfyUI single-cell ControlNet graph
 - `combat-sprite-art.mjs` -- Hand-authored vector bodies drawn over rig geometry for specific sheets (e.g. `male-scro`); used only while baking
 - `map-data-v2.js` -- Server-authoritative map model (MapData2): room graph + coords from the server, sync/version reconciliation, browse-area store

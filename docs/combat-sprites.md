@@ -145,3 +145,13 @@ match, and sets `rigAligned` to false. Run it with any Python that has
 Pillow, for example ComfyUI's bundled interpreter. For pixel art pass
 `--pixel` (nearest-neighbor resize and the `pixelated` manifest flag) and
 optionally `--colors N` to quantize each frame to a palette.
+
+
+`scripts/sprite-sheet-split.py` handles the other route: a whole sheet
+generated from a text prompt with no reference cells. It cuts an even grid,
+flood-fills the flat background away from the cell edges (so highlights
+inside the figure survive), scales every figure by one shared factor so the
+median figure height lands on the rig's, and places each with its feet on
+the ground anchor, writing one frame per pose in grid order. Such frames
+carry no anchors, so assemble them with `--keep-rig-aligned` and nudge the
+manifest where an overlay sits off.
