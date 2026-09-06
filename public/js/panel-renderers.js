@@ -1209,6 +1209,8 @@ export const panelRenderers = {
     html += '<div class="dps-rows">' +
       dpsRow('Session DPS', sessionFigure(session.dps, formatDpsNumber)) +
       dpsRow('Damage', sessionFigure(session.damage, formatInt)) +
+      // Counts stay true even with damage numbers off, so this is never dashed.
+      dpsRow('Crits', formatInt(session.crits) + percentSuffix(session.critRate)) +
       dpsRow('Fights', formatInt(session.encounters)) +
       dpsRow('In combat', formatClock(session.durationMs)) +
       '</div>';

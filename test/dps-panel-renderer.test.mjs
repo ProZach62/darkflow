@@ -203,3 +203,51 @@ test('dps pane escapes a hostile target name', () => {
   assert.doesNotMatch(bodyEl.innerHTML, /<img src=x/);
   assert.match(bodyEl.innerHTML, /&lt;img/);
 });
+
+test('dps pane reports the session crit rate across fights', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+
+  let state = createDpsState();
+  // Fight one: two landed hits, one of them critical.
+  state = reduceDpsState(state, stateFrame(), NOW);
+  state = reduceDpsEvents(state, eventFrame([
+    swing(1, { result: 'hit', damage: 100 }),
+    swing(2, { result: 'critical', damage: 300 }),
+  ]), NOW);
+  state = reduceDpsState(state, stateFrame({ active: false }), NOW + 2000);
+
+  // Fight two: a single ordinary hit, so the session is one crit in three.
+  const second = stateFrame({ encounter_id: 'encounter-13' });
+  state = reduceDpsState(state, second, NOW + 3000);
+  state = reduceDpsEvents(state, eventFrame([swing(1, { result: 'hit', damage: 50 })], { encounter_id: 'encounter-13' }), NOW + 3000);
+  state = reduceDpsState(state, { ...second, active: false }, NOW + 5000);
+
+  const view = selectDpsView(state, NOW + 6000);
+  assert.equal(view.session.crits, 1);
+  assert.equal(view.session.hits, 3);
+
+  panelRenderers.dps(bodyEl, view);
+
+  // Crits are a share of landed hits, matching the per-fight row above it.
+  assert.match(bodyEl.innerHTML, /1 \(33%\)/);
+});
+
+test('session crit counts survive damage numbers being turned off', () => {
+  const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
+
+  // A fight whose events carry results but no numeric wording at all.
+  let state = reduceDpsState(createDpsState(), stateFrame(), NOW);
+  state = reduceDpsEvents(state, eventFrame([
+    { seq: 1, kind: 'attack', perspective: 'outgoing', result: 'critical', summary: 'You critically hit.' },
+    { seq: 2, kind: 'attack', perspective: 'outgoing', result: 'hit', summary: 'You hit.' },
+  ]), NOW);
+
+  const view = selectDpsView(state, NOW + 2000);
+  assert.equal(view.missingDamageNumbers, true);
+
+  panelRenderers.dps(bodyEl, view);
+
+  // Damage figures are dashed, but the crit tally is still real and shown.
+  assert.match(bodyEl.innerHTML, /combatbrief damage/);
+  assert.match(bodyEl.innerHTML, /1 \(50%\)/);
+});
