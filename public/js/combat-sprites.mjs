@@ -32,7 +32,8 @@ export function isSheetKey(key) {
 
 // Races that share one body and can share one sheet. A race without its own
 // sheet falls through to `<gender>-<family>` before the body kind, so one
-// painted human serves every human culture and one elf every elven kind.
+// painted human serves every human culture, one elf every elven kind, and
+// one dwarf every dwarven kind.
 export const SPRITE_RACE_FAMILIES = Object.freeze({
   'barbarian': 'human',
   'desert-nomad': 'human',
@@ -45,6 +46,9 @@ export const SPRITE_RACE_FAMILIES = Object.freeze({
   'shel-zaranite': 'elf',
   'silver-elf': 'elf',
   'wayfarian': 'elf',
+  'desert-dwarf': 'dwarf',
+  'rift-duergar': 'dwarf',
+  'stone-dwarf': 'dwarf',
 });
 
 export function spriteRaceFamily(race) {
