@@ -30,6 +30,24 @@ export function isSheetKey(key) {
   return typeof key === 'string' && key.length <= 80 && SHEET_KEY_PATTERN.test(key);
 }
 
+// Races that share one body and can share one sheet. A race without its own
+// sheet falls through to `<gender>-<family>` before the body kind, so one
+// painted human serves every human culture.
+export const SPRITE_RACE_FAMILIES = Object.freeze({
+  'barbarian': 'human',
+  'desert-nomad': 'human',
+  'glavian': 'human',
+  'gypsy': 'human',
+  'northman': 'human',
+  'souvraeli': 'human',
+  'wayfarian': 'human',
+  'wayfarian-gypsy': 'human',
+});
+
+export function spriteRaceFamily(race) {
+  return SPRITE_RACE_FAMILIES[spriteSlug(race)] || '';
+}
+
 // Sheets to try for a figure, most specific first. Only the recipient's
 // own token gets name and race keys: an observed fighter or a target has
 // no recipient-safe identity beyond its body kind and, for players, the
@@ -42,7 +60,11 @@ export function spriteKeysFor(combatant, figure, side) {
     if (name) keys.push('characters/' + name);
     const gender = spriteSlug(combatant.gender);
     const race = spriteSlug(combatant.race);
-    if (gender && race) keys.push(gender + '-' + race);
+    if (gender && race) {
+      keys.push(gender + '-' + race);
+      const family = spriteRaceFamily(race);
+      if (family && family !== race) keys.push(gender + '-' + family);
+    }
   }
   if (figure && SPRITE_KINDS.includes(figure.kind)) keys.push(figure.kind);
   return keys.filter(isSheetKey);

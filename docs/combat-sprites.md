@@ -17,7 +17,11 @@ For the recipient's own fighter the stage tries, most specific first:
 1. `characters/<name>` where the name is the character name lowercased with
    runs of non-alphanumerics replaced by `-` (`characters/grash-ironjaw`).
 2. `<gender>-<race>` from `Char.Status`, slugged the same way (`male-scro`).
-3. The body kind, `humanoid` or `beast`.
+3. `<gender>-<family>` when the race belongs to a family in
+   `SPRITE_RACE_FAMILIES`. The human cultures (Barbarian, Desert Nomad,
+   Glavian, Gypsy, Northman, Souvraeli, Wayfarian) all map to `human`, so a
+   Northman without a `male-northman` sheet draws `male-human`.
+4. The body kind, `humanoid` or `beast`.
 
 Targets and observed fighters only get the body kind: nothing recipient-safe
 identifies them further. Every candidate is requested, so a more specific
