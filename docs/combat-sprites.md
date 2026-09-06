@@ -18,8 +18,8 @@ For the recipient's own fighter the stage tries, most specific first:
    runs of non-alphanumerics replaced by `-` (`characters/grash-ironjaw`).
 2. `<gender>-<race>` from `Char.Status`, slugged the same way (`male-scro`).
 3. `<gender>-<family>` when the race belongs to a family in
-   `SPRITE_RACE_FAMILIES`. The human cultures (Barbarian, Desert Nomad,
-   Glavian, Gypsy, Northman, Souvraeli) all map to `human`, so a
+   `SPRITE_RACE_FAMILIES`. The human cultures (Barbarian, Darkwinder,
+   Desert Nomad, Glavian, Gypsy, Northman, Souvraeli) all map to `human`, so a
    Northman without a `male-northman` sheet draws `male-human`. The
    elven kinds (Arctic Elf, High Elf, Shel-Zaranite, Silver Elf, Wayfarian)
    map to `elf`, and the dwarven kinds (Desert Dwarf, Rift Duergar, Stone

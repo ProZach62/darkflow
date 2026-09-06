@@ -37,6 +37,7 @@ export function isSheetKey(key) {
 // another race borrows: Uruk draw the Scro sheet.
 export const SPRITE_RACE_FAMILIES = Object.freeze({
   'barbarian': 'human',
+  'darkwinder': 'human',
   'desert-nomad': 'human',
   'glavian': 'human',
   'gypsy': 'human',
