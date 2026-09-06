@@ -6,8 +6,9 @@ cells), where figures sit on an approximate grid, at their own size, on a
 flat white background. This script:
 
 1. cuts the sheet into an even grid of columns x rows,
-2. removes the flat background of each cell (flood fill from the cell edges,
-   so white highlights inside the figure survive),
+2. trims a small inset from each cell so drawn grid lines and gutters are
+   left out, then removes the flat background (flood fill from the cell
+   edges, so white highlights inside the figure survive),
 3. finds the figure's bounding box,
 4. rescales every figure by one shared factor, chosen so the median figure
    height across the sheet lands at a fixed fraction of the output cell
@@ -96,6 +97,7 @@ def main():
     parser.add_argument("--figure-height", type=float, default=0.78, help="median figure height as a fraction of the output cell (default 0.78, matching the baked Scro)")
     parser.add_argument("--per-cell-scale", action="store_true", help="scale each figure to the target height on its own instead of one shared factor")
     parser.add_argument("--tolerance", type=int, default=28, help="background color tolerance per channel for removal")
+    parser.add_argument("--inset", type=float, default=0.03, help="fraction of each cell trimmed from every edge before processing, to drop drawn grid lines and gutters (default 0.03)")
     parser.add_argument("--min-area", type=int, default=400, help="ignore cells whose opaque area is below this many pixels (empty cells)")
     parser.add_argument("--poses", default=",".join(POSE_ORDER), help="comma-separated pose names in grid order")
     args = parser.parse_args()
@@ -119,7 +121,14 @@ def main():
         row = index // args.columns
         if row >= args.rows:
             break
-        box = (int(col * cell_w), int(row * cell_h), int((col + 1) * cell_w), int((row + 1) * cell_h))
+        inset_x = int(cell_w * args.inset)
+        inset_y = int(cell_h * args.inset)
+        box = (
+            int(col * cell_w) + inset_x,
+            int(row * cell_h) + inset_y,
+            int((col + 1) * cell_w) - inset_x,
+            int((row + 1) * cell_h) - inset_y,
+        )
         cell = remove_background(sheet.crop(box), args.tolerance)
         bbox = cell.getbbox()
         if not bbox:
