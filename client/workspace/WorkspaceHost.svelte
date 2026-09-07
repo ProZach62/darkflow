@@ -26,6 +26,7 @@
   import InformationPanel from "./InformationPanel.svelte";
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
   import CombatPanel from "./CombatPanel.svelte";
+  import DpsPanel from "./DpsPanel.svelte";
   import FishingPanel from "./FishingPanel.svelte";
   import IdePanel from "./IdePanel.svelte";
   import MapPanel from "./MapPanel.svelte";
@@ -174,11 +175,24 @@
     title: "GMCP Debug",
     state: {},
   };
+  const dpsPanel: WorkspacePanelSpec = {
+    id: "dps",
+    kind: "dps",
+    title: "DPS Meter",
+    state: {},
+    minSize: { width: 200, height: 120 },
+  };
 
   type PanelMenuGroupName = "Character" | "Progress" | "Social" | "System" | "World";
   type PanelMenuItem = {
     group: PanelMenuGroupName;
-    kind: "information" | "world" | "chat" | "gmcp-debug" | "transient";
+    kind:
+      | "information"
+      | "world"
+      | "chat"
+      | "gmcp-debug"
+      | "transient"
+      | "dps";
     panel: WorkspacePanelSpec;
   };
   const informationPanelGroups: Record<InformationPanelId, PanelMenuGroupName> = {
@@ -215,6 +229,7 @@
     ...worldPanels.map((panel): PanelMenuItem => ({ group: "World", kind: "world", panel })),
     ...transientPanelMenuItems,
     { group: "Social", kind: "chat", panel: chatPanel },
+    { group: "Character", kind: "dps", panel: dpsPanel },
     ...(debugGmcp
       ? [{ group: "System" as const, kind: "gmcp-debug" as const, panel: gmcpDebugPanel }]
       : []),
@@ -459,6 +474,7 @@
   let sheetTrigger: HTMLButtonElement | undefined;
   let combatPanelOpen = $state(false);
   let chatPanelOpen = $state(false);
+  let dpsPanelOpen = $state(false);
   let gmcpDebugOpen = $state(false);
   let openTransientPanelIds = $state<string[]>([]);
   let launcherOpen = $state(false);
@@ -565,6 +581,7 @@
       openTransientPanelIds = transientIds;
     }
     chatPanelOpen = workspace?.hasPanel(chatPanel.id) ?? false;
+    dpsPanelOpen = workspace?.hasPanel(dpsPanel.id) ?? false;
   }
 
   function informationPanelOpen(panel: WorkspacePanelSpec): boolean {
@@ -626,6 +643,31 @@
           : { kind: "grid", direction: "right", referencePanelId: terminal.id },
       });
       if (activate) workspace.activatePanel(chatPanel.id);
+    }
+    syncVisiblePanels();
+  }
+
+  async function toggleDpsPanel(activate = true): Promise<void> {
+    if (!workspace) return;
+    if (workspace.hasPanel(dpsPanel.id)) await workspace.removePanel(dpsPanel.id);
+    else {
+      const width = Math.min(340, Math.max(240, host.clientWidth - 16));
+      const height = Math.min(520, Math.max(200, host.clientHeight - 16));
+      workspace.addOrUpdatePanel({
+        ...dpsPanel,
+        placement: railsEnabled
+          ? {
+              kind: "floating",
+              bounds: {
+                left: Math.max(0, host.clientWidth - width - 8),
+                top: Math.max(0, host.clientHeight - height - 8),
+                width,
+                height,
+              },
+            }
+          : { kind: "grid", direction: "right", referencePanelId: terminal.id },
+      });
+      if (activate) workspace.activatePanel(dpsPanel.id);
     }
     syncVisiblePanels();
   }
@@ -717,6 +759,7 @@
     if (item.kind === "information") return informationPanelOpen(item.panel);
     if (item.kind === "world") return worldPanelOpen(item.panel);
     if (item.kind === "gmcp-debug") return gmcpDebugOpen;
+    if (item.kind === "dps") return dpsPanelOpen;
     if (item.kind === "transient") return transientPanelOpen(item.panel);
     return chatPanelOpen;
   }
@@ -725,6 +768,7 @@
     if (item.kind === "information") void toggleInformationPanel(item.panel, false);
     else if (item.kind === "world") void toggleWorldPanel(item.panel, false);
     else if (item.kind === "gmcp-debug") void toggleGmcpDebugPanel(false);
+    else if (item.kind === "dps") void toggleDpsPanel(false);
     else if (item.kind === "transient") void toggleTransientPanel(item.panel, false);
     else void toggleChatPanel(false);
   }
@@ -950,6 +994,13 @@
         canClose: () => true,
         collapsible: true,
         component: GmcpDebugPanel,
+        floatable: true,
+        session,
+      },
+      dps: {
+        canClose: () => true,
+        collapsible: true,
+        component: DpsPanel,
         floatable: true,
         session,
       },
@@ -1234,7 +1285,7 @@
      * Apply a persisted snapshot. A version 1 payload predates the rails, so its
      * rail membership is whatever `fillRailsWithDefaults` rebuilds.
      */
-    const persistedPanels = [terminal, ...informationPanels, ...worldPanels, chatPanel];
+    const persistedPanels = [terminal, ...informationPanels, ...worldPanels, chatPanel, dpsPanel];
     const restoreSnapshot = (next: PersistedWorkspaceSnapshot): boolean => {
       if (next.version === 1) {
         if (!currentWorkspace.restore(next, persistedPanels)) return false;
@@ -1979,6 +2030,13 @@
         onclick={() => selectPanel(() => void toggleChatPanel())}
       >
         {chatPanelOpen ? "Close Chat" : "Open Chat"}
+      </button>
+      <button
+        type="button"
+        aria-pressed={dpsPanelOpen}
+        onclick={() => selectPanel(() => void toggleDpsPanel())}
+      >
+        {dpsPanelOpen ? "Close DPS Meter" : "Open DPS Meter"}
       </button>
     </div>
   </div>
