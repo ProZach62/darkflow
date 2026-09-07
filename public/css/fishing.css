@@ -1,9 +1,21 @@
 /* fishing.css - the interactive fishing pane (Darkwind.Fishing). */
 
+/* The panel widget gives .panel-body height:100% of the whole widget, which
+   ignores the header above it and pushes the last 25px of content past the
+   visible edge. The fishing panel lays out as a column instead, so the stage
+   fills what is left under the header and the Auto strip stays in view. */
+.gmcp-panel-widget:has(> .fishing-body) {
+  display: flex;
+  flex-direction: column;
+}
+.gmcp-panel-widget:has(> .fishing-body) > .panel-header {
+  flex: 0 0 auto;
+}
 .fishing-body {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1 1 auto;
+  height: auto;
   min-height: 260px;
 }
 
@@ -505,6 +517,54 @@
   pointer-events: none;
   z-index: 5;
 }
+
+/* Auto-Angler strip and indicator (fishing-auto.js) */
+.fishing-auto-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 2px;
+  font-size: 12px;
+  min-height: 30px;
+}
+.fishing-auto-toggle {
+  min-width: 92px;
+  font-weight: 700;
+}
+.fishing-auto-toggle[aria-pressed="true"] {
+  background: var(--df-accent);
+  color: var(--df-bg);
+  border-color: var(--df-accent);
+}
+.fishing-auto-summary {
+  flex: 1;
+  min-width: 0;
+  color: var(--df-text);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Who is in control must be unmistakable: border plus a text badge, never
+   colour alone. */
+.fishing-stage[data-auto="on"] {
+  box-shadow: inset 0 0 0 3px var(--df-accent);
+}
+.fishing-auto-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--df-accent);
+  color: var(--df-bg);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+.fishing-stage[data-auto="on"] .fishing-message { left: 64px; right: 44px; }
 
 /* Cast power */
 .fishing-powerwrap {

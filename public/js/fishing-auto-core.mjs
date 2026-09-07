@@ -161,6 +161,14 @@ export const TUNING = Object.freeze({
   castPowerMin: 25,
   castPowerMax: 95,
   castPowerJitter: 2,
+
+  // Loop pacing (PRD 4.12). A new cycle starts this long after the server's
+  // verdict, and "fish" follows "bait hook" after a shorter pause so the two
+  // commands never leave on the same tick.
+  cycleDelayMinMs: 1200,
+  cycleDelayMaxMs: 2600,
+  baitDelayMinMs: 350,
+  baitDelayMaxMs: 900,
 });
 
 // ---- RNG helpers ----------------------------------------------------------
@@ -719,6 +727,88 @@ export function createFightController(rawParams, opts = {}) {
   }
 
   return { decide, getDebug, params, plan };
+}
+
+// ---- Loop pacing ----------------------------------------------------------
+
+// Pause between the server's verdict and the next "bait hook" (PRD 4.12).
+export function cycleDelayMs(rand) {
+  return Math.round(randRange(rand, TUNING.cycleDelayMinMs, TUNING.cycleDelayMaxMs));
+}
+
+// Pause between "bait hook" and the "fish" that follows it.
+export function baitDelayMs(rand) {
+  return Math.round(randRange(rand, TUNING.baitDelayMinMs, TUNING.baitDelayMaxMs));
+}
+
+// ---- Persisted power ------------------------------------------------------
+
+// The adaptive power restored from settings. Anything unusable becomes the
+// start value; a usable number is clamped to the policy band, so a hand-edited
+// settings file cannot put the policy outside the range it reasons about.
+export function normalizeCastPower(value) {
+  const n = toFiniteOrNull(value);
+  if (n === null) return TUNING.castPowerStart;
+  return clamp(Math.round(n), TUNING.castPowerMin, TUNING.castPowerMax);
+}
+
+// A fixed override: null when there is none, otherwise clamped to the
+// protocol's 0..100 rather than the policy band - a player pinning 100 is
+// asking for exactly that.
+export function normalizePowerOverride(value) {
+  const n = toFiniteOrNull(value);
+  return n === null ? null : clamp(Math.round(n), 0, 100);
+}
+
+// ---- /autofish ------------------------------------------------------------
+
+export const AUTOFISH_USAGE = 'usage: /autofish, /autofish on, /autofish off, /autofish power <0-100>, /autofish power auto';
+
+// Parse the words after "/autofish" (PRD 4.1-4.4, 7.6). Returns one of
+//   { action: 'status' | 'on' | 'off' }
+//   { action: 'power', override: number | null }   (null = adaptive)
+//   { action: 'error', error: string }
+// Non-numeric power is rejected with a message rather than coerced to NaN.
+export function parseAutofishCommand(args) {
+  const words = (Array.isArray(args) ? args : String(args || '').split(/\s+/))
+    .map((w) => String(w === undefined || w === null ? '' : w).trim().toLowerCase())
+    .filter(Boolean);
+  if (!words.length) return { action: 'status' };
+  const [verb, arg, extra] = words;
+  if (extra !== undefined) return { action: 'error', error: AUTOFISH_USAGE };
+  if (verb === 'status' || verb === 'on' || verb === 'off') {
+    if (arg !== undefined) return { action: 'error', error: AUTOFISH_USAGE };
+    return { action: verb };
+  }
+  if (verb === 'power') {
+    if (arg === undefined) return { action: 'error', error: AUTOFISH_USAGE };
+    if (arg === 'auto') return { action: 'power', override: null };
+    const n = toFiniteOrNull(arg);
+    if (n === null) return { action: 'error', error: 'cast power must be a number from 0 to 100, or "auto".' };
+    return { action: 'power', override: clamp(Math.round(n), 0, 100) };
+  }
+  return { action: 'error', error: AUTOFISH_USAGE };
+}
+
+// One line for the output window, from fishingAuto.status().
+export function formatAutofishStatus(s) {
+  const lostBy = s.lostBy || {};
+  const causes = Object.keys(lostBy).filter((k) => lostBy[k] > 0).map((k) => k + ' ' + lostBy[k]);
+  const parts = [
+    'Auto-Angler: ' + (s.enabled ? 'on' : 'off'),
+    'phase ' + (s.phase || 'idle'),
+    'landed ' + (s.landed || 0) + ', lost ' + (s.lost || 0) + (causes.length ? ' (' + causes.join(', ') + ')' : ''),
+    'cycles ' + (s.cycles || 0),
+    'cast power ' + s.power + (s.powerOverride === null || s.powerOverride === undefined ? ' (adaptive)' : ' (fixed)'),
+  ];
+  if (s.haltReason) parts.push('last stop: ' + s.haltReason);
+  return parts.join(' | ');
+}
+
+// The short form the fishing panel shows while the addon is on.
+export function formatAutofishSummary(s) {
+  return 'AUTO ' + (s.landed || 0) + ' landed, ' + (s.lost || 0) + ' lost, power ' + s.power
+    + (s.powerOverride === null || s.powerOverride === undefined ? '' : ' (fixed)');
 }
 
 // Re-exported so the manager can time its cast release against the same

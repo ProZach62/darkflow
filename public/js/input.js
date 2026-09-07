@@ -23,6 +23,7 @@ import { handleEmojiPickerKeydown, initEmojiPicker } from './emoji-picker.js';
 import { handleMentionPickerKeydown, initMentionPicker } from './mention-picker.js';
 import { isSocketOpen } from './socket-state.js';
 import { cancelSpeedwalk, isSpeedwalking } from './map-speedwalk.js';
+import { fishingAuto } from './fishing-auto.js';
 
 let commandHistory = [];
 let historyIndex = 0;
@@ -329,6 +330,11 @@ function handleAliasSlashCommand(text) {
 
   const command = tokens[0].lower;
   const scopeKey = aliasManager.getActiveScopeKey();
+
+  if (command === '/autofish') {
+    fishingAuto.handleCommand(tokens.slice(1).map((token) => token.value));
+    return { handled: true, localOnly: true };
+  }
 
   if (command === '/vars') {
     const scope = aliasManager.getScopeSnapshot(scopeKey);

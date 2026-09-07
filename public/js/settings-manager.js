@@ -142,6 +142,12 @@ export const settingsManager = {
     theme: DEFAULT_THEME_KEY,
     customThemes: {},
     background: DEFAULT_BACKGROUND_KEY,
+    // Auto-Angler (fishing-auto.js). The bounds mirror TUNING in
+    // fishing-auto-core.mjs: the adaptive power lives in 25..95, an override
+    // anywhere in the protocol's 0..100, null meaning adaptive.
+    autofishEnabled: false,
+    autofishCastPower: 55,
+    autofishPowerOverride: null,
   },
   _settings: {},
   _draftSettings: {},
@@ -890,7 +896,17 @@ export const settingsManager = {
       theme: typeof settings.theme === 'string' && settings.theme ? settings.theme : DEFAULT_THEME_KEY,
       customThemes: (settings.customThemes && typeof settings.customThemes === 'object') ? settings.customThemes : {},
       background: normalizeBackgroundKey(settings.background),
+      autofishEnabled: settings.autofishEnabled === true,
+      autofishCastPower: this._normalizeBoundedInteger(settings.autofishCastPower, 55, 25, 95),
+      autofishPowerOverride: this._normalizeBoundedInteger(settings.autofishPowerOverride, null, 0, 100),
     };
+  },
+
+  _normalizeBoundedInteger(value, fallback, lo, hi) {
+    if (value === null || value === undefined || value === '') return fallback;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(hi, Math.max(lo, Math.round(n)));
   },
 
   _normalizeTerminalWidthColumns(value) {

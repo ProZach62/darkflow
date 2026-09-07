@@ -440,3 +440,96 @@ test('the tension guard overrides tracking and stays latched', () => {
   const held = c.decide({ ...base, tension: ceil - 1, elapsedMs: 1500 }, 16.67);
   assert.equal(held, false, 'latch should not release on the first dip');
 });
+
+// ---- Loop pacing, persistence, and /autofish ---------------------------------
+
+import {
+  AUTOFISH_USAGE,
+  cycleDelayMs,
+  baitDelayMs,
+  normalizeCastPower,
+  normalizePowerOverride,
+  parseAutofishCommand,
+  formatAutofishStatus,
+  formatAutofishSummary,
+} from '../public/js/fishing-auto-core.mjs';
+
+test('cycle and bait pauses stay in their bands and vary per use', () => {
+  const rand = createRng(21);
+  const cycles = new Set();
+  const baits = new Set();
+  for (let i = 0; i < 200; i++) {
+    const c = cycleDelayMs(rand);
+    const b = baitDelayMs(rand);
+    assert.ok(c >= TUNING.cycleDelayMinMs && c <= TUNING.cycleDelayMaxMs, 'cycle ' + c);
+    assert.ok(b >= TUNING.baitDelayMinMs && b <= TUNING.baitDelayMaxMs, 'bait ' + b);
+    cycles.add(c);
+    baits.add(b);
+  }
+  assert.ok(cycles.size > 50 && baits.size > 50, 'pauses must not repeat');
+});
+
+test('normalizeCastPower keeps a restored value inside the policy band', () => {
+  assert.equal(normalizeCastPower(undefined), TUNING.castPowerStart);
+  assert.equal(normalizeCastPower(NaN), TUNING.castPowerStart);
+  assert.equal(normalizeCastPower('70'), 70);
+  assert.equal(normalizeCastPower(200), TUNING.castPowerMax);
+  assert.equal(normalizeCastPower(1), TUNING.castPowerMin);
+  assert.equal(normalizeCastPower(61.4), 61);
+});
+
+test('normalizePowerOverride maps absence to null and clamps to the protocol', () => {
+  assert.equal(normalizePowerOverride(null), null);
+  assert.equal(normalizePowerOverride(''), null);
+  assert.equal(normalizePowerOverride(undefined), null);
+  assert.equal(normalizePowerOverride(120), 100);
+  assert.equal(normalizePowerOverride(-1), 0);
+  assert.equal(normalizePowerOverride(42.6), 43);
+});
+
+test('parseAutofishCommand accepts the documented forms', () => {
+  assert.deepEqual(parseAutofishCommand([]), { action: 'status' });
+  assert.deepEqual(parseAutofishCommand(''), { action: 'status' });
+  assert.deepEqual(parseAutofishCommand(['on']), { action: 'on' });
+  assert.deepEqual(parseAutofishCommand(['OFF']), { action: 'off' });
+  assert.deepEqual(parseAutofishCommand(['status']), { action: 'status' });
+  assert.deepEqual(parseAutofishCommand(['power', 'auto']), { action: 'power', override: null });
+  assert.deepEqual(parseAutofishCommand(['power', '75']), { action: 'power', override: 75 });
+  assert.deepEqual(parseAutofishCommand('power 40'), { action: 'power', override: 40 });
+  assert.deepEqual(parseAutofishCommand(['power', '150']), { action: 'power', override: 100 });
+  assert.deepEqual(parseAutofishCommand(['power', '-5']), { action: 'power', override: 0 });
+});
+
+test('parseAutofishCommand rejects bad input with a message rather than NaN', () => {
+  assert.equal(parseAutofishCommand(['bogus']).action, 'error');
+  assert.equal(parseAutofishCommand(['bogus']).error, AUTOFISH_USAGE);
+  assert.equal(parseAutofishCommand(['on', 'now']).action, 'error');
+  assert.equal(parseAutofishCommand(['power']).action, 'error');
+  assert.equal(parseAutofishCommand(['power', 'lots']).action, 'error');
+  assert.match(parseAutofishCommand(['power', 'lots']).error, /number/);
+  assert.equal(parseAutofishCommand(['power', '50', 'extra']).action, 'error');
+});
+
+test('status lines carry the counters, the power mode, and the last stop', () => {
+  const line = formatAutofishStatus({
+    enabled: true, phase: 'waiting', landed: 3, lost: 2, lostBy: { snap: 1, timeout: 1, slack: 0 },
+    cycles: 5, power: 57, powerOverride: null, haltReason: '',
+  });
+  assert.match(line, /Auto-Angler: on/);
+  assert.match(line, /phase waiting/);
+  assert.match(line, /landed 3, lost 2 \(snap 1, timeout 1\)/);
+  assert.match(line, /cast power 57 \(adaptive\)/);
+  assert.doesNotMatch(line, /last stop/);
+
+  const stopped = formatAutofishStatus({
+    enabled: false, phase: 'idle', landed: 0, lost: 0, lostBy: {}, cycles: 0,
+    power: 80, powerOverride: 80, haltReason: 'Out of bait.',
+  });
+  assert.match(stopped, /cast power 80 \(fixed\)/);
+  assert.match(stopped, /last stop: Out of bait\./);
+
+  assert.equal(formatAutofishSummary({ landed: 3, lost: 2, power: 57, powerOverride: null }),
+    'AUTO 3 landed, 2 lost, power 57');
+  assert.equal(formatAutofishSummary({ landed: 0, lost: 0, power: 80, powerOverride: 80 }),
+    'AUTO 0 landed, 0 lost, power 80 (fixed)');
+});
