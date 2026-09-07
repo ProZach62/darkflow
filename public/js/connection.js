@@ -5,6 +5,7 @@ import { panelManager } from './panel-manager.js';
 import { windowManager } from './window-manager.js';
 import { fishingManager } from './fishing-manager.js';
 import { combatVisualManager } from './combat-visual-manager.js';
+import { dpsMeterManager } from './dps-meter-manager.js';
 import { tutorialManager } from './tutorial-manager.js';
 import { RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './constants.js';
 import { settingsManager } from './settings-manager.js';
@@ -305,6 +306,9 @@ function finalizeDisconnect() {
   tutorialManager.handleDisconnect();
   panelManager.resetData();
   fishingManager.handleDisconnect();
+  // After resetData, which clears every panel data slot: the meter
+  // republishes so session totals survive a drop instead of blanking.
+  dpsMeterManager.handleDisconnect();
   // Keep auth windows (login/charselect/newchar) alive across a drop:
   // their connection strip shows the reconnect progress, and the fresh
   // login window from the next connection replaces them in place

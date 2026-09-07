@@ -15,6 +15,7 @@ import {
   openImagePreviewPane,
 } from './image-preview.js';
 import { buildCombatView } from './combat-visual-core.mjs';
+import { createCombatStage, isCanvasStageSupported } from './combat-stage.mjs';
 import {
   NPC_FALLBACK_IMAGE,
   PLAYER_FALLBACK_IMAGE,
@@ -84,6 +85,41 @@ function formatStatusTitle(title, name) {
 
 function formatInt(n) {
   return typeof n === 'number' ? n.toLocaleString('en-US') : n;
+}
+
+// A rate the meter could not compute yet (no elapsed fight time) is shown as
+// a dash rather than as a zero it has not earned.
+function formatDpsNumber(value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '--';
+  if (value >= 100) return Math.round(value).toLocaleString('en-US');
+  if (value >= 10) return value.toFixed(1);
+  return value.toFixed(2);
+}
+
+function formatClock(milliseconds) {
+  const total = Math.max(0, Math.round((Number(milliseconds) || 0) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    return hours + 'h ' + (minutes % 60) + 'm';
+  }
+  return minutes + ':' + String(seconds).padStart(2, '0');
+}
+
+function percentSuffix(rate) {
+  if (rate === null || rate === undefined || !Number.isFinite(rate)) return '';
+  return ' (' + Math.round(rate * 100) + '%)';
+}
+
+function dpsCell(label, value) {
+  return '<div class="dps-cell"><span>' + escHtml(String(value)) + '</span><small>' +
+    escHtml(label) + '</small></div>';
+}
+
+function dpsRow(label, value) {
+  return '<div class="status-row"><span class="status-key">' + escHtml(label) +
+    '</span><span>' + escHtml(String(value)) + '</span></div>';
 }
 
 function isCompletedQuest(quest) {
@@ -749,7 +785,7 @@ function combatArtHtml(side, combatant, loadedImages, failedImages, event, impac
     (!hasGeneratedImage || generatedImageFailed || usesNpcFallbackImage);
   const fallbackImage = side === 'target' && combatant.isNpc
     ? NPC_FALLBACK_IMAGE
-    : PLAYER_FALLBACK_IMAGE;
+    : (combatant.fallbackImage || PLAYER_FALLBACK_IMAGE);
   const image = isNpcFallback ? fallbackImage :
     (hasGeneratedImage ? combatant.image : fallbackImage);
   const loadedClass = loadedImages.has(image) ? ' is-loaded' : '';
@@ -760,7 +796,7 @@ function combatArtHtml(side, combatant, loadedImages, failedImages, event, impac
     loadedClass + failedClass;
   let html = '<div class="' + classes + '"><img src="' + escHtml(image) +
     '" data-combat-image="' + escHtml(image) + '"' +
-    (combatant.isNpc ? ' data-combat-fallback="' + NPC_FALLBACK_IMAGE + '"' : '') +
+    combatFallbackAttributes(combatant, image, fallbackImage) +
     ' alt="" draggable="false">';
   if (event && impactSide === side) {
     html += '<div class="combat-impact-badge" aria-hidden="true">' +
@@ -771,6 +807,20 @@ function combatArtHtml(side, combatant, loadedImages, failedImages, event, impac
     }
   }
   return html + '</div>';
+}
+
+// Failure chain for the DOM stage image: the next candidate lives in
+// data-combat-fallback and the one after it in data-combat-final, so a
+// failed generated portrait tries the bundled race portrait before the
+// generic placeholder.
+function combatFallbackAttributes(combatant, image, fallbackImage) {
+  if (combatant.isNpc) return ' data-combat-fallback="' + NPC_FALLBACK_IMAGE + '"';
+  const chain = [fallbackImage, PLAYER_FALLBACK_IMAGE]
+    .filter((candidate, index, all) => candidate && candidate !== image && all.indexOf(candidate) === index);
+  let attributes = '';
+  if (chain[0]) attributes += ' data-combat-fallback="' + escHtml(chain[0]) + '"';
+  if (chain[1]) attributes += ' data-combat-final="' + escHtml(chain[1]) + '"';
+  return attributes;
 }
 
 function combatEventLabel(event) {
@@ -787,29 +837,7 @@ function combatEventLabel(event) {
   return label;
 }
 
-function renderCombatVisual(bodyEl, data) {
-  const view = buildCombatView(data.model, {
-    enemy: data.enemy,
-    vitals: data.vitals,
-    avatar: data.avatar,
-  });
-  const event = view.event;
-  const loadedImages = bodyEl._combatLoadedImages instanceof Set
-    ? bodyEl._combatLoadedImages
-    : new Set();
-  const failedImages = bodyEl._combatFailedImages instanceof Set
-    ? bodyEl._combatFailedImages
-    : new Set();
-  bodyEl._combatLoadedImages = loadedImages;
-  bodyEl._combatFailedImages = failedImages;
-  const resultClass = event ? ' combat-result-' + event.result : '';
-  const perspectiveClass = event && event.perspective
-    ? ' combat-perspective-' + event.perspective.replace(/[^a-z0-9_-]/g, '')
-    : '';
-  const motionClass = view.reducedMotion ? ' combat-visual-reduced' : '';
-  const effectiveClass = view.effective
-    ? ' combat-visual-effective'
-    : ' combat-visual-syncing';
+function combatEventClasses(view, event) {
   // Perspective is the recipient-safe source of truth. Keep the actor IDs for
   // observed combat, but never let an older/mixed server omit the player-side
   // impact treatment from an explicitly incoming event.
@@ -819,15 +847,29 @@ function renderCombatVisual(bodyEl, data) {
   const targetImpact = event && (outgoingEvent || event.targetId === view.target.id);
   const playerActor = event && (outgoingEvent || event.actorId === view.player.id);
   const targetActor = event && (incomingEvent || event.actorId === view.target.id);
+  const resultClass = event ? ' combat-result-' + event.result : '';
+  const perspectiveClass = event && event.perspective
+    ? ' combat-perspective-' + event.perspective.replace(/[^a-z0-9_-]/g, '')
+    : '';
   const impactSideClass = playerImpact
     ? ' combat-impact-player'
     : (targetImpact ? ' combat-impact-opponent' : '');
-  const impactSide = playerImpact ? 'player' : (targetImpact ? 'target' : '');
-  const playerClass = (playerImpact ? ' is-impact-target' : '') +
-    (playerActor ? ' is-event-actor' : '');
-  const targetClass = (targetImpact ? ' is-impact-target' : '') +
-    (targetActor ? ' is-event-actor' : '');
-  const eventLabel = combatEventLabel(event);
+  return {
+    rootClass: 'combat-visual' + resultClass + perspectiveClass + impactSideClass +
+      (view.effective ? ' combat-visual-effective' : ' combat-visual-syncing') +
+      (view.reducedMotion ? ' combat-visual-reduced' : ''),
+    impactSide: playerImpact ? 'player' : (targetImpact ? 'target' : ''),
+    playerClass: (playerImpact ? ' is-impact-target' : '') +
+      (playerActor ? ' is-event-actor' : ''),
+    targetClass: (targetImpact ? ' is-impact-target' : '') +
+      (targetActor ? ' is-event-actor' : ''),
+  };
+}
+
+// The polite live region only announces a beat once per event or state
+// change; every re-render in between leaves it empty so screen readers do
+// not hear the same exchange repeated.
+function combatAnnouncement(bodyEl, view, event, eventLabel) {
   let announcement = '';
   let announcementKey = '';
   if (event) {
@@ -837,34 +879,15 @@ function renderCombatVisual(bodyEl, data) {
     announcement = view.summary;
     announcementKey = view.epoch + ':' + view.encounterId + ':state:' + view.stateSeq;
   }
-  if (!announcementKey || bodyEl._combatAnnouncementKey === announcementKey) {
-    announcement = '';
-  } else {
-    bodyEl._combatAnnouncementKey = announcementKey;
-  }
-  let html = '<div class="combat-visual' + resultClass + perspectiveClass + impactSideClass +
-    effectiveClass + motionClass +
-    '" role="region" aria-label="Visual combat" data-encounter-id="' + escHtml(view.encounterId) + '">';
+  if (!announcementKey || bodyEl._combatAnnouncementKey === announcementKey) return '';
+  bodyEl._combatAnnouncementKey = announcementKey;
+  return announcement;
+}
 
-  html += '<div class="combat-stage">';
-  html += '<article class="combatant-card combatant-player' + playerClass + '">';
-  html += '<div class="combatant-name"><span>' + escHtml(view.player.name) + '</span></div>';
-  html += combatArtHtml('player', view.player, loadedImages, failedImages, event, impactSide);
-  html += combatHealthHtml('player', view.player.name, view.player.health);
-  html += '</article>';
-  html += '<div class="combat-versus" aria-hidden="true"><span>VS</span></div>';
-  html += '<article class="combatant-card combatant-target' + targetClass + '">';
-  html += '<div class="combatant-name"><span>' + escHtml(view.target.name) + '</span></div>';
-  html += combatArtHtml('target', view.target, loadedImages, failedImages, event, impactSide);
-  html += combatHealthHtml('target', view.target.name, view.target.health);
-  if (view.target.condition) {
-    html += '<div class="combat-target-condition">' + escHtml(view.target.condition) + '</div>';
-  }
-  html += '</article>';
-
-  html += '</div>';
-
-  html += '<div class="combat-current-event combat-current-' +
+// Everything below the stage: current exchange, threats, history, outcome,
+// and the live region. Shared by the canvas and DOM stages.
+function combatHudHtml(view, event, eventLabel, announcement) {
+  let html = '<div class="combat-current-event combat-current-' +
     escHtml(event ? event.result : 'waiting') + '"><span class="combat-event-glyph" aria-hidden="true"></span>' +
     '<span class="combat-event-copy"><strong>' + escHtml(eventLabel) + '</strong>';
   if (event && event.summary) {
@@ -907,6 +930,142 @@ function renderCombatVisual(bodyEl, data) {
   }
   html += '<div class="sr-only combat-live-region" role="status" aria-live="polite" aria-atomic="true">' +
     escHtml(announcement) + '</div>';
+  return html;
+}
+
+function combatTokenHudHtml(side, combatant, sideClass) {
+  let html = '<div class="combat-token-hud combat-token-hud-' + side + sideClass + '">';
+  html += '<div class="combat-hud-name"><span>' + escHtml(combatant.name) + '</span></div>';
+  if (combatant.descriptor) {
+    html += '<div class="combat-hud-descriptor">' + escHtml(combatant.descriptor) + '</div>';
+  }
+  html += combatHealthHtml(side, combatant.name, combatant.health);
+  if (side === 'target' && combatant.condition) {
+    html += '<div class="combat-target-condition">' + escHtml(combatant.condition) + '</div>';
+  }
+  return html + '</div>';
+}
+
+function combatStageDocument() {
+  return typeof document !== 'undefined' ? document : null;
+}
+
+function combatStageHost(bodyEl) {
+  const host = bodyEl._combatStageHost;
+  if (!host || !host.stage || host.stage.destroyed) return null;
+  if (!host.root || host.root.parentNode !== bodyEl) return null;
+  return host;
+}
+
+// Called whenever the Enemy pane stops showing visual combat so a detached
+// canvas never keeps a frame loop or image listeners alive.
+export function destroyCombatStage(bodyEl) {
+  const host = bodyEl && bodyEl._combatStageHost;
+  if (!host) return;
+  bodyEl._combatStageHost = null;
+  if (host.stage && typeof host.stage.destroy === 'function') host.stage.destroy();
+}
+
+function renderCombatCanvas(bodyEl, data, view, classes) {
+  const doc = combatStageDocument();
+  let host = combatStageHost(bodyEl);
+  if (!host) {
+    destroyCombatStage(bodyEl);
+    const stage = doc ? createCombatStage(doc) : null;
+    if (!stage) return false;
+    const root = doc.createElement('div');
+    root.setAttribute('role', 'region');
+    root.setAttribute('aria-label', 'Visual combat');
+    const stageEl = doc.createElement('div');
+    stageEl.className = 'combat-stage combat-stage-canvas-host';
+    stageEl.appendChild(stage.element);
+    const overlay = doc.createElement('div');
+    overlay.className = 'combat-stage-overlay';
+    stageEl.appendChild(overlay);
+    const hud = doc.createElement('div');
+    hud.className = 'combat-hud';
+    root.appendChild(stageEl);
+    root.appendChild(hud);
+    bodyEl.innerHTML = '';
+    bodyEl.appendChild(root);
+    host = { stage, root, overlay, hud };
+    bodyEl._combatStageHost = host;
+  }
+
+  const event = view.event;
+  const eventLabel = combatEventLabel(event);
+  const announcement = combatAnnouncement(bodyEl, view, event, eventLabel);
+  host.root.className = classes.rootClass + ' combat-visual-canvas';
+  host.root.setAttribute('data-encounter-id', view.encounterId || '');
+  host.overlay.innerHTML =
+    combatTokenHudHtml('player', view.player, classes.playerClass) +
+    combatTokenHudHtml('target', view.target, classes.targetClass);
+  host.hud.innerHTML = combatHudHtml(view, event, eventLabel, announcement);
+  host.stage.update(view, {
+    room: data.room,
+    playerFallback: [view.player.fallbackImage, PLAYER_FALLBACK_IMAGE].filter(Boolean),
+    targetFallback: view.target.isNpc ? NPC_FALLBACK_IMAGE : PLAYER_FALLBACK_IMAGE,
+  });
+  bodyEl._enemyState = null;
+  return true;
+}
+
+function renderCombatVisual(bodyEl, data) {
+  const view = buildCombatView(data.model, {
+    enemy: data.enemy,
+    vitals: data.vitals,
+    avatar: data.avatar,
+    status: data.status,
+    inventory: data.inventory,
+  });
+  const event = view.event;
+  const classes = combatEventClasses(view, event);
+
+  // The canvas stage is the primary presentation. When the environment has
+  // no 2D canvas (or the stage cannot be created), fall back to the DOM card
+  // stage rather than reporting a renderer failure: the pane still works,
+  // it just does not animate on a canvas.
+  if (isCanvasStageSupported(combatStageDocument())
+      && renderCombatCanvas(bodyEl, data, view, classes)) {
+    return;
+  }
+  destroyCombatStage(bodyEl);
+
+  const loadedImages = bodyEl._combatLoadedImages instanceof Set
+    ? bodyEl._combatLoadedImages
+    : new Set();
+  const failedImages = bodyEl._combatFailedImages instanceof Set
+    ? bodyEl._combatFailedImages
+    : new Set();
+  bodyEl._combatLoadedImages = loadedImages;
+  bodyEl._combatFailedImages = failedImages;
+  const impactSide = classes.impactSide;
+  const eventLabel = combatEventLabel(event);
+  const announcement = combatAnnouncement(bodyEl, view, event, eventLabel);
+  let html = '<div class="' + classes.rootClass +
+    '" role="region" aria-label="Visual combat" data-encounter-id="' + escHtml(view.encounterId) + '">';
+
+  html += '<div class="combat-stage">';
+  html += '<article class="combatant-card combatant-player' + classes.playerClass + '">';
+  html += '<div class="combatant-name"><span>' + escHtml(view.player.name) + '</span></div>';
+  if (view.player.descriptor) {
+    html += '<div class="combat-descriptor">' + escHtml(view.player.descriptor) + '</div>';
+  }
+  html += combatArtHtml('player', view.player, loadedImages, failedImages, event, impactSide);
+  html += combatHealthHtml('player', view.player.name, view.player.health);
+  html += '</article>';
+  html += '<div class="combat-versus" aria-hidden="true"><span>VS</span></div>';
+  html += '<article class="combatant-card combatant-target' + classes.targetClass + '">';
+  html += '<div class="combatant-name"><span>' + escHtml(view.target.name) + '</span></div>';
+  html += combatArtHtml('target', view.target, loadedImages, failedImages, event, impactSide);
+  html += combatHealthHtml('target', view.target.name, view.target.health);
+  if (view.target.condition) {
+    html += '<div class="combat-target-condition">' + escHtml(view.target.condition) + '</div>';
+  }
+  html += '</article>';
+
+  html += '</div>';
+  html += combatHudHtml(view, event, eventLabel, announcement);
   html += '</div>';
 
   bodyEl.innerHTML = html;
@@ -932,6 +1091,10 @@ function renderCombatVisual(bodyEl, data) {
         if (fallback && key !== fallback) {
           if (key) failedImages.add(key);
           img.setAttribute('data-combat-image', fallback);
+          const final = img.getAttribute('data-combat-final') || '';
+          if (final && final !== fallback) img.setAttribute('data-combat-fallback', final);
+          else img.removeAttribute('data-combat-fallback');
+          img.removeAttribute('data-combat-final');
           if (wrap && wrap.classList) wrap.classList.remove('is-error');
           img.src = fallback;
           return;
@@ -1110,6 +1273,103 @@ export const panelRenderers = {
 
   fishing(bodyEl) {
     fishingManager.render(bodyEl);
+  },
+
+  dps(bodyEl, data) {
+    if (!data) {
+      bodyEl.innerHTML = '<div class="placeholder">Waiting for combat...</div>';
+      return;
+    }
+
+    const encounter = data.encounter;
+    const session = data.session;
+    const headline = data.active ? encounter.current : encounter.dps;
+    const headlineLabel = data.active
+      ? 'DPS (last ' + formatDpsNumber(data.windowSeconds) + 's)'
+      : 'Last fight DPS';
+    // Without numeric wording every damage total is a zero the meter has not
+    // earned. Show a dash and let the notice below explain why.
+    const figure = (value, format) => (data.missingDamageNumbers ? '--' : format(value));
+    // The session keeps its real total when earlier fights did report numbers;
+    // it only goes blank when nothing measurable has ever been banked.
+    const sessionUnknown = data.missingDamageNumbers && !session.damage;
+    const sessionFigure = (value, format) => (sessionUnknown ? '--' : format(value));
+
+    let html = '<div class="dps-panel' + (data.active ? ' dps-panel-active' : '') + '">';
+
+    const target = data.targetName || 'no target';
+    html += '<div class="dps-target">' +
+      '<span class="dps-state-dot"></span>' +
+      '<span class="dps-target-name">' + escHtml(data.active ? target : 'Idle') + '</span>' +
+      '<span class="dps-elapsed">' + escHtml(formatClock(encounter.durationMs)) + '</span>' +
+      '</div>';
+
+    html += '<div class="dps-headline">' +
+      '<span class="dps-headline-value">' + escHtml(figure(headline, formatDpsNumber)) + '</span>' +
+      '<small>' + escHtml(headlineLabel) + '</small>' +
+      '</div>';
+
+    if (data.missingDamageNumbers) {
+      // Swings are arriving with their numeric wording stripped, so every
+      // total below would read as a confident zero. Say why instead.
+      html += '<div class="dps-notice">Damage numbers are off. ' +
+        'Turn them on with <code>combatbrief damage</code>.</div>';
+    } else if (!data.hasData) {
+      html += '<div class="dps-notice dps-notice-quiet">No combat recorded yet.</div>';
+    }
+
+    html += '<div class="dps-grid">' +
+      dpsCell('Fight DPS', figure(encounter.dps, formatDpsNumber)) +
+      dpsCell('Peak', figure(encounter.peak, formatDpsNumber)) +
+      dpsCell('Damage', figure(encounter.damage, formatInt)) +
+      dpsCell('Best hit', figure(encounter.bestHit, formatInt)) +
+      '</div>';
+
+    html += '<div class="dps-rows">' +
+      dpsRow('Swings', formatInt(encounter.swings)) +
+      dpsRow('Hits', formatInt(encounter.hits) + percentSuffix(encounter.hitRate)) +
+      dpsRow('Crits', formatInt(encounter.crits) + percentSuffix(encounter.critRate)) +
+      dpsRow('Missed', formatInt(encounter.misses + encounter.dodges)) +
+      dpsRow('Absorbed', formatInt(encounter.absorbed)) +
+      '</div>';
+
+    html += '<div class="dps-section-title">Session</div>';
+    html += '<div class="dps-rows">' +
+      dpsRow('Session DPS', sessionFigure(session.dps, formatDpsNumber)) +
+      dpsRow('Damage', sessionFigure(session.damage, formatInt)) +
+      // Counts stay true even with damage numbers off, so this is never dashed.
+      dpsRow('Crits', formatInt(session.crits) + percentSuffix(session.critRate)) +
+      dpsRow('Fights', formatInt(session.encounters)) +
+      dpsRow('In combat', formatClock(session.durationMs)) +
+      '</div>';
+
+    if (data.history.length) {
+      html += '<div class="dps-section-title">Recent fights</div>';
+      html += '<div class="dps-history">';
+      for (const entry of data.history) {
+        html += '<div class="dps-history-row">' +
+          '<span class="dps-history-name">' + escHtml(entry.targetName || 'unknown') + '</span>' +
+          '<span class="dps-history-dps">' + escHtml(formatDpsNumber(entry.dps)) + '</span>' +
+          '<span class="dps-history-meta">' + escHtml(formatClock(entry.durationMs)) + '</span>' +
+          '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<div class="dps-actions">' +
+      '<button type="button" class="dps-btn dps-btn-secondary" data-dps-action="reset">Reset session</button>' +
+      '</div>';
+    html += '</div>';
+
+    bodyEl.innerHTML = html;
+
+    if (typeof bodyEl.querySelectorAll === 'function') {
+      bodyEl.querySelectorAll('[data-dps-action="reset"]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.dispatchEvent(new CustomEvent('dw:dps-reset'));
+        });
+      });
+    }
   },
 
   sky(bodyEl, data) {
@@ -1781,6 +2041,7 @@ export const panelRenderers = {
       renderCombatVisual(bodyEl, data);
       return;
     }
+    destroyCombatStage(bodyEl);
 
     if (!data || !data.enemy_name || data.enemy_name === 'None' || data.enemy_name === '') {
       bodyEl.innerHTML = '<div class="panel-inactive placeholder">No target</div>';
