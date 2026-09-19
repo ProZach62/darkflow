@@ -1215,8 +1215,16 @@ test("Phase 2 Controls persist global shortcuts and retain hidden key-mapping dr
 
 test("Phase 2 Settings opens when a command button has no description", async ({ page }) => {
   await page.goto("/phase2/");
+  // The storage key appears before bootstrap assigns the runtime global, so
+  // wait for the global this test goes on to use.
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("darkflow-session-core-v1") !== null))
+    .poll(() =>
+      page.evaluate(
+        () =>
+          typeof (window as unknown as { __darkflowPhase1Runtime?: { session?: unknown } })
+            .__darkflowPhase1Runtime?.session === "object",
+      ),
+    )
     .toBe(true);
   // A command button stored before descriptions were tracked has no
   // description field; the list row must not read it unguarded, or opening
