@@ -59,6 +59,9 @@ test("the avatar bar predicts charge from the last sync, counts an active window
   assert.equal(m.avatarBarReading(null, t0).known, false);
   assert.equal(m.avatarBarReading({ avatar_charge: 10, avatar_charge_max: 0 }, t0).known, false, "a zero maximum is no charge");
   assert.equal(m.avatarBarReading({ avatar_charge: 10, avatar_charge_max: 100 }, t0 + 5000).percent, 10, "without a receipt stamp nothing is predicted");
+  // Ten seconds of active window were left at the sync: 14 s later only the last 4 s have charged.
+  const afterWindow = m.avatarBarReading({ avatar_charge: 0, avatar_charge_max: 100, avatar_charge_rate_pct: 100, avatar_active_remaining: 10, receivedAt: t0 }, t0 + 14_000);
+  assert.deepEqual([afterWindow.mode, afterWindow.percent], ["charging", 2], "time spent active does not count toward the charge");
   assert.equal(m.formatActive(125), "2:05");
   assert.equal(m.AVATAR_BAR_PANEL_ID, "avatarBar");
 });
