@@ -223,6 +223,15 @@ test("combat victory leaves the interface clickable", async ({ page }) => {
   });
   endpoint.sendGmcp("Darkwind.Combat.State", combatState());
   await expect(page.getByRole("region", { name: "Visual combat" })).toBeVisible();
+  // Opening the Scene subscribes to the room's image once, so the art can
+  // paint behind the figures. That is the only sync a fight may cause.
+  const visibilitySyncsSince = (start: number) =>
+    framesSince(endpoint, start, "Darkwind.Client.Subscriptions").filter((frame) =>
+      frame.includes('"reason":"visibility-sync"'),
+    );
+  await page.waitForTimeout(300);
+  expect(visibilitySyncsSince(subscriptionStart).length).toBeLessThanOrEqual(1);
+  const teardownStart = endpoint.gmcpMessages.length;
   endpoint.sendGmcp("Darkwind.Combat.Event", {
     epoch: "combat-a",
     encounter_id: "encounter-a",
@@ -233,13 +242,12 @@ test("combat victory leaves the interface clickable", async ({ page }) => {
     combatState({ active: 0, outcome: "victory", seq: 3, summary: "Victory." }),
   );
   endpoint.sendGmcp("Char.Enemy", { enemy_name: "NOTHING", enemy_curhp: 0, enemy_maxhp: 100 });
-  await expect(page.getByRole("region", { name: "Visual combat" })).toHaveCount(0);
+  // The Scene persists past the end of the fight; it goes idle rather than closing.
+  await expect(page.getByRole("region", { name: "Visual combat" })).toHaveClass(
+    /combat-scene-idle/,
+  );
 
-  expect(
-    framesSince(endpoint, subscriptionStart, "Darkwind.Client.Subscriptions").filter((frame) =>
-      frame.includes('"reason":"visibility-sync"'),
-    ),
-  ).toEqual([]);
+  expect(visibilitySyncsSince(teardownStart)).toEqual([]);
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
