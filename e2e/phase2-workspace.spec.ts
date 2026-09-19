@@ -84,7 +84,8 @@ test("desktop panel selector toggles from its label and trigger", async ({ page 
   expect(await menu.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
   for (const [title, id] of [
     ["Area Map", "areaMap"],
-    ["Enemy", "enemy"],
+    // On this branch the combat panel is the persistent Scene.
+    ["Scene", "enemy"],
     ["Fishing", "fishing"],
     ["IDE", "ide"],
   ]) {

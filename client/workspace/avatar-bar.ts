@@ -113,7 +113,11 @@ export function avatarBarReading(
   const max = Number((vitals as { avatar_charge_max?: unknown }).avatar_charge_max);
   if (!Number.isFinite(charge) || !(max > 0)) return none;
   const ratePct = Number((vitals as { avatar_charge_rate_pct?: unknown }).avatar_charge_rate_pct);
-  const gained = (elapsedMs / 2000) * ((Number.isFinite(ratePct) ? ratePct : 100) / 100);
+  // Charge only builds once the active window has run out, so the seconds
+  // the avatar was still active at the last sync do not count toward it.
+  const activeMsAtSync = Number.isFinite(activeAtSync) ? Math.max(0, activeAtSync) * 1000 : 0;
+  const chargingMs = Math.max(0, elapsedMs - activeMsAtSync);
+  const gained = (chargingMs / 2000) * ((Number.isFinite(ratePct) ? ratePct : 100) / 100);
   const predicted = Math.max(0, Math.min(max, charge + gained));
   const percent = Math.max(0, Math.min(100, (predicted / max) * 100));
   const displayPct = Math.floor(percent);
