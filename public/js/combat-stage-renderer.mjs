@@ -77,8 +77,20 @@ function eventClasses(view, event, idle) {
 
 // Name, descriptor, and health for one token, positioned over the canvas by
 // combat-visual.css so the progress bars stay real DOM.
-function tokenHudHtml(side, combatant, sideClass) {
-  let html = '<div class="combat-token-hud combat-token-hud-' + side + sideClass + '">';
+// The player marks bosses by hand; the star sits under the enemy's health.
+function bossToggleHtml(combatant, boss) {
+  if (!boss || !boss.canMark || !combatant.name) return '';
+  const marked = !!boss.marked;
+  const label = (marked ? 'Unmark ' : 'Mark ') + combatant.name + ' as a boss';
+  return '<div class="combat-boss-row"><button type="button" class="combat-boss-toggle' +
+    (marked ? ' combat-boss-marked' : '') + '" data-action="toggle-boss" aria-pressed="' + marked +
+    '" aria-label="' + escHtml(label) + '" title="' + escHtml(label) + '">' +
+    (marked ? '\u2605 Boss' : '\u2606 Mark boss') + '</button></div>';
+}
+
+function tokenHudHtml(side, combatant, sideClass, boss) {
+  let html = '<div class="combat-token-hud combat-token-hud-' + side + sideClass +
+    (side === 'target' && boss && boss.marked ? ' combat-token-hud-boss' : '') + '">';
   html += '<div class="combat-hud-name"><span>' + escHtml(combatant.name) + '</span></div>';
   if (combatant.descriptor) {
     html += '<div class="combat-hud-descriptor">' + escHtml(combatant.descriptor) + '</div>';
@@ -87,6 +99,7 @@ function tokenHudHtml(side, combatant, sideClass) {
   if (side === 'target' && combatant.condition) {
     html += '<div class="combat-target-condition">' + escHtml(combatant.condition) + '</div>';
   }
+  if (side === 'target') html += bossToggleHtml(combatant, boss);
   return html + '</div>';
 }
 
@@ -154,6 +167,17 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
   let fallback = null;
   let announcementKey = '';
   let disposed = false;
+
+  // One delegated listener: the header is rebuilt on every publish.
+  const onClick = (event) => {
+    const target = event.target && typeof event.target.closest === 'function'
+      ? event.target.closest('[data-action="toggle-boss"]')
+      : null;
+    if (!target || typeof options.onToggleBoss !== 'function') return;
+    event.preventDefault();
+    options.onToggleBoss();
+  };
+  if (bodyEl && typeof bodyEl.addEventListener === 'function') bodyEl.addEventListener('click', onClick);
 
   function hostAlive() {
     return !!(host && host.stage && !host.stage.destroyed && host.root.parentNode === bodyEl);
@@ -242,9 +266,18 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
 
     host.root.className = classes.rootClass + ' combat-visual-canvas';
     host.root.setAttribute('data-encounter-id', view.encounterId || '');
+    // Rebuilding the header would drop keyboard focus from the star.
+    const active = doc && doc.activeElement;
+    const starFocused = !!(active && typeof active.matches === 'function'
+      && active.matches('[data-action="toggle-boss"]') && host.overlay.contains(active));
+    const boss = view.target.isNpc ? data.boss : null;
     host.overlay.innerHTML =
       tokenHudHtml('player', view.player, classes.playerClass) +
-      (scene.idle ? '' : tokenHudHtml('target', view.target, classes.targetClass));
+      (scene.idle ? '' : tokenHudHtml('target', view.target, classes.targetClass, boss));
+    if (starFocused) {
+      const star = host.overlay.querySelector('[data-action="toggle-boss"]');
+      if (star && typeof star.focus === 'function') star.focus();
+    }
     host.hud.innerHTML = hudHtml(view, event, label, announcement, scene);
     host.stage.update(view, {
       scene,
@@ -266,6 +299,7 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
   function dispose() {
     if (disposed) return;
     disposed = true;
+    if (bodyEl && typeof bodyEl.removeEventListener === 'function') bodyEl.removeEventListener('click', onClick);
     destroyStage();
     if (fallback) {
       fallback.dispose();

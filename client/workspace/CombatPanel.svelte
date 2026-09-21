@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import type { Readable } from "svelte/store";
   import type { SessionCombatSnapshot } from "../runtime/combat.ts";
   import type { Session } from "../runtime/session.ts";
@@ -14,7 +15,9 @@
   import * as combatStageCore from "../../public/js/combat-stage-core.mjs";
 
   const { createCombatStageRenderer } = combatRenderer;
-  const { partyAllies, summarizeAuras } = combatStageCore;
+  const { bossKey, partyAllies, summarizeAuras } = combatStageCore;
+
+  const BOSS_MUSIC_ID = "scene-boss-music";
 
   let {
     panelId,
@@ -98,7 +101,73 @@
         .join(",") +
       "|" +
       aurasInput().key;
-    const renderer = createCombatStageRenderer(body, { onSound: playSceneSound });
+    // Enemies this character has starred as bosses, by bossKey. The game does
+    // not say which enemies are bosses, so the player does.
+    const bossStorageKey = "darkflow-scene-bosses:" + activeSession.characterProfileId;
+    const bosses = new SvelteSet<string>();
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(bossStorageKey) ?? "null");
+      const names = (stored as { names?: unknown } | null)?.names;
+      if (Array.isArray(names)) {
+        for (const name of names) if (typeof name === "string" && name) bosses.add(name);
+      }
+    } catch {
+      // A damaged list is an empty list.
+    }
+    const enemyName = (snapshot: SessionCombatSnapshot | null): string =>
+      String(snapshot?.enemy?.enemy_name ?? "");
+    // The boss track loops while a presented fight is on against a starred
+    // enemy, and gives way to music the game plays itself.
+    let bossMusicPlaying = false;
+    // Starting or stopping the loop makes the audio runtime publish, and the
+    // audio subscription below calls back in here before the flag is set.
+    let syncingBossMusic = false;
+    const syncBossMusic = (): void => {
+      if (syncingBossMusic) return;
+      const snapshot = lastSnapshot;
+      const want =
+        sceneSettings.sceneBossMusic &&
+        !!snapshot &&
+        snapshot.shouldPresent &&
+        snapshot.model.active &&
+        bosses.has(bossKey(enemyName(snapshot))) &&
+        // The server has no music category; its combat music is this loop.
+        !activeSession.audio.serverLoopActive("ambient", "combat-music");
+      syncingBossMusic = true;
+      try {
+        if (want && !bossMusicPlaying) {
+          bossMusicPlaying = activeSession.audio.loopLocal(
+            "music",
+            "boss-battle",
+            BOSS_MUSIC_ID,
+            0.6,
+          );
+        } else if (!want && bossMusicPlaying) {
+          bossMusicPlaying = false;
+          activeSession.audio.stopLocal("music", BOSS_MUSIC_ID);
+        }
+      } finally {
+        syncingBossMusic = false;
+      }
+    };
+    const toggleBoss = (): void => {
+      const key = bossKey(enemyName(lastSnapshot));
+      if (!key) return;
+      if (!bosses.delete(key)) bosses.add(key);
+      try {
+        localStorage.setItem(
+          bossStorageKey,
+          JSON.stringify({ version: 1, names: [...bosses].sort() }),
+        );
+      } catch {
+        // The mark still holds for this session.
+      }
+      if (lastSnapshot) render(lastSnapshot);
+    };
+    const renderer = createCombatStageRenderer(body, {
+      onSound: playSceneSound,
+      onToggleBoss: toggleBoss,
+    });
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const syncReducedMotion = (): void => {
       activeSession.combat.setReducedMotion(motionQuery.matches);
@@ -150,8 +219,10 @@
             ambience: ambienceInput(),
             allies: alliesInput(),
             auras: aurasInput(),
+            boss: { canMark: true, marked: bosses.has(bossKey(enemyName(snapshot))) },
           }) !== false;
         syncReadiness();
+        syncBossMusic();
       } catch (error) {
         renderSucceeded = false;
         reportReady(false);
@@ -198,9 +269,14 @@
     const refreshSceneSettings = (): void => {
       sceneSettings = loadClientSettings(localStorage).settings;
       refreshAmbience();
+      syncBossMusic();
     };
     window.addEventListener("darkflow:client-settings-changed", refreshSceneSettings);
+    // The game starting or stopping its own music changes whether ours may play.
+    const unsubscribeAudio = activeSession.audio.subscribe(syncBossMusic);
     return () => {
+      unsubscribeAudio();
+      if (bossMusicPlaying) activeSession.audio.stopLocal("music", BOSS_MUSIC_ID);
       unsubscribeSky();
       window.clearInterval(ambienceTicker);
       window.removeEventListener("darkflow:client-settings-changed", refreshSceneSettings);

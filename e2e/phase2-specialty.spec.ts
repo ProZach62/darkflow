@@ -253,6 +253,51 @@ test("combat victory leaves the interface clickable", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
 });
 
+test("starring an enemy as a boss is remembered and leaves the interface responsive", async ({
+  page,
+}) => {
+  const endpoint = await connect(page);
+  endpoint.sendGmcp("Char.Enemy", {
+    enemy_name: "an ash drake",
+    enemy_curhp: 40,
+    enemy_maxhp: 50,
+    enemy_is_npc: 1,
+  });
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState());
+  const combat = page.getByRole("region", { name: "Visual combat" });
+  await expect(combat).toBeVisible();
+
+  const star = combat.getByRole("button", { name: "Mark an ash drake as a boss", exact: true });
+  await expect(star).toHaveAttribute("aria-pressed", "false");
+  await star.click();
+  // Starting the boss track makes the audio runtime publish, which once
+  // re-entered the pane's music sync and hung the page.
+  const marked = combat.getByRole("button", { name: "Unmark an ash drake as a boss", exact: true });
+  await expect(marked).toHaveAttribute("aria-pressed", "true");
+  await expect(marked).toContainText("Boss");
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith("darkflow-scene-bosses:"))
+        .map((key) => localStorage.getItem(key)),
+    ),
+  ).toEqual(['{"version":1,"names":["ash drake"]}']);
+
+  // The same enemy under another article and case is still the boss.
+  endpoint.sendGmcp("Char.Enemy", {
+    enemy_name: "The  Ash Drake",
+    enemy_curhp: 40,
+    enemy_maxhp: 50,
+    enemy_is_npc: 1,
+  });
+  await expect(
+    combat.getByRole("button", { name: "Unmark The  Ash Drake as a boss", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
+});
+
 test("Combat and Tutorial preserve fallback, exact directions, focus, and readiness", async ({
   page,
 }) => {

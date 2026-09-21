@@ -680,3 +680,21 @@ export function auraLook(auras, t, reducedMotion) {
   };
 }
 
+// --- Bosses -------------------------------------------------------------------
+// The game does not say which enemies are bosses, so the player marks them.
+// Names are compared without their article, case, or spacing, so "A swamp
+// troll" and "the  Swamp Troll" are the same enemy.
+export function bossKey(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^(?:an?|the|some)\s+/, '');
+}
+
+export function isBossName(name, keys) {
+  const key = bossKey(name);
+  if (!key || !keys) return false;
+  return typeof keys.has === 'function' ? keys.has(key) : Array.isArray(keys) && keys.includes(key);
+}
+

@@ -521,3 +521,36 @@ test("server-played sounds are remembered per category until the connection drop
   assert.equal(audio.serverPlayedAt("combat"), 0, "a dropped connection forgets");
   scope.dispose();
 });
+
+test("the server's own loops are tracked by category and sound until stopped or disconnected", async (t) => {
+  const modules = await loadModules(t);
+  const { audio, bus, eventBus, scope } = createAudio(modules);
+  connect(eventBus);
+  bus.dispatch("Core.Supports.Add", ["Darkwind.Sound 1"]);
+
+  assert.equal(audio.serverLoopActive("ambient"), false);
+  assert.equal(audio.loopLocal("music", "boss-battle", "scene-boss-music", 0.6), true);
+  assert.equal(audio.serverLoopActive("music"), false, "a local loop is not the server's");
+
+  bus.dispatch("Darkwind.Sound", { type: "loop", category: "ambient", sound: "rain", id: "weather" });
+  assert.equal(audio.serverLoopActive("ambient"), true);
+  assert.equal(audio.serverLoopActive(" ambient "), true, "the category is trimmed");
+  assert.equal(audio.serverLoopActive("ambient", "combat-music"), false, "rain is not combat music");
+  assert.equal(audio.serverLoopActive("combat"), false, "other categories are untouched");
+
+  bus.dispatch("Darkwind.Sound", { type: "loop", category: "ambient", sound: "combat-music", id: "fight" });
+  assert.equal(audio.serverLoopActive("ambient", "combat-music"), true);
+  assert.equal(audio.serverLoopActive("ambient", " combat-music "), true, "the sound is trimmed");
+  bus.dispatch("Darkwind.Sound", { type: "stop", category: "ambient", sound: "", id: "fight" });
+  assert.equal(audio.serverLoopActive("ambient", "combat-music"), false, "stopped by id");
+  assert.equal(audio.serverLoopActive("ambient"), true, "the rain is still looping");
+  bus.dispatch("Darkwind.Sound", { type: "stop", category: "ambient", sound: "" });
+  assert.equal(audio.serverLoopActive("ambient"), false, "a stop without an id clears the category");
+  bus.dispatch("Darkwind.Sound", { type: "loop", category: "music", sound: "darkwind-theme", id: "x" });
+  assert.equal(audio.serverLoopActive("music"), false, "the server may not send the music category");
+
+  bus.dispatch("Darkwind.Sound", { type: "loop", category: "ambient", sound: "combat-music", id: "fight" });
+  eventBus.publish("transport:reconnect-status", { status: "scheduled", attempt: 1, transport: "ws" });
+  assert.equal(audio.serverLoopActive("ambient", "combat-music"), false, "a dropped connection forgets");
+  scope.dispose();
+});
