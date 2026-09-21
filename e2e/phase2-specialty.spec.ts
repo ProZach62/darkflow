@@ -324,6 +324,36 @@ test("an enemy the game tags as a boss is flagged without being starred", async 
   await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
 });
 
+test("a boss tagged only in the game text is flagged when its plain name enters a fight", async ({
+  page,
+}) => {
+  const endpoint = await connect(page);
+  // An ordinary fight first: no tag seen, so the enemy can be starred by hand.
+  endpoint.sendGmcp("Char.Enemy", {
+    enemy_name: "Aurora",
+    enemy_curhp: 900,
+    enemy_maxhp: 900,
+    enemy_is_npc: 1,
+  });
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState());
+  const combat = page.getByRole("region", { name: "Visual combat" });
+  await expect(combat).toBeVisible();
+  await expect(combat.locator('[data-action="toggle-boss"]')).toHaveCount(1);
+  await expect(combat.getByRole("img", { name: "Boss", exact: true })).toHaveCount(0);
+
+  // The room prints her with the tag; Char.Enemy never carries it.
+  // (The fixture's greeting has no line end of its own.)
+  endpoint.sendText("\nAurora, Captain of the Dawnbound (BOSS)\n");
+  await expect(combat.getByRole("img", { name: "Boss", exact: true })).toBeVisible();
+  await expect(combat.locator('[data-action="toggle-boss"]')).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        Object.keys(localStorage).filter((key) => key.startsWith("darkflow-scene-bosses:")).length,
+    ),
+  ).toBe(0);
+});
+
 test("Combat and Tutorial preserve fallback, exact directions, focus, and readiness", async ({
   page,
 }) => {

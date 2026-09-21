@@ -18,6 +18,8 @@ const {
   bossKey,
   hasBossTag,
   isBossName,
+  bossSightings,
+  matchesBossSighting,
   MAX_ALLIES,
   allyLayout,
   auraLook,
@@ -596,4 +598,26 @@ test('the fight summary takes what was dealt from the DPS meter and the rest fro
   assert.deepEqual(fightSummaryRows(createFightRecap(), { ...dps, swings: 0 }), []);
   assert.equal(formatFightDuration(0), '0:00');
   assert.equal(formatFightDuration(125_000), '2:05');
+});
+
+test('the boss tag is read off the game text, and the plain name the fight data carries matches it', () => {
+  assert.deepEqual(bossSightings('Aurora, Captain of the Dawnbound (BOSS)'), ['Aurora, Captain of the Dawnbound']);
+  assert.deepEqual(bossSightings('  the Ember Warden (Boss) is in excellent shape.'), ['the Ember Warden']);
+  assert.deepEqual(bossSightings('You see: a rat (tiny). The Ember Warden (BOSS) and Aurora (BOSS)'), ['The Ember Warden', 'and Aurora']);
+  assert.deepEqual(bossSightings('A plain line about a boss.'), []);
+  assert.deepEqual(bossSightings('(BOSS)'), []);
+  assert.deepEqual(bossSightings(null), []);
+
+  const seen = ['aurora, captain of the dawnbound', 'ember warden'];
+  assert.equal(matchesBossSighting('Aurora', seen), true, 'the short name opens the printed one');
+  assert.equal(matchesBossSighting('Aurora, Captain of the Dawnbound', seen), true);
+  assert.equal(matchesBossSighting('captain of the dawnbound', seen), true, 'a run of several words anywhere');
+  assert.equal(matchesBossSighting('the Ember Warden', seen), true);
+  assert.equal(matchesBossSighting('warden', seen), true, 'a single word may close the name');
+  assert.equal(matchesBossSighting('a captain', seen), false, 'but not sit in the middle of it');
+  assert.equal(matchesBossSighting('a Dawnbound soldier', seen), false);
+  assert.equal(matchesBossSighting('the', seen), false);
+  assert.equal(matchesBossSighting('', seen), false);
+  assert.equal(matchesBossSighting('Aurora', null), false);
+  assert.equal(matchesBossSighting('Aurora, Captain of the Dawnbound, enraged', ['aurora']), true, 'the sighting may be the shorter one');
 });
