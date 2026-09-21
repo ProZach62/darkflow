@@ -15,7 +15,15 @@
   import * as combatStageCore from "../../public/js/combat-stage-core.mjs";
 
   const { createCombatStageRenderer } = combatRenderer;
-  const { bossKey, hasBossTag, partyAllies, summarizeAuras } = combatStageCore;
+  const {
+    MAX_BOSS_SIGHTINGS,
+    bossKey,
+    bossSightings,
+    hasBossTag,
+    matchesBossSighting,
+    partyAllies,
+    summarizeAuras,
+  } = combatStageCore;
 
   const BOSS_MUSIC_ID = "scene-boss-music";
 
@@ -138,10 +146,15 @@
       );
       return target?.name ?? "";
     };
-    const isBoss = (snapshot: SessionCombatSnapshot | null): boolean => {
+    // Char.Enemy and the roster carry a boss's plain name; the tag is only in
+    // the game text. These are the names seen wearing it this session.
+    const sightings = new SvelteSet<string>();
+    const isTagged = (snapshot: SessionCombatSnapshot | null): boolean => {
       const name = enemyName(snapshot);
-      return hasBossTag(name) || bosses.has(bossKey(name));
+      return hasBossTag(name) || matchesBossSighting(name, sightings);
     };
+    const isBoss = (snapshot: SessionCombatSnapshot | null): boolean =>
+      isTagged(snapshot) || bosses.has(bossKey(enemyName(snapshot)));
     // The boss track loops while a presented fight is on against a starred
     // enemy, and gives way to music the game plays itself.
     let bossMusicPlaying = false;
@@ -247,7 +260,7 @@
             auras: aurasInput(),
             dps: dpsInput(),
             boss: {
-              tagged: hasBossTag(enemyName(snapshot)),
+              tagged: isTagged(snapshot),
               canMark: true,
               marked: bosses.has(bossKey(enemyName(snapshot))),
             },
@@ -303,6 +316,32 @@
       syncBossMusic();
     };
     window.addEventListener("darkflow:client-settings-changed", refreshSceneSettings);
+    // Read the boss tag off the game text. Subscribing replays the scrollback,
+    // so a boss announced before the Scene opened still counts.
+    const noteSightings = (text: string): boolean => {
+      let added = false;
+      for (const name of bossSightings(text) as string[]) {
+        const key = bossKey(name);
+        if (!key || sightings.has(key)) continue;
+        if (sightings.size >= MAX_BOSS_SIGHTINGS) {
+          const oldest = sightings.values().next().value;
+          if (oldest !== undefined) sightings.delete(oldest);
+        }
+        sightings.add(key);
+        added = true;
+      }
+      return added;
+    };
+    const unsubscribeBossText = activeSession.terminal.subscribeOutput((event) => {
+      let added = false;
+      if (event.type === "reset") {
+        for (const record of event.records)
+          if (record.complete) added = noteSightings(record.text) || added;
+      } else if (event.type === "upsert" && event.record.complete) {
+        added = noteSightings(event.record.text);
+      }
+      if (added && lastSnapshot) render(lastSnapshot);
+    });
     // The game starting or stopping its own music changes whether ours may play.
     const unsubscribeAudio = activeSession.audio.subscribe(syncBossMusic);
     // The DPS meter closes out a fight on its own clock; pick its figures up
@@ -310,6 +349,7 @@
     const unsubscribeDps = activeSession.dps.subscribe(refreshAmbience);
     return () => {
       unsubscribeAudio();
+      unsubscribeBossText();
       unsubscribeDps();
       if (bossMusicPlaying) activeSession.audio.stopLocal("music", BOSS_MUSIC_ID);
       unsubscribeSky();

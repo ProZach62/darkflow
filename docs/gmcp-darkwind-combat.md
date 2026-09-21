@@ -307,6 +307,16 @@ fixed gold Boss badge under its health. The tag is matched in any case and
 with loose spacing, anywhere in the name, from `enemy_name` or, for a fight
 the player is watching, from the roster.
 
+In play the tag turned out to be part of how the game prints a boss, not part
+of the name `Char.Enemy` and the roster carry, so the Scene also reads it off
+the game text. Every name seen wearing the tag in the terminal this session
+is a sighting (the scrollback is read when the Scene opens, so a boss
+announced earlier still counts), and an enemy is a boss when its name matches
+one: either name may be a run of whole words inside the other, so "Aurora"
+matches "Aurora, Captain of the Dawnbound", but a single word must open or
+close the longer name, so a plain "captain" does not. Sightings are not
+stored; they last for the session.
+
 The player can also flag an untagged enemy: while a fight against an NPC is
 showing, a star under the enemy's health marks or unmarks it as a boss. Marks are kept per character in
 `localStorage["darkflow-scene-bosses:<characterProfileId>"]` and compared

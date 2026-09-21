@@ -719,6 +719,65 @@ export function isBossName(name, keys) {
   return typeof keys.has === 'function' ? keys.has(key) : Array.isArray(keys) && keys.includes(key);
 }
 
+// The tag is part of how the game prints a boss, in the room and in fight
+// text, but Char.Enemy and the combat roster carry the plain name without
+// it. So the client also reads the tag off the game text: every name seen
+// wearing the tag is a sighting, and an enemy whose name matches a sighting
+// is a boss.
+export const MAX_BOSS_SIGHTINGS = 60;
+
+function bossWords(name) {
+  return bossKey(name)
+    .replace(/[^a-z0-9' -]+/g, ' ')
+    .split(/[\s-]+/)
+    .filter(Boolean);
+}
+
+// The names wearing the tag in one line of game text.
+export function bossSightings(text) {
+  const line = String(text || '');
+  if (!hasBossTag(line)) return [];
+  const names = [];
+  const tag = /\(\s*boss\s*\)/gi;
+  let from = 0;
+  for (let match = tag.exec(line); match; match = tag.exec(line)) {
+    // A name runs back from its tag to the start of the line or the end of
+    // the sentence or bracket before it.
+    const before = line.slice(from, match.index);
+    const cut = Math.max(before.lastIndexOf('. '), before.lastIndexOf(')'), before.lastIndexOf(':'), before.lastIndexOf(']'));
+    const name = before.slice(cut + 1).replace(/^[\s.:)\]]+/, '').trim();
+    if (bossWords(name).length) names.push(name);
+    from = match.index + match[0].length;
+  }
+  return names;
+}
+
+function wordRunAt(words, run) {
+  for (let start = 0; start + run.length <= words.length; start++) {
+    if (run.every((word, index) => words[start + index] === word)) return start;
+  }
+  return -1;
+}
+
+// The game's short name for an enemy is often less than what it prints:
+// "Aurora" for "Aurora, Captain of the Dawnbound". A name matches a sighting
+// when one is a run of whole words inside the other. A single word must open
+// or close the longer name, so a plain "captain" is not Aurora.
+export function matchesBossSighting(name, sightings) {
+  const words = bossWords(name);
+  if (!words.length || !sightings) return false;
+  for (const sighting of sightings) {
+    const seen = bossWords(sighting);
+    if (!seen.length) continue;
+    const [long, short] = seen.length >= words.length ? [seen, words] : [words, seen];
+    const at = wordRunAt(long, short);
+    if (at < 0) continue;
+    if (short.length > 1 || long.length === 1) return true;
+    if (short[0].length >= 3 && (at === 0 || at === long.length - 1)) return true;
+  }
+  return false;
+}
+
 // --- Low health ---------------------------------------------------------------
 // From 35% health down the scene closes in: a red vignette that beats like a
 // heart while a fight is on, and a figure that breathes hard. Full at 10%.
