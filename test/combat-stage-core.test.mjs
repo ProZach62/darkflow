@@ -5,6 +5,7 @@ const {
   ACTION_CONTACT_FRACTION,
   AURA_EXPIRING_SECONDS,
   bossKey,
+  hasBossTag,
   isBossName,
   MAX_ALLIES,
   allyLayout,
@@ -462,5 +463,19 @@ test('a boss is matched by name without its article, case, or spacing', () => {
   assert.equal(isBossName('', marked), false);
   assert.equal(isBossName('a swamp troll', ['swamp troll']), true, 'a plain list works too');
   assert.equal(isBossName('a swamp troll', null), false);
+});
+
+test('the game tags its bosses in the name, and the tag never changes which enemy it is', () => {
+  assert.equal(hasBossTag('Aurora, Captain of the Dawnbound (BOSS)'), true);
+  assert.equal(hasBossTag('aurora (boss)'), true, 'any case');
+  assert.equal(hasBossTag('Aurora ( Boss )'), true, 'and loose spacing');
+  assert.equal(hasBossTag('Aurora (BOSS) [wounded]'), true, 'not only at the very end');
+  assert.equal(hasBossTag('Boss Hogg'), false, 'the word alone is not the tag');
+  assert.equal(hasBossTag('a swamp troll (bossy)'), false);
+  assert.equal(hasBossTag('Aurora, Captain of the Dawnbound'), false);
+  assert.equal(hasBossTag(''), false);
+  assert.equal(hasBossTag(null), false);
+  assert.equal(bossKey('Aurora, Captain of the Dawnbound (BOSS)'), 'aurora, captain of the dawnbound');
+  assert.equal(bossKey('the  Swamp Troll (BOSS)'), bossKey('A swamp troll'), 'the tag is not part of the name');
 });
 

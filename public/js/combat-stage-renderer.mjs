@@ -79,6 +79,11 @@ function eventClasses(view, event, idle) {
 // combat-visual.css so the progress bars stay real DOM.
 // The player marks bosses by hand; the star sits under the enemy's health.
 function bossToggleHtml(combatant, boss) {
+  // The game tags its bosses; those get a fixed badge, not a control.
+  if (boss && boss.tagged) {
+    return '<div class="combat-boss-row"><span class="combat-boss-badge" role="img" aria-label="Boss">' +
+      '\u2605 Boss</span></div>';
+  }
   if (!boss || !boss.canMark || !combatant.name) return '';
   const marked = !!boss.marked;
   const label = (marked ? 'Unmark ' : 'Mark ') + combatant.name + ' as a boss';
@@ -90,8 +95,13 @@ function bossToggleHtml(combatant, boss) {
 
 function tokenHudHtml(side, combatant, sideClass, boss) {
   let html = '<div class="combat-token-hud combat-token-hud-' + side + sideClass +
-    (side === 'target' && boss && boss.marked ? ' combat-token-hud-boss' : '') + '">';
-  html += '<div class="combat-hud-name"><span>' + escHtml(combatant.name) + '</span></div>';
+    (side === 'target' && boss && (boss.marked || boss.tagged) ? ' combat-token-hud-boss' : '') + '">';
+  // A tagged boss already wears the badge, so the tag is left off the header,
+  // which is short on room; the full name stays as the hover text.
+  const tagged = side === 'target' && boss && boss.tagged;
+  const shown = tagged ? combatant.name.replace(/\s*\(\s*boss\s*\)\s*/gi, ' ').trim() : combatant.name;
+  html += '<div class="combat-hud-name"><span' + (tagged ? ' title="' + escHtml(combatant.name) + '"' : '') +
+    '>' + escHtml(shown || combatant.name) + '</span></div>';
   if (combatant.descriptor) {
     html += '<div class="combat-hud-descriptor">' + escHtml(combatant.descriptor) + '</div>';
   }

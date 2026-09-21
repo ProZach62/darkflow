@@ -300,15 +300,20 @@ keeps the stage running.
 
 ### Boss battle music
 
-Nothing in `Char.Enemy` or the combat roster says an enemy is a boss, and the
-meaning of `enemy_maxhp` is not specified, so the player decides. While a
-fight against an NPC is showing, a star under the enemy's health marks or
-unmarks it as a boss. Marks are kept per character in
+The game appends `(BOSS)` to the name of every boss, as in "Aurora, Captain
+of the Dawnbound (BOSS)", and that tag is what flags a boss fight; nothing
+else in `Char.Enemy` or the combat roster marks one. A tagged enemy shows a
+fixed gold Boss badge under its health. The tag is matched in any case and
+with loose spacing, anywhere in the name, from `enemy_name` or, for a fight
+the player is watching, from the roster.
+
+The player can also flag an untagged enemy: while a fight against an NPC is
+showing, a star under the enemy's health marks or unmarks it as a boss. Marks are kept per character in
 `localStorage["darkflow-scene-bosses:<characterProfileId>"]` and compared
 without the name's leading article, case, or spacing, so "A swamp troll" and
 "the Swamp Troll" are one enemy.
 
-While a presented fight is active against a marked enemy, the pane loops
+While a presented fight is active against a tagged or marked enemy, the pane loops
 `music/boss-battle` through the session's audio runtime, so the Music volume
 and mute apply. It starts as soon as an enemy is starred mid-fight and stops
 when the fight ends, the target changes to an unmarked enemy, or the Scene

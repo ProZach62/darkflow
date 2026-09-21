@@ -298,6 +298,32 @@ test("starring an enemy as a boss is remembered and leaves the interface respons
   await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
 });
 
+test("an enemy the game tags as a boss is flagged without being starred", async ({ page }) => {
+  const endpoint = await connect(page);
+  endpoint.sendGmcp("Char.Enemy", {
+    enemy_name: "Aurora, Captain of the Dawnbound (BOSS)",
+    enemy_curhp: 900,
+    enemy_maxhp: 900,
+    enemy_is_npc: 1,
+  });
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState());
+  const combat = page.getByRole("region", { name: "Visual combat" });
+  await expect(combat).toBeVisible();
+  await expect(combat.getByRole("img", { name: "Boss", exact: true })).toBeVisible();
+  await expect(combat.locator('[data-action="toggle-boss"]')).toHaveCount(0);
+  await expect(combat.locator(".combat-token-hud-boss")).toHaveCount(1);
+  // Nothing is stored: the tag is the game's, not a mark of the player's.
+  expect(
+    await page.evaluate(
+      () =>
+        Object.keys(localStorage).filter((key) => key.startsWith("darkflow-scene-bosses:")).length,
+    ),
+  ).toBe(0);
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
+});
+
 test("Combat and Tutorial preserve fallback, exact directions, focus, and readiness", async ({
   page,
 }) => {

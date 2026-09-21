@@ -681,11 +681,18 @@ export function auraLook(auras, t, reducedMotion) {
 }
 
 // --- Bosses -------------------------------------------------------------------
-// The game does not say which enemies are bosses, so the player marks them.
-// Names are compared without their article, case, or spacing, so "A swamp
-// troll" and "the  Swamp Troll" are the same enemy.
+// The game appends "(BOSS)" to the name of every boss, as in "Aurora, Captain
+// of the Dawnbound (BOSS)". That tag is the signal; nothing else in the data
+// marks one. The player can also star an untagged enemy by hand. Marked names
+// are compared without the tag, their article, case, or spacing, so "A swamp
+// troll" and "the  Swamp Troll (BOSS)" are the same enemy.
+export function hasBossTag(name) {
+  return /\(\s*boss\s*\)/i.test(String(name || ''));
+}
+
 export function bossKey(name) {
   return String(name || '')
+    .replace(/\(\s*boss\s*\)/gi, ' ')
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim()
