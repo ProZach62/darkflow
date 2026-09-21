@@ -52,8 +52,15 @@ export interface SessionAudio {
    * with `sound`, only a loop of that sound counts.
    */
   serverLoopActive(category: string, sound?: string): boolean;
-  loopLocal(category: string, sound: string, id: string, volume?: number): boolean;
-  stopLocal(category: string, id?: string): boolean;
+  /** `fadeInMs` brings the loop up from silence; `fadeOutMs` lets it die away instead of cutting. */
+  loopLocal(
+    category: string,
+    sound: string,
+    id: string,
+    volume?: number,
+    options?: { fadeInMs?: number },
+  ): boolean;
+  stopLocal(category: string, id?: string, options?: { fadeOutMs?: number }): boolean;
 }
 
 interface RetainedSoundSettings {
@@ -74,8 +81,14 @@ export interface RetainedSoundManager {
   setCategoryEnabled(category: string, enabled: boolean): void;
   setCategoryVolume(category: string, volume: number): void;
   play(category: string, sound: string, volume?: number): void;
-  loop(category: string, sound: string, id: string, volume?: number): void;
-  stop(category: string, id?: string): void;
+  loop(
+    category: string,
+    sound: string,
+    id: string,
+    volume?: number,
+    options?: { fadeInMs?: number },
+  ): void;
+  stop(category: string, id?: string, options?: { fadeOutMs?: number }): void;
   handleMessage(message: DarkwindSound): boolean;
   resetSessionPlayback(): void;
 }
@@ -104,6 +117,10 @@ function validToken(value: string): boolean {
 
 function validVolume(volume: number | undefined): boolean {
   return volume === undefined || (Number.isFinite(volume) && volume >= 0 && volume <= 1);
+}
+
+function validFade(ms: number | undefined): boolean {
+  return ms === undefined || (Number.isFinite(ms) && ms >= 0 && ms <= 10_000);
 }
 
 /** Creates the session-owned sound read model over the application-owned retained manager. */
@@ -238,17 +255,22 @@ export function createSessionAudio(
     sound: string,
     id: string,
     volume?: number,
+    options?: { fadeInMs?: number },
   ): boolean => {
     if (disposed || !connected) return false;
-    runManagerAction(() => manager.loop(category, sound, id, volume));
+    runManagerAction(() => manager.loop(category, sound, id, volume, options));
     showLoopActivity(category, id);
     publish();
     return true;
   };
 
-  const stop = (category: SessionAudioCategory, id?: string): boolean => {
+  const stop = (
+    category: SessionAudioCategory,
+    id?: string,
+    options?: { fadeOutMs?: number },
+  ): boolean => {
     if (disposed) return false;
-    runManagerAction(() => manager.stop(category, id));
+    runManagerAction(() => manager.stop(category, id, options));
     clearStoppedActivity(category, id);
     publish();
     return true;
@@ -416,7 +438,7 @@ export function createSessionAudio(
       return play(normalizedCategory as SessionAudioCategory, normalizedSound, volume);
     },
 
-    loopLocal(category, sound, id, volume) {
+    loopLocal(category, sound, id, volume, options) {
       const normalizedCategory = category.trim();
       const normalizedSound = sound.trim();
       const normalizedId = id.trim();
@@ -424,7 +446,8 @@ export function createSessionAudio(
         !categorySet.has(normalizedCategory) ||
         !validToken(normalizedSound) ||
         !validToken(normalizedId) ||
-        !validVolume(volume)
+        !validVolume(volume) ||
+        !validFade(options?.fadeInMs)
       )
         return false;
       return loop(
@@ -432,18 +455,20 @@ export function createSessionAudio(
         normalizedSound,
         normalizedId,
         volume,
+        options,
       );
     },
 
-    stopLocal(category, id) {
+    stopLocal(category, id, options) {
       const normalizedCategory = category.trim();
       const normalizedId = id?.trim();
       if (
         !categorySet.has(normalizedCategory) ||
-        (normalizedId !== undefined && !validToken(normalizedId))
+        (normalizedId !== undefined && !validToken(normalizedId)) ||
+        !validFade(options?.fadeOutMs)
       )
         return false;
-      return stop(normalizedCategory as SessionAudioCategory, normalizedId);
+      return stop(normalizedCategory as SessionAudioCategory, normalizedId, options);
     },
   };
 }

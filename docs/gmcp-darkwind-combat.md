@@ -337,6 +337,20 @@ sample-accurate, and it ships as Ogg Vorbis, which is gapless where MP3
 padding would leave an audible seam. Its source and licence are recorded in
 `public/assets/sounds/CREDITS.md`.
 
+The music fades in over 1.5 seconds and out over 2.5, or 0.8 when the Scene
+closes. Fades are an option on the audio runtime's local loops:
+`loopLocal(category, sound, id, volume, { fadeInMs })` and
+`stopLocal(category, id, { fadeOutMs })`, each at most ten seconds. A loop
+that is fading out is already gone by ID, so the same ID can start again over
+its tail, and it fades from wherever it is if it was stopped part way up. A
+reset, a hidden page, or a disconnect cuts a tail at once.
+
+The tracks are the `BOSS_TRACKS` list in `combat-stage-core.mjs`, each a
+`music/<key>` entry in the sound map. A fight takes one track and keeps it if
+the game's music interrupts; the next fight takes any track but that one, so
+with two or more no two fights in a row sound the same. Adding a track is an
+Ogg file, a sound map entry, a key in the list, and a credit.
+
 ### Low health, criticals, streaks, and the summary
 
 From 35% of the player's health down, a red vignette closes in from the

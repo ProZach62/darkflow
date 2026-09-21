@@ -146,6 +146,14 @@ export function isKnownSound(category, sound) {
   return Object.prototype.hasOwnProperty.call(SOUND_MAP, category + '/' + sound);
 }
 
+// Fades are for music coming and going, not for holding a sound open.
+const MAX_FADE_MS = 10000;
+
+function fadeDuration(value) {
+  const ms = Number(value);
+  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, MAX_FADE_MS) : 0;
+}
+
 function clampVolume(value, fallback = 0.7) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -160,6 +168,8 @@ export class SoundManager {
     this.oneShotSounds = new Set();
     this.loopingSounds = new Map();
     this.loopMetadata = new Map();
+    // Loops on their way out: no longer loops by ID, still sounding.
+    this.fadingOut = new Set();
     this.pendingSounds = [];
     this.pendingLoops = [];
     this.audioUnlocked = this.audioEngine.isUnlocked();
@@ -289,7 +299,9 @@ export class SoundManager {
     const sounds = this.pendingSounds.splice(0);
     const loops = this.pendingLoops.splice(0);
     for (const item of sounds) this.play(item.category, item.sound, item.volume);
-    for (const item of loops) this.loop(item.category, item.sound, item.id, item.volume);
+    for (const item of loops) {
+      this.loop(item.category, item.sound, item.id, item.volume, { fadeInMs: item.fadeInMs });
+    }
   }
 
   _isCategory(category) {
@@ -478,24 +490,28 @@ export class SoundManager {
     console.warn('Failed to play sound ' + category + '/' + sound, error);
   }
 
-  loop(category, sound, id, volume) {
+  // options.fadeInMs brings the loop up from silence over that long.
+  loop(category, sound, id, volume, options) {
     if (!this._isCategory(category) || !sound || !id) return;
     if (this.isSuppressed(category)) return;
-    this.loopMetadata.set(id, { category, sound, volume });
+    const fadeInMs = this._canFade() ? fadeDuration(options && options.fadeInMs) : 0;
+    this.loopMetadata.set(id, { category, sound, volume, fadeInMs });
     if (!this._shouldPlay(category) || !this.isPageVisible) return;
     if (!this.audioUnlocked) {
-      this._queueLoop({ category, sound, id, volume });
+      this._queueLoop({ category, sound, id, volume, fadeInMs });
       this._emitChange();
       return;
     }
     this.stopById(id, false);
     const handle = this._getSound(category, sound);
     const sourceVolume = clampVolume(volume === undefined ? 1 : volume, 1);
+    const targetVolume = this._sourceVolume(category, sourceVolume);
     const playbackId = this.audioEngine.play(handle, {
-      volume: this._sourceVolume(category, sourceVolume),
+      volume: fadeInMs ? 0 : targetVolume,
       loop: true,
     });
     if (playbackId === null) return;
+    if (fadeInMs) this.audioEngine.fade(handle, 0, targetVolume, fadeInMs, playbackId);
 
     const token = { handle, playbackId, category, sourceVolume, listeners: [] };
     const onLoadError = (_failedId, error) => {
@@ -506,7 +522,7 @@ export class SoundManager {
       this._removeLoopToken(id, token, false);
       this.audioEngine.markLocked();
       this.audioUnlocked = false;
-      this._queueLoop({ category, sound, id, volume });
+      this._queueLoop({ category, sound, id, volume, fadeInMs });
       this._emitChange();
       console.warn('Failed to loop sound ' + category + '/' + sound, error);
     };
@@ -520,27 +536,29 @@ export class SoundManager {
     }
   }
 
-  stopById(id, clearMetadata = true) {
+  stopById(id, clearMetadata = true, fadeOutMs = 0) {
     const token = this.loopingSounds.get(id);
-    if (token) this._removeLoopToken(id, token, true);
+    if (token) this._removeLoopToken(id, token, true, fadeOutMs);
     this.pendingLoops = this.pendingLoops.filter((item) => item.id !== id);
     if (clearMetadata) this.loopMetadata.delete(id);
   }
 
-  stopCategory(category, clearMetadata = true) {
+  stopCategory(category, clearMetadata = true, fadeOutMs = 0) {
     for (const [id, token] of this.loopingSounds.entries()) {
       const metadata = this.loopMetadata.get(id);
       if (metadata && metadata.category === category) {
-        this._removeLoopToken(id, token, true);
+        this._removeLoopToken(id, token, true, fadeOutMs);
         if (clearMetadata) this.loopMetadata.delete(id);
       }
     }
     this.pendingLoops = this.pendingLoops.filter((item) => item.category !== category);
   }
 
-  stop(category, id) {
-    if (id) this.stopById(id);
-    else this.stopCategory(category);
+  // options.fadeOutMs lets the loop die away over that long instead of cutting.
+  stop(category, id, options) {
+    const fadeOutMs = fadeDuration(options && options.fadeOutMs);
+    if (id) this.stopById(id, true, fadeOutMs);
+    else this.stopCategory(category, true, fadeOutMs);
   }
 
   stopAll(clearMetadata = true) {
@@ -549,6 +567,7 @@ export class SoundManager {
     }
     this.pendingLoops = [];
     if (clearMetadata) this.loopMetadata.clear();
+    this._cutFades();
   }
 
   resetSessionPlayback() {
@@ -567,19 +586,52 @@ export class SoundManager {
     this.pendingLoops.push(item);
   }
 
-  _removeLoopToken(id, token, stopPlayback) {
+  _removeLoopToken(id, token, stopPlayback, fadeOutMs = 0) {
     if (this.loopingSounds.get(id) !== token) return;
     this.loopingSounds.delete(id);
     for (const [event, callback, eventId] of token.listeners) {
       this.audioEngine.off(token.handle, event, callback, eventId);
     }
-    if (stopPlayback) this.audioEngine.stop(token.handle, token.playbackId);
+    if (!stopPlayback) return;
+    if (fadeOutMs && this._canFade()) this._fadeOut(token, fadeOutMs);
+    else this.audioEngine.stop(token.handle, token.playbackId);
+  }
+
+  _canFade() {
+    return typeof this.audioEngine.fade === 'function';
+  }
+
+  // The loop is already gone by ID, so the same ID can start again over the
+  // tail of this one. It fades from wherever it is, which may be part way up.
+  _fadeOut(token, fadeOutMs) {
+    const target = this._sourceVolume(token.category, token.sourceVolume);
+    const current = typeof this.audioEngine.getPlaybackVolume === 'function'
+      ? this.audioEngine.getPlaybackVolume(token.handle, token.playbackId)
+      : null;
+    const from = typeof current === 'number' ? Math.min(current, target) : target;
+    const fading = { handle: token.handle, playbackId: token.playbackId, timer: null };
+    fading.timer = setTimeout(() => {
+      this.fadingOut.delete(fading);
+      this.audioEngine.stop(fading.handle, fading.playbackId);
+    }, fadeOutMs);
+    this.fadingOut.add(fading);
+    this.audioEngine.fade(token.handle, from, 0, fadeOutMs, token.playbackId);
+  }
+
+  _cutFades() {
+    for (const fading of this.fadingOut) {
+      clearTimeout(fading.timer);
+      this.audioEngine.stop(fading.handle, fading.playbackId);
+    }
+    this.fadingOut.clear();
   }
 
   _resumeLoops() {
     for (const [id, metadata] of this.loopMetadata.entries()) {
       if (!this.loopingSounds.has(id) && this._shouldPlay(metadata.category)) {
-        this.loop(metadata.category, metadata.sound, id, metadata.volume);
+        this.loop(metadata.category, metadata.sound, id, metadata.volume, {
+          fadeInMs: metadata.fadeInMs,
+        });
       }
     }
   }

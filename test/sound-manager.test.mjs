@@ -77,6 +77,14 @@ class FakeAudioEngine {
     this.playbackVolumes.push({ handle, volume, id });
   }
 
+  getPlaybackVolume() {
+    return this.currentVolume === undefined ? null : this.currentVolume;
+  }
+
+  fade(handle, from, to, durationMs, id) {
+    (this.fades ??= []).push({ handle, from, to, durationMs, id });
+  }
+
   emit(playIndex, event, error) {
     const playback = this.plays[playIndex];
     const matching = playback.handle.listeners.filter((listener) => (
@@ -298,4 +306,53 @@ test('stops loops while hidden and resumes remembered loops when visible', () =>
   for (const callback of documentListeners.get('visibilitychange') || []) callback();
   assert.deepEqual(manager.getDebugSnapshot().loops, ['weather']);
   assert.equal(engine.plays.length, 2);
+});
+
+test('a loop can fade in from silence and fade out before it stops', async () => {
+  const { engine, manager } = createManager({ unlocked: true });
+  manager.setCategoryVolume('music', 0.5);
+
+  manager.loop('music', 'boss-battle', 'boss', 0.6, { fadeInMs: 1500 });
+  assert.equal(engine.plays[0].options.volume, 0, 'it starts silent');
+  assert.deepEqual(
+    engine.fades.map(({ from, to, durationMs, id }) => ({ from, to, durationMs, id })),
+    [{ from: 0, to: 0.3, durationMs: 1500, id: 1 }],
+  );
+
+  // Stopped part way up, it fades from where it is, not from full.
+  engine.currentVolume = 0.1;
+  manager.stop('music', 'boss', { fadeOutMs: 20 });
+  assert.deepEqual(manager.getDebugSnapshot().loops, [], 'it is no longer a loop by ID');
+  assert.equal(engine.stops.length, 0, 'but it is still sounding');
+  assert.deepEqual(
+    engine.fades.slice(1).map(({ from, to, durationMs, id }) => ({ from, to, durationMs, id })),
+    [{ from: 0.1, to: 0, durationMs: 20, id: 1 }],
+  );
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.deepEqual(engine.stops.map((stop) => stop.id), [1], 'and stops once the fade is done');
+});
+
+test('the same loop ID can start again over a fading tail, and a reset cuts the tail', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+  manager.loop('music', 'boss-battle', 'boss', 0.6);
+  assert.equal(engine.plays[0].options.volume > 0, true, 'no fade asked, none given');
+  manager.stop('music', 'boss', { fadeOutMs: 5000 });
+  manager.loop('music', 'boss-battle', 'boss', 0.6, { fadeInMs: 1000 });
+  assert.equal(engine.stops.length, 0);
+  assert.deepEqual(manager.getDebugSnapshot().loops, ['boss']);
+
+  manager.resetSessionPlayback();
+  assert.deepEqual(engine.stops.map((stop) => stop.id).sort(), [1, 2], 'the tail goes with everything else');
+});
+
+test('fade lengths are bounded and nonsense means no fade', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+  manager.loop('music', 'boss-battle', 'a', 1, { fadeInMs: 999999 });
+  assert.equal(engine.fades[0].durationMs, 10000);
+  manager.loop('music', 'boss-battle', 'b', 1, { fadeInMs: -5 });
+  manager.loop('music', 'boss-battle', 'c', 1, { fadeInMs: 'soon' });
+  assert.equal(engine.fades.length, 1);
+  manager.stop('music', 'b', { fadeOutMs: 0 });
+  assert.equal(engine.stops.length, 1, 'no fade out means a cut');
+  manager.stopAll();
 });
