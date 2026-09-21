@@ -1322,3 +1322,15 @@
   color: #e3b341;
 }
 
+/* A boss the game itself tagged: the same gold, but not a control. */
+[data-panel-id="enemy"] .combat-boss-badge {
+  padding: 1px 6px;
+  border: 1px solid #e3b341;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--df-bg, #0d1117) 70%, transparent);
+  color: #e3b341;
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+

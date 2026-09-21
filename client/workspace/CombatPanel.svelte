@@ -15,7 +15,7 @@
   import * as combatStageCore from "../../public/js/combat-stage-core.mjs";
 
   const { createCombatStageRenderer } = combatRenderer;
-  const { bossKey, partyAllies, summarizeAuras } = combatStageCore;
+  const { bossKey, hasBossTag, partyAllies, summarizeAuras } = combatStageCore;
 
   const BOSS_MUSIC_ID = "scene-boss-music";
 
@@ -101,8 +101,8 @@
         .join(",") +
       "|" +
       aurasInput().key;
-    // Enemies this character has starred as bosses, by bossKey. The game does
-    // not say which enemies are bosses, so the player does.
+    // The game tags its bosses with "(BOSS)" in the name. These are the
+    // untagged enemies this character has starred as bosses too, by bossKey.
     const bossStorageKey = "darkflow-scene-bosses:" + activeSession.characterProfileId;
     const bosses = new SvelteSet<string>();
     try {
@@ -114,8 +114,20 @@
     } catch {
       // A damaged list is an empty list.
     }
-    const enemyName = (snapshot: SessionCombatSnapshot | null): string =>
-      String(snapshot?.enemy?.enemy_name ?? "");
+    // The name the Scene shows: Char.Enemy's, or the roster's for a fight
+    // the player is watching.
+    const enemyName = (snapshot: SessionCombatSnapshot | null): string => {
+      const named = String(snapshot?.enemy?.enemy_name ?? "").trim();
+      if (named || !snapshot) return named;
+      const target = snapshot.model.actors.find(
+        (actor) => actor.id === snapshot.model.currentTargetId,
+      );
+      return target?.name ?? "";
+    };
+    const isBoss = (snapshot: SessionCombatSnapshot | null): boolean => {
+      const name = enemyName(snapshot);
+      return hasBossTag(name) || bosses.has(bossKey(name));
+    };
     // The boss track loops while a presented fight is on against a starred
     // enemy, and gives way to music the game plays itself.
     let bossMusicPlaying = false;
@@ -130,7 +142,7 @@
         !!snapshot &&
         snapshot.shouldPresent &&
         snapshot.model.active &&
-        bosses.has(bossKey(enemyName(snapshot))) &&
+        isBoss(snapshot) &&
         // The server has no music category; its combat music is this loop.
         !activeSession.audio.serverLoopActive("ambient", "combat-music");
       syncingBossMusic = true;
@@ -219,7 +231,11 @@
             ambience: ambienceInput(),
             allies: alliesInput(),
             auras: aurasInput(),
-            boss: { canMark: true, marked: bosses.has(bossKey(enemyName(snapshot))) },
+            boss: {
+              tagged: hasBossTag(enemyName(snapshot)),
+              canMark: true,
+              marked: bosses.has(bossKey(enemyName(snapshot))),
+            },
           }) !== false;
         syncReadiness();
         syncBossMusic();

@@ -778,3 +778,29 @@ test('other players in the room stand behind the idle scene and step aside for a
   assert.equal(canvas.drawLog.filter(([name, args]) => name === 'fillText' && args[0] === 'nacho').length, 0, 'nothing drawn for them mid-fight');
 });
 
+test('the enemy header shows a fixed badge for a tagged boss, a star for the rest, and nothing for players', () => {
+  const render = (enemy, boss) => {
+    const body = bodyElement();
+    assert.equal(mountRenderer(body).render({ model: combatModel(), vitals: { hp: 78, maxhp: 100 }, enemy, boss }), true);
+    return deepHtml(body);
+  };
+  const aurora = { enemy_name: 'Aurora, Captain of the Dawnbound (BOSS)', enemy_curhp: 9, enemy_maxhp: 9, enemy_is_npc: 1 };
+  const tagged = render(aurora, { tagged: true, canMark: true, marked: false });
+  assert.match(tagged, /class="combat-boss-badge" role="img" aria-label="Boss"/);
+  assert.doesNotMatch(tagged, /data-action="toggle-boss"/, 'the game tagged it, so there is nothing to toggle');
+  assert.match(tagged, /combat-token-hud-boss/);
+  assert.match(tagged, /<span title="Aurora, Captain of the Dawnbound \(BOSS\)">Aurora, Captain of the Dawnbound<\/span>/, 'the header drops the tag and keeps the full name as hover text');
+
+  const troll = { enemy_name: 'a <b>swamp</b> troll', enemy_curhp: 9, enemy_maxhp: 9, enemy_is_npc: 1 };
+  const unmarked = render(troll, { tagged: false, canMark: true, marked: false });
+  assert.match(unmarked, /data-action="toggle-boss" aria-pressed="false" aria-label="Mark a &lt;b&gt;swamp&lt;\/b&gt; troll as a boss"/);
+  assert.doesNotMatch(unmarked, /combat-token-hud-boss|combat-boss-badge/);
+  const marked = render(troll, { tagged: false, canMark: true, marked: true });
+  assert.match(marked, /combat-boss-marked" data-action="toggle-boss" aria-pressed="true" aria-label="Unmark /);
+  assert.match(marked, /combat-token-hud-boss/);
+
+  const rival = { enemy_name: 'Zed (BOSS)', enemy_curhp: 9, enemy_maxhp: 9, enemy_is_npc: 0 };
+  const player = render(rival, { tagged: true, canMark: true, marked: false });
+  assert.doesNotMatch(player, /combat-boss-badge|toggle-boss|combat-token-hud-boss/, 'another player is never a boss');
+  assert.doesNotMatch(render(troll, undefined), /toggle-boss|combat-boss-badge/, 'a host that passes no boss data gets no control');
+});
