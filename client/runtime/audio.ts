@@ -45,6 +45,8 @@ export interface SessionAudio {
   setCategoryEnabled(category: string, enabled: boolean): void;
   setCategoryVolume(category: string, volume: number): void;
   playLocal(category: string, sound: string, volume?: number): boolean;
+  /** When the server last played a sound in this category on this connection; 0 if it has not. */
+  serverPlayedAt(category: string): number;
   loopLocal(category: string, sound: string, id: string, volume?: number): boolean;
   stopLocal(category: string, id?: string): boolean;
 }
@@ -108,6 +110,9 @@ export function createSessionAudio(
   manager: RetainedSoundManager,
 ): SessionAudio {
   let connected = false;
+  // Client features that make their own sounds stand down for a category the
+  // server is already scoring.
+  const serverPlayed = new Map<string, number>();
   let loggedIn = false;
   let supported = false;
   let currentCategory: SessionAudioCategory | null = null;
@@ -263,6 +268,7 @@ export function createSessionAudio(
     const sound = normalizeDarkwindSound(data);
     if (!sound || disposed || !connected) return;
     if (!runManagerAction(() => manager.handleMessage(sound))) return;
+    if (sound.type === "play") serverPlayed.set(sound.category, Date.now());
     if (sound.type === "play") showPlayActivity(sound.category);
     else if (sound.type === "loop") showLoopActivity(sound.category, sound.id);
     else clearStoppedActivity(sound.category, sound.id);
@@ -318,6 +324,7 @@ export function createSessionAudio(
         return;
       }
       connected = false;
+      serverPlayed.clear();
       loggedIn = false;
       supported = false;
       loginThemePlayed = false;
@@ -368,6 +375,10 @@ export function createSessionAudio(
       if (!disposed && categorySet.has(category) && validVolume(volume)) {
         manager.setCategoryVolume(category, volume);
       }
+    },
+
+    serverPlayedAt(category) {
+      return serverPlayed.get(category.trim()) ?? 0;
     },
 
     playLocal(category, sound, volume) {

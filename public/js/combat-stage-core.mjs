@@ -27,6 +27,8 @@ const RESULT_TINTS = Object.freeze({
 });
 
 export const ACTION_DURATION_MS = 900;
+// Fraction of an action at which the blow lands. The sound cue fires here too.
+export const ACTION_CONTACT_FRACTION = 0.16;
 
 export function clamp01(value) {
   if (!Number.isFinite(value)) return 0;
@@ -313,7 +315,7 @@ export function sampleAction(action, now, options = {}) {
 
   // Timeline in normalized progress: lunge 0-0.36 (contact at 0.16),
   // outcome 0.16-0.7, numbers drift until the end.
-  const contactAt = 0.16;
+  const contactAt = ACTION_CONTACT_FRACTION;
   const afterContact = clamp01((progress - contactAt) / (1 - contactAt));
 
   if (!reducedMotion) {
@@ -481,5 +483,70 @@ export function bystanderPresence(presence, reducedMotion) {
   if (reducedMotion) return { alpha: p > 0 ? 1 : 0, y: 0 };
   const eased = 1 - Math.pow(1 - p, 3);
   return { alpha: p, y: -(1 - eased) * 0.3 || 0 };
+}
+
+// --- Scene sound cues ---------------------------------------------------------
+// The Scene names a sound for what it is about to show; the host decides
+// whether to play it. Names are the client's own combat sounds.
+const SOUND_BY_RESULT = Object.freeze({
+  hit: 'hit',
+  critical: 'critical',
+  miss: 'miss',
+  dodge: 'dodge',
+  absorb: 'absorb',
+});
+
+// A fight the player is only watching is quieter than their own.
+export function actionSoundCue(action) {
+  if (!action) return null;
+  const sound = SOUND_BY_RESULT[action.result];
+  if (!sound) return null;
+  const observed = action.perspective === 'observed';
+  const volume = observed ? 0.45 : (action.critical ? 1 : 0.8);
+  return { sound, volume, delayMs: Math.round(action.duration * ACTION_CONTACT_FRACTION) };
+}
+
+// Start, victory, and death, from the change between two encounter states
+// ({ active, outcome }). A null previous state is the first look at a fight
+// already under way, which gets no cue.
+export function encounterSoundCue(previous, next) {
+  if (!previous || !next) return null;
+  if (!previous.active && next.active) return { sound: 'start', volume: 0.7, delayMs: 0 };
+  if (previous.active && !next.active) {
+    const outcome = String(next.outcome || '').toLowerCase();
+    if (outcome === 'victory') return { sound: 'victory', volume: 0.8, delayMs: 0 };
+    if (outcome === 'defeat' || outcome === 'death') return { sound: 'death', volume: 0.8, delayMs: 0 };
+  }
+  return null;
+}
+
+// --- Day and night ------------------------------------------------------------
+// A multiply tint for the backdrop and a lighter one over the figures, from
+// the sky's stage and how much moonlight there is. Daylight and rooms with no
+// sky get none. The moonlight scale is not documented, so it is folded into
+// 0..1 with a saturating curve: any scale gives a sensible lift.
+const SKYLESS_TERRAINS = new Set(['inside', 'underground', 'underwater']);
+
+export function sceneAmbience(sky, terrain) {
+  if (!sky || typeof sky !== 'object' || SKYLESS_TERRAINS.has(terrain)) return null;
+  const stage = String(sky.stage || '');
+  if (stage === 'dawn') {
+    return { key: 'dawn', color: '#ffb27a', backdrop: 0.3, figures: 0.08 };
+  }
+  if (stage === 'twilight') {
+    return { key: 'twilight', color: '#8a62a8', backdrop: 0.4, figures: 0.12 };
+  }
+  if (stage === 'night') {
+    const raw = Number(sky.moonLight);
+    const moon = Number.isFinite(raw) && raw > 0 ? 1 - Math.exp(-raw / 4) : 0;
+    const step = Math.round(moon * 5);
+    return {
+      key: 'night:' + step,
+      color: '#22335f',
+      backdrop: 0.54 - (step / 5) * 0.2,
+      figures: 0.2 - (step / 5) * 0.08,
+    };
+  }
+  return null;
 }
 

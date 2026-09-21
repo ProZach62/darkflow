@@ -11,7 +11,10 @@
 //   so the renderer can pick the DOM fallback instead of pretending.
 
 import {
+  actionSoundCue,
   buildAction,
+  encounterSoundCue,
+  sceneAmbience,
   computeStageLayout,
   buildSceneAction,
   sampleSceneAction,
@@ -192,6 +195,13 @@ export function createCombatStage(doc, options = {}) {
     _showStats: showStats,
     _actions: [],
     _playedSeqs: new Set(),
+    // Day and night tint for the current backdrop, or null in daylight.
+    _ambience: null,
+    // Sound cues are handed to the host, which owns settings and the audio
+    // runtime. Pending cues wait for the blow to land.
+    _onSound: typeof options.onSound === 'function' ? options.onSound : null,
+    _soundTimers: new Set(),
+    _encounterState: null,
     _encounterKey: '',
     _view: null,
     _reducedMotion: false,
@@ -283,10 +293,15 @@ export function createCombatStage(doc, options = {}) {
       }
       this._view = view;
       this._reducedMotion = !!view.reducedMotion;
+      const encounterState = { active: !!view.active, outcome: String(view.outcome || '') };
+      const encounterCue = encounterSoundCue(this._encounterState, encounterState);
+      this._encounterState = encounterState;
+      if (encounterCue) this._cueSound(encounterCue);
       const scene = sources.scene && typeof sources.scene === 'object' ? sources.scene : {};
       this._sceneIdle = scene.idle !== undefined ? !!scene.idle : !view.active;
       if (!this._sceneIdle) this._sceneActions = [];
       this._backdrop = resolveStageBackdrop(sources.room, sources.roomImage);
+      this._ambience = sceneAmbience(sources.ambience, this._backdrop.terrain);
       // The room's art is the backdrop when it loads; the terrain tile stands
       // in until then and takes over for good if the art fails.
       this._ensureImage(this._backdrop.image, [this._backdrop.tile]);
@@ -307,6 +322,8 @@ export function createCombatStage(doc, options = {}) {
         if (action) {
           this._playedSeqs.add(event.seq);
           this._actions.push(action);
+          const cue = actionSoundCue(action);
+          if (cue) this._cueSound(cue);
           if (this._actions.length > MAX_CONCURRENT_ACTIONS) {
             this._actions.splice(0, this._actions.length - MAX_CONCURRENT_ACTIONS);
           }
@@ -362,6 +379,7 @@ export function createCombatStage(doc, options = {}) {
       if (this.destroyed) return;
       this.destroyed = true;
       this.stop();
+      this._clearSoundTimers();
       if (this._resizeObserver) {
         try { this._resizeObserver.disconnect(); } catch (error) { /* ignore */ }
         this._resizeObserver = null;
@@ -622,6 +640,11 @@ export function createCombatStage(doc, options = {}) {
       for (const sample of samples) this._drawBackEffects(c, layout, tokens, sample);
       this._drawToken(c, layout, tokens.player, 'player', view.player, samples, scene);
       this._drawToken(c, layout, tokens.target, 'target', view.target, samples);
+      // A lighter pass over the figures so they sit in the same light as the
+      // room. Effects and numbers draw after it and stay at full brightness.
+      if (this._ambience) {
+        this._fillAmbience(c, -BACKDROP_PAD, -BACKDROP_PAD, w + BACKDROP_PAD * 2, h + BACKDROP_PAD * 2, this._ambience.figures);
+      }
       for (const sample of samples) this._drawFrontEffects(c, layout, tokens, sample);
       c.restore();
 
@@ -678,6 +701,35 @@ export function createCombatStage(doc, options = {}) {
         };
       }
       return positions;
+    },
+
+    _fillAmbience(c, x, y, width, height, alpha) {
+      if (!this._ambience || !(alpha > 0)) return;
+      c.save();
+      c.globalCompositeOperation = 'multiply';
+      c.globalAlpha = alpha;
+      c.fillStyle = this._ambience.color;
+      c.fillRect(x, y, width, height);
+      c.restore();
+    },
+
+    _cueSound(cue) {
+      if (!this._onSound || this.destroyed) return;
+      const fire = () => {
+        if (this.destroyed) return;
+        try { this._onSound(cue); } catch (error) { /* a sound must never break the scene */ }
+      };
+      if (!(cue.delayMs > 0)) { fire(); return; }
+      const timers = this._soundTimers;
+      const setTimer = win && typeof win.setTimeout === 'function' ? win.setTimeout.bind(win) : setTimeout;
+      const id = setTimer(() => { timers.delete(id); fire(); }, cue.delayMs);
+      timers.add(id);
+    },
+
+    _clearSoundTimers() {
+      const clearTimer = win && typeof win.clearTimeout === 'function' ? win.clearTimeout.bind(win) : clearTimeout;
+      for (const id of this._soundTimers) clearTimer(id);
+      this._soundTimers.clear();
     },
 
     _drawBackdrop(c, layout) {
@@ -796,7 +848,11 @@ export function createCombatStage(doc, options = {}) {
       const isRoomArt = !!(art && artEntry && artEntry.img === art);
       const dpr = this._dpr;
       const cache = this._backdropCache;
-      if (cache && cache.art === art && cache.w === w && cache.h === h && cache.dpr === dpr) return cache;
+      const ambienceKey = this._ambience ? this._ambience.key : '';
+      if (
+        cache && cache.art === art && cache.w === w && cache.h === h && cache.dpr === dpr
+        && cache.ambience === ambienceKey
+      ) return cache;
       if (this._backdropCache === false) return null;
       let canvas = cache ? cache.canvas : null;
       let ctx = cache ? cache.ctx : null;
@@ -818,7 +874,7 @@ export function createCombatStage(doc, options = {}) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w + pad * 2, h + pad * 2);
       this._paintBackdrop(ctx, w, h, pad, art, isRoomArt);
-      this._backdropCache = { canvas, ctx, art, w, h, dpr };
+      this._backdropCache = { canvas, ctx, art, w, h, dpr, ambience: ambienceKey };
       return this._backdropCache;
     },
 
@@ -848,6 +904,9 @@ export function createCombatStage(doc, options = {}) {
         c.drawImage(art, (w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
         c.restore();
       }
+      // Time of day tints the room before the wash, so it is baked into the
+      // cached layer and costs nothing per frame.
+      if (this._ambience) this._fillAmbience(c, -pad, -pad, w + pad * 2, h + pad * 2, this._ambience.backdrop);
       const wash = c.createLinearGradient(0, 0, 0, h);
       wash.addColorStop(0, 'rgba(4, 9, 14, 0.66)');
       wash.addColorStop(0.5, 'rgba(4, 9, 14, 0.28)');

@@ -167,7 +167,7 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
   }
 
   function mountStage() {
-    const stage = createCombatStage(doc, options.stage || {});
+    const stage = createCombatStage(doc, { ...(options.stage || {}), onSound: options.onSound });
     if (!stage) return null;
     const root = doc.createElement('div');
     root.setAttribute('role', 'region');
@@ -252,6 +252,8 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
       roomImage: data.roomImage || null,
       // Other players in the room stand behind the figures on the idle scene.
       players: Array.isArray(data.players) ? data.players : [],
+      // Sky stage and moonlight for the day and night tint, or nothing.
+      ambience: data.ambience || null,
       playerFallback: [view.player.fallbackImage, PLAYER_FALLBACK_IMAGE].filter(Boolean),
       targetFallback: view.target.isNpc ? NPC_FALLBACK_IMAGE : PLAYER_FALLBACK_IMAGE,
     });

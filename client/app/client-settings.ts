@@ -97,6 +97,10 @@ export interface Phase2ClientSettings {
   tabObservabilityEnabled: boolean;
   /** Show the Wrathful Avatar charge meter between the terminal output and the command line. */
   terminalAvatarMeter: boolean;
+  /** Play the client's combat sounds from the Scene as blows land. */
+  sceneSounds: boolean;
+  /** Tint the Scene by the game's time of day and moonlight. */
+  sceneDayNight: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -133,6 +137,8 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   keyMapperEnabled: false,
   tabObservabilityEnabled: false,
   terminalAvatarMeter: true,
+  sceneSounds: true,
+  sceneDayNight: true,
 };
 
 export type ClientSettingsResult =
@@ -230,6 +236,8 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     keyMapperEnabled: settings.keyMapperEnabled === true,
     tabObservabilityEnabled: settings.tabObservabilityEnabled === true,
     terminalAvatarMeter: settings.terminalAvatarMeter !== false,
+    sceneSounds: settings.sceneSounds !== false,
+    sceneDayNight: settings.sceneDayNight !== false,
   };
 }
 
@@ -418,6 +426,8 @@ export function validateClientSettingsDocument(
     "keyMapperEnabled",
     "tabObservabilityEnabled",
     "terminalAvatarMeter",
+    "sceneSounds",
+    "sceneDayNight",
   ] as const;
   for (const key of booleanKeys) {
     if (key in value && typeof value[key] !== "boolean")
