@@ -1289,3 +1289,36 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The star that marks an enemy as a boss, under its health bar. */
+[data-panel-id="enemy"] .combat-boss-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+[data-panel-id="enemy"] .combat-boss-toggle {
+  pointer-events: auto;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--df-text) 22%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--df-bg, #0d1117) 70%, transparent);
+  color: var(--df-muted, #8b949e);
+  font: inherit;
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+[data-panel-id="enemy"] .combat-boss-toggle:hover,
+[data-panel-id="enemy"] .combat-boss-toggle:focus-visible {
+  color: var(--df-text);
+  border-color: color-mix(in srgb, var(--df-text) 45%, transparent);
+}
+
+[data-panel-id="enemy"] .combat-boss-toggle.combat-boss-marked {
+  border-color: #e3b341;
+  color: #e3b341;
+}
+

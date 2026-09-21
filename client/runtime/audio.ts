@@ -47,6 +47,11 @@ export interface SessionAudio {
   playLocal(category: string, sound: string, volume?: number): boolean;
   /** When the server last played a sound in this category on this connection; 0 if it has not. */
   serverPlayedAt(category: string): number;
+  /**
+   * True while the server has a loop of its own running in this category;
+   * with `sound`, only a loop of that sound counts.
+   */
+  serverLoopActive(category: string, sound?: string): boolean;
   loopLocal(category: string, sound: string, id: string, volume?: number): boolean;
   stopLocal(category: string, id?: string): boolean;
 }
@@ -113,6 +118,8 @@ export function createSessionAudio(
   // Client features that make their own sounds stand down for a category the
   // server is already scoring.
   const serverPlayed = new Map<string, number>();
+  // Per category: loop id to the sound it is looping.
+  const serverLoops = new Map<string, Map<string, string>>();
   let loggedIn = false;
   let supported = false;
   let currentCategory: SessionAudioCategory | null = null;
@@ -269,6 +276,12 @@ export function createSessionAudio(
     if (!sound || disposed || !connected) return;
     if (!runManagerAction(() => manager.handleMessage(sound))) return;
     if (sound.type === "play") serverPlayed.set(sound.category, Date.now());
+    else if (sound.type === "loop") {
+      const loops = serverLoops.get(sound.category) ?? new Map<string, string>();
+      loops.set(sound.id, sound.sound);
+      serverLoops.set(sound.category, loops);
+    } else if (sound.id) serverLoops.get(sound.category)?.delete(sound.id);
+    else serverLoops.delete(sound.category);
     if (sound.type === "play") showPlayActivity(sound.category);
     else if (sound.type === "loop") showLoopActivity(sound.category, sound.id);
     else clearStoppedActivity(sound.category, sound.id);
@@ -325,6 +338,7 @@ export function createSessionAudio(
       }
       connected = false;
       serverPlayed.clear();
+      serverLoops.clear();
       loggedIn = false;
       supported = false;
       loginThemePlayed = false;
@@ -379,6 +393,15 @@ export function createSessionAudio(
 
     serverPlayedAt(category) {
       return serverPlayed.get(category.trim()) ?? 0;
+    },
+
+    serverLoopActive(category, sound) {
+      const loops = serverLoops.get(category.trim());
+      if (!loops?.size) return false;
+      if (sound === undefined) return true;
+      const wanted = sound.trim();
+      for (const looping of loops.values()) if (looping === wanted) return true;
+      return false;
     },
 
     playLocal(category, sound, volume) {

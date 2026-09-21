@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 const {
   ACTION_CONTACT_FRACTION,
   AURA_EXPIRING_SECONDS,
+  bossKey,
+  isBossName,
   MAX_ALLIES,
   allyLayout,
   auraLook,
@@ -443,5 +445,22 @@ test('bystanders take ground the party is not standing on', () => {
   assert.ok(party.every((x) => Math.abs(x - beside.spots[0].x) >= beside.radius * 1.3), 'clear of the party');
   assert.equal(alone.spots.length, 1);
   assert.deepEqual(bystanderLayout(rest, 3, []).spots, bystanderLayout(rest, 3).spots, 'nothing to avoid changes nothing');
+});
+
+test('a boss is matched by name without its article, case, or spacing', () => {
+  assert.equal(bossKey('A swamp troll'), 'swamp troll');
+  assert.equal(bossKey('the  Swamp   Troll '), 'swamp troll');
+  assert.equal(bossKey('an ash drake'), 'ash drake');
+  assert.equal(bossKey('Some bandits'), 'bandits');
+  assert.equal(bossKey('Theron the Bold'), 'theron the bold', 'only a leading article is dropped');
+  assert.equal(bossKey('Another'), 'another', 'a word that merely starts like an article is kept');
+  assert.equal(bossKey(''), '');
+  assert.equal(bossKey(null), '');
+  const marked = new Set(['swamp troll']);
+  assert.equal(isBossName('The Swamp Troll', marked), true);
+  assert.equal(isBossName('a swamp rat', marked), false);
+  assert.equal(isBossName('', marked), false);
+  assert.equal(isBossName('a swamp troll', ['swamp troll']), true, 'a plain list works too');
+  assert.equal(isBossName('a swamp troll', null), false);
 });
 

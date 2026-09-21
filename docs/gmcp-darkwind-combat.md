@@ -297,3 +297,27 @@ reduced. The server sends a countdown once, so the pane remembers when each
 entry arrived and checks once a second. The idle scene settles to a still
 frame, so at rest the glow is steady; it breathes and flickers while a fight
 keeps the stage running.
+
+### Boss battle music
+
+Nothing in `Char.Enemy` or the combat roster says an enemy is a boss, and the
+meaning of `enemy_maxhp` is not specified, so the player decides. While a
+fight against an NPC is showing, a star under the enemy's health marks or
+unmarks it as a boss. Marks are kept per character in
+`localStorage["darkflow-scene-bosses:<characterProfileId>"]` and compared
+without the name's leading article, case, or spacing, so "A swamp troll" and
+"the Swamp Troll" are one enemy.
+
+While a presented fight is active against a marked enemy, the pane loops
+`music/boss-battle` through the session's audio runtime, so the Music volume
+and mute apply. It starts as soon as an enemy is starred mid-fight and stops
+when the fight ends, the target changes to an unmarked enemy, or the Scene
+closes. The server cannot send the `music` category; its own combat music is
+the `ambient/combat-music` loop, and while that loop runs the boss track
+stands down, resuming if the server stops it. Settings, Audio has a checkbox
+to turn it off.
+
+The track is decoded rather than streamed so its loop point is
+sample-accurate, and it ships as Ogg Vorbis, which is gapless where MP3
+padding would leave an audible seam. Its source and licence are recorded in
+`public/assets/sounds/CREDITS.md`.
