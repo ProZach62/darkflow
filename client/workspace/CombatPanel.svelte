@@ -16,12 +16,16 @@
 
   const { createCombatStageRenderer } = combatRenderer;
   const {
+    BOSS_MUSIC_FADE_IN_MS,
+    BOSS_MUSIC_FADE_OUT_MS,
+    BOSS_TRACKS,
     MAX_BOSS_SIGHTINGS,
     bossKey,
     bossSightings,
     hasBossTag,
     matchesBossSighting,
     partyAllies,
+    pickBossTrack,
     summarizeAuras,
   } = combatStageCore;
 
@@ -158,6 +162,10 @@
     // The boss track loops while a presented fight is on against a starred
     // enemy, and gives way to music the game plays itself.
     let bossMusicPlaying = false;
+    // One track a fight: music the game interrupts comes back as the same
+    // piece, and the next fight takes a different one.
+    let bossTrack = "";
+    let bossTrackEncounter = "";
     // Starting or stopping the loop makes the audio runtime publish, and the
     // audio subscription below calls back in here before the flag is set.
     let syncingBossMusic = false;
@@ -175,15 +183,21 @@
       syncingBossMusic = true;
       try {
         if (want && !bossMusicPlaying) {
-          bossMusicPlaying = activeSession.audio.loopLocal(
-            "music",
-            "boss-battle",
-            BOSS_MUSIC_ID,
-            0.6,
-          );
+          const encounter = snapshot.model.encounterId;
+          if (!bossTrack || encounter !== bossTrackEncounter) {
+            bossTrack = pickBossTrack(BOSS_TRACKS, bossTrack) as string;
+            bossTrackEncounter = encounter;
+          }
+          bossMusicPlaying =
+            !!bossTrack &&
+            activeSession.audio.loopLocal("music", bossTrack, BOSS_MUSIC_ID, 0.6, {
+              fadeInMs: BOSS_MUSIC_FADE_IN_MS,
+            });
         } else if (!want && bossMusicPlaying) {
           bossMusicPlaying = false;
-          activeSession.audio.stopLocal("music", BOSS_MUSIC_ID);
+          activeSession.audio.stopLocal("music", BOSS_MUSIC_ID, {
+            fadeOutMs: BOSS_MUSIC_FADE_OUT_MS,
+          });
         }
       } finally {
         syncingBossMusic = false;
@@ -351,7 +365,9 @@
       unsubscribeAudio();
       unsubscribeBossText();
       unsubscribeDps();
-      if (bossMusicPlaying) activeSession.audio.stopLocal("music", BOSS_MUSIC_ID);
+      if (bossMusicPlaying) {
+        activeSession.audio.stopLocal("music", BOSS_MUSIC_ID, { fadeOutMs: 800 });
+      }
       unsubscribeSky();
       window.clearInterval(ambienceTicker);
       window.removeEventListener("darkflow:client-settings-changed", refreshSceneSettings);

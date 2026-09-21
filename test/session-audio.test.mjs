@@ -116,7 +116,8 @@ class FakeSoundManager {
     }
   }
 
-  loop(category, sound, id, volume) {
+  loop(category, sound, id, volume, options) {
+    if (options !== undefined) (this.fadeCalls ??= []).push(["loop", id, options]);
     this.calls.push(["loop", category, sound, id, volume]);
     if (!this.settings.audioUnlocked) {
       this.settings.pendingCount += 1;
@@ -124,7 +125,8 @@ class FakeSoundManager {
     }
   }
 
-  stop(category, id) {
+  stop(category, id, options) {
+    if (options !== undefined) (this.fadeCalls ??= []).push(["stop", id, options]);
     this.calls.push(["stop", category, id]);
   }
 
@@ -552,5 +554,25 @@ test("the server's own loops are tracked by category and sound until stopped or 
   bus.dispatch("Darkwind.Sound", { type: "loop", category: "ambient", sound: "combat-music", id: "fight" });
   eventBus.publish("transport:reconnect-status", { status: "scheduled", attempt: 1, transport: "ws" });
   assert.equal(audio.serverLoopActive("ambient", "combat-music"), false, "a dropped connection forgets");
+  scope.dispose();
+});
+
+test("local loops carry their fades to the manager, and a fade that makes no sense is refused", async (t) => {
+  const modules = await loadModules(t);
+  const { audio, eventBus, manager, scope } = createAudio(modules);
+  connect(eventBus);
+
+  assert.equal(audio.loopLocal("music", "boss-battle", "scene-boss-music", 0.6, { fadeInMs: 1500 }), true);
+  assert.equal(audio.stopLocal("music", "scene-boss-music", { fadeOutMs: 2500 }), true);
+  assert.deepEqual(manager.fadeCalls, [
+    ["loop", "scene-boss-music", { fadeInMs: 1500 }],
+    ["stop", "scene-boss-music", { fadeOutMs: 2500 }],
+  ]);
+
+  const before = manager.calls.length;
+  assert.equal(audio.loopLocal("music", "boss-battle", "scene-boss-music", 0.6, { fadeInMs: -1 }), false);
+  assert.equal(audio.loopLocal("music", "boss-battle", "scene-boss-music", 0.6, { fadeInMs: 60_000 }), false);
+  assert.equal(audio.stopLocal("music", "scene-boss-music", { fadeOutMs: Number.NaN }), false);
+  assert.equal(manager.calls.length, before, "nothing reached the manager");
   scope.dispose();
 });

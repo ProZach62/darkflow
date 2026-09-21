@@ -554,6 +554,8 @@ test("public notification, audio, and Step 11 capabilities compose without runti
     "getSnapshot",
     "loopLocal",
     "playLocal",
+    "serverLoopActive",
+    "serverPlayedAt",
     "setCategoryEnabled",
     "setCategoryVolume",
     "setEnabled",
