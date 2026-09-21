@@ -254,6 +254,9 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
       players: Array.isArray(data.players) ? data.players : [],
       // Sky stage and moonlight for the day and night tint, or nothing.
       ambience: data.ambience || null,
+      // Party members who are here, and the player's buff and debuff counts.
+      allies: Array.isArray(data.allies) ? data.allies : [],
+      auras: data.auras || null,
       playerFallback: [view.player.fallbackImage, PLAYER_FALLBACK_IMAGE].filter(Boolean),
       targetFallback: view.target.isNpc ? NPC_FALLBACK_IMAGE : PLAYER_FALLBACK_IMAGE,
     });
