@@ -326,3 +326,35 @@ The track is decoded rather than streamed so its loop point is
 sample-accurate, and it ships as Ogg Vorbis, which is gapless where MP3
 padding would leave an audible seam. Its source and licence are recorded in
 `public/assets/sounds/CREDITS.md`.
+
+### Low health, criticals, streaks, and the summary
+
+From 35% of the player's health down, a red vignette closes in from the
+edges, full at 10%, and the player's figure breathes harder and slower and
+sags. While a fight keeps the stage running the vignette beats like a heart,
+faster as things get worse; at rest, and with reduced motion, it holds
+steady and the figure is still. The `alert/low-hp` sound plays once as health
+drops through 25% in a fight and re-arms only after health recovers past
+40%, so a fighter hovering at the line does not set it off repeatedly. It
+follows the Alert volume, the Scene's sound setting, and the same rule as
+the combat sounds: if the server has played an alert of its own on this
+connection, the stage leaves alerts to it.
+
+A critical that lands punches the camera in about the fighters by 5% and
+whites the frame for an instant, on top of the longer hit-stop and larger
+burst it already had. Neither happens with reduced motion.
+
+The stage keeps what the DPS meter does not: damage taken, and runs of luck.
+A hit streak is outgoing attacks landed in a row; an untouched streak is
+incoming attacks that did not land; a fight the player is only watching
+counts for neither. From three in a row a chip shows under the current
+exchange. The model's history fills as events arrive while the stage
+presents them a beat at a time, so the tally counts only as far as the beat
+on show and a streak never appears ahead of the blows that made it.
+
+When a fight ends, a summary card follows the outcome line. What the player
+dealt, accuracy, best hit, criticals, time, and DPS come from the session's
+DPS meter, so the card never disagrees with the DPS panel; damage taken and
+the best streaks come from the stage's tally. Rows with nothing to report
+are left out, and when the game sends no damage numbers the card shows no
+confident zeroes. The card stays until the next fight begins.

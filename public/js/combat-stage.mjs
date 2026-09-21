@@ -14,6 +14,9 @@ import {
   actionSoundCue,
   buildAction,
   encounterSoundCue,
+  heartbeat,
+  lowHealthAlert,
+  lowHealthLevel,
   sceneAmbience,
   computeStageLayout,
   buildSceneAction,
@@ -205,6 +208,7 @@ export function createCombatStage(doc, options = {}) {
     _onSound: typeof options.onSound === 'function' ? options.onSound : null,
     _soundTimers: new Set(),
     _encounterState: null,
+    _lowHealthState: null,
     _encounterKey: '',
     _view: null,
     _reducedMotion: false,
@@ -304,6 +308,9 @@ export function createCombatStage(doc, options = {}) {
       const encounterCue = encounterSoundCue(this._encounterState, encounterState);
       this._encounterState = encounterState;
       if (encounterCue) this._cueSound(encounterCue);
+      const alert = lowHealthAlert(this._lowHealthState, view.player && view.player.health, !!view.active);
+      this._lowHealthState = { armed: alert.armed };
+      if (alert.cue) this._cueSound(alert.cue);
       const scene = sources.scene && typeof sources.scene === 'object' ? sources.scene : {};
       this._sceneIdle = scene.idle !== undefined ? !!scene.idle : !view.active;
       if (!this._sceneIdle) this._sceneActions = [];
@@ -634,9 +641,13 @@ export function createCombatStage(doc, options = {}) {
 
       let shake = 0;
       let flash = 0;
+      let zoom = 0;
+      let whiteFlash = 0;
       for (const sample of samples) {
         shake = Math.max(shake, sample.shake);
         flash = Math.max(flash, sample.flash);
+        zoom = Math.max(zoom, sample.zoom || 0);
+        whiteFlash = Math.max(whiteFlash, sample.whiteFlash || 0);
       }
       const shakeX = shake ? Math.sin(t / 19) * shake * layout.radius * 0.14 : 0;
       const shakeY = shake ? Math.cos(t / 23) * shake * layout.radius * 0.08 : 0;
@@ -644,6 +655,14 @@ export function createCombatStage(doc, options = {}) {
       const scene = this._sceneSample(t);
       c.save();
       c.translate(shakeX, shakeY);
+      if (zoom > 0) {
+        // A critical punches the camera in about the fighters, not the corner.
+        const cx = w / 2;
+        const cy = layout.groundY;
+        c.translate(cx, cy);
+        c.scale(1 + zoom, 1 + zoom);
+        c.translate(-cx, -cy);
+      }
       this._drawBackdrop(c, layout);
       const tokens = this._tokenPositions(layout, samples, t, scene);
       this._drawGround(c, layout, tokens);
@@ -668,6 +687,11 @@ export function createCombatStage(doc, options = {}) {
         c.fillStyle = gradient;
         c.fillRect(0, 0, w, h);
       }
+      if (whiteFlash > 0) {
+        c.fillStyle = 'rgba(255, 255, 255, ' + whiteFlash + ')';
+        c.fillRect(0, 0, w, h);
+      }
+      this._drawLowHealth(c, w, h, view, t);
       if (view && !view.effective && !this._sceneIdle) {
         c.fillStyle = 'rgba(3, 7, 11, 0.32)';
         c.fillRect(0, 0, w, h);
@@ -678,7 +702,8 @@ export function createCombatStage(doc, options = {}) {
       const positions = {};
       for (const side of ['player', 'target']) {
         const base = layout[side];
-        const idle = idleOffset(side, t, this._reducedMotion);
+        const strain = side === 'player' && this._view ? lowHealthLevel(this._view.player.health) : 0;
+        const idle = idleOffset(side, t, this._reducedMotion, strain);
         let x = idle.x;
         let y = idle.y;
         let scale = 1;
@@ -714,6 +739,25 @@ export function createCombatStage(doc, options = {}) {
         };
       }
       return positions;
+    },
+
+    // Below 35% health a red vignette closes in from the edges. It beats like
+    // a heart while a fight keeps the stage running, and holds steady at rest
+    // and with reduced motion.
+    _drawLowHealth(c, w, h, view, t) {
+      const level = view && view.player ? lowHealthLevel(view.player.health) : 0;
+      if (!(level > 0)) return;
+      const beating = !this._reducedMotion && !!view.active && !this._sceneIdle;
+      const pulse = beating ? heartbeat(t, level) : 0.35;
+      const strength = (0.12 + 0.3 * level) * (0.65 + 0.35 * pulse);
+      const gradient = c.createRadialGradient(
+        w / 2, h / 2, Math.min(w, h) * (0.42 - 0.12 * level),
+        w / 2, h / 2, Math.max(w, h) * 0.78,
+      );
+      gradient.addColorStop(0, rgba(this._palette.danger, 0));
+      gradient.addColorStop(1, rgba(this._palette.danger, strength));
+      c.fillStyle = gradient;
+      c.fillRect(0, 0, w, h);
     },
 
     _fillAmbience(c, x, y, width, height, alpha) {

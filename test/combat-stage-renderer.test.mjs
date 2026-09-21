@@ -804,3 +804,45 @@ test('the enemy header shows a fixed badge for a tagged boss, a star for the res
   assert.doesNotMatch(player, /combat-boss-badge|toggle-boss|combat-token-hud-boss/, 'another player is never a boss');
   assert.doesNotMatch(render(troll, undefined), /toggle-boss|combat-boss-badge/, 'a host that passes no boss data gets no control');
 });
+
+test('streak chips show during a fight and a summary card follows the outcome', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  const swing = (seq, perspective, result, damage) => ({
+    seq, kind: 'attack', perspective, result, damage, summary: 'swing ' + seq,
+    actor_id: perspective === 'outgoing' ? 'self' : 'target-1',
+    target_id: perspective === 'outgoing' ? 'target-1' : 'self',
+  });
+  let model = reduceCombatEvents(combatModel(), {
+    epoch: 'epoch-1', encounter_id: 'encounter-1', first_seq: 5, last_seq: 8,
+    events: [swing(5, 'outgoing', 'hit', 10), swing(6, 'outgoing', 'hit', 12), swing(7, 'outgoing', 'critical', 40), swing(8, 'incoming', 'hit', 25)],
+  });
+  const present = (extra = {}) => {
+    model = takeNextCombatEvent(model).state;
+    assert.equal(renderer.render({ model, vitals: { hp: 50, maxhp: 100 }, ...extra }), true);
+    return deepHtml(body);
+  };
+  assert.doesNotMatch(present(), /combat-streak-chip/, 'one hit is not a streak');
+  assert.doesNotMatch(present(), /combat-streak-chip/);
+  let html = present();
+  assert.match(html, /combat-streak-chip combat-streak-hit">Hit streak <strong>\u00d73<\/strong>/);
+  html = present();
+  assert.match(html, /Hit streak <strong>\u00d73/, 'being hit does not end a hit streak');
+  assert.doesNotMatch(html, /combat-recap/, 'no summary while the fight is on');
+
+  model = reduceCombatState(model, {
+    epoch: 'epoch-1', encounter_id: 'encounter-1', seq: 9, visual_enabled: 1, effective: 1, active: 0,
+    current_target_id: 'target-1',
+    actors: [{ id: 'self', name: 'Acer', role: 'self' }, { id: 'target-1', name: 'a drake', role: 'target' }],
+    summary: 'Victory.', outcome: 'victory',
+  });
+  const dps = { damage: 62, swings: 3, hits: 3, crits: 1, bestHit: 40, hitRate: 1, durationMs: 9000, dps: 6.9, missingDamageNumbers: false };
+  assert.equal(renderer.render({ model, vitals: { hp: 50, maxhp: 100 }, dps }), true);
+  html = deepHtml(body);
+  assert.match(html, /<dl class="combat-recap" aria-label="Fight summary">/);
+  assert.match(html, /<dt>Dealt<\/dt><dd>62<\/dd>/);
+  assert.match(html, /<dt>Taken<\/dt><dd>25<\/dd>/);
+  assert.match(html, /<dt>Accuracy<\/dt><dd>100%<\/dd>/);
+  assert.match(html, /<dt>Best streak<\/dt><dd>\u00d73<\/dd>/);
+  assert.doesNotMatch(html, /combat-streak-chip/, 'the live chips are gone once it is over');
+});

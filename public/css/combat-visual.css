@@ -1334,3 +1334,59 @@
   text-transform: uppercase;
 }
 
+/* Runs of luck, shown under the current exchange while the fight is on. */
+[data-panel-id="enemy"] .combat-streaks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+[data-panel-id="enemy"] .combat-streak-chip {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--df-accent, #42d6c9) 55%, transparent);
+  border-radius: 999px;
+  color: var(--df-accent, #42d6c9);
+  font-size: calc(11px * var(--pane-font-scale, 1));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-panel-id="enemy"] .combat-streak-chip.combat-streak-guard {
+  border-color: color-mix(in srgb, #e3b341 55%, transparent);
+  color: #e3b341;
+}
+
+/* The card under the outcome once a fight is over. */
+[data-panel-id="enemy"] .combat-recap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--df-text) 14%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--df-bg, #0d1117) 60%, transparent);
+}
+
+[data-panel-id="enemy"] .combat-recap-row {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+[data-panel-id="enemy"] .combat-recap dt {
+  color: var(--df-muted, #8b949e);
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-panel-id="enemy"] .combat-recap dd {
+  margin: 0;
+  color: var(--df-text);
+  font-size: calc(14px * var(--pane-font-scale, 1));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+

@@ -36,6 +36,7 @@
 
 import { buildCombatView } from './combat-visual-core.mjs';
 import { createCombatStage, isCanvasStageSupported } from './combat-stage.mjs';
+import { createFightRecap, fightSummaryRows, recapEvents, recapStreaks } from './combat-stage-core.mjs';
 import {
   RESULT_LABELS,
   createCombatVisualRenderer,
@@ -116,7 +117,30 @@ function tokenHudHtml(side, combatant, sideClass, boss) {
 // Everything below the stage: current exchange, threats, history, outcome,
 // and the live region. Between fights the exchange line becomes the room's
 // name and there are no threats to list.
-function hudHtml(view, event, label, announcement, scene) {
+// Runs of luck worth showing while the fight is on.
+function streaksHtml(recap) {
+  const streaks = recapStreaks(recap);
+  if (!streaks.length) return '';
+  let html = '<div class="combat-streaks" aria-label="Streaks">';
+  for (const streak of streaks) {
+    html += '<span class="combat-streak-chip combat-streak-' + streak.kind + '">' +
+      escHtml(streak.label) + ' <strong>\u00d7' + streak.count + '</strong></span>';
+  }
+  return html + '</div>';
+}
+
+// The card under the outcome once a fight is over.
+function summaryHtml(recap, dps) {
+  const rows = fightSummaryRows(recap, dps);
+  if (!rows.length) return '';
+  let html = '<dl class="combat-recap" aria-label="Fight summary">';
+  for (const row of rows) {
+    html += '<div class="combat-recap-row"><dt>' + escHtml(row.label) + '</dt><dd>' + escHtml(row.value) + '</dd></div>';
+  }
+  return html + '</dl>';
+}
+
+function hudHtml(view, event, label, announcement, scene, recap, dps) {
   let html = '';
   if (scene.idle) {
     html += '<div class="combat-scene-room"><span class="combat-section-label">Scene</span>' +
@@ -129,6 +153,7 @@ function hudHtml(view, event, label, announcement, scene) {
       html += '<span class="combat-event-summary">' + escHtml(event.summary) + '</span>';
     }
     html += '</span></div>';
+    html += streaksHtml(recap);
   }
 
   if (!scene.idle && (view.threats.length || view.hiddenThreatCount)) {
@@ -160,6 +185,7 @@ function hudHtml(view, event, label, announcement, scene) {
   if (!view.active && view.outcome) {
     html += '<div class="combat-outcome combat-outcome-' + escHtml(view.outcome) + '">' +
       escHtml(view.summary || view.outcome) + '</div>';
+    html += summaryHtml(recap, dps);
   } else if (!view.effective && !scene.idle) {
     html += '<div class="combat-sync-state">' +
       'Visual combat is synchronizing; text fallback remains active</div>';
@@ -177,6 +203,9 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
   let fallback = null;
   let announcementKey = '';
   let disposed = false;
+  // Damage taken and streaks for the current encounter, from its events.
+  let recap = createFightRecap();
+  let recapKey = '';
 
   // One delegated listener: the header is rebuilt on every publish.
   const onClick = (event) => {
@@ -288,7 +317,21 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
       const star = host.overlay.querySelector('[data-action="toggle-boss"]');
       if (star && typeof star.focus === 'function') star.focus();
     }
-    host.hud.innerHTML = hudHtml(view, event, label, announcement, scene);
+    const encounterKey = String(view.epoch || '') + ':' + String(view.encounterId || '');
+    if (encounterKey !== recapKey) {
+      recapKey = encounterKey;
+      recap = createFightRecap();
+    }
+    // The model's history fills as events arrive, but the stage presents them
+    // a beat at a time. Count only as far as the beat on show, so a streak
+    // never appears ahead of the blows that made it, and sweep up the rest
+    // once the fight is over.
+    const shownSeq = event ? Number(event.seq) : (view.active ? recap.lastSeq : Infinity);
+    recap = recapEvents(
+      recap,
+      view.history.concat(event ? [event] : []).filter((entry) => Number(entry.seq) <= shownSeq),
+    );
+    host.hud.innerHTML = hudHtml(view, event, label, announcement, scene, recap, data.dps || null);
     host.stage.update(view, {
       scene,
       room: data.room || null,

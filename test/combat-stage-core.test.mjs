@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 
 const {
   ACTION_CONTACT_FRACTION,
+  LOW_HEALTH_ALERT,
+  LOW_HEALTH_REARM,
+  STREAK_MIN,
+  createFightRecap,
+  fightSummaryRows,
+  formatFightDuration,
+  heartbeat,
+  lowHealthAlert,
+  lowHealthLevel,
+  recapEvents,
+  recapStreaks,
   AURA_EXPIRING_SECONDS,
   bossKey,
   hasBossTag,
@@ -479,3 +490,110 @@ test('the game tags its bosses in the name, and the tag never changes which enem
   assert.equal(bossKey('the  Swamp Troll (BOSS)'), bossKey('A swamp troll'), 'the tag is not part of the name');
 });
 
+test('low health closes in from 35% and is full at 10%, and unknown health is never low', () => {
+  const at = (percent) => lowHealthLevel({ known: true, percent });
+  assert.equal(at(100), 0);
+  assert.equal(at(35), 0);
+  assert.ok(at(34) > 0 && at(34) < at(20), 'it grows as health falls');
+  assert.equal(at(10), 1);
+  assert.equal(at(0), 1);
+  assert.equal(lowHealthLevel({ known: false, percent: 0 }), 0);
+  assert.equal(lowHealthLevel(null), 0);
+});
+
+test('the heartbeat is a double thump that quickens as things get worse', () => {
+  const samples = (level) => Array.from({ length: 230 }, (_, i) => heartbeat(i * 5, level));
+  const calm = samples(0);
+  assert.ok(calm.every((v) => v >= 0 && v <= 1));
+  assert.ok(Math.max(...calm) > 0.9 && Math.min(...calm) < 0.05, 'it beats, and rests between beats');
+  const peaks = (values) => values.filter((v, i) => i > 0 && i < values.length - 1 && v > 0.5 && v >= values[i - 1] && v > values[i + 1]).length;
+  assert.equal(peaks(calm), 2, 'two thumps in one calm period');
+  assert.ok(peaks(samples(1)) > peaks(calm), 'more beats in the same time when badly hurt');
+});
+
+test('the low health alert sounds once on the way down and re-arms only after real recovery', () => {
+  const hp = (percent) => ({ known: true, percent });
+  let state = null;
+  const step = (percent, active = true) => { const next = lowHealthAlert(state, hp(percent), active); state = { armed: next.armed }; return next.cue; };
+  assert.equal(step(80), null);
+  assert.deepEqual(step(LOW_HEALTH_ALERT), { category: 'alert', sound: 'low-hp', volume: 0.8, delayMs: 0 });
+  assert.equal(step(12), null, 'not again while still low');
+  assert.equal(step(30), null, 'a small heal does not re-arm it');
+  assert.equal(step(20), null);
+  assert.equal(step(LOW_HEALTH_REARM), null, 'recovering re-arms it silently');
+  assert.ok(step(18), 'and it sounds again on the next drop');
+  state = null;
+  assert.equal(step(10, false), null, 'never outside a fight');
+  assert.ok(step(10, true), 'but it is still armed when the fight starts');
+  assert.deepEqual(lowHealthAlert(null, { known: false, percent: 0 }, true), { armed: true, cue: null });
+});
+
+test('a hurt fighter breathes harder and sags, and reduced motion holds still', () => {
+  const swing = (strain) => { const ys = Array.from({ length: 400 }, (_, i) => idleOffset('player', i * 20, false, strain).y); return Math.max(...ys) - Math.min(...ys); };
+  assert.ok(swing(1) > swing(0) * 2, 'a bigger breath');
+  assert.ok(idleOffset('player', 0, false, 1).y > idleOffset('player', 0, false, 0).y, 'and a sag');
+  assert.deepEqual(idleOffset('player', 123, false), idleOffset('player', 123, false, 0), 'no strain is the old sway');
+  assert.deepEqual(idleOffset('player', 123, true, 1), { x: 0, y: 0 });
+});
+
+test('a critical punches the camera in and whites the frame; an ordinary hit and reduced motion do not', () => {
+  const event = (result) => ({ seq: 1, result, perspective: 'outgoing', actorId: 'self', targetId: 'actor-2' });
+  const atContact = (result, options) => sampleAction(buildAction(event(result), view, 0), ACTION_DURATION_MS * ACTION_CONTACT_FRACTION + 1, options);
+  const crit = atContact('critical');
+  assert.ok(crit.zoom > 0.04 && crit.whiteFlash > 0.2);
+  const later = sampleAction(buildAction(event('critical'), view, 0), ACTION_DURATION_MS * 0.6);
+  assert.equal(later.whiteFlash, 0, 'the flash is over in an instant');
+  assert.ok(later.zoom < crit.zoom, 'and the camera eases back');
+  const hit = atContact('hit');
+  assert.equal(hit.zoom, 0);
+  assert.equal(hit.whiteFlash, 0);
+  const calm = atContact('critical', { reducedMotion: true });
+  assert.equal(calm.zoom, 0);
+  assert.equal(calm.whiteFlash, 0);
+  assert.equal(sampleAction(null, 0).zoom, 0);
+});
+
+test('the recap keeps damage taken and streaks, once per event, ignoring fights only watched', () => {
+  const out = (seq, result) => ({ seq, perspective: 'outgoing', result, damage: 10 });
+  const inc = (seq, result, damage = 0) => ({ seq, perspective: 'incoming', result, damage });
+  let recap = recapEvents(createFightRecap(), [out(1, 'hit'), out(2, 'critical'), out(3, 'hit')]);
+  assert.equal(recap.hitStreak, 3);
+  assert.deepEqual(recapStreaks(recap), [{ kind: 'hit', label: 'Hit streak', count: 3 }]);
+  recap = recapEvents(recap, [out(1, 'hit'), out(3, 'hit')]);
+  assert.equal(recap.hitStreak, 3, 'events already counted are not counted again');
+  recap = recapEvents(recap, [out(5, 'miss'), out(4, 'hit')]);
+  assert.equal(recap.hitStreak, 0, 'events apply in order, so the later miss ends it');
+  assert.equal(recap.bestHitStreak, 4);
+  recap = recapEvents(recap, [inc(6, 'dodge'), inc(7, 'miss'), inc(8, 'absorb')]);
+  assert.deepEqual(recapStreaks(recap), [{ kind: 'guard', label: 'Untouched', count: 3 }]);
+  recap = recapEvents(recap, [inc(9, 'hit', 40), inc(10, 'critical', 75), { seq: 11, perspective: 'observed', result: 'hit', damage: 999 }]);
+  assert.equal(recap.taken, 115);
+  assert.equal(recap.hitsTaken, 2);
+  assert.equal(recap.guardStreak, 0);
+  assert.equal(recap.bestGuardStreak, 3);
+  assert.equal(recap.lastSeq, 11);
+  assert.deepEqual(recapStreaks(createFightRecap()), []);
+  assert.equal(STREAK_MIN, 3);
+  assert.equal(recapEvents(null, null).lastSeq, 0);
+});
+
+test('the fight summary takes what was dealt from the DPS meter and the rest from the recap', () => {
+  const dps = { damage: 1412, swings: 9, hits: 7, crits: 2, bestHit: 310, hitRate: 7 / 9, durationMs: 42_400, dps: 33.31, missingDamageNumbers: false };
+  const recap = { ...createFightRecap(), taken: 96, hitsTaken: 3, bestHitStreak: 5, bestGuardStreak: 2 };
+  assert.deepEqual(fightSummaryRows(recap, dps), [
+    { label: 'Dealt', value: '1,412' },
+    { label: 'Taken', value: '96' },
+    { label: 'Accuracy', value: '78%' },
+    { label: 'Best hit', value: '310' },
+    { label: 'Criticals', value: '2' },
+    { label: 'Time', value: '0:42' },
+    { label: 'DPS', value: '33.3' },
+    { label: 'Best streak', value: '\u00d75' },
+  ]);
+  const wordless = fightSummaryRows(recap, { ...dps, missingDamageNumbers: true }).map((row) => row.label);
+  assert.deepEqual(wordless, ['Taken', 'Accuracy', 'Criticals', 'Time', 'Best streak'], 'no confident zeroes when the game sends no numbers');
+  assert.deepEqual(fightSummaryRows(createFightRecap(), null), [], 'nothing happened, nothing to say');
+  assert.deepEqual(fightSummaryRows(createFightRecap(), { ...dps, swings: 0 }), []);
+  assert.equal(formatFightDuration(0), '0:00');
+  assert.equal(formatFightDuration(125_000), '2:05');
+});
