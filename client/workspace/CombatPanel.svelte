@@ -53,10 +53,11 @@
     let sceneSettings = loadClientSettings(localStorage).settings;
     // The game may score fights itself. Once it has played a combat sound on
     // this connection, the Scene leaves that to it.
-    const playSceneSound = (cue: { sound: string; volume: number }): void => {
+    const playSceneSound = (cue: { category?: string; sound: string; volume: number }): void => {
       if (!sceneSettings.sceneSounds) return;
-      if (activeSession.audio.serverPlayedAt("combat") > 0) return;
-      activeSession.audio.playLocal("combat", cue.sound, cue.volume);
+      const category = cue.category ?? "combat";
+      if (activeSession.audio.serverPlayedAt(category) > 0) return;
+      activeSession.audio.playLocal(category, cue.sound, cue.volume);
     };
     // The sky's stage and moonlight, for the Scene's day and night tint.
     const ambienceInput = (): { stage: string; moonLight: number } | null => {
@@ -86,6 +87,17 @@
       for (const item of defences) if (!defenceSeenAt.has(item)) defenceSeenAt.set(item, now);
       return summarizeAuras(defences, (item: object) => defenceSeenAt.get(item) ?? now, now);
     };
+    // What the player dealt, from the DPS meter, so the end-of-fight summary
+    // never disagrees with the DPS panel.
+    const dpsInput = (): Record<string, unknown> | null => {
+      const dps = activeSession.dps.getSnapshot();
+      if (!dps.hasData) return null;
+      return { ...dps.encounter, missingDamageNumbers: dps.missingDamageNumbers };
+    };
+    const dpsKey = (): string => {
+      const dps = activeSession.dps.getSnapshot();
+      return [dps.active ? 1 : 0, dps.encounter.swings, dps.encounter.damage].join(":");
+    };
     // Everything the Scene shows beyond the fight itself, as one comparable key.
     const sceneKey = (): string =>
       ambienceKey() +
@@ -100,7 +112,9 @@
         )
         .join(",") +
       "|" +
-      aurasInput().key;
+      aurasInput().key +
+      "|" +
+      dpsKey();
     // The game tags its bosses with "(BOSS)" in the name. These are the
     // untagged enemies this character has starred as bosses too, by bossKey.
     const bossStorageKey = "darkflow-scene-bosses:" + activeSession.characterProfileId;
@@ -231,6 +245,7 @@
             ambience: ambienceInput(),
             allies: alliesInput(),
             auras: aurasInput(),
+            dps: dpsInput(),
             boss: {
               tagged: hasBossTag(enemyName(snapshot)),
               canMark: true,
@@ -290,8 +305,12 @@
     window.addEventListener("darkflow:client-settings-changed", refreshSceneSettings);
     // The game starting or stopping its own music changes whether ours may play.
     const unsubscribeAudio = activeSession.audio.subscribe(syncBossMusic);
+    // The DPS meter closes out a fight on its own clock; pick its figures up
+    // as soon as they settle rather than on the next tick.
+    const unsubscribeDps = activeSession.dps.subscribe(refreshAmbience);
     return () => {
       unsubscribeAudio();
+      unsubscribeDps();
       if (bossMusicPlaying) activeSession.audio.stopLocal("music", BOSS_MUSIC_ID);
       unsubscribeSky();
       window.clearInterval(ambienceTicker);

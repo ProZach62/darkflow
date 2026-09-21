@@ -295,6 +295,8 @@ export function sampleAction(action, now, options = {}) {
     target,
     shake: 0,
     flash: 0,
+    zoom: 0,
+    whiteFlash: 0,
     effects: [],
     number: null,
     badge: null,
@@ -312,6 +314,8 @@ export function sampleAction(action, now, options = {}) {
   const effects = [];
   let shake = 0;
   let flash = 0;
+  let zoom = 0;
+  let whiteFlash = 0;
 
   // Timeline in normalized progress: lunge 0-0.36 (contact at 0.16),
   // outcome 0.16-0.7, numbers drift until the end.
@@ -336,6 +340,11 @@ export function sampleAction(action, now, options = {}) {
         * (action.critical ? 1.4 : 1)
         * Math.max(0, 1 - recoil * 1.25);
       flash = action.impactSide === 'player' ? Math.max(0, 1 - recoil * 1.6) : 0;
+      if (action.critical) {
+        // A critical punches the camera in and whites the frame for an instant.
+        zoom = 0.05 * Math.max(0, 1 - recoil * 1.5);
+        whiteFlash = 0.28 * Math.max(0, 1 - recoil * 4);
+      }
     } else if (action.result === 'dodge' && progress >= contactAt * 0.6) {
       const t = clamp01((progress - contactAt * 0.6) / 0.5);
       const slip = Math.sin(t * Math.PI);
@@ -429,6 +438,8 @@ export function sampleAction(action, now, options = {}) {
     target,
     shake: reducedMotion ? 0 : shake,
     flash: reducedMotion ? 0 : flash,
+    zoom: reducedMotion ? 0 : zoom,
+    whiteFlash: reducedMotion ? 0 : whiteFlash,
     effects,
     number,
     badge,
@@ -437,11 +448,14 @@ export function sampleAction(action, now, options = {}) {
 
 // Idle breathing keeps the tokens alive between exchanges without motion
 // that competes with an action. Reduced motion pins it flat.
-export function idleOffset(side, now, reducedMotion) {
+// `strain` (0..1) is how badly hurt the figure is: a hurt fighter breathes
+// harder and slower, and sags.
+export function idleOffset(side, now, reducedMotion, strain = 0) {
   if (reducedMotion) return { x: 0, y: 0 };
+  const hurt = Math.max(0, Math.min(1, Number(strain) || 0));
   const phase = side === 'player' ? 0 : Math.PI * 0.7;
-  const t = (now / 1000) * Math.PI * 0.9 + phase;
-  return { x: 0, y: Math.sin(t) * 0.05 };
+  const t = (now / 1000) * Math.PI * 0.9 * (1 - 0.35 * hurt) + phase;
+  return { x: 0, y: Math.sin(t) * 0.05 * (1 + 1.6 * hurt) + 0.04 * hurt };
 }
 
 // Other players in the room stand in a band behind the main figures on the
@@ -703,5 +717,114 @@ export function isBossName(name, keys) {
   const key = bossKey(name);
   if (!key || !keys) return false;
   return typeof keys.has === 'function' ? keys.has(key) : Array.isArray(keys) && keys.includes(key);
+}
+
+// --- Low health ---------------------------------------------------------------
+// From 35% health down the scene closes in: a red vignette that beats like a
+// heart while a fight is on, and a figure that breathes hard. Full at 10%.
+export const LOW_HEALTH_START = 35;
+export const LOW_HEALTH_FULL = 10;
+export const LOW_HEALTH_ALERT = 25;
+export const LOW_HEALTH_REARM = 40;
+
+export function lowHealthLevel(health) {
+  if (!health || !health.known) return 0;
+  const percent = Number(health.percent);
+  if (!Number.isFinite(percent)) return 0;
+  return Math.max(0, Math.min(1, (LOW_HEALTH_START - percent) / (LOW_HEALTH_START - LOW_HEALTH_FULL)));
+}
+
+// A double thump, 0..1, that quickens as things get worse.
+export function heartbeat(t, level) {
+  const hurt = Math.max(0, Math.min(1, Number(level) || 0));
+  const period = 1150 - 450 * hurt;
+  const phase = ((Number(t) || 0) % period) / period;
+  const thump = (at) => Math.exp(-Math.pow((phase - at) / 0.055, 2));
+  return Math.min(1, thump(0.08) + 0.6 * thump(0.34));
+}
+
+// The low-health alert sounds once as health drops through 25% in a fight, and
+// re-arms only after recovering past 40%, so a fighter hovering at the line
+// does not set it off again and again. Returns the next state and any cue.
+export function lowHealthAlert(previous, health, active) {
+  const armed = previous ? previous.armed !== false : true;
+  if (!health || !health.known) return { armed, cue: null };
+  const percent = Number(health.percent);
+  if (percent >= LOW_HEALTH_REARM) return { armed: true, cue: null };
+  if (armed && active && percent <= LOW_HEALTH_ALERT) {
+    return { armed: false, cue: { category: 'alert', sound: 'low-hp', volume: 0.8, delayMs: 0 } };
+  }
+  return { armed, cue: null };
+}
+
+// --- Streaks and the fight summary ----------------------------------------------
+// What the DPS meter does not keep: damage taken, and runs of luck. A hit
+// streak is outgoing attacks landed in a row; a guard streak is incoming
+// attacks that did not land. A watched fight counts for neither.
+export const STREAK_MIN = 3;
+
+export function createFightRecap() {
+  return { lastSeq: 0, taken: 0, hitsTaken: 0, hitStreak: 0, bestHitStreak: 0, guardStreak: 0, bestGuardStreak: 0 };
+}
+
+export function recapEvents(recap, events) {
+  let next = recap || createFightRecap();
+  const fresh = (Array.isArray(events) ? events : [])
+    .filter((event) => event && Number(event.seq) > next.lastSeq && event.result)
+    .sort((left, right) => Number(left.seq) - Number(right.seq));
+  for (const event of fresh) {
+    if (Number(event.seq) <= next.lastSeq) continue;
+    next = { ...next, lastSeq: Number(event.seq) };
+    const landed = event.result === 'hit' || event.result === 'critical';
+    if (event.perspective === 'outgoing') {
+      const hitStreak = landed ? next.hitStreak + 1 : 0;
+      next = { ...next, hitStreak, bestHitStreak: Math.max(next.bestHitStreak, hitStreak) };
+    } else if (event.perspective === 'incoming') {
+      if (landed) {
+        const damage = Math.max(0, Math.trunc(Number(event.damage)) || 0);
+        next = { ...next, taken: next.taken + damage, hitsTaken: next.hitsTaken + 1, guardStreak: 0 };
+      } else {
+        const guardStreak = next.guardStreak + 1;
+        next = { ...next, guardStreak, bestGuardStreak: Math.max(next.bestGuardStreak, guardStreak) };
+      }
+    }
+  }
+  return next;
+}
+
+// The streaks worth showing right now.
+export function recapStreaks(recap) {
+  const streaks = [];
+  if (recap && recap.hitStreak >= STREAK_MIN) streaks.push({ kind: 'hit', label: 'Hit streak', count: recap.hitStreak });
+  if (recap && recap.guardStreak >= STREAK_MIN) streaks.push({ kind: 'guard', label: 'Untouched', count: recap.guardStreak });
+  return streaks;
+}
+
+export function formatFightDuration(ms) {
+  const total = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+}
+
+// Rows for the end-of-fight card. `dps` is the DPS meter's figures for the
+// encounter, so what the player dealt never disagrees with the DPS panel;
+// the recap supplies what that meter does not keep.
+export function fightSummaryRows(recap, dps) {
+  const rows = [];
+  const swung = dps && Number(dps.swings) > 0;
+  const numbers = swung && !dps.missingDamageNumbers;
+  if (numbers) rows.push({ label: 'Dealt', value: Math.round(dps.damage).toLocaleString('en-US') });
+  if (recap && recap.hitsTaken > 0) rows.push({ label: 'Taken', value: Math.round(recap.taken).toLocaleString('en-US') });
+  if (swung && dps.hitRate !== null && dps.hitRate !== undefined) {
+    rows.push({ label: 'Accuracy', value: Math.round(Number(dps.hitRate) * 100) + '%' });
+  }
+  if (numbers && dps.bestHit > 0) rows.push({ label: 'Best hit', value: Math.round(dps.bestHit).toLocaleString('en-US') });
+  if (swung && dps.crits > 0) rows.push({ label: 'Criticals', value: String(dps.crits) });
+  if (swung && dps.durationMs > 0) rows.push({ label: 'Time', value: formatFightDuration(dps.durationMs) });
+  if (numbers && dps.dps !== null && dps.dps !== undefined) {
+    rows.push({ label: 'DPS', value: (Math.round(Number(dps.dps) * 10) / 10).toLocaleString('en-US') });
+  }
+  if (recap && recap.bestHitStreak >= STREAK_MIN) rows.push({ label: 'Best streak', value: '\u00d7' + recap.bestHitStreak });
+  if (recap && recap.bestGuardStreak >= STREAK_MIN) rows.push({ label: 'Untouched', value: '\u00d7' + recap.bestGuardStreak });
+  return rows;
 }
 
