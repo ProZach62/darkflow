@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 
 const {
   ACTION_CONTACT_FRACTION,
+  AURA_EXPIRING_SECONDS,
+  MAX_ALLIES,
+  allyLayout,
+  auraLook,
+  partyAllies,
+  summarizeAuras,
   ACTION_DURATION_MS,
   actionSoundCue,
   encounterSoundCue,
@@ -333,3 +339,109 @@ test('the day and night tint follows the sky, lifts with moonlight, and skips ro
     assert.equal(sceneAmbience({ stage: 'night', moonLight: 0 }, terrain), null, terrain + ' has no sky');
   }
 });
+
+test('party allies are the members who are here, without the player, in party order', () => {
+  const group = {
+    leader: 'Nacho',
+    members: [
+      { name: 'Acer', info: { hp: 80, maxhp: 100, here: 'Yes' } },
+      { name: 'Nacho', info: { hp: 420, maxhp: 500, here: 'Yes' } },
+      { name: 'Zed', info: { hp: 10, maxhp: 100, here: 'No' } },
+      { name: 'Mira', info: { hp: 0, maxhp: 0 } },
+      { name: 'nacho', info: { hp: 1, maxhp: 1 } },
+      { name: '  ' },
+    ],
+  };
+  assert.deepEqual(partyAllies(group, 'acer'), [
+    { name: 'Nacho', key: 'nacho', leader: true, hpPct: 84 },
+    { name: 'Mira', key: 'mira', leader: false, hpPct: null },
+  ]);
+  assert.deepEqual(partyAllies('', 'Acer'), [], 'the blank not-in-a-group payload');
+  assert.deepEqual(partyAllies(null, 'Acer'), []);
+  assert.deepEqual(partyAllies({ members: [{ name: 'Solo', info: { here: 1 } }] }, ''), [
+    { name: 'Solo', key: 'solo', leader: false, hpPct: null },
+  ]);
+});
+
+test('allies rank behind the player with room to spare, and recede diagonally without it', () => {
+  const fight = computeStageLayout(900, 500);
+  // At rest the player stands mid-stage, which leaves room behind.
+  const rest = { ...fight, player: { ...fight.player, x: fight.width / 2 } };
+  const rank = allyLayout(rest, 3);
+  assert.equal(rank.tight, false);
+  assert.equal(rank.captions, true, 'a roomy rank carries names');
+  assert.equal(rank.spots.length, 3);
+  assert.ok(rank.spots.every((spot) => spot.x < rest.player.x), 'behind the player');
+  assert.ok(rank.spots[0].x > rank.spots[1].x && rank.spots[1].x > rank.spots[2].x, 'stepping away');
+  assert.ok(rank.spots.every((spot) => spot.radius === rank.radius), 'one size');
+  assert.ok(rank.groundY < rest.groundY, 'a step further back than the player');
+  assert.ok(rank.radius < rest.radius, 'smaller than the player');
+
+  const file = allyLayout(fight, 3);
+  assert.equal(file.tight, true, 'the fight layout has no room behind the player');
+  assert.equal(file.captions, false, 'a receding rank drops the names');
+  assert.ok(file.spots.every((spot) => spot.x < fight.player.x && spot.x >= spot.radius * 0.9), 'behind, and on the stage');
+  assert.ok(file.spots[0].depth < file.spots[1].depth && file.spots[1].depth < file.spots[2].depth, 'each further back');
+  assert.ok(file.spots[0].radius > file.spots[1].radius && file.spots[1].radius > file.spots[2].radius, 'and smaller');
+
+  const crowd = allyLayout(rest, MAX_ALLIES + 2);
+  assert.equal(crowd.spots.length, MAX_ALLIES);
+  assert.equal(crowd.overflow, 2);
+  assert.deepEqual(allyLayout(rest, 0).spots, []);
+  assert.equal(allyLayout(rest, 0).tight, false);
+  const cornered = { ...fight, player: { ...fight.player, x: fight.radius } };
+  assert.equal(allyLayout(cornered, 1).tight, true, 'one ally with the player against the edge');
+  assert.ok(allyLayout(cornered, 1).spots[0].x > 0, 'still on the stage');
+});
+
+test('auras count buffs and debuffs and notice a buff in its last seconds', () => {
+  const t0 = 1_000_000;
+  const defences = [
+    { name: 'stoneskin', kind: 'buff', duration: 60, remaining: 30 },
+    { name: 'bless', duration: 0 },
+    { name: 'weakness', kind: 'debuff', duration: 20, remaining: 5 },
+    { name: 'mystery', kind: 'unknown' },
+    null,
+  ];
+  const at = () => t0;
+  assert.deepEqual(summarizeAuras(defences, at, t0), { buffs: 2, debuffs: 1, expiring: false, key: '2:1:0' });
+  const late = summarizeAuras(defences, at, t0 + (30 - AURA_EXPIRING_SECONDS + 1) * 1000);
+  assert.equal(late.expiring, true, 'inside the last seconds');
+  assert.equal(late.key, '2:1:1');
+  assert.equal(summarizeAuras(defences, at, t0 + 31_000).expiring, false, 'a lapsed buff is not expiring');
+  assert.deepEqual(summarizeAuras(null, at, t0), { buffs: 0, debuffs: 0, expiring: false, key: '0:0:0' });
+  assert.equal(
+    summarizeAuras([{ name: 'short', duration: 8 }], at, t0).expiring, true,
+    'no remaining sent means the full duration',
+  );
+});
+
+test('the aura glows brighter with more buffs, flickers near the end, and holds still for reduced motion', () => {
+  assert.deepEqual(auraLook(null, 0, false), { buff: 0, debuff: 0, dashed: false });
+  assert.deepEqual(auraLook({ buffs: 0, debuffs: 0 }, 0, false), { buff: 0, debuff: 0, dashed: false });
+  const one = auraLook({ buffs: 1, debuffs: 0 }, 0, true);
+  const many = auraLook({ buffs: 9, debuffs: 0 }, 0, true);
+  const four = auraLook({ buffs: 4, debuffs: 0 }, 0, true);
+  assert.ok(many.buff > one.buff);
+  assert.equal(many.buff, four.buff, 'the glow stops growing at four');
+  assert.equal(one.debuff, 0);
+  assert.ok(auraLook({ buffs: 0, debuffs: 2 }, 0, true).debuff > 0);
+  const steady = auraLook({ buffs: 2, debuffs: 0, expiring: true }, 70, true);
+  assert.equal(steady.buff, auraLook({ buffs: 2, debuffs: 0 }, 999, true).buff, 'reduced motion never flickers');
+  assert.equal(steady.dashed, true, 'the lapse shows as a dashed ring instead');
+  const samples = [0, 70, 140, 210].map((t) => auraLook({ buffs: 2, debuffs: 0, expiring: true }, t, false).buff);
+  assert.ok(new Set(samples).size > 1, 'an expiring buff flickers');
+});
+
+test('bystanders take ground the party is not standing on', () => {
+  const fight = computeStageLayout(900, 500);
+  const rest = { ...fight, player: { ...fight.player, x: fight.width / 2 } };
+  const party = allyLayout(rest, 2).spots.map((spot) => spot.x);
+  const alone = bystanderLayout(rest, 1);
+  const beside = bystanderLayout(rest, 1, party);
+  assert.equal(beside.spots.length, 1, 'a lone bystander still gets a spot');
+  assert.ok(party.every((x) => Math.abs(x - beside.spots[0].x) >= beside.radius * 1.3), 'clear of the party');
+  assert.equal(alone.spots.length, 1);
+  assert.deepEqual(bystanderLayout(rest, 3, []).spots, bystanderLayout(rest, 3).spots, 'nothing to avoid changes nothing');
+});
+

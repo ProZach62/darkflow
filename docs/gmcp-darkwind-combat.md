@@ -274,3 +274,26 @@ brightness. Rooms whose terrain has no sky (`inside`, `underground`,
 `underwater`) are left alone, and the tint can be turned off under
 Settings, Appearance. The `moon_light` scale is not specified, so the stage
 folds any positive value into a 0 to 1 lift with a saturating curve.
+
+### The party and auras
+
+Members of the player's `Group` whose `info.here` says they are in the room
+stand behind the player, in the player's colours, facing the fight. Unlike
+bystanders they stay while a fight is on. Each carries a health bar from
+`info.hp` and `info.maxhp`, coloured by how hurt they are, and the leader is
+starred. With room to spare, as on the idle scene where the player stands
+mid-stage, they form a rank with name captions. In a fight the player stands
+near the edge, so the rank recedes diagonally instead, each ally further
+back, higher, and smaller, without captions; the initial on each head and
+the bars carry it. At most four are drawn and the rest are counted. A party
+member is never also drawn as a bystander, and bystanders take ground the
+party is not standing on.
+
+The player's `Char.Defences` show as glows on the ground under their feet:
+warm for buffs, brighter with more of them up to four, and murky for
+debuffs. Entries of kind `unknown` are ignored. A timed buff in its last ten
+seconds makes the glow flicker, or shows a dashed ring when motion is
+reduced. The server sends a countdown once, so the pane remembers when each
+entry arrived and checks once a second. The idle scene settles to a still
+frame, so at rest the glow is steady; it breathes and flickers while a fight
+keeps the stage running.

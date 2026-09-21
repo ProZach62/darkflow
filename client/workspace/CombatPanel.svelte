@@ -10,8 +10,11 @@
   import { skyCurrentState } from "../../public/js/core-information-panel-renderers.mjs";
   // @ts-expect-error The canvas combat stage is retained JavaScript without a declaration file.
   import * as combatRenderer from "../../public/js/combat-stage-renderer.mjs";
+  // @ts-expect-error The stage's pure helpers are retained JavaScript without a declaration file.
+  import * as combatStageCore from "../../public/js/combat-stage-core.mjs";
 
   const { createCombatStageRenderer } = combatRenderer;
+  const { partyAllies, summarizeAuras } = combatStageCore;
 
   let {
     panelId,
@@ -66,6 +69,35 @@
       const ambience = ambienceInput();
       return ambience ? ambience.stage + ":" + ambience.moonLight : "";
     };
+    // Party members who are in the room stand behind the player.
+    const alliesInput = (): Array<{ name: string; leader: boolean; hpPct: number | null }> => {
+      const information = activeSession.information.getSnapshot();
+      return partyAllies(information.group, information.status?.name ?? "");
+    };
+    // When each defence entry was first seen, so its countdown can be followed
+    // without the server resending it. Entries are replaced, never mutated.
+    const defenceSeenAt = new WeakMap<object, number>();
+    const aurasInput = (): { buffs: number; debuffs: number; expiring: boolean; key: string } => {
+      const now = Date.now();
+      const defences = activeSession.information.getSnapshot().defences;
+      for (const item of defences) if (!defenceSeenAt.has(item)) defenceSeenAt.set(item, now);
+      return summarizeAuras(defences, (item: object) => defenceSeenAt.get(item) ?? now, now);
+    };
+    // Everything the Scene shows beyond the fight itself, as one comparable key.
+    const sceneKey = (): string =>
+      ambienceKey() +
+      "|" +
+      alliesInput()
+        .map(
+          (ally) =>
+            ally.name +
+            (ally.leader ? "*" : "") +
+            ":" +
+            (ally.hpPct === null ? "" : Math.round(ally.hpPct / 5)),
+        )
+        .join(",") +
+      "|" +
+      aurasInput().key;
     const renderer = createCombatStageRenderer(body, { onSound: playSceneSound });
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const syncReducedMotion = (): void => {
@@ -116,6 +148,8 @@
             // Other players in the room, drawn as bystanders on the idle scene.
             players: world.players,
             ambience: ambienceInput(),
+            allies: alliesInput(),
+            auras: aurasInput(),
           }) !== false;
         syncReadiness();
       } catch (error) {
@@ -149,17 +183,18 @@
       lastBackdropKey = key;
       if (lastSnapshot) render(lastSnapshot);
     });
-    // The stage of the day moves on between sky frames, so the tint is
-    // checked on a slow timer as well as on every information update.
-    let lastAmbienceKey = ambienceKey();
+    // The time of day moves on between sky frames and a buff's last seconds
+    // arrive without any message, so the Scene's extras are checked once a
+    // second as well as on every information update.
+    let lastAmbienceKey = sceneKey();
     const refreshAmbience = (): void => {
-      const key = ambienceKey();
+      const key = sceneKey();
       if (key === lastAmbienceKey) return;
       lastAmbienceKey = key;
       if (lastSnapshot) render(lastSnapshot);
     };
     const unsubscribeSky = activeSession.information.subscribe(refreshAmbience);
-    const ambienceTicker = window.setInterval(refreshAmbience, 30_000);
+    const ambienceTicker = window.setInterval(refreshAmbience, 1_000);
     const refreshSceneSettings = (): void => {
       sceneSettings = loadClientSettings(localStorage).settings;
       refreshAmbience();

@@ -23,6 +23,9 @@ import {
   idleOffset,
   resolveStageBackdrop,
   sampleAction,
+  allyHealthColor,
+  allyLayout,
+  auraLook,
   bystanderLayout,
   bystanderPresence,
   BYSTANDER_MS,
@@ -219,6 +222,10 @@ export function createCombatStage(doc, options = {}) {
     // own presence (0 absent .. 1 on stage) so arrivals fade in and
     // departures fade out; a fight hides them all.
     _bystanders: [],
+    // Party members who are here, and the player's buff and debuff auras.
+    _allies: [],
+    _allyClockAt: 0,
+    _auras: null,
     _bystanderClockAt: 0,
     _palette: {
       accent: readCssVar(doc, '--df-accent', '#42d6c9'),
@@ -307,7 +314,10 @@ export function createCombatStage(doc, options = {}) {
       this._ensureImage(this._backdrop.image, [this._backdrop.tile]);
       this._playerFallback = fallbackList(sources.playerFallback);
       this._targetFallback = fallbackList(sources.targetFallback);
+      // Allies first: a party member is not also shown as a bystander.
+      this._setAllies(sources.allies);
       this._setBystanders(sources.players);
+      this._auras = sources.auras && typeof sources.auras === 'object' ? sources.auras : null;
       this._ensureImage(view.player.image, this._playerFallback);
       this._ensureImage(view.target.image, this._targetFallback);
       this._pruneImages([
@@ -540,7 +550,8 @@ export function createCombatStage(doc, options = {}) {
       this._lastFrameAt = t;
       const presenceSettled = this._advancePresence(frameTime);
       const bystandersSettled = this._advanceBystanders(frameTime);
-      const settled = presenceSettled && bystandersSettled;
+      const alliesSettled = this._advanceAllies(frameTime);
+      const settled = presenceSettled && bystandersSettled && alliesSettled;
       this._actions = this._actions.filter((action) => t - action.startedAt < action.duration);
       this._sceneActions = this._sceneActions.filter((action) => t - action.startedAt < action.duration);
       const resting = settled && !this._actions.length && !this._sceneActions.length;
@@ -637,7 +648,9 @@ export function createCombatStage(doc, options = {}) {
       const tokens = this._tokenPositions(layout, samples, t, scene);
       this._drawGround(c, layout, tokens);
       this._drawBystanders(c, layout, t);
+      this._drawAllies(c, layout, t);
       for (const sample of samples) this._drawBackEffects(c, layout, tokens, sample);
+      this._drawAuras(c, layout, tokens.player, t);
       this._drawToken(c, layout, tokens.player, 'player', view.player, samples, scene);
       this._drawToken(c, layout, tokens.target, 'target', view.target, samples);
       // A lighter pass over the figures so they sit in the same light as the
@@ -924,12 +937,126 @@ export function createCombatStage(doc, options = {}) {
     // Replaces the bystander list from the room's player list. Names are
     // the identity: a player who stays keeps their presence, a newcomer
     // starts absent and fades in, and one who left fades out and is dropped.
+    _setAllies(allies) {
+      const seen = new Set();
+      const next = [];
+      for (const ally of Array.isArray(allies) ? allies : []) {
+        const name = ally && typeof ally.name === 'string' ? ally.name.trim() : '';
+        const key = name.toLowerCase();
+        if (!name || seen.has(key)) continue;
+        seen.add(key);
+        const existing = this._allies.find((entry) => entry.key === key);
+        const fresh = {
+          name,
+          key,
+          label: name,
+          leader: !!ally.leader,
+          hpPct: typeof ally.hpPct === 'number' ? ally.hpPct : null,
+          want: 1,
+        };
+        next.push({ ...fresh, presence: existing ? existing.presence : 0 });
+      }
+      for (const entry of this._allies) {
+        if (!seen.has(entry.key) && entry.presence > 0) next.push({ ...entry, want: 0 });
+      }
+      this._allies = next;
+    },
+
+    // Allies fade in and out like bystanders, but stay for the fight.
+    _advanceAllies(frameTime) {
+      const last = this._allyClockAt || frameTime;
+      this._allyClockAt = frameTime;
+      if (!this._allies.length) return true;
+      const dt = Math.max(0, Math.min(100, frameTime - last));
+      let settled = true;
+      const kept = [];
+      for (const entry of this._allies) {
+        let presence = entry.presence;
+        if (this._reducedMotion) presence = entry.want;
+        else {
+          const step = dt / (entry.want ? BYSTANDER_MS.in : BYSTANDER_MS.out);
+          const delta = entry.want - presence;
+          presence = Math.abs(delta) <= step ? entry.want : presence + Math.sign(delta) * step;
+        }
+        if (presence !== entry.want) settled = false;
+        if (presence === 0 && entry.want === 0) continue;
+        kept.push(presence === entry.presence ? entry : { ...entry, presence });
+      }
+      this._allies = kept;
+      return settled;
+    },
+
+    // The party stands behind the player in the player's colours, facing the
+    // fight, each with a name and a health bar. The leader is starred.
+    _drawAllies(c, layout, t) {
+      const visible = this._allies.filter((entry) => entry.presence > 0);
+      if (!visible.length) return;
+      const rank = allyLayout(layout, visible.length);
+      // Furthest first, so nearer allies overlap the ones behind them.
+      for (let index = Math.min(visible.length, rank.spots.length) - 1; index >= 0; index -= 1) {
+        const entry = visible[index];
+        const spot = rank.spots[index];
+        const look = bystanderPresence(entry.presence, this._reducedMotion);
+        if (!(look.alpha > 0.002)) continue;
+        const band = { ...rank, radius: spot.radius, groundY: rank.groundY - spot.depth };
+        const unit = spot.radius * FIGURE_UNIT_SCALE;
+        this._drawBystander(c, entry, spot, band, unit, look, t, index + 7, layout.player.x, {
+          facing: 1,
+          ring: this._palette.accent,
+          cloth: '#1e5461',
+          clothShade: '#0f2f37',
+          // A receding rank has no room for names; initials and bars carry it.
+          caption: rank.captions ? (entry.leader ? '\u2605 ' : '') + entry.name : ' ',
+          hpPct: entry.hpPct,
+        });
+      }
+      if (rank.overflow > 0) {
+        c.save();
+        c.globalAlpha = 0.8;
+        c.fillStyle = rgba(this._palette.accent, 0.8);
+        c.font = '600 ' + Math.round(rank.radius * 0.5) + 'px "Segoe UI", system-ui, sans-serif';
+        c.textAlign = 'left';
+        c.textBaseline = 'alphabetic';
+        c.fillText('+' + rank.overflow, rank.radius * 0.4, rank.groundY + rank.radius * 0.5);
+        c.restore();
+      }
+    },
+
+    // Glows on the ground under the player: warm for buffs, brighter with
+    // more of them, and murky for debuffs. A buff about to lapse flickers, or
+    // shows a dashed ring when motion is reduced.
+    _drawAuras(c, layout, token, t) {
+      const look = auraLook(this._auras, t, this._reducedMotion);
+      if (!(look.buff > 0) && !(look.debuff > 0)) return;
+      const groundY = layout.groundY + layout.radius * 0.95;
+      const alpha = Math.max(0, Math.min(1, token.alpha === undefined ? 1 : token.alpha));
+      if (!(alpha > 0)) return;
+      const squash = 0.3;
+      c.save();
+      c.translate(token.x, groundY);
+      c.scale(1, squash);
+      if (look.debuff > 0) this._drawGlow(c, 0, 0, layout.radius * 1.9, '#9b3d6e', look.debuff * alpha, 0.15);
+      if (look.buff > 0) {
+        this._drawGlow(c, 0, 0, layout.radius * 1.7, '#e3b341', look.buff * alpha, 0.2);
+        c.strokeStyle = rgba('#e3b341', Math.min(1, look.buff * 1.6) * alpha);
+        c.lineWidth = Math.max(1, layout.radius * 0.05) / squash;
+        if (look.dashed && this._reducedMotion && typeof c.setLineDash === 'function') {
+          c.setLineDash([layout.radius * 0.3, layout.radius * 0.2]);
+        }
+        c.beginPath();
+        c.arc(0, 0, layout.radius * 1.15, 0, Math.PI * 2);
+        c.stroke();
+      }
+      c.restore();
+    },
+
     _setBystanders(players) {
       const seen = new Set();
       const next = [];
       for (const player of Array.isArray(players) ? players : []) {
         const name = player && typeof player.name === 'string' ? player.name.trim() : '';
         if (!name || seen.has(name)) continue;
+        if (this._allies.some((ally) => ally.want && ally.key === name.toLowerCase())) continue;
         seen.add(name);
         const label = player.fullname && typeof player.fullname === 'string' && player.fullname.trim()
           ? player.fullname.trim()
@@ -971,7 +1098,10 @@ export function createCombatStage(doc, options = {}) {
     _drawBystanders(c, layout, t) {
       const visible = this._bystanders.filter((entry) => entry.presence > 0);
       if (!visible.length) return;
-      const band = bystanderLayout(layout, visible.length);
+      // The party has first call on the ground behind the player.
+      const allies = this._allies.filter((entry) => entry.presence > 0);
+      const taken = allies.length ? allyLayout(layout, allies.length).spots.map((spot) => spot.x) : [];
+      const band = bystanderLayout(layout, visible.length, taken);
       const unit = band.radius * FIGURE_UNIT_SCALE;
       visible.slice(0, band.spots.length).forEach((entry, index) => {
         const spot = band.spots[index];
@@ -994,7 +1124,7 @@ export function createCombatStage(doc, options = {}) {
     // One bystander: the humanoid rig in muted colours, unarmed, facing the
     // player, with a name under its feet. No portrait is known for other
     // players, so the head is the initial-lettered silhouette.
-    _drawBystander(c, entry, spot, band, unit, look, t, index, playerX) {
+    _drawBystander(c, entry, spot, band, unit, look, t, index, playerX, options = {}) {
       const base = resolveFigure({ name: entry.label }, 'player');
       const figure = {
         ...base,
@@ -1005,17 +1135,17 @@ export function createCombatStage(doc, options = {}) {
         armor: false,
         twoHanded: false,
         caster: false,
-        facing: spot.x <= playerX ? 1 : -1,
+        facing: options.facing || (spot.x <= playerX ? 1 : -1),
       };
       const groundLine = band.groundY + band.radius * 0.95 + look.y * band.radius;
       const joints = resolvePose(null, t, { reducedMotion: this._reducedMotion, phaseOffset: 0.9 * (index + 1) });
       const geo = figureGeometry(figure, joints, spot.x, groundLine, unit, { baseX: spot.x, stretch: 1 });
       const material = {
-        ring: this._palette.text,
+        ring: options.ring || this._palette.text,
         skin: '#b59b86',
         skinShade: '#7d6653',
-        cloth: '#46525c',
-        clothShade: '#28313a',
+        cloth: options.cloth || '#46525c',
+        clothShade: options.clothShade || '#28313a',
         leather: '#4b4036',
         metal: '#8b949e',
         outline: '#07090c',
@@ -1040,7 +1170,18 @@ export function createCombatStage(doc, options = {}) {
       c.font = '600 ' + Math.max(9, Math.round(band.radius * 0.4)) + 'px "Segoe UI", system-ui, sans-serif';
       c.textAlign = 'center';
       c.textBaseline = 'alphabetic';
-      c.fillText(entry.name, spot.x, groundLine + band.radius * 0.55);
+      c.fillText(options.caption || entry.name, spot.x, groundLine + band.radius * 0.55);
+      if (typeof options.hpPct === 'number') {
+        // A small health bar over an ally's head.
+        const barW = band.radius * 1.5;
+        const barH = Math.max(3, band.radius * 0.13);
+        const barX = spot.x - barW / 2;
+        const barY = geo.head.y - geo.head.r * 1.75 - barH;
+        c.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        c.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        c.fillStyle = allyHealthColor(options.hpPct, this._palette);
+        c.fillRect(barX, barY, barW * (options.hpPct / 100), barH);
+      }
       c.restore();
     },
 

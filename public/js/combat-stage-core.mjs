@@ -450,7 +450,9 @@ export function idleOffset(side, now, reducedMotion) {
 export const MAX_BYSTANDERS = 6;
 export const BYSTANDER_MS = { in: 360, out: 300 };
 
-export function bystanderLayout(layout, count) {
+// `avoid` lists x positions already taken (the party's spots); candidate
+// slots near them are passed over like the one the player stands in.
+export function bystanderLayout(layout, count, avoid = []) {
   const wanted = Math.max(0, Math.min(MAX_BYSTANDERS, Math.trunc(Number(count)) || 0));
   const overflow = Math.max(0, (Math.trunc(Number(count)) || 0) - wanted);
   const scale = 0.62;
@@ -468,6 +470,7 @@ export function bystanderLayout(layout, count) {
       for (let index = 0; index < slots; index += 1) {
         const x = slots === 1 ? layout.width / 2 : margin + (span * index) / (slots - 1);
         if (Math.abs(x - layout.player.x) < keepOut) continue;
+        if (avoid.some((taken) => Math.abs(x - taken) < radius * 1.3)) continue;
         spots.push({ x, y: groundY - radius * 0.1 });
       }
     }
@@ -548,5 +551,132 @@ export function sceneAmbience(sky, terrain) {
     };
   }
   return null;
+}
+
+// --- Group allies ---------------------------------------------------------------
+// Party members who are in the room stand behind the player, on the player's
+// side, through the fight as well as at rest.
+export const MAX_ALLIES = 4;
+
+function memberIsHere(here) {
+  if (here === undefined || here === null || here === '') return true;
+  if (here === true || here === 1) return true;
+  return /^(yes|y|true|1)$/i.test(String(here).trim());
+}
+
+// The group's other members who are here, in party order: { name, key,
+// leader, hpPct }. hpPct is 0..100, or null when the member's health is not
+// known. The player's own entry is dropped.
+export function partyAllies(group, selfName) {
+  if (!group || typeof group !== 'object' || !Array.isArray(group.members)) return [];
+  const self = String(selfName || '').trim().toLowerCase();
+  const leader = String(group.leader || '').trim().toLowerCase();
+  const seen = new Set();
+  const allies = [];
+  for (const member of group.members) {
+    const name = member && typeof member.name === 'string' ? member.name.trim() : '';
+    const key = name.toLowerCase();
+    if (!name || key === self || seen.has(key)) continue;
+    seen.add(key);
+    const info = member.info && typeof member.info === 'object' ? member.info : {};
+    if (!memberIsHere(info.here)) continue;
+    const hp = Number(info.hp);
+    const maxhp = Number(info.maxhp);
+    const hpPct = Number.isFinite(hp) && maxhp > 0
+      ? Math.max(0, Math.min(100, (hp / maxhp) * 100))
+      : null;
+    allies.push({ name, key, leader: !!leader && key === leader, hpPct });
+  }
+  return allies;
+}
+
+// Spots for the allies, behind the player. With room to spare (the idle scene,
+// where the player stands mid-stage) they form a rank stepping away to the
+// left at one size, and carry name captions. In a fight the player stands near
+// the edge and there is no room, so the rank recedes diagonally instead: each
+// ally a little further back, higher, and smaller than the last, with no
+// captions to collide. Each spot carries its own scale, radius, and depth.
+export function allyLayout(layout, count) {
+  const total = Math.max(0, Math.trunc(Number(count)) || 0);
+  const wanted = Math.min(MAX_ALLIES, total);
+  const scale = 0.7;
+  const radius = layout.radius * scale;
+  const groundY = layout.groundY - layout.radius * 0.3;
+  const margin = radius * 1.1;
+  const nearest = layout.player.x - layout.radius * 1.3;
+  const room = Math.max(0, nearest - margin);
+  const tight = wanted > 0 && (nearest < margin || (wanted > 1 && room / (wanted - 1) < radius * 1.2));
+  const spots = [];
+  for (let index = 0; index < wanted; index += 1) {
+    if (tight) {
+      const spotScale = scale - 0.06 * index;
+      const spotRadius = layout.radius * spotScale;
+      spots.push({
+        x: Math.max(spotRadius * 0.9, layout.player.x - layout.radius * (0.85 + 0.5 * index)),
+        depth: layout.radius * (0.1 + 0.3 * index),
+        scale: spotScale,
+        radius: spotRadius,
+      });
+    } else {
+      const gap = wanted > 1 ? Math.min(radius * 1.7, room / (wanted - 1)) : 0;
+      spots.push({
+        x: Math.max(margin, nearest - gap * index),
+        depth: index % 2 ? radius * 0.24 : 0,
+        scale,
+        radius,
+      });
+    }
+  }
+  return { scale, radius, groundY, spots, overflow: total - wanted, tight, captions: !tight };
+}
+
+export function allyHealthColor(hpPct, palette) {
+  if (hpPct <= 25) return palette.danger;
+  if (hpPct <= 50) return '#d29922';
+  return palette.accent;
+}
+
+// --- Buff and debuff auras ------------------------------------------------------
+export const AURA_EXPIRING_SECONDS = 10;
+
+// Counts of active buffs and debuffs, and whether a timed buff is in its last
+// seconds. receivedAtFor(item) says when the entry arrived, since the server
+// sends a countdown only once.
+export function summarizeAuras(defences, receivedAtFor, nowMs) {
+  let buffs = 0;
+  let debuffs = 0;
+  let expiring = false;
+  for (const item of Array.isArray(defences) ? defences : []) {
+    if (!item || typeof item !== 'object') continue;
+    if (item.kind === 'debuff') { debuffs += 1; continue; }
+    if (item.kind === 'unknown') continue;
+    buffs += 1;
+    const duration = Number(item.duration) || 0;
+    if (duration <= 0) continue;
+    const sent = Number(item.remaining);
+    const remaining = Number.isFinite(sent) ? sent : duration;
+    const receivedAt = typeof receivedAtFor === 'function' ? Number(receivedAtFor(item)) : nowMs;
+    const left = remaining - Math.max(0, (nowMs - (Number.isFinite(receivedAt) ? receivedAt : nowMs)) / 1000);
+    if (left > 0 && left <= AURA_EXPIRING_SECONDS) expiring = true;
+  }
+  return { buffs, debuffs, expiring, key: buffs + ':' + debuffs + ':' + (expiring ? 1 : 0) };
+}
+
+// How strongly each aura shows at time t. More buffs glow brighter, up to four;
+// the glow breathes slowly and flickers when a buff is about to lapse. With
+// reduced motion both are steady and the lapse shows as a dashed ring instead.
+export function auraLook(auras, t, reducedMotion) {
+  const none = { buff: 0, debuff: 0, dashed: false };
+  if (!auras || typeof auras !== 'object') return none;
+  const buffs = Math.max(0, Math.min(4, Math.trunc(Number(auras.buffs)) || 0));
+  const debuffs = Math.max(0, Math.min(3, Math.trunc(Number(auras.debuffs)) || 0));
+  if (!buffs && !debuffs) return none;
+  const breath = reducedMotion ? 1 : 0.86 + 0.14 * Math.sin(t / 900);
+  const flicker = auras.expiring && !reducedMotion ? 0.5 + 0.5 * Math.abs(Math.sin(t / 140)) : 1;
+  return {
+    buff: buffs ? (0.16 + 0.07 * buffs) * breath * flicker : 0,
+    debuff: debuffs ? (0.2 + 0.08 * debuffs) * breath : 0,
+    dashed: !!auras.expiring,
+  };
 }
 
