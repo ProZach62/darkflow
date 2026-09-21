@@ -5,6 +5,9 @@
   import type { Session } from "../runtime/session.ts";
   import type { SessionWorldSnapshot } from "../runtime/world.ts";
   import type { PanelState } from "./workspace.ts";
+  import { loadClientSettings } from "../app/client-settings.ts";
+  // @ts-expect-error The shared sky clock is legacy-compatible JavaScript.
+  import { skyCurrentState } from "../../public/js/core-information-panel-renderers.mjs";
   // @ts-expect-error The canvas combat stage is retained JavaScript without a declaration file.
   import * as combatRenderer from "../../public/js/combat-stage-renderer.mjs";
 
@@ -41,7 +44,29 @@
   }
 
   onMount(() => {
-    const renderer = createCombatStageRenderer(body);
+    let sceneSettings = loadClientSettings(localStorage).settings;
+    // The game may score fights itself. Once it has played a combat sound on
+    // this connection, the Scene leaves that to it.
+    const playSceneSound = (cue: { sound: string; volume: number }): void => {
+      if (!sceneSettings.sceneSounds) return;
+      if (activeSession.audio.serverPlayedAt("combat") > 0) return;
+      activeSession.audio.playLocal("combat", cue.sound, cue.volume);
+    };
+    // The sky's stage and moonlight, for the Scene's day and night tint.
+    const ambienceInput = (): { stage: string; moonLight: number } | null => {
+      if (!sceneSettings.sceneDayNight) return null;
+      const sky = activeSession.information.getSnapshot().sky;
+      if (!sky) return null;
+      return {
+        stage: String(skyCurrentState(sky).stage),
+        moonLight: Number(sky.moon_light) || 0,
+      };
+    };
+    const ambienceKey = (): string => {
+      const ambience = ambienceInput();
+      return ambience ? ambience.stage + ":" + ambience.moonLight : "";
+    };
+    const renderer = createCombatStageRenderer(body, { onSound: playSceneSound });
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const syncReducedMotion = (): void => {
       activeSession.combat.setReducedMotion(motionQuery.matches);
@@ -90,6 +115,7 @@
             roomImage: roomImageUrl(world),
             // Other players in the room, drawn as bystanders on the idle scene.
             players: world.players,
+            ambience: ambienceInput(),
           }) !== false;
         syncReadiness();
       } catch (error) {
@@ -123,7 +149,26 @@
       lastBackdropKey = key;
       if (lastSnapshot) render(lastSnapshot);
     });
+    // The stage of the day moves on between sky frames, so the tint is
+    // checked on a slow timer as well as on every information update.
+    let lastAmbienceKey = ambienceKey();
+    const refreshAmbience = (): void => {
+      const key = ambienceKey();
+      if (key === lastAmbienceKey) return;
+      lastAmbienceKey = key;
+      if (lastSnapshot) render(lastSnapshot);
+    };
+    const unsubscribeSky = activeSession.information.subscribe(refreshAmbience);
+    const ambienceTicker = window.setInterval(refreshAmbience, 30_000);
+    const refreshSceneSettings = (): void => {
+      sceneSettings = loadClientSettings(localStorage).settings;
+      refreshAmbience();
+    };
+    window.addEventListener("darkflow:client-settings-changed", refreshSceneSettings);
     return () => {
+      unsubscribeSky();
+      window.clearInterval(ambienceTicker);
+      window.removeEventListener("darkflow:client-settings-changed", refreshSceneSettings);
       unsubscribe();
       unsubscribeActivity();
       unsubscribeWorld();

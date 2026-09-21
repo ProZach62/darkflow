@@ -59,7 +59,7 @@ function skyStageForSecond(daySecond, almanac, scale) {
   return 'night';
 }
 
-function skyCurrentState(data) {
+export function skyCurrentState(data) {
   const scale = {
     second: Number(data && data.scale && data.scale.second) || 1,
     minute: Number(data && data.scale && data.scale.minute) || 20,

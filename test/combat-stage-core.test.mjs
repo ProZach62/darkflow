@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const {
+  ACTION_CONTACT_FRACTION,
   ACTION_DURATION_MS,
+  actionSoundCue,
+  encounterSoundCue,
+  sceneAmbience,
   buildAction,
   buildSceneAction,
   computeStageLayout,
@@ -287,3 +291,45 @@ test('bystanders stand in a smaller band behind the scene, clear of the player, 
   assert.deepEqual(bystanderPresence(0.5, true), { alpha: 1, y: 0 }, 'reduced motion cuts straight in');
 });
 
+test('sound cues name the result, land with the blow, and quieten a watched fight', () => {
+  const event = (result, perspective = 'outgoing') => ({ seq: 1, result, perspective, actorId: 'self', targetId: 'actor-2' });
+  const hit = actionSoundCue(buildAction(event('hit'), view, 0));
+  assert.deepEqual(hit, { sound: 'hit', volume: 0.8, delayMs: Math.round(ACTION_DURATION_MS * ACTION_CONTACT_FRACTION) });
+  assert.deepEqual(
+    ['critical', 'miss', 'dodge', 'absorb'].map((result) => actionSoundCue(buildAction(event(result), view, 0)).sound),
+    ['critical', 'miss', 'dodge', 'absorb'],
+  );
+  assert.equal(actionSoundCue(buildAction(event('critical'), view, 0)).volume, 1, 'a critical is the loudest');
+  assert.equal(actionSoundCue(buildAction(event('hit', 'observed'), view, 0)).volume, 0.45, 'a watched fight is quieter');
+  assert.equal(actionSoundCue(null), null);
+  assert.equal(actionSoundCue({ result: 'parry', duration: 900 }), null, 'an unknown result makes no sound');
+});
+
+test('encounter cues mark the start, a victory, and a death, and stay silent on first sight', () => {
+  const idle = { active: false, outcome: '' };
+  const fighting = { active: true, outcome: '' };
+  assert.equal(encounterSoundCue(null, fighting), null, 'a fight already under way gets no start cue');
+  assert.equal(encounterSoundCue(idle, fighting).sound, 'start');
+  assert.equal(encounterSoundCue(fighting, { active: false, outcome: 'victory' }).sound, 'victory');
+  assert.equal(encounterSoundCue(fighting, { active: false, outcome: 'Defeat' }).sound, 'death');
+  assert.equal(encounterSoundCue(fighting, { active: false, outcome: 'fled' }), null, 'other endings are silent');
+  assert.equal(encounterSoundCue(fighting, fighting), null);
+  assert.equal(encounterSoundCue(idle, idle), null);
+});
+
+test('the day and night tint follows the sky, lifts with moonlight, and skips rooms with no sky', () => {
+  assert.equal(sceneAmbience({ stage: 'day', moonLight: 0 }, 'forest'), null, 'daylight is untinted');
+  assert.equal(sceneAmbience(null, 'forest'), null);
+  assert.equal(sceneAmbience({ stage: 'dawn' }, 'city').key, 'dawn');
+  assert.equal(sceneAmbience({ stage: 'twilight' }, 'city').key, 'twilight');
+  const dark = sceneAmbience({ stage: 'night', moonLight: 0 }, 'plains');
+  const moonlit = sceneAmbience({ stage: 'night', moonLight: 12 }, 'plains');
+  assert.equal(dark.key, 'night:0');
+  assert.ok(moonlit.backdrop < dark.backdrop, 'moonlight lightens the night');
+  assert.ok(moonlit.figures < dark.figures);
+  assert.ok(dark.figures < dark.backdrop, 'figures are tinted less than the room');
+  assert.notEqual(moonlit.key, dark.key, 'a different tint is a different cache key');
+  for (const terrain of ['inside', 'underground', 'underwater']) {
+    assert.equal(sceneAmbience({ stage: 'night', moonLight: 0 }, terrain), null, terrain + ' has no sky');
+  }
+});

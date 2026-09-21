@@ -499,3 +499,25 @@ test("disconnect and disposal reset once per lifecycle and isolate sessions", as
   second.scope.dispose();
   assert.equal(second.manager.resetCount, 1);
 });
+
+test("server-played sounds are remembered per category until the connection drops", async (t) => {
+  const modules = await loadModules(t);
+  const { audio, bus, eventBus, scope } = createAudio(modules);
+  connect(eventBus);
+  bus.dispatch("Core.Supports.Add", ["Darkwind.Sound 1"]);
+
+  assert.equal(audio.serverPlayedAt("combat"), 0, "nothing played yet");
+  assert.equal(audio.playLocal("combat", "hit"), true);
+  assert.equal(audio.serverPlayedAt("combat"), 0, "a local sound is not the server's");
+
+  bus.dispatch("Darkwind.Sound", { type: "play", category: "combat", sound: "hit" });
+  assert.ok(audio.serverPlayedAt("combat") > 0);
+  assert.ok(audio.serverPlayedAt(" combat ") > 0, "the category is trimmed");
+  assert.equal(audio.serverPlayedAt("spell"), 0, "other categories are untouched");
+  bus.dispatch("Darkwind.Sound", { type: "loop", category: "ambient", sound: "rain", id: "weather" });
+  assert.equal(audio.serverPlayedAt("ambient"), 0, "a loop is not a one-shot");
+
+  eventBus.publish("transport:reconnect-status", { status: "scheduled", attempt: 1, transport: "ws" });
+  assert.equal(audio.serverPlayedAt("combat"), 0, "a dropped connection forgets");
+  scope.dispose();
+});

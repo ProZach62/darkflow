@@ -910,6 +910,11 @@
           hidden={panelHidden("appearance")}
         >
           <h3>Appearance</h3>
+          <SettingsCheckbox
+            bind:checked={settings.sceneDayNight}
+            label="Tint the Scene by time of day"
+            help="Warm at dawn, violet at twilight, and blue at night, brighter under more moonlight. Rooms with no sky are left alone."
+          />
           <label class="settings-row"
             ><span class="settings-copy"
               ><span class="settings-label">Theme</span>
@@ -1044,6 +1049,11 @@
             label="Enable audio"
             help="Allow game-triggered sound effects in this browser."
             onchange={(checked) => session.audio.setEnabled(checked)}
+          />
+          <SettingsCheckbox
+            bind:checked={settings.sceneSounds}
+            label="Play combat sounds from the Scene"
+            help="Hits, misses, criticals, and the start and end of a fight, as the Scene shows them. They follow the Combat volume, and stay quiet if the game sends its own combat sounds."
           />
           <label class="settings-row"
             ><span class="settings-copy"

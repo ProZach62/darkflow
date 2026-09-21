@@ -10,10 +10,10 @@ the client.
 
 ## Messages
 
-| Message | Direction | Purpose |
-| --- | --- | --- |
-| `Darkwind.Combat.State` | Server -> Client | Recoverable encounter lifecycle and actor snapshot |
-| `Darkwind.Combat.Events` | Server -> Client | Ordered, bounded batches of transient outcomes |
+| Message                  | Direction        | Purpose                                               |
+| ------------------------ | ---------------- | ----------------------------------------------------- |
+| `Darkwind.Combat.State`  | Server -> Client | Recoverable encounter lifecycle and actor snapshot    |
+| `Darkwind.Combat.Events` | Server -> Client | Ordered, bounded batches of transient outcomes        |
 | `Darkwind.Combat.Resync` | Client -> Server | Request current state without replaying stale effects |
 
 ## Readiness And Text Fallback
@@ -70,19 +70,19 @@ State is a recoverable snapshot, not an animation command:
 }
 ```
 
-| Field | Notes |
-| --- | --- |
-| `epoch` | Opaque connection epoch. A change invalidates all earlier encounter and event data. |
-| `encounter_id` | Opaque, session-scoped encounter identity. It changes for a new target object even when the display name is unchanged. |
-| `seq` | Latest sequence covered by the snapshot. |
-| `visual_enabled` | Saved character preference from `combatbrief visual`. |
-| `effective` | Whether guarded visual presentation is currently effective. |
-| `active` | Whether an encounter is active. |
-| `current_actor_id` | Actor id staged on the left side. It is `self` while the recipient is fighting; a passive observer receives the stable identity of the actual combatant instead. |
-| `current_target_id` | Actor id staged on the right side opposite `current_actor_id`. An observed pair retains the same orientation when its attack direction reverses. |
-| `actors` | Recipient-safe roster. IDs never expose LPC object paths. |
-| `outcome` | Empty while active; final values may include `victory`, `defeat`, `fled`, `target-lost`, or `disconnected`. |
-| `summary` | Short accessible lifecycle summary. |
+| Field               | Notes                                                                                                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `epoch`             | Opaque connection epoch. A change invalidates all earlier encounter and event data.                                                                              |
+| `encounter_id`      | Opaque, session-scoped encounter identity. It changes for a new target object even when the display name is unchanged.                                           |
+| `seq`               | Latest sequence covered by the snapshot.                                                                                                                         |
+| `visual_enabled`    | Saved character preference from `combatbrief visual`.                                                                                                            |
+| `effective`         | Whether guarded visual presentation is currently effective.                                                                                                      |
+| `active`            | Whether an encounter is active.                                                                                                                                  |
+| `current_actor_id`  | Actor id staged on the left side. It is `self` while the recipient is fighting; a passive observer receives the stable identity of the actual combatant instead. |
+| `current_target_id` | Actor id staged on the right side opposite `current_actor_id`. An observed pair retains the same orientation when its attack direction reverses.                 |
+| `actors`            | Recipient-safe roster. IDs never expose LPC object paths.                                                                                                        |
+| `outcome`           | Empty while active; final values may include `victory`, `defeat`, `fled`, `target-lost`, or `disconnected`.                                                      |
+| `summary`           | Short accessible lifecycle summary.                                                                                                                              |
 
 In observed group combat, the server may update `current_actor_id` as another
 player acts against the same right-side focus without changing
@@ -249,3 +249,28 @@ hidden, the tab is not visible, the encounter ends and no effect is still
 playing, or the canvas leaves the document. Without canvas support the pane
 renders the DOM card stage instead; readiness reporting is identical in both
 modes.
+
+### Sound and time of day
+
+The stage names a sound for what it is about to show and hands it to the
+pane, which plays it through the session's audio runtime in the `combat`
+category, so the player's volume, mute, and category toggles apply. An attack
+sounds by its result (`hit`, `critical`, `miss`, `dodge`, `absorb`)
+at the moment the blow lands, not when the event arrives; a fight the player
+is only watching is quieter. The start of a fight, a victory, and a death
+sound once each, and a fight already under way when the pane first sees it
+gets no start sound.
+
+The game stays in charge of scoring: once the server has played any
+`Darkwind.Sound` in the `combat` category on a connection, the stage stays
+silent for the rest of it, so nothing doubles up. The player can also turn
+the sounds off under Settings, Audio.
+
+While the sky is known, the stage tints the room by `Darkwind.Sky`: amber at
+dawn, violet at twilight, blue at night, lighter under more `moon_light`,
+and nothing by day. The room's tint is baked into the cached backdrop and a
+lighter pass covers the figures, so effects and numbers stay at full
+brightness. Rooms whose terrain has no sky (`inside`, `underground`,
+`underwater`) are left alone, and the tint can be turned off under
+Settings, Appearance. The `moon_light` scale is not specified, so the stage
+folds any positive value into a 0 to 1 lift with a saturating curve.
