@@ -20,8 +20,6 @@ const {
   isBossName,
   bossSightings,
   matchesBossSighting,
-  BOSS_TRACKS,
-  pickBossTrack,
   MAX_ALLIES,
   allyLayout,
   auraLook,
@@ -622,23 +620,4 @@ test('the boss tag is read off the game text, and the plain name the fight data 
   assert.equal(matchesBossSighting('', seen), false);
   assert.equal(matchesBossSighting('Aurora', null), false);
   assert.equal(matchesBossSighting('Aurora, Captain of the Dawnbound, enraged', ['aurora']), true, 'the sighting may be the shorter one');
-});
-
-test('each boss fight takes a track, and never the one the last fight had', () => {
-  assert.ok(BOSS_TRACKS.length >= 1 && BOSS_TRACKS.every((track) => /^[a-z0-9-]+$/.test(track)));
-  assert.equal(pickBossTrack(['a'], 'a'), 'a', 'a lone track repeats');
-  assert.equal(pickBossTrack(['a', 'b'], 'a', () => 0), 'b');
-  assert.equal(pickBossTrack(['a', 'b'], 'a', () => 0.99), 'b');
-  assert.equal(pickBossTrack(['a', 'b', 'c'], 'b', () => 0), 'a');
-  assert.equal(pickBossTrack(['a', 'b', 'c'], 'b', () => 0.99), 'c');
-  assert.equal(pickBossTrack(['a', 'b', 'c'], '', () => 0.5), 'b', 'the first fight may take any');
-  assert.equal(pickBossTrack(['a', 'b'], 'a', () => 1), 'b', 'a roll of one stays in range');
-  assert.equal(pickBossTrack(['a', 'b'], 'a', () => NaN), 'b');
-  assert.equal(pickBossTrack([], 'a'), '');
-  assert.equal(pickBossTrack(null, 'a'), '');
-  for (let i = 0, last = ''; i < 50; i++) {
-    const next = pickBossTrack(['a', 'b', 'c'], last);
-    assert.notEqual(next, last);
-    last = next;
-  }
 });

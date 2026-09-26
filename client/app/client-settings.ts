@@ -99,8 +99,6 @@ export interface Phase2ClientSettings {
   terminalAvatarMeter: boolean;
   /** Play the client's combat sounds from the Scene as blows land. */
   sceneSounds: boolean;
-  /** Play the boss battle track while fighting an enemy the player has marked as a boss. */
-  sceneBossMusic: boolean;
   /** Tint the Scene by the game's time of day and moonlight. */
   sceneDayNight: boolean;
 }
@@ -140,7 +138,6 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   tabObservabilityEnabled: false,
   terminalAvatarMeter: true,
   sceneSounds: true,
-  sceneBossMusic: true,
   sceneDayNight: true,
 };
 
@@ -240,7 +237,6 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     tabObservabilityEnabled: settings.tabObservabilityEnabled === true,
     terminalAvatarMeter: settings.terminalAvatarMeter !== false,
     sceneSounds: settings.sceneSounds !== false,
-    sceneBossMusic: settings.sceneBossMusic !== false,
     sceneDayNight: settings.sceneDayNight !== false,
   };
 }
@@ -431,7 +427,6 @@ export function validateClientSettingsDocument(
     "tabObservabilityEnabled",
     "terminalAvatarMeter",
     "sceneSounds",
-    "sceneBossMusic",
     "sceneDayNight",
   ] as const;
   for (const key of booleanKeys) {

@@ -270,8 +270,6 @@ test("starring an enemy as a boss is remembered and leaves the interface respons
   const star = combat.getByRole("button", { name: "Mark an ash drake as a boss", exact: true });
   await expect(star).toHaveAttribute("aria-pressed", "false");
   await star.click();
-  // Starting the boss track makes the audio runtime publish, which once
-  // re-entered the pane's music sync and hung the page.
   const marked = combat.getByRole("button", { name: "Unmark an ash drake as a boss", exact: true });
   await expect(marked).toHaveAttribute("aria-pressed", "true");
   await expect(marked).toContainText("Boss");

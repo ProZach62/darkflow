@@ -103,8 +103,6 @@ export const SOUND_MAP = {
   'ambient/combat-music': '/assets/sounds/ambient-combat-music.mp3',
   'ambient/darkwind-theme': '/assets/sounds/darkwind-theme.mp3',
   'music/darkwind-theme': '/assets/sounds/darkwind-theme.mp3',
-  // Decoded rather than streamed, so the loop point is sample-accurate.
-  'music/boss-battle': '/assets/sounds/music-boss-battle.ogg',
   'fishing/cast': '/assets/sounds/fishing-cast.mp3',
   'fishing/splash': '/assets/sounds/fishing-splash.mp3',
   'fishing/hook': '/assets/sounds/fishing-hook.mp3',

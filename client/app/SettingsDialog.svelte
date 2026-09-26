@@ -1055,11 +1055,6 @@
             label="Play combat sounds from the Scene"
             help="Hits, misses, criticals, and the start and end of a fight, as the Scene shows them. They follow the Combat volume, and stay quiet if the game sends its own combat sounds."
           />
-          <SettingsCheckbox
-            bind:checked={settings.sceneBossMusic}
-            label="Play boss battle music on the Scene"
-            help="Loops a battle track while you fight an enemy you have starred as a boss in the Scene. It follows the Music volume, and gives way to music the game plays itself."
-          />
           <label class="settings-row"
             ><span class="settings-copy"
               ><span class="settings-label">Master volume</span>
