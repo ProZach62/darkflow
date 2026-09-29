@@ -19,6 +19,19 @@ const COMPASS_DIRS = [
   ['southeast', 'se'], ['southwest', 'sw'],
 ];
 
+// Movement: the player marker steps to the new room quickly and the camera
+// glides after it, so the marker leads and the view settles on it. Both run
+// as CSS animations whose negative delay is the time already spent, so a
+// re-render mid-glide picks up where the last frame left off.
+const MARKER_STEP_MS = 180;
+const CAMERA_GLIDE_MS = 380;
+// Longer jumps (a teleport, a recall) cut rather than slide across the map.
+const MAX_GLIDE_CELLS = 2;
+// Rooms that appear while the player explores an area clear out of the fog.
+const REVEAL_MS = 700;
+// More than this many at once is a load or a resync, not exploring.
+const MAX_REVEALS_AT_ONCE = 40;
+
 const REVERSE_DIR = {
   north: 'south', south: 'north', east: 'west', west: 'east',
   northeast: 'southwest', southwest: 'northeast',
@@ -29,11 +42,76 @@ const REVERSE_DIR = {
 // Remember the last room the player occupied that had a coordinate, per area.
 // When the player steps into a room the server has not positioned yet, we keep
 // the view parked on this spot instead of blanking the whole panel.
-function createRendererState() {
+function createRendererState(options = {}) {
   return {
     lastCenterByArea: new Map(),
     lastRenderDebug: null,
+    motion: null,
+    reveal: null,
+    now: typeof options.now === 'function'
+      ? options.now
+      : () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
   };
+}
+
+function easeOutCubic(t) {
+  const clamped = Math.min(1, Math.max(0, t));
+  return 1 - Math.pow(1 - clamped, 3);
+}
+
+// Where the marker and camera are coming from, in cells relative to the
+// player's room: { area, z, x, y, at, cam, marker }. A move during a glide
+// starts from wherever the glide had got to.
+export function advanceMapMotion(previous, room, now, reducedMotion) {
+  if (!room) return null;
+  const next = {
+    area: room.area, z: room.z, x: room.x, y: room.y, at: now,
+    cam: { x: 0, y: 0 }, marker: { x: 0, y: 0 },
+  };
+  if (!previous || reducedMotion || previous.area !== room.area || previous.z !== room.z) {
+    return next;
+  }
+  if (previous.x === room.x && previous.y === room.y) return previous;
+  const elapsed = now - previous.at;
+  const camLeft = 1 - easeOutCubic(elapsed / CAMERA_GLIDE_MS);
+  const markerLeft = 1 - easeOutCubic(elapsed / MARKER_STEP_MS);
+  const dx = room.x - previous.x;
+  const dy = room.y - previous.y;
+  const cam = { x: dx + previous.cam.x * camLeft, y: dy + previous.cam.y * camLeft };
+  const marker = { x: dx + previous.marker.x * markerLeft, y: dy + previous.marker.y * markerLeft };
+  const reach = Math.max(Math.abs(cam.x), Math.abs(cam.y), Math.abs(marker.x), Math.abs(marker.y));
+  if (reach <= MAX_GLIDE_CELLS + 0.5) {
+    next.cam = cam;
+    next.marker = marker;
+  }
+  return next;
+}
+
+// Rooms new to the area since the player arrived, with when each appeared.
+// Entering an area, or a bulk load, sets the baseline without revealing.
+export function trackMapReveals(previous, area, areaRooms, now, reducedMotion) {
+  if (!previous || previous.area !== area) {
+    return { area, known: new Set(areaRooms.map((room) => room.id)), at: new Map() };
+  }
+  const fresh = areaRooms.filter((room) => !previous.known.has(room.id));
+  for (const room of fresh) previous.known.add(room.id);
+  if (!reducedMotion && fresh.length && fresh.length <= MAX_REVEALS_AT_ONCE) {
+    for (const room of fresh) previous.at.set(room.id, now);
+  }
+  for (const [id, at] of previous.at) {
+    if (now - at >= REVEAL_MS) previous.at.delete(id);
+  }
+  return previous;
+}
+
+function glideStyle(prefix, vector, scale, elapsed) {
+  return '--map-' + prefix + '-x:' + round2(vector.x * scale) + 'px;'
+    + '--map-' + prefix + '-y:' + round2(vector.y * scale) + 'px;'
+    + 'animation-delay:-' + Math.round(elapsed) + 'ms;';
+}
+
+function round2(value) {
+  return Math.round(value * 100) / 100;
 }
 
 // Pick a coordinate to center the grid on when the player's own room has no
@@ -143,20 +221,38 @@ function buildExitSpans(room, cz, source) {
   }
   spans += specialExitSpans(room);
   if (room.details && room.details.length) {
-    spans += '<span class="map-detail">' + detailGlyph(room.details[0])
-      + '</span>';
+    spans += detailBadge(room.details[0]);
   }
   return spans;
 }
 
 // Room feature badge (top edge): first detail only; the tooltip lists all.
-const DETAIL_GLYPHS = {
-  shop: '$', bank: 'B', guild: 'G', pub: 'P', post: 'M',
+// The common services get a drawn icon; anything else keeps its initial.
+const DETAIL_ICONS = {
+  shop: '<path d="M3 5h6l1 6H2z"/><path d="M4.5 5V4a1.5 1.5 0 0 1 3 0v1" fill="none" stroke="currentColor" stroke-width="1.2"/>',
+  bank: '<path d="M6 1l5 3H1z"/><path d="M2 5h1.5v4H2zM5.25 5h1.5v4h-1.5zM8.5 5H10v4H8.5zM1 9.8h10v1.4H1z"/>',
+  guild: '<path d="M6 1l4.5 1.5V6c0 2.6-2 4.3-4.5 5.2C3.5 10.3 1.5 8.6 1.5 6V2.5z"/>',
+  pub: '<path d="M2 3h6v7.5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5z"/><path d="M8 4.5h1.2a1.6 1.6 0 0 1 0 3.2H8" fill="none" stroke="currentColor" stroke-width="1.2"/>',
+  post: '<path d="M1 3h10v7H1z"/><path d="M1.4 3.4L6 7l4.6-3.6" fill="none" stroke="#2a1d0a" stroke-width="1.1"/>',
 };
 
-function detailGlyph(detail) {
-  if (DETAIL_GLYPHS[detail]) return DETAIL_GLYPHS[detail];
-  return String(detail).charAt(0).toUpperCase() || '?';
+export const MAP_DETAIL_ICON_KINDS = Object.freeze(Object.keys(DETAIL_ICONS));
+
+/** The inline icon for a room detail, or '' when it has none. */
+export function mapDetailIconSvg(detail) {
+  const paths = DETAIL_ICONS[detail];
+  return paths
+    ? '<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">' + paths + '</svg>'
+    : '';
+}
+
+function detailBadge(detail) {
+  const icon = mapDetailIconSvg(detail);
+  if (icon) {
+    return '<span class="map-detail map-detail-icon map-detail-' + detail + '">' + icon + '</span>';
+  }
+  return '<span class="map-detail">'
+    + escAttr(String(detail).charAt(0).toUpperCase() || '?') + '</span>';
 }
 
 function doorStateName(state) {
@@ -201,7 +297,11 @@ function getTerrainName(environment) {
   return getPrimaryTerrain(environment);
 }
 
-function renderMap(bodyEl, source, state) {
+// extras.ambience: { color, alpha, light } tints the map from the player's
+// marker, with a pool of light around it when light is set.
+function renderMap(bodyEl, source, state, extras = {}) {
+  const now = state.now();
+  const reducedMotion = !!(bodyEl.dataset && bodyEl.dataset.mapMotion === 'reduce');
   // Browse mode renders an arbitrary catalog area (opened in the Area Map pane)
   // with no player marker; the live map is the default source.
   const browse = !!source.isBrowse;
@@ -248,6 +348,14 @@ function renderMap(bodyEl, source, state) {
     state.lastCenterByArea.set(centerRoom.area, centerRoom.id);
   }
 
+  // Parked or browsing, there is no marker to move; the next positioned room
+  // starts fresh rather than gliding in from wherever the player was.
+  state.motion = playerRoom
+    ? advanceMapMotion(state.motion, playerRoom, now, reducedMotion)
+    : null;
+  const motion = state.motion;
+  const motionElapsed = motion ? now - motion.at : Infinity;
+
   const bodyRect = bodyEl.getBoundingClientRect ? bodyEl.getBoundingClientRect() : null;
   const bodyWidth = (bodyRect && bodyRect.width) || bodyEl.clientWidth || 320;
   const bodyHeight = (bodyRect && bodyRect.height) || bodyEl.clientHeight || 240;
@@ -279,6 +387,8 @@ function renderMap(bodyEl, source, state) {
   const cz = centerRoom.z;
 
   const areaRooms = source.getRoomsByArea(centerRoom.area);
+  state.reveal = trackMapReveals(state.reveal, centerRoom.area, areaRooms, now, reducedMotion);
+  const revealedAt = state.reveal.at;
   const distances = buildConnectedDistances(centerRoom, Math.max(gridW, gridH) + 8, source);
   const buckets = new Map();
   const visibleBounds = {
@@ -303,9 +413,13 @@ function renderMap(bodyEl, source, state) {
   const viewportPixelHeight = (viewportH * TILE_SIZE)
     + (Math.max(0, viewportH - 1) * TILE_GAP);
   const overscanOffset = MAP_OVERSCAN_CELLS * (TILE_SIZE + TILE_GAP) * zoom;
-  let html = '<div class="map-grid-frame" style="width:' + (viewportPixelWidth * zoom)
+  const cameraGliding = !!motion && motionElapsed < CAMERA_GLIDE_MS
+    && (motion.cam.x !== 0 || motion.cam.y !== 0);
+  let html = '<div class="map-grid-frame' + (cameraGliding ? ' map-camera-glide' : '')
+    + '" style="width:' + (viewportPixelWidth * zoom)
     + 'px;height:' + (viewportPixelHeight * zoom) + 'px;transform:translate('
-    + horizontalPan.offset + 'px,' + verticalPan.offset + 'px)"'
+    + horizontalPan.offset + 'px,' + verticalPan.offset + 'px);'
+    + (cameraGliding ? glideStyle('cam', motion.cam, pitch, motionElapsed) : '') + '"'
     + ' data-map-pitch="' + pitch + '"'
     + ' data-map-pan-offset-x="' + horizontalPan.offset + '"'
     + ' data-map-pan-offset-y="' + verticalPan.offset + '">'
@@ -315,6 +429,7 @@ function renderMap(bodyEl, source, state) {
     + 'grid-template-rows:repeat(' + gridH + ',' + TILE_SIZE + 'px);'
     + 'transform:scale(' + zoom + ')">';
 
+  let markerCell = null;
   for (let ry = 0; ry < gridH; ry++) {
     for (let rx = 0; rx < gridW; rx++) {
       const worldX = cx - radiusX + rx;
@@ -323,29 +438,30 @@ function renderMap(bodyEl, source, state) {
       const room = chooseRoomForTile(bucket, playerId, distances, connectedVisibleCount);
 
       if (!room) {
-        html += '<div class="map-tile"></div>';
-      } else if (room.id === playerId) {
-        const terrain = getTerrainName(room.environment);
-        const trustClass = room.layoutState ? ' map-layout-' + room.layoutState : '';
-        html += '<div class="map-tile map-tile-room map-tile-' + terrain
-          + ' map-tile-player' + trustClass + conflictClass(bucket)
-          + '" title="' + escAttr(tileTitle(room, bucket, source)) + '"'
-          + ' data-room-id="' + escAttr(room.id) + '"'
-          + conflictAttr(bucket) + '>'
-          + buildExitSpans(room, cz, source) + '</div>';
-      } else {
-        const terrain = getTerrainName(room.environment);
-        const lastPos = pending && room.id === centerRoom.id ? ' map-tile-lastpos' : '';
-        const trustClass = room.layoutState ? ' map-layout-' + room.layoutState : '';
-        html += '<div class="map-tile map-tile-room map-tile-' + terrain
-          + trustClass + conflictClass(bucket) + lastPos
-          + '" title="' + escAttr(tileTitle(room, bucket, source)) + '"'
-          + ' data-room-id="' + escAttr(room.id) + '"'
-          + conflictAttr(bucket) + '>'
-          + buildExitSpans(room, cz, source) + '</div>';
+        html += '<div class="map-tile' + fogClass(worldX, worldY, buckets, source) + '"></div>';
+        continue;
       }
+      const isPlayer = room.id === playerId;
+      if (isPlayer) markerCell = { column: rx + 1, row: ry + 1 };
+      const terrain = getTerrainName(room.environment);
+      const trustClass = room.layoutState ? ' map-layout-' + room.layoutState : '';
+      const lastPos = !isPlayer && pending && room.id === centerRoom.id ? ' map-tile-lastpos' : '';
+      const unseen = room.observed === false ? ' map-tile-unseen' : '';
+      const revealAt = revealedAt.get(room.id);
+      const revealElapsed = revealAt === undefined ? Infinity : now - revealAt;
+      const revealing = revealElapsed < REVEAL_MS;
+      html += '<div class="map-tile map-tile-room map-tile-' + terrain
+        + (isPlayer ? ' map-tile-player' : '') + trustClass + conflictClass(bucket)
+        + lastPos + unseen + (revealing ? ' map-tile-revealed' : '')
+        + '"' + (revealing ? ' style="animation-delay:-' + Math.round(revealElapsed) + 'ms"' : '')
+        + ' title="' + escAttr(tileTitle(room, bucket, source)) + '"'
+        + ' data-room-id="' + escAttr(room.id) + '"'
+        + conflictAttr(bucket) + '>'
+        + buildExitSpans(room, cz, source) + '</div>';
     }
   }
+
+  if (markerCell) html += playerMarkerHtml(markerCell, motion, motionElapsed, extras.ambience);
 
   html += '</div></div>';
 
@@ -434,6 +550,64 @@ function renderMap(bodyEl, source, state) {
     viewport: { width: viewportW, height: viewportH },
     grid: { width: gridW, height: gridH },
   };
+}
+
+// The player's marker sits over the player's cell as its own layer, so it
+// can step between rooms while the camera follows. It also carries the time
+// of day: a tint over the whole map, with a pool of light around the player
+// at night.
+function playerMarkerHtml(cell, motion, elapsed, ambience) {
+  const stepping = !!motion && elapsed < MARKER_STEP_MS
+    && (motion.marker.x !== 0 || motion.marker.y !== 0);
+  const tinted = ambience && typeof ambience.color === 'string'
+    && /^#[0-9a-f]{3,8}$/i.test(ambience.color) && Number(ambience.alpha) > 0;
+  // An absolutely placed grid item with only a start line would stretch to
+  // the grid's far edge, so the marker spans exactly its one cell.
+  let style = 'grid-column:' + cell.column + ' / span 1;grid-row:' + cell.row + ' / span 1;';
+  if (stepping) {
+    style += glideStyle('marker', { x: -motion.marker.x, y: -motion.marker.y },
+      TILE_SIZE + TILE_GAP, elapsed);
+  }
+  if (tinted) {
+    style += '--map-tint:' + ambience.color + ';--map-tint-alpha:'
+      + round2(Math.min(0.9, Number(ambience.alpha))) + ';';
+  }
+  return '<div class="map-player-marker' + (stepping ? ' map-marker-step' : '')
+    + (tinted ? ' map-tinted' : '') + (tinted && ambience.light ? ' map-lit' : '')
+    + '" style="' + style + '" aria-hidden="true">'
+    + '<span class="map-player-ring"></span></div>';
+}
+
+// Empty cells next to explored rooms are the edge of the known world, drawn
+// as mist; a cell an unexplored exit leads into gets a brighter wisp.
+const FOG_NEIGHBOURS = [
+  [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
+];
+
+function fogClass(x, y, buckets, source) {
+  let near = false;
+  for (const [ox, oy] of FOG_NEIGHBOURS) {
+    const neighbours = buckets.get((x + ox) + ',' + (y + oy));
+    if (!neighbours || !neighbours.length) continue;
+    near = true;
+    if (leadsHere(neighbours, -ox, -oy, source)) return ' map-tile-fog map-tile-fog-lead';
+  }
+  return near ? ' map-tile-fog' : '';
+}
+
+function leadsHere(rooms, dx, dy, source) {
+  const offsets = source.DIR_OFFSETS || {};
+  for (const [dir] of COMPASS_DIRS) {
+    const offset = offsets[dir];
+    if (!offset || offset.dx !== dx || offset.dy !== dy) continue;
+    for (const room of rooms) {
+      const destId = room.exits && room.exits[dir];
+      if (!destId) continue;
+      const dest = source.getRoom(destId);
+      if (!dest || (dest.x === null && dest.area === room.area)) return true;
+    }
+  }
+  return false;
 }
 
 function escAttr(str) {
@@ -567,11 +741,11 @@ function countVisibleBuckets(buckets, bounds) {
 }
 
 /** Creates a renderer whose remembered centers and debug snapshot are private. */
-export function createMapRenderer() {
-  const state = createRendererState();
+export function createMapRenderer(options = {}) {
+  const state = createRendererState(options);
   return {
-    render(bodyEl, source) {
-      return renderMap(bodyEl, source, state);
+    render(bodyEl, source, extras) {
+      return renderMap(bodyEl, source, state, extras);
     },
     getDebug() {
       return state.lastRenderDebug;
@@ -579,6 +753,8 @@ export function createMapRenderer() {
     dispose() {
       state.lastCenterByArea.clear();
       state.lastRenderDebug = null;
+      state.motion = null;
+      state.reveal = null;
     },
   };
 }

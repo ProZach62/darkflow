@@ -460,7 +460,7 @@ test('room details render a feature badge and tooltip list', () => {
       positioned: true, x: 0, y: 0, z: 0, exits: {},
       details: ['shop', 'bank'] },
   ]);
-  assert.ok(out.includes('map-detail">$<'), 'shop badge is the $ glyph');
+  assert.ok(out.includes('map-detail map-detail-icon map-detail-shop"><svg'), 'shop badge is the drawn shop icon');
   assert.ok(out.includes('[shop, bank]'), 'tooltip lists every detail');
 });
 

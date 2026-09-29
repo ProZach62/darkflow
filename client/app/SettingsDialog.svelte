@@ -915,6 +915,11 @@
             label="Tint the Scene by time of day"
             help="Warm at dawn, violet at twilight, and blue at night, brighter under more moonlight. Rooms with no sky are left alone."
           />
+          <SettingsCheckbox
+            bind:checked={settings.mapDayNight}
+            label="Tint the map by time of day"
+            help="The same tint on the live map, with a pool of light around you at night. Rooms with no sky are left alone."
+          />
           <label class="settings-row"
             ><span class="settings-copy"
               ><span class="settings-label">Theme</span>

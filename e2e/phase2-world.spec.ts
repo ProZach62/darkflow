@@ -414,6 +414,45 @@ test("map and room image reset across reconnect and remount after session dispos
   await expect(page.locator("[data-world-instance]")).toHaveCount(0);
 });
 
+test("the map marks you, previews a route on hover, draws service icons, and has a legend", async ({
+  page,
+}) => {
+  test.skip(
+    (page.viewportSize()?.width ?? Infinity) <= 700,
+    "hovering to preview a route is a pointer interaction",
+  );
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(101, "Atrium", 0, { east: 102 }),
+    details: ["shop"],
+  });
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    currentRoom(102, "East Hall", 1, { west: 101, east: 103 }),
+  );
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(103, "Far Hall", 2, { west: 102 }));
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  const mapBody = map.locator(".map-body");
+  await expect(map.locator(".map-player-marker")).toHaveCount(1);
+  await expect(map.locator(".map-detail-shop svg")).toBeVisible();
+
+  await map.getByRole("button", { name: "Speedwalk to Atrium" }).hover();
+  await expect(mapBody).toHaveAttribute("data-map-route", "preview");
+  await expect(map.locator(".map-route-count")).toHaveText("2");
+  await expect(map.locator(".map-route-dot")).toHaveCount(1);
+  await page.mouse.move(1, 1);
+  await expect(mapBody).not.toHaveAttribute("data-map-route");
+  await expect(map.locator(".map-route-count")).toHaveCount(0);
+
+  await map.getByRole("button", { name: "Map legend" }).click();
+  const legend = map.getByRole("region", { name: "Map legend" });
+  await expect(legend).toContainText("Shop");
+  await expect(legend).toContainText("Edge of the explored map");
+  await page.keyboard.press("Escape");
+  await expect(legend).toHaveCount(0);
+});
+
 test("map navigation and room imagery survive layout persistence without stale media", async ({
   page,
 }, testInfo) => {

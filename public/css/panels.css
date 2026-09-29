@@ -1736,22 +1736,168 @@ body.zork-only-mode #panels-menu {
   opacity: 0.72;
 }
 
-.map-tile-player {
+/* The player's marker is its own layer over the player's cell, so it can
+   step between rooms while the camera glides after it. Both glides are CSS
+   animations whose negative delay is the time already spent, so a re-render
+   mid-glide carries on rather than restarting.
+   The marker itself must not form a stacking context (no z-index, and it
+   steps by left/top rather than a transform), or the time-of-day tint in its
+   ::before would have nothing beneath it to blend with. Its parts carry the
+   z-index instead: the tint over the rooms and connectors, then the ring and
+   the figure above the tint. */
+.map-player-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+}
+.map-player-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
   box-shadow:
     0 0 0 1px #00ffff,
     0 0 8px 2px rgba(0, 255, 255, 0.95),
     0 0 16px 4px rgba(0, 190, 255, 0.55);
 }
-.map-tile-player::after {
+.map-player-marker::after {
   content: '';
   position: absolute;
   width: 44px;
   height: 44px;
   left: 50%;
   top: 50%;
-  z-index: 1;
+  z-index: 6;
   background: url('/assets/tiles/player.png') center/contain no-repeat;
   transform: translate(-50%, -50%);
+}
+.map-marker-step {
+  animation: map-marker-step 180ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
+}
+@keyframes map-marker-step {
+  from { left: var(--map-marker-x, 0px); top: var(--map-marker-y, 0px); }
+  to { left: 0; top: 0; }
+}
+.map-camera-glide {
+  animation: map-camera-glide 380ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+@keyframes map-camera-glide {
+  from { translate: var(--map-cam-x, 0px) var(--map-cam-y, 0px); }
+  to { translate: 0 0; }
+}
+
+/* Time of day: a multiply tint over the map from the marker outward, with a
+   pool of light around the player at night. The tint sits under the ring and
+   the player's figure, which paint after it. */
+.map-player-marker.map-tinted::before {
+  content: '';
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle closest-side, transparent 30%, var(--map-tint) 100%);
+  box-shadow: 0 0 0 4000px var(--map-tint);
+  opacity: var(--map-tint-alpha, 0);
+  mix-blend-mode: multiply;
+}
+.map-player-marker.map-lit::before {
+  width: 220px;
+  height: 220px;
+}
+
+/* The edge of the explored map: mist in the empty cells beside known rooms,
+   brighter where an unexplored exit leads. */
+.map-tile-fog {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(150, 160, 175, 0.16), rgba(150, 160, 175, 0.05) 70%, transparent 100%),
+    #000;
+}
+.map-tile-fog-lead {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(190, 200, 215, 0.3), rgba(160, 170, 185, 0.1) 65%, transparent 100%),
+    #000;
+}
+
+/* Known but not yet visited: a silhouette in the fog. */
+.map-tile-unseen {
+  filter: grayscale(1) brightness(0.45);
+}
+
+/* A room found while exploring clears out of the fog. */
+.map-tile-revealed {
+  animation: map-tile-reveal 700ms ease-out both;
+}
+@keyframes map-tile-reveal {
+  from { opacity: 0; filter: blur(3px) brightness(1.8) grayscale(0.6); }
+  to { opacity: 1; filter: none; }
+}
+.map-tile-unseen.map-tile-revealed {
+  animation-name: map-tile-reveal-unseen;
+}
+@keyframes map-tile-reveal-unseen {
+  from { opacity: 0; filter: blur(3px) grayscale(1) brightness(0.9); }
+  to { opacity: 1; filter: grayscale(1) brightness(0.45); }
+}
+
+/* Route preview and the walk in progress: dots through each room, the
+   connectors between them lit, and the step count on the destination. */
+.map-route-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 5;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--map-route-color);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), 0 0 6px 1px var(--map-route-color);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.map-body[data-map-route="preview"] { --map-route-color: #f2cc60; }
+.map-body[data-map-route="walk"] { --map-route-color: #62e6ff; }
+.map-conn.map-conn-route {
+  z-index: 3;
+  background: var(--map-route-color);
+  box-shadow: 0 0 4px var(--map-route-color);
+}
+.map-tile-route-target {
+  outline: 2px solid var(--map-route-color);
+  outline-offset: 1px;
+}
+.map-route-count {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  z-index: 6;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--map-route-color);
+  color: #111;
+  font: 700 9px/14px var(--df-font-mono);
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+.map-tile-route-none {
+  outline: 2px dashed rgba(235, 110, 100, 0.95);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-marker-step,
+  .map-camera-glide,
+  .map-tile-revealed {
+    animation: none;
+  }
 }
 
 /* Terrain tile backgrounds */
@@ -1993,6 +2139,13 @@ body.zork-only-mode #panels-menu {
   color: rgba(240, 198, 116, 0.95);
   text-shadow: 0 0 2px #000, 0 0 2px #000;
   pointer-events: none;
+}
+.map-detail-icon svg {
+  display: block;
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+  filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
 }
 
 /* Per-tile vertical-exit markers: any room with an up/down exit shows a small

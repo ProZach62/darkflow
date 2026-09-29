@@ -170,3 +170,37 @@ Other exit verbs require the room's `query_map_speedwalk_safe(direction)` hook.
 Every step is sent separately and verified against the next authoritative room
 id. Disconnects, map epoch changes, missing live exits, closed doors, send
 failures, timeouts, and unexpected rooms cancel the walk.
+
+## How The Client Draws It
+
+This section is client presentation, not protocol; nothing here asks more of
+the server.
+
+The player's marker is its own layer over the player's cell. When the current
+room moves by up to two cells in the same area and level, the marker steps
+there in 180 ms and the view glides after it in 380 ms, so the marker leads
+and the view settles on it; a longer jump, a new area, or reduced motion cuts
+instead. Both are CSS animations given a negative delay equal to the time
+already spent, so the several renders a single move causes carry one glide
+on rather than restarting it. A move made mid-glide starts from wherever the
+glide had got to.
+
+Empty cells beside known rooms are drawn as mist, the edge of the explored
+map, and a cell that an unexplored exit leads into is brighter. A room with
+`observed: false` is a grey silhouette. Rooms that appear while the player
+is in an area clear out of the mist over 700 ms; arriving in an area, or more
+than 40 rooms at once (a load or a resync), sets the baseline without that.
+
+The `shop`, `bank`, `guild`, `pub`, and `post` details get drawn icons;
+any other detail keeps its initial. The map's ? button opens a legend.
+
+Hovering or focusing a room previews the route to it: dots through each room
+on the way, the connectors between them lit, and the step count on the
+destination, or a dashed red outline when there is no known route. The route
+is `findPath`, the same search a speedwalk uses. Once a speedwalk starts, its
+remaining route is drawn the same way in cyan until it ends.
+
+With "Tint the map by time of day" on (Settings, Appearance), the live map
+takes the Scene's time-of-day tint from `Darkwind.Sky`, spread from the
+player's marker; at night a pool of light about two cells across surrounds
+the player. Rooms with no sky, such as inside or underground, are left alone.

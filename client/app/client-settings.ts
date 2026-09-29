@@ -101,6 +101,8 @@ export interface Phase2ClientSettings {
   sceneSounds: boolean;
   /** Tint the Scene by the game's time of day and moonlight. */
   sceneDayNight: boolean;
+  /** Tint the live map by the game's time of day, with light around the player at night. */
+  mapDayNight: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -139,6 +141,7 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   terminalAvatarMeter: true,
   sceneSounds: true,
   sceneDayNight: true,
+  mapDayNight: true,
 };
 
 export type ClientSettingsResult =
@@ -238,6 +241,7 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     terminalAvatarMeter: settings.terminalAvatarMeter !== false,
     sceneSounds: settings.sceneSounds !== false,
     sceneDayNight: settings.sceneDayNight !== false,
+    mapDayNight: settings.mapDayNight !== false,
   };
 }
 
@@ -428,6 +432,7 @@ export function validateClientSettingsDocument(
     "terminalAvatarMeter",
     "sceneSounds",
     "sceneDayNight",
+    "mapDayNight",
   ] as const;
   for (const key of booleanKeys) {
     if (key in value && typeof value[key] !== "boolean")
