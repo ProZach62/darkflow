@@ -920,6 +920,11 @@
             label="Tint the map by time of day"
             help="The same tint on the live map, with a pool of light around you at night. Rooms with no sky are left alone."
           />
+          <SettingsCheckbox
+            bind:checked={settings.mapPaintedTerrain}
+            label="Paint the map's terrain"
+            help="Rooms of the same terrain join into painted land, water gets a shore, and roads run between rooms. Off, each room is its own square tile."
+          />
           <label class="settings-row"
             ><span class="settings-copy"
               ><span class="settings-label">Theme</span>

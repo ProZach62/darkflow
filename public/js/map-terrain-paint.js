@@ -1,0 +1,246 @@
+// Draws a planned terrain scene (map-terrain-core.js) onto the map's terrain
+// canvas. Each terrain is a region: the rooms' boxes grown into the gaps,
+// rounded, feathered, and filled with that terrain's texture. Water is laid
+// over a band of beach, and roads are stroked last. Textures are anchored to
+// world coordinates, so the land holds still as the view moves over it.
+import {
+  PAINTED_TEXTURE_INDEX,
+  TERRAIN_PITCH,
+  TERRAIN_TILE,
+  terrainPlanKey,
+  terrainTextureFor,
+} from './map-terrain-core.js';
+
+// The painted textures' index, fetched once for the page and shared by every
+// painter; null until it arrives, or if there is none.
+let paintedIndex = null;
+let paintedIndexRequest = null;
+const paintedIndexListeners = new Set();
+
+function requestPaintedIndex() {
+  if (paintedIndexRequest || typeof fetch !== 'function') return;
+  paintedIndexRequest = fetch(PAINTED_TEXTURE_INDEX, { cache: 'no-cache' })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null)
+    .then((index) => {
+      if (index && Array.isArray(index.textures) && index.textures.length) {
+        paintedIndex = index;
+        for (const listener of paintedIndexListeners) listener();
+      }
+    });
+}
+
+// How far a room's land reaches into the gaps around it, how round and soft
+// its edge is, and how wide the beach around water shows.
+const GROW = 6;
+const CORNER = 11;
+const FEATHER = 4;
+const SHORE = 5;
+const ROAD_WIDTH = { road: 10, path: 6 };
+// Keep the backing store modest; the paint is soft, so it need not be sharp.
+const MAX_PIXELS = 2_600_000;
+const MAX_SCALE = 2;
+
+// Flat colours to paint with until a texture has loaded, or if one fails.
+const TERRAIN_COLORS = {
+  underwater: '#1d3f5c', sea: '#1f4f78', lake: '#2c6488', river: '#3a78a0',
+  beach: '#c9b27c', swamp: '#4b5a36', desert: '#c8a45e', barren: '#6f6556',
+  arctic: '#dfe8ee', plains: '#6f8f45', outside: '#5f7a44', farm: '#8e8a44',
+  sky: '#9fc3e0', inside: '#6a5a48', underground: '#3e3a36', city: '#77736c',
+  hills: '#6c7a45', jungle: '#2f5a2c', forest: '#35532d', canopy: '#2a4a26',
+  mountain: '#7a756d', road: '#8a7c66', path: '#8b6f4a',
+};
+
+function makeCanvas(width, height) {
+  if (typeof OffscreenCanvas === 'function') return new OffscreenCanvas(width, height);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function sized(canvas, width, height) {
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  return canvas;
+}
+
+/** Creates a painter with its own texture cache and last-painted scene. */
+export function createTerrainPainter(options = {}) {
+  const onTexturesChanged = typeof options.onTexturesChanged === 'function'
+    ? options.onTexturesChanged : () => {};
+  const textures = new Map();
+  let textureVersion = 0;
+  let scene = null;
+  let mask = null;
+  let layer = null;
+  let lastPaintMs = 0;
+
+  // When the painted textures' index arrives, drop the stand-ins and paint
+  // again with whatever it lists.
+  const onPaintedIndex = () => {
+    textures.clear();
+    textureVersion++;
+    onTexturesChanged();
+  };
+  paintedIndexListeners.add(onPaintedIndex);
+  requestPaintedIndex();
+
+  function texture(terrain) {
+    let entry = textures.get(terrain);
+    if (entry) return entry;
+    const spec = terrainTextureFor(terrain, paintedIndex);
+    entry = { spec, image: null, ready: false };
+    textures.set(terrain, entry);
+    if (typeof Image === 'function') {
+      const image = new Image();
+      image.decoding = 'async';
+      image.onload = () => {
+        entry.ready = true;
+        textureVersion++;
+        onTexturesChanged();
+      };
+      image.onerror = () => {
+        textureVersion++;
+        onTexturesChanged();
+      };
+      image.src = spec.src;
+      entry.image = image;
+    }
+    return entry;
+  }
+
+  function fillFor(ctx, terrain, geom) {
+    const entry = texture(terrain);
+    if (!entry.ready || !entry.image.naturalWidth) return TERRAIN_COLORS[terrain] || '#555';
+    const pattern = ctx.createPattern(entry.image, 'repeat');
+    if (!pattern) return TERRAIN_COLORS[terrain] || '#555';
+    const scale = (entry.spec.span * TERRAIN_PITCH / entry.image.naturalWidth) * geom.scale;
+    pattern.setTransform(new DOMMatrix([
+      scale, 0, 0, scale,
+      -geom.worldX * TERRAIN_PITCH * geom.scale,
+      -geom.worldY * TERRAIN_PITCH * geom.scale,
+    ]));
+    return pattern;
+  }
+
+  function paintRegion(target, terrain, cells, grow, geom) {
+    const k = geom.scale;
+    const maskCtx = mask.getContext('2d');
+    maskCtx.clearRect(0, 0, mask.width, mask.height);
+    maskCtx.filter = 'blur(' + (FEATHER * k) + 'px)';
+    maskCtx.fillStyle = '#fff';
+    maskCtx.beginPath();
+    for (const cell of cells) {
+      const x = (cell.col * TERRAIN_PITCH - grow) * k;
+      const y = (cell.row * TERRAIN_PITCH - grow) * k;
+      const size = (TERRAIN_TILE + grow * 2) * k;
+      maskCtx.roundRect(x, y, size, size, CORNER * k);
+    }
+    maskCtx.fill();
+    maskCtx.filter = 'none';
+
+    const layerCtx = layer.getContext('2d');
+    layerCtx.globalCompositeOperation = 'source-over';
+    layerCtx.clearRect(0, 0, layer.width, layer.height);
+    layerCtx.fillStyle = fillFor(layerCtx, terrain, geom);
+    layerCtx.fillRect(0, 0, layer.width, layer.height);
+    layerCtx.globalCompositeOperation = 'destination-in';
+    layerCtx.drawImage(mask, 0, 0);
+    layerCtx.globalCompositeOperation = 'source-over';
+    target.drawImage(layer, 0, 0);
+  }
+
+  function paintRoads(ctx, roads, geom) {
+    const k = geom.scale;
+    const centre = (value) => (value * TERRAIN_PITCH + TERRAIN_TILE / 2) * k;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const kind of ['path', 'road']) {
+      const mine = roads.filter((road) => road.kind === kind);
+      if (!mine.length) continue;
+      const trace = () => {
+        ctx.beginPath();
+        for (const road of mine) {
+          const x1 = centre(road.from.col);
+          const y1 = centre(road.from.row);
+          const x2 = centre(road.to.col);
+          const y2 = centre(road.to.row);
+          if (x1 === x2 && y1 === y2) {
+            ctx.moveTo(x1 + ROAD_WIDTH[kind] * k * 0.5, y1);
+            ctx.arc(x1, y1, ROAD_WIDTH[kind] * k * 0.5, 0, Math.PI * 2);
+          } else {
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+          }
+        }
+      };
+      trace();
+      ctx.strokeStyle = 'rgba(24, 16, 8, 0.45)';
+      ctx.lineWidth = (ROAD_WIDTH[kind] + 3) * k;
+      ctx.stroke();
+      trace();
+      ctx.strokeStyle = fillFor(ctx, kind, geom);
+      ctx.lineWidth = ROAD_WIDTH[kind] * k;
+      ctx.stroke();
+    }
+  }
+
+  function draw(target, plan, geom) {
+    mask = sized(mask || makeCanvas(target.width, target.height), target.width, target.height);
+    layer = sized(layer || makeCanvas(target.width, target.height), target.width, target.height);
+    const ctx = target.getContext('2d');
+    ctx.clearRect(0, 0, target.width, target.height);
+    for (const region of plan.layers) {
+      if (region.shore) paintRegion(ctx, 'beach', region.cells, GROW + SHORE, geom);
+      paintRegion(ctx, region.terrain, region.cells, GROW, geom);
+    }
+    paintRoads(ctx, plan.roads, geom);
+  }
+
+  return {
+    /**
+     * Paints plan onto canvas. view: { worldX, worldY } is the world cell at
+     * grid column and row 0; width and height are the canvas's CSS size;
+     * zoom and dpr set its resolution.
+     */
+    paint(canvas, plan, view) {
+      if (!canvas || typeof canvas.getContext !== 'function' || !plan) return false;
+      const width = Math.max(1, Math.round(view.width));
+      const height = Math.max(1, Math.round(view.height));
+      let scale = Math.min(MAX_SCALE, Math.max(0.25, (view.zoom || 1) * (view.dpr || 1)));
+      if (width * height * scale * scale > MAX_PIXELS) {
+        scale = Math.sqrt(MAX_PIXELS / (width * height));
+      }
+      const geom = { scale, worldX: view.worldX, worldY: view.worldY };
+      const pixelWidth = Math.round(width * scale);
+      const pixelHeight = Math.round(height * scale);
+      for (const region of plan.layers) {
+        texture(region.terrain);
+        if (region.shore) texture('beach');
+      }
+      for (const road of plan.roads) texture(road.kind);
+      const key = terrainPlanKey(plan) + '|' + view.worldX + ',' + view.worldY + '|'
+        + pixelWidth + 'x' + pixelHeight + '|' + textureVersion;
+      if (!scene || scene.key !== key) {
+        const started = typeof performance !== 'undefined' ? performance.now() : 0;
+        const bitmap = sized(scene ? scene.bitmap : makeCanvas(pixelWidth, pixelHeight), pixelWidth, pixelHeight);
+        draw(bitmap, plan, geom);
+        scene = { key, bitmap };
+        lastPaintMs = (typeof performance !== 'undefined' ? performance.now() : 0) - started;
+      }
+      sized(canvas, pixelWidth, pixelHeight);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, pixelWidth, pixelHeight);
+      ctx.drawImage(scene.bitmap, 0, 0);
+      return true;
+    },
+    lastPaintMs: () => lastPaintMs,
+    dispose() {
+      paintedIndexListeners.delete(onPaintedIndex);
+      scene = null;
+      mask = null;
+      layer = null;
+    },
+  };
+}

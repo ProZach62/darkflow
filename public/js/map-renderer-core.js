@@ -1,6 +1,8 @@
 import { normalizeMapZoom } from './map-zoom.js';
 import { normalizeMapPan, splitMapPan } from './map-pan.js';
 import { getPrimaryTerrain } from './terrain-semantics.mjs';
+import { planTerrain } from './map-terrain-core.js';
+import { createTerrainPainter } from './map-terrain-paint.js';
 
 const TILE_SIZE = 32;
 // Gap between room boxes. Rooms are drawn as separate boxes spaced apart, with
@@ -48,6 +50,8 @@ function createRendererState(options = {}) {
     lastRenderDebug: null,
     motion: null,
     reveal: null,
+    painter: null,
+    lastTerrain: null,
     now: typeof options.now === 'function'
       ? options.now
       : () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
@@ -413,6 +417,14 @@ function renderMap(bodyEl, source, state, extras = {}) {
   const viewportPixelHeight = (viewportH * TILE_SIZE)
     + (Math.max(0, viewportH - 1) * TILE_GAP);
   const overscanOffset = MAP_OVERSCAN_CELLS * (TILE_SIZE + TILE_GAP) * zoom;
+  // Painted terrain: the rooms' land is painted on a canvas under them as
+  // joined regions, and the room boxes become plates on it.
+  const painted = !!(bodyEl.dataset && bodyEl.dataset.mapStyle === 'painted');
+  const gridPixelWidth = (gridW * TILE_SIZE) + ((gridW - 1) * TILE_GAP);
+  const gridPixelHeight = (gridH * TILE_SIZE) + ((gridH - 1) * TILE_GAP);
+  const terrainCells = [];
+  const placed = new Map();
+
   const cameraGliding = !!motion && motionElapsed < CAMERA_GLIDE_MS
     && (motion.cam.x !== 0 || motion.cam.y !== 0);
   let html = '<div class="map-grid-frame' + (cameraGliding ? ' map-camera-glide' : '')
@@ -427,7 +439,12 @@ function renderMap(bodyEl, source, state, extras = {}) {
     + 'px;top:-' + overscanOffset + 'px;gap:' + TILE_GAP + 'px;'
     + 'grid-template-columns:repeat(' + gridW + ',' + TILE_SIZE + 'px);'
     + 'grid-template-rows:repeat(' + gridH + ',' + TILE_SIZE + 'px);'
-    + 'transform:scale(' + zoom + ')">';
+    + 'transform:scale(' + zoom + ')"'
+    + (painted ? ' data-map-style="painted"' : '') + '>'
+    + (painted
+      ? '<canvas class="map-terrain" aria-hidden="true" style="grid-column:1 / -1;grid-row:1 / -1;width:'
+        + gridPixelWidth + 'px;height:' + gridPixelHeight + 'px"></canvas>'
+      : '');
 
   let markerCell = null;
   for (let ry = 0; ry < gridH; ry++) {
@@ -444,6 +461,10 @@ function renderMap(bodyEl, source, state, extras = {}) {
       const isPlayer = room.id === playerId;
       if (isPlayer) markerCell = { column: rx + 1, row: ry + 1 };
       const terrain = getTerrainName(room.environment);
+      if (painted) {
+        terrainCells.push({ col: rx, row: ry, terrain, unseen: room.observed === false });
+        placed.set(room.id, { col: rx, row: ry, room });
+      }
       const trustClass = room.layoutState ? ' map-layout-' + room.layoutState : '';
       const lastPos = !isPlayer && pending && room.id === centerRoom.id ? ' map-tile-lastpos' : '';
       const unseen = room.observed === false ? ' map-tile-unseen' : '';
@@ -518,6 +539,19 @@ function renderMap(bodyEl, source, state, extras = {}) {
 
   bodyEl.innerHTML = html;
 
+  if (painted) {
+    paintTerrainLayer(bodyEl, state, planTerrain(terrainCells, terrainLinks(placed)), {
+      worldX: cx - radiusX,
+      worldY: cy - radiusY,
+      width: gridPixelWidth,
+      height: gridPixelHeight,
+      zoom,
+      dpr: typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1,
+    });
+  } else {
+    state.lastTerrain = null;
+  }
+
   const resyncBtn = bodyEl.querySelector('.map-resync-btn');
   if (resyncBtn) {
     resyncBtn.addEventListener('click', () => {
@@ -550,6 +584,38 @@ function renderMap(bodyEl, source, state, extras = {}) {
     viewport: { width: viewportW, height: viewportH },
     grid: { width: gridW, height: gridH },
   };
+}
+
+// Exits between rooms drawn in neighbouring cells, for roads to follow.
+function terrainLinks(placed) {
+  const links = [];
+  for (const { col, row, room } of placed.values()) {
+    if (!room.exits) continue;
+    for (const [dir] of COMPASS_DIRS) {
+      const dest = placed.get(room.exits[dir]);
+      if (dest && Math.abs(dest.col - col) <= 1 && Math.abs(dest.row - row) <= 1) {
+        links.push({ from: { col, row }, to: { col: dest.col, row: dest.row } });
+      }
+    }
+  }
+  return links;
+}
+
+function paintTerrainLayer(bodyEl, state, plan, view) {
+  const canvas = typeof bodyEl.querySelector === 'function'
+    ? bodyEl.querySelector('canvas.map-terrain') : null;
+  if (!canvas || typeof canvas.getContext !== 'function') return;
+  if (!state.painter) {
+    // A texture arriving after the paint repaints whatever is showing now.
+    state.painter = createTerrainPainter({
+      onTexturesChanged() {
+        const last = state.lastTerrain;
+        if (last && last.canvas.isConnected) state.painter.paint(last.canvas, last.plan, last.view);
+      },
+    });
+  }
+  state.lastTerrain = { canvas, plan, view };
+  state.painter.paint(canvas, plan, view);
 }
 
 // The player's marker sits over the player's cell as its own layer, so it
@@ -755,6 +821,12 @@ export function createMapRenderer(options = {}) {
       state.lastRenderDebug = null;
       state.motion = null;
       state.reveal = null;
+      if (state.painter) state.painter.dispose();
+      state.painter = null;
+      state.lastTerrain = null;
+    },
+    terrainPaintMs() {
+      return state.painter ? state.painter.lastPaintMs() : 0;
     },
   };
 }

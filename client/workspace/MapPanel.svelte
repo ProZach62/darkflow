@@ -169,6 +169,7 @@
 
   function render(): void {
     body.dataset.mapZoom = String(mapZoom);
+    body.dataset.mapStyle = mapSettings.mapPaintedTerrain ? "painted" : "tiles";
     renderer.render(body, source(), { ambience: ambienceInput() });
     enhanceRoomTiles();
     decorateRoute();
@@ -299,8 +300,8 @@
     const ambienceTicker = live ? window.setInterval(refreshAmbience, 5_000) : 0;
     const refreshSettings = (): void => {
       mapSettings = loadClientSettings(localStorage).settings;
-      ambienceKey = "\u0000";
-      refreshAmbience();
+      ambienceKey = ambienceInput()?.key ?? "";
+      render();
     };
     window.addEventListener("darkflow:client-settings-changed", refreshSettings);
 

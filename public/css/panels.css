@@ -1900,6 +1900,39 @@ body.zork-only-mode #panels-menu {
   }
 }
 
+/* Painted terrain: the land is painted on a canvas under the rooms as joined
+   regions, so the tiles go transparent and each room becomes a plate on it. */
+.map-terrain {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.map-grid[data-map-style="painted"] {
+  --map-connector-color: rgba(236, 226, 200, 0.5);
+}
+.map-grid[data-map-style="painted"] > .map-tile {
+  background-color: transparent;
+}
+/* A faint plate: enough to see where each room is without boxing the land. */
+.map-grid[data-map-style="painted"] > .map-tile-room {
+  background-image: none;
+  border-radius: 5px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 246, 225, 0.16),
+    0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+.map-grid[data-map-style="painted"] > .map-tile-unseen {
+  background-color: rgba(120, 126, 136, 0.35);
+  filter: none;
+}
+.map-grid[data-map-style="painted"] > .map-tile-fog {
+  background: radial-gradient(circle at 50% 50%, rgba(150, 160, 175, 0.14), rgba(150, 160, 175, 0.04) 70%, transparent 100%);
+}
+.map-grid[data-map-style="painted"] > .map-tile-fog-lead {
+  background: radial-gradient(circle at 50% 50%, rgba(190, 200, 215, 0.26), rgba(160, 170, 185, 0.08) 65%, transparent 100%);
+}
+
 /* Terrain tile backgrounds */
 .map-tile-city        { background-image: url('/assets/tiles/city.jpg'); }
 .map-tile-road        { background-image: url('/assets/tiles/road.jpg'); }

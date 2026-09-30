@@ -204,3 +204,24 @@ With "Tint the map by time of day" on (Settings, Appearance), the live map
 takes the Scene's time-of-day tint from `Darkwind.Sky`, spread from the
 player's marker; at night a pool of light about two cells across surrounds
 the player. Rooms with no sky, such as inside or underground, are left alone.
+
+With "Paint the map's terrain" on (Settings, Appearance; on by default), the
+land is painted on a canvas under the rooms instead of one square tile per
+room. Rooms of one terrain join into a region: each room's box grows into
+the gaps around it, rounded and feathered, so neighbouring regions meet
+without a black seam and the explored land fades into the dark at its edge.
+Regions are painted low ground first (water, beach, open land) and dense
+cover and high ground last. Water is laid over a band of beach, which shows
+as a shore. A road or path room stands on the commonest land around it
+(never water) and roads are stroked along exits between road rooms only; a
+road room's other exits keep their ordinary connector. The room boxes become
+faint plates on the land, and unvisited rooms are left out of the paint for
+the fog.
+
+Textures are anchored to the world, so the land holds still as the view
+glides over it. Each terrain uses the painted texture that
+`/assets/terrain/index.json` lists, and the old 32px map tile until then;
+`scripts/terrain-texture-build.cjs` builds the painted set from Gemini
+sheets and writes that index. The planner (`map-terrain-core.js`) is pure
+and unit-tested; the painter (`map-terrain-paint.js`) caches the last
+painting, so the several renders one move causes paint once.

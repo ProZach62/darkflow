@@ -103,6 +103,8 @@ export interface Phase2ClientSettings {
   sceneDayNight: boolean;
   /** Tint the live map by the game's time of day, with light around the player at night. */
   mapDayNight: boolean;
+  /** Paint the map's land as joined terrain instead of one square tile per room. */
+  mapPaintedTerrain: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -142,6 +144,7 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   sceneSounds: true,
   sceneDayNight: true,
   mapDayNight: true,
+  mapPaintedTerrain: true,
 };
 
 export type ClientSettingsResult =
@@ -242,6 +245,7 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     sceneSounds: settings.sceneSounds !== false,
     sceneDayNight: settings.sceneDayNight !== false,
     mapDayNight: settings.mapDayNight !== false,
+    mapPaintedTerrain: settings.mapPaintedTerrain !== false,
   };
 }
 
@@ -433,6 +437,7 @@ export function validateClientSettingsDocument(
     "sceneSounds",
     "sceneDayNight",
     "mapDayNight",
+    "mapPaintedTerrain",
   ] as const;
   for (const key of booleanKeys) {
     if (key in value && typeof value[key] !== "boolean")
