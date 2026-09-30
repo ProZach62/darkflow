@@ -1,5 +1,30 @@
 {
   "version": 1,
   "span": 2.5,
-  "textures": []
+  "textures": [
+    "arctic",
+    "barren",
+    "beach",
+    "bridge",
+    "canopy",
+    "city",
+    "desert",
+    "farm",
+    "forest",
+    "hills",
+    "inside",
+    "jungle",
+    "lake",
+    "mountain",
+    "outside",
+    "path",
+    "plains",
+    "river",
+    "road",
+    "sea",
+    "sky",
+    "swamp",
+    "underground",
+    "underwater"
+  ]
 }

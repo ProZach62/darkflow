@@ -77,6 +77,16 @@ async function processSheet({ dataUrl, names, options }) {
       .slice(0, 3)
       .sort((p, q) => p[0] - q[0]);
     if (widest.length === 3) return { found: true, bands: widest };
+    // A sheet with an empty black row or column shows only two bands; the
+    // third sits one pitch further on.
+    if (widest.length === 2) {
+      const pitch = widest[1][0] - widest[0][0];
+      const next = [widest[1][0] + pitch, Math.min(length, widest[1][1] + pitch)];
+      if (pitch > 0 && next[1] - next[0] > length * 0.15) {
+        const all = widest[0][0] > pitch * 0.5 ? [[widest[0][0] - pitch, widest[0][1] - pitch], ...widest] : [...widest, next];
+        return { found: true, bands: all };
+      }
+    }
     const third = length / 3;
     return {
       found: false,
