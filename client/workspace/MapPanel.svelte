@@ -87,7 +87,7 @@
     name: string;
     terrain: string;
     services: string[];
-    exits: Array<{ dir: string; to: string | null; area: string | null }>;
+    exits: Array<{ dir: string; to: string | null; area: string | null; door: string | null }>;
     moreExits: number;
     stack: string[];
     moreStack: number;
@@ -1066,8 +1066,15 @@
             {#each card.data.exits as exit (exit.dir)}
               <li>
                 <span class="map-card-dir">{exit.dir}</span>
-                <span class:map-card-unmapped={!exit.to}>{exit.to ?? "unmapped"}</span>
+                {#if exit.to}
+                  <span>{exit.to}</span>
+                {:else if !exit.door}
+                  <span class="map-card-unmapped">unmapped</span>
+                {/if}
                 {#if exit.area}<span class="map-card-area">{exit.area}</span>{/if}
+                {#if exit.door}
+                  <span class={`map-card-door map-card-door-${exit.door}`}>{exit.door} door</span>
+                {/if}
               </li>
             {/each}
             {#if card.data.moreExits}<li class="map-card-more">+{card.data.moreExits} more</li>{/if}
@@ -1654,6 +1661,18 @@
 
   .map-card-area {
     color: #e0a64a;
+  }
+
+  .map-card-door {
+    color: rgba(120, 200, 120, 0.95);
+  }
+
+  .map-card-door-closed {
+    color: rgba(230, 180, 80, 0.95);
+  }
+
+  .map-card-door-locked {
+    color: rgba(220, 90, 90, 0.95);
   }
 
   .map-card-stack {

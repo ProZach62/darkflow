@@ -34,6 +34,12 @@ const CAMERA_GLIDE_MS = 380;
 const MAX_GLIDE_CELLS = 2;
 // Below this zoom the map leaves out connectors, door ticks, and badges.
 export const LOW_DETAIL_ZOOM = 0.5;
+// From this zoom up each tile is big enough to say more: the room's name,
+// every service it offers, its pin's note, and door marks that show the
+// door's state.
+export const RICH_DETAIL_ZOOM = 2;
+// Service icons a rich tile has room for along its top edge.
+const MAX_RICH_SERVICES = 4;
 // How many cells past the view's grid on each side the map's window
 // reaches: the tiles and the painted terrain are laid out for the window,
 // and the view can move this far within it before either is rebuilt.
@@ -185,7 +191,7 @@ function pickCenterRoom(area, areaRooms, source, skipLast, state) {
 // a full connector and reciprocal neighbours' lines coincide exactly.
 // Also emits per-tile up/down glyphs and a special-exit (enter/portal) dot so
 // every exit a room has is visible on the map, not just planar compass ones.
-function buildExitSpans(room, cz, source) {
+function buildExitSpans(room, cz, source, rich = false) {
   if (!room || !room.exits) return '';
   let spans = '';
   for (const [dir, abbr] of COMPASS_DIRS) {
@@ -246,12 +252,16 @@ function buildExitSpans(room, cz, source) {
   }
   spans += specialExitSpans(room);
   if (room.details && room.details.length) {
-    spans += detailBadge(room.details[0]);
+    // A rich tile has room for every service, in a row along its top.
+    spans += rich && room.details.length > 1
+      ? '<span class="map-services">' + room.details.slice(0, MAX_RICH_SERVICES).map(detailBadge).join('') + '</span>'
+      : detailBadge(room.details[0]);
   }
   return spans;
 }
 
-// Room feature badge (top edge): first detail only; the tooltip lists all.
+// Room feature badge (top edge): first detail only, or on a rich tile a row
+// of them; the room's card lists all.
 // The common services get a drawn icon; anything else keeps its initial.
 const DETAIL_ICONS = {
   shop: '<path d="M3 5h6l1 6H2z"/><path d="M4.5 5V4a1.5 1.5 0 0 1 3 0v1" fill="none" stroke="currentColor" stroke-width="1.2"/>',
@@ -525,6 +535,7 @@ function renderMap(bodyEl, source, state, extras = {}) {
   // Far zoomed out, connectors, door ticks, and badges are under a pixel or
   // two across but were most of the map's DOM; they are left out.
   const detailed = zoom >= LOW_DETAIL_ZOOM;
+  const rich = zoom >= RICH_DETAIL_ZOOM;
   // Each room is a button: on the live map it walks there; browsing, it only
   // names the room.
   const tileLabel = extras.tileLabel === 'browse' ? 'browse' : extras.tileLabel === 'walk' ? 'walk' : null;
@@ -574,12 +585,14 @@ function renderMap(bodyEl, source, state, extras = {}) {
       tiles.set(key, '<div class="map-tile map-tile-room map-tile-' + terrain
         + (isPlayer ? ' map-tile-player' : '') + trustClass + conflictClass(bucket)
         + lastPos + unseen + (revealing ? ' map-tile-revealed' : '') + (pin ? ' map-tile-pinned' : '')
+        + (rich ? ' map-tile-rich' : '')
         + '" data-room-id="' + escAttr(room.id) + '"'
         + conflictAttr(bucket)
         + (tileLabel ? tileButtonAttrs(room, tileLabel) : '')
         + ' style="' + place + (revealing ? 'animation-delay:-' + Math.round(revealElapsed) + 'ms;' : '') + '">'
-        + (detailed ? buildExitSpans(room, cz, source) : '')
+        + (detailed ? buildExitSpans(room, cz, source, rich) : '')
         + (pin ? '<span class="map-pin map-pin-' + escAttr(pin.kind) + '">' + mapPinIconSvg(pin.kind) + '</span>' : '')
+        + (rich && !isPlayer ? richTileText(room, pin) : '')
         + '</div>');
     }
   }
@@ -1084,6 +1097,15 @@ function tintHtml(cell, ambience) {
   return '<div class="map-tint' + (ambience.light ? ' map-lit' : '') + '" style="grid-column:'
     + cell.column + ' / span 1;grid-row:' + cell.row + ' / span 1;--map-tint:' + ambience.color
     + ';--map-tint-alpha:' + round2(Math.min(0.9, Number(ambience.alpha))) + ';" aria-hidden="true"></div>';
+}
+
+// A rich tile's words: the room's name, and under it the pin's note. The
+// player's own tile has the marker over it, and its name is shown above
+// the map.
+function richTileText(room, pin) {
+  const note = pin && pin.note ? '<span class="map-tile-note">' + escAttr(String(pin.note)) + '</span>' : '';
+  return '<span class="map-tile-text" aria-hidden="true"><span class="map-tile-name">'
+    + escAttr(String(room.name || '')) + '</span>' + note + '</span>';
 }
 
 function tileButtonAttrs(room, mode) {

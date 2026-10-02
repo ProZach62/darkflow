@@ -680,7 +680,7 @@ test("the map zooms at the pointer, shows other floors, keeps pins, and searches
   await expect(card).toHaveCount(0, { timeout: 6_000 });
 });
 
-test("the map shows a room's card on hover, faces the way you step, labels landmarks, and centres on a double-click", async ({
+test("the map shows a room's card on hover, faces the way you step, labels landmarks, centres on a double-click, and draws rich tiles zoomed in", async ({
   page,
 }) => {
   test.skip(
@@ -738,6 +738,16 @@ test("the map shows a room's card on hover, faces the way you step, labels landm
     )
     .toEqual([7.5, 5]);
   await expect(map.locator(".map-panel-status")).not.toHaveText("Speedwalking");
+
+  // Zoomed in to 200%, the tiles are rich: the room beside the player is
+  // named on its tile (the player's own has the marker over it).
+  await map.getByRole("button", { name: "Re-center map" }).click();
+  for (let step = 0; step < 10; step++) {
+    await map.getByRole("button", { name: "Zoom map in" }).click();
+  }
+  await expect(map.locator(".map-zoom-level")).toHaveText("200%");
+  await expect(map.locator(".map-tile-name")).toHaveText(["Atrium"]);
+  await expect(map.getByRole("button", { name: "Zoom map in" })).toBeEnabled();
 });
 
 test("map navigation and room imagery survive layout persistence without stale media", async ({

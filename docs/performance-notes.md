@@ -266,6 +266,13 @@ starts, so it runs only while the player stands still:
 | Busy walking, normal zoom | 32-36% | 35% |
 | Busy walking, 20% zoom | 61-66% | 54-59% |
 
+Rich tiles, from 200% zoom, add a name, a note, and a row of service icons to
+every tile, but at 200% the window holds 437 tiles against 567 at 150%.
+Walking ten steps measured 32-33% busy at 200% against 30-34% at 150%. The
+painted terrain's canvas stays under its cap of 2.6 million pixels and twice
+the CSS size, so at 300% the land is drawn a little soft rather than at
+full resolution.
+
 ## Still open
 
 - `Char.Vitals` fans out to every information panel, the combat, audio,

@@ -22,6 +22,11 @@ export function mapServiceName(detail) {
   return SERVICE_NAMES[key] || capitalize(key);
 }
 
+// exitDoors holds 1 for open, 2 for closed, and 3 for locked.
+function doorState(value) {
+  return value === 3 ? 'locked' : value === 2 ? 'closed' : value ? 'open' : null;
+}
+
 function exitRank(dir) {
   const index = EXIT_ORDER.indexOf(dir);
   return index === -1 ? EXIT_ORDER.length : index;
@@ -29,10 +34,13 @@ function exitRank(dir) {
 
 /**
  * What the card shows for room, or null: { name, terrain, services,
- * exits: [{ dir, to, area }], moreExits, stack, moreStack, pin }. An exit's
- * to is the name of the room it leads to when that room is mapped, and its
- * area is set when that room is in another area. stack names the other
- * rooms mapped to the same cell. pin is { kind, label, note } or null.
+ * exits: [{ dir, to, area, door }], moreExits, stack, moreStack, pin }. An
+ * exit's to is the name of the room it leads to when that room is mapped,
+ * its area is set when that room is in another area, and its door is
+ * 'open', 'closed', 'locked', or null. A door with no exit through it (the
+ * server leaves out exits behind closed doors) is listed too. stack names
+ * the other rooms mapped to the same cell. pin is { kind, label, note } or
+ * null.
  */
 export function mapRoomCard(room, source, pin = null) {
   if (!room) return null;
@@ -41,12 +49,15 @@ export function mapRoomCard(room, source, pin = null) {
   const terrain = terrainWords.length ? capitalize(terrainWords.slice(0, 3).join(', ')) : '';
   const services = Array.isArray(room.details) ? room.details.map(mapServiceName) : [];
 
-  const exits = Object.entries(room.exits || {})
-    .sort(([a], [b]) => exitRank(a) - exitRank(b) || a.localeCompare(b))
-    .map(([dir, destId]) => {
-      const dest = source && typeof source.getRoom === 'function' ? source.getRoom(destId) : null;
+  const doors = room.exitDoors || {};
+  const dirs = new Set([...Object.keys(room.exits || {}), ...Object.keys(doors).filter((dir) => doors[dir])]);
+  const exits = [...dirs]
+    .sort((a, b) => exitRank(a) - exitRank(b) || a.localeCompare(b))
+    .map((dir) => {
+      const destId = room.exits ? room.exits[dir] : undefined;
+      const dest = destId !== undefined && source && typeof source.getRoom === 'function' ? source.getRoom(destId) : null;
       const area = dest && dest.area && room.area && dest.area !== room.area ? String(dest.area) : null;
-      return { dir, to: dest && dest.name ? String(dest.name) : null, area };
+      return { dir, to: dest && dest.name ? String(dest.name) : null, area, door: doorState(doors[dir]) };
     });
 
   const stack = [];

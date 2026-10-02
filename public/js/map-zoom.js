@@ -1,5 +1,7 @@
 export const DEFAULT_MAP_ZOOM = 1;
-export const MAP_ZOOM_LEVELS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
+// From 200% up the map draws rich tiles (see RICH_DETAIL_ZOOM in
+// map-renderer-core.js).
+export const MAP_ZOOM_LEVELS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 2, 2.5, 3];
 
 export function normalizeMapZoom(value) {
   if (value === undefined || value === null || value === '') return DEFAULT_MAP_ZOOM;

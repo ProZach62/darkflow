@@ -2442,6 +2442,111 @@ body.zork-only-mode #panels-menu {
 }
 .map-exit-in ~ .map-exit-out { right: 13px; }
 
+/* Rich tiles, from 200% zoom: every service in a row along the top, the
+   room's name across the middle with the pin's note under it, and door
+   marks grown into bars across the gap. The grid is scaled up, so the
+   words are scaled down by as much to stay at their size on screen. */
+.map-services {
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  gap: 0.5px;
+  translate: -50% 0;
+  pointer-events: none;
+}
+.map-services > .map-detail {
+  position: static;
+  transform: none;
+  font-size: 5px;
+}
+.map-services .map-detail-icon svg {
+  width: 5.5px;
+  height: 5.5px;
+}
+.map-tile-text {
+  position: absolute;
+  inset: 8px 2px 2px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(1px / var(--map-zoom, 1));
+  overflow: hidden;
+  text-align: center;
+  pointer-events: none;
+}
+.map-tile-name,
+.map-tile-note {
+  display: -webkit-box;
+  max-width: 100%;
+  padding: 0 calc(3px / var(--map-zoom, 1));
+  border-radius: calc(3px / var(--map-zoom, 1));
+  background: rgba(0, 0, 0, 0.62);
+  font: calc(10px / var(--map-zoom, 1)) / 1.2 var(--df-font-mono);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+}
+.map-tile-name {
+  color: #f0e6cc;
+  -webkit-line-clamp: 2;
+}
+.map-tile-note {
+  color: #ffd77a;
+  font-style: italic;
+  -webkit-line-clamp: 1;
+}
+/* The pin and the route's step count would grow with the tile and cover
+   its services; they keep about their 150% size on screen instead. */
+.map-tile-rich .map-pin {
+  transform-origin: top right;
+  scale: calc(1.5 / var(--map-zoom, 1));
+}
+.map-tile-rich .map-route-count {
+  transform-origin: bottom right;
+  scale: calc(1.5 / var(--map-zoom, 1));
+}
+/* An open door is an outlined gap, a closed one a solid bar, and a locked
+   one a red bar with a keyhole. */
+.map-tile-rich .map-door-n,
+.map-tile-rich .map-door-s {
+  width: 10px;
+  height: 3px;
+}
+.map-tile-rich .map-door-e,
+.map-tile-rich .map-door-w {
+  width: 3px;
+  height: 10px;
+}
+.map-tile-rich .map-door-n { bottom: calc(100% + 2.5px); }
+.map-tile-rich .map-door-s { top: calc(100% + 2.5px); }
+.map-tile-rich .map-door-e { left: calc(100% + 2.5px); }
+.map-tile-rich .map-door-w { right: calc(100% + 2.5px); }
+.map-tile-rich .map-door-ne,
+.map-tile-rich .map-door-nw,
+.map-tile-rich .map-door-se,
+.map-tile-rich .map-door-sw {
+  width: 7px;
+  height: 3px;
+}
+.map-tile-rich .map-door-state-open {
+  background: rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px rgba(120, 200, 120, 0.95);
+}
+.map-tile-rich .map-door-state-locked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 1.5px;
+  height: 1.5px;
+  margin: auto;
+  border-radius: 50%;
+  background: #2a0606;
+}
+
 /* Area name (top line) -- the zone you're in; updates as you cross areas. */
 .map-areaname {
   position: absolute;

@@ -249,7 +249,7 @@ test('exits to a different zone render as stubs, not connectors', () => {
     'cross-zone east exit -> area-boundary stub');
   assert.ok(!out.includes('map-conn-e"'), 'cross-zone exit must not be a connector');
   assert.deepEqual(mapRoomCard(v2.getRoom('ZoneA:edge'), v2).exits,
-    [{ dir: 'east', to: 'Other Gate', area: 'ZoneB' }], 'the room card names the destination zone');
+    [{ dir: 'east', to: 'Other Gate', area: 'ZoneB', door: null }], 'the room card names the destination zone');
 });
 
 // ── Diagonal exits + per-tile indicators ─────────────────────────────────────

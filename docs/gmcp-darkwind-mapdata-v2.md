@@ -294,8 +294,10 @@ fades after about three seconds; the area the map opens in gets none.
 
 Hovering or focusing a room shows its card beside it: the room's name, its
 terrain, its pin and note, its services, each exit with the room it leads to
-(and that room's area when it is another), the other rooms mapped to the same
-cell, and on the live map the steps there or "No known route". The card is
+(and that room's area when it is another) and its door's state from
+`exitDoors` (a door with no exit, closed behind it, is listed too), the other
+rooms mapped to the same cell, and on the live map the steps there or "No
+known route". The card is
 built for the one room when it is hovered (`map-card-core.js`); the tiles
 carry no `title`, which had been a string per room written on every render.
 
@@ -304,6 +306,15 @@ their note (or name) and rooms with services with their name, as many as fit
 without overlapping (`map-labels-core.js`): pins first, then rooms in view,
 at most 40. The labels sit in the grid, which is scaled down, so their text
 is scaled up by as much to stay readable.
+
+The map zooms to 300%, and from 200% (`RICH_DETAIL_ZOOM`) each tile is rich:
+every service it offers in a row along its top (up to four), its name across
+the middle in two lines, the pin's note under that, and its door ticks grown
+into bars across the gap, an outline for an open door, a solid amber bar for
+a closed one, and a red bar with a keyhole for a locked one. The player's
+own tile, under the marker, has no name. The words, the pin badge, and the
+route's step count keep their size on screen as the tile grows. Fewer tiles
+fit at these zooms, so walking costs no more than at 150%.
 
 A double-click on the map centres the view on that point, gliding. On the
 live map a click on a room walks there, so only the ground between rooms

@@ -1,9 +1,10 @@
 // The map's readability: the card over a hovered room, landmark labels on
-// the zoomed-out map, and the marker's facing arrow.
+// the zoomed-out map, rich tiles on the zoomed-in map, and the marker's
+// facing arrow.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { advanceMapMotion, createMapRenderer } from '../public/js/map-renderer-core.js';
+import { advanceMapMotion, createMapRenderer, RICH_DETAIL_ZOOM } from '../public/js/map-renderer-core.js';
 import { mapRoomCard, mapServiceName } from '../public/js/map-card-core.js';
 import { mapLabelText, pickMapLabels } from '../public/js/map-labels-core.js';
 
@@ -44,7 +45,8 @@ function makeBody(dataset = {}) {
 function market() {
   return [
     { id: 'sq', name: 'Market Square', area: 'M', environment: 'outside, city, road', x: 0, y: 0,
-      exits: { west: 'gate', east: 'shop', north: 'bank', down: 'cellar', southeast: 'ghost', enter: 'shop' } },
+      exits: { west: 'gate', east: 'shop', north: 'bank', down: 'cellar', southeast: 'ghost', enter: 'shop' },
+      exitDoors: { east: 1, west: 2, south: 3 } },
     { id: 'shop', name: 'Corner Shop', area: 'M', environment: 'inside', x: 1, y: 0, exits: { west: 'sq' }, details: ['shop'] },
     { id: 'bank', name: 'Gold Bank', area: 'M', environment: 'inside', x: 0, y: -1, exits: { south: 'sq' }, details: ['bank', 'post'] },
     { id: 'gate', name: 'West Gate', area: 'Fields', environment: 'outside, road', x: -1, y: 0, exits: { east: 'sq' } },
@@ -59,13 +61,14 @@ test('a room card names the room, its terrain, services, exits, the rooms sharin
   assert.equal(card.terrain, 'City, road', 'the generic "outside" is left out when there is more');
   assert.deepEqual(card.services, []);
   assert.deepEqual(card.exits, [
-    { dir: 'north', to: 'Gold Bank', area: null },
-    { dir: 'east', to: 'Corner Shop', area: null },
-    { dir: 'southeast', to: null, area: null },
-    { dir: 'west', to: 'West Gate', area: 'Fields' },
-    { dir: 'down', to: 'Cellar', area: null },
-    { dir: 'enter', to: 'Corner Shop', area: null },
-  ], 'compass order, then up and down, then anything else');
+    { dir: 'north', to: 'Gold Bank', area: null, door: null },
+    { dir: 'east', to: 'Corner Shop', area: null, door: 'open' },
+    { dir: 'southeast', to: null, area: null, door: null },
+    { dir: 'south', to: null, area: null, door: 'locked' },
+    { dir: 'west', to: 'West Gate', area: 'Fields', door: 'closed' },
+    { dir: 'down', to: 'Cellar', area: null, door: null },
+    { dir: 'enter', to: 'Corner Shop', area: null, door: null },
+  ], 'compass order, then up and down, then anything else; a door with no exit through it too');
   assert.deepEqual(card.stack, ['Cellar']);
   assert.equal(card.moreStack, 0);
   assert.deepEqual(card.pin, { kind: 'quest', label: 'Quest', note: 'Meet Aldo here' });
@@ -139,6 +142,37 @@ test('zoomed out, landmark rooms are labelled under the marker layer; zoomed in,
   const near = makeBody();
   renderer.render(near, makeSource(rooms, 'sq'), { pins: { bank: { kind: 'home', note: 'Way home' } } });
   assert.doesNotMatch(near.innerHTML, /map-label/);
+});
+
+test('from 200% zoom tiles are rich: every service, the room name, the pin note, and door bars', () => {
+  assert.equal(RICH_DETAIL_ZOOM, 2);
+  const rooms = market();
+  rooms[2].details = ['bank', 'post', 'guild', 'pub', 'shop'];
+  const pins = { bank: { kind: 'note', note: 'Pay <dues>' } };
+  const renderer = createMapRenderer({ now: () => 0 });
+  const near = makeBody({ mapZoom: '2' });
+  renderer.render(near, makeSource(rooms, 'sq'), { pins });
+  // A tile's markup, up to its closing tag (its badges are all spans).
+  const tileOf = (html, id) => {
+    const start = html.indexOf('" data-room-id="' + id + '"');
+    return start === -1 ? '' : html.slice(html.lastIndexOf('<div', start), html.indexOf('</div>', start));
+  };
+  const bank = tileOf(near.innerHTML, 'bank');
+  assert.match(bank, /map-tile-rich/);
+  assert.deepEqual([...bank.matchAll(/map-detail-([a-z]+)"/g)].map((m) => m[1]), ['bank', 'post', 'guild', 'pub'],
+    'up to four services, in a row');
+  assert.match(bank, /<span class="map-services">/);
+  assert.match(bank, /<span class="map-tile-name">Gold Bank<\/span><span class="map-tile-note">Pay &lt;dues&gt;<\/span>/);
+  const shop = tileOf(near.innerHTML, 'shop');
+  assert.doesNotMatch(shop, /map-services/, 'a single service keeps its one badge');
+  assert.match(shop, /map-detail-shop/);
+  const square = tileOf(near.innerHTML, 'sq');
+  assert.doesNotMatch(square, /map-tile-text/, "the player's tile has the marker over it");
+  assert.match(square, /map-door map-door-s map-door-state-locked/);
+
+  const normal = makeBody({ mapZoom: '1.5' });
+  renderer.render(normal, makeSource(rooms, 'sq'), { pins });
+  assert.doesNotMatch(normal.innerHTML, /map-tile-rich|map-tile-text|map-services/);
 });
 
 test('the marker faces the way the player last stepped, and keeps it through jumps and stairs', () => {
