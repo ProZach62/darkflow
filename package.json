@@ -59,7 +59,6 @@
     "electron-updater": "^6.8.9",
     "express": "^4.21.0",
     "howler": "2.2.4",
-    "pixi.js": "^8.22.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {

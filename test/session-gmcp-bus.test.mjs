@@ -159,16 +159,6 @@ test("documented valid payloads pass their registered validators", async (t) => 
     "Room.Players": [{ name: "nacho", fullname: "Nacho the Bold" }],
     "Room.AddPlayer": { name: "nacho", fullname: "Nacho the Bold" },
     "Room.RemovePlayer": "nacho",
-    "Darkwind.Room.Occupants": {
-      version: 1,
-      room: "450359962737049",
-      mode: "snapshot",
-      revision: 1,
-      dark: 0,
-      more: 0,
-      upsert: [{ id: "self-1", name: "Nacho", kind: "self" }],
-      removed: [],
-    },
     "Comm.Channel": { channel: "gossip", talker: "Nacho", text: "Hello there." },
     "Comm.Channel.List": [{ name: "gossip", caption: "Gossip", command: "gossip" }],
     "Comm.Channel.Players": [{ name: "Nacho" }],
@@ -339,10 +329,9 @@ test("handshake support list includes the channel text v2 capability", async (t)
     height: 24,
   });
 
-  assert.equal(CLIENT_SUPPORTS_SET.length, 45);
+  assert.equal(CLIENT_SUPPORTS_SET.length, 44);
   assert.equal(CLIENT_SUPPORTS_SET[0], "Char 1");
   assert.ok(CLIENT_SUPPORTS_SET.includes("Comm.Channel.Text 2"));
-  assert.ok(CLIENT_SUPPORTS_SET.includes("Darkwind.Room.Occupants 1"));
   assert.equal(CLIENT_SUPPORTS_SET.at(-1), "Darkwind.Room.Playlist 1");
 
   const supportsLine = spy.calls.find((line) => line.startsWith("Core.Supports.Set "));

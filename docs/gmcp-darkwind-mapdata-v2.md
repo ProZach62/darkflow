@@ -1,19 +1,5 @@
 # Darkwind.MapData2 GMCP Protocol
 
-## Isometric client mode
-
-Darkflow's Map panel can render this graph as either the original flat grid or
-a 2:1 isometric scene. Iso mode preserves map search, pins, speedwalk, floor
-selection, day/night tint, and focusable room buttons. It draws terrain,
-spatial exits, door state, vertical-exit markers, inside walls, and service
-details from the same room records. Only the current room draws living things;
-those arrive through [`Darkwind.Room.Occupants 1`](gmcp-darkwind-room-occupants.md).
-
-The projection is `screenX = (x - y) * W/2` and
-`screenY = (x + y) * H/2 - z * floorLift`; north therefore points up-right.
-Flat remains the default and the selected mode is persisted with the character
-workspace.
-
 `Darkwind.MapData2` is Darkwind's server-authoritative collaborative map. The
 server owns room identity, topology, layout, cache generations, and sync
 boundaries. Clients render completed snapshots and must not infer Darkwind

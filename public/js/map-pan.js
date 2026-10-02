@@ -47,9 +47,6 @@ function readFrame(bodyEl) {
   return {
     el: frame,
     pitch: Number.isFinite(pitch) && pitch > 0 ? pitch : 1,
-    pitchX: Number(frame.dataset.mapPitchX) || pitch || 1,
-    pitchY: Number(frame.dataset.mapPitchY) || pitch || 1,
-    projection: frame.dataset.mapProjection || 'flat',
     offsetX: normalizeMapPan(frame.dataset.mapPanOffsetX),
     offsetY: normalizeMapPan(frame.dataset.mapPanOffsetY),
   };
@@ -90,20 +87,10 @@ export function wireMapPan(bodyEl, options = {}) {
   const samples = [];
   let coast = null;
 
-  const currentPan = (event) => {
-    const dx = event.clientX - drag.startClientX;
-    const dy = event.clientY - drag.startClientY;
-    if (drag.projection === 'iso') {
-      return {
-        x: drag.startPanX + (dx / drag.pitchX) + (dy / drag.pitchY),
-        y: drag.startPanY - (dx / drag.pitchX) + (dy / drag.pitchY),
-      };
-    }
-    return {
-      x: drag.startPanX + (dx / drag.pitch),
-      y: drag.startPanY + (dy / drag.pitch),
-    };
-  };
+  const currentPan = (event) => ({
+    x: drag.startPanX + ((event.clientX - drag.startClientX) / drag.pitch),
+    y: drag.startPanY + ((event.clientY - drag.startClientY) / drag.pitch),
+  });
 
   const rebase = (event, pan) => {
     writePan(bodyEl, pan.x, pan.y);
@@ -115,9 +102,6 @@ export function wireMapPan(bodyEl, options = {}) {
     drag.startPanY = pan.y;
     if (frame) {
       drag.pitch = frame.pitch;
-      drag.pitchX = frame.pitchX;
-      drag.pitchY = frame.pitchY;
-      drag.projection = frame.projection;
       drag.startOffsetX = frame.offsetX;
       drag.startOffsetY = frame.offsetY;
     } else {
@@ -227,9 +211,6 @@ export function wireMapPan(bodyEl, options = {}) {
     drag.startOffsetX = frame.offsetX;
     drag.startOffsetY = frame.offsetY;
     drag.pitch = frame.pitch;
-    drag.pitchX = frame.pitchX;
-    drag.pitchY = frame.pitchY;
-    drag.projection = frame.projection;
     drag.moved = false;
     bodyEl.classList.add('map-panning');
     if (bodyEl.setPointerCapture) bodyEl.setPointerCapture(event.pointerId);

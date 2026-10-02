@@ -691,28 +691,6 @@ test("Step 8 world contracts accept live mudlib shapes and reject malformed fram
     true,
   );
   assert.equal(lookupGmcpValidator("Darkwind.Room.Image")({ name: "No URL" }).success, false);
-  const occupants = {
-    version: 1,
-    room: roomId,
-    mode: "snapshot",
-    revision: 8,
-    dark: 0,
-    more: 0,
-    upsert: [
-      { id: "self-1", name: "Nacho", kind: "self", race: "human" },
-      { id: "npc-1", name: "a frost giant", kind: "npc", hostile: 1, level: 182 },
-    ],
-    removed: [],
-  };
-  const occupantValidator = lookupGmcpValidator("Darkwind.Room.Occupants");
-  assert.ok(occupantValidator);
-  assert.equal(occupantValidator(occupants).success, true);
-  assert.equal(occupantValidator({ ...occupants, mode: "replace" }).success, false);
-  assert.equal(
-    occupantValidator({ ...occupants, upsert: [{ id: "npc-1", name: "giant", kind: "mob" }] })
-      .success,
-    false,
-  );
 
   for (const packageName of [
     "Darkwind.Room.Playlist.State",

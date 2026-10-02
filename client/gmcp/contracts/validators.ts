@@ -93,7 +93,6 @@ import type {
 } from "./interactions";
 import type {
   DarkwindRoomImage,
-  DarkwindRoomOccupants,
   DarkwindRoomPlaylistAction,
   DarkwindRoomPlaylistOpen,
   DarkwindRoomPlaylistReport,
@@ -174,7 +173,6 @@ export const validateMapData2Reset = typia.createValidate<MapData2Reset>();
 export const validateMapData2Sync = typia.createValidate<MapData2Sync>();
 export const validateMapData2Browse = typia.createValidate<MapData2Browse>();
 export const validateDarkwindRoomImage = typia.createValidate<DarkwindRoomImage>();
-export const validateDarkwindRoomOccupants = typia.createValidate<DarkwindRoomOccupants>();
 export const validateDarkwindRoomPlaylistState = typia.createValidate<DarkwindRoomPlaylistState>();
 export const validateDarkwindRoomPlaylistOpen = typia.createValidate<DarkwindRoomPlaylistOpen>();
 export const validateDarkwindRoomPlaylistAction =
@@ -373,7 +371,6 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.MapData2.BrowseArea")]: validateMapData2BrowseArea,
   [canonicalPackageName("Darkwind.MapData2.Reset")]: validateMapData2Reset,
   [canonicalPackageName("Darkwind.Room.Image")]: validateDarkwindRoomImage,
-  [canonicalPackageName("Darkwind.Room.Occupants")]: validateDarkwindRoomOccupants,
   [canonicalPackageName("Darkwind.Room.Playlist.State")]: validateDarkwindRoomPlaylistState,
   [canonicalPackageName("Darkwind.Room.Playlist.Open")]: validateDarkwindRoomPlaylistOpen,
   [canonicalPackageName("Darkwind.Session.Recovered")]: validateDarkwindSessionRecovered,

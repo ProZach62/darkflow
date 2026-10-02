@@ -126,7 +126,7 @@
       id: "map",
       kind: "map",
       title: "Map",
-      state: { mapMode: "flat", mapZoom: 1 },
+      state: { mapZoom: 1 },
       placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
     },
     {
@@ -148,7 +148,7 @@
     id: "areaMap",
     kind: "areaMap",
     title: "Area Map",
-    state: { mapMode: "flat", mapZoom: 1 },
+    state: { mapZoom: 1 },
     placement: { kind: "floating", bounds: { left: 40, top: 40, width: 520, height: 420 } },
   };
   // The Scene: the player's figure in the current room, and the duel when a
@@ -1468,10 +1468,7 @@
         },
         dockview: currentWorkspace.save().layout,
         ...(railFor("map")
-          ? {
-              mapMode: railFor("map")?.getPanelState("map")?.mapMode === "iso" ? "iso" : "flat",
-              mapZoom: normalizeMapZoom(railFor("map")?.getPanelState("map")?.mapZoom),
-            }
+          ? { mapZoom: normalizeMapZoom(railFor("map")?.getPanelState("map")?.mapZoom) }
           : {}),
         railVisibility: { left: leftRailVisible, right: rightRailVisible },
         scrollviews: { left: leftRail?.ids() ?? [], right: rightRail?.ids() ?? [] },
@@ -1532,12 +1529,7 @@
             [...informationPanels, ...worldPanels].some((panel) => panel.id === id)
           ) {
             const state =
-              id === "map"
-                ? {
-                    mapMode: next.layout.mapMode === "iso" ? "iso" : "flat",
-                    mapZoom: normalizeMapZoom(next.layout.mapZoom),
-                  }
-                : undefined;
+              id === "map" ? { mapZoom: normalizeMapZoom(next.layout.mapZoom) } : undefined;
             rail.addOrUpdatePanel(railPanelSpec(id as RailPanelId, state));
           }
         }
@@ -1892,9 +1884,7 @@
     const unsubscribeWorld = session.world.subscribe(syncWorldPanels);
     const unsubscribeCombat = session.combat.subscribe(syncCombatPanel);
     const saveMapPanelState = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{ mapMode?: unknown; mapZoom?: unknown; panelId?: unknown }>
-      ).detail;
+      const detail = (event as CustomEvent<{ mapZoom?: unknown; panelId?: unknown }>).detail;
       const panel = [...worldPanels, areaMap].find(({ id }) => id === detail?.panelId);
       if (!panel || transferring.has(panel.id)) return;
       const owner = ownerOf(panel.id);
@@ -1903,11 +1893,7 @@
         id: panel.id,
         kind: panel.kind,
         title: panel.title,
-        state: {
-          ...owner.getPanelState(panel.id),
-          mapMode: detail.mapMode === "iso" ? "iso" : "flat",
-          mapZoom: normalizeMapZoom(detail.mapZoom),
-        },
+        state: { ...owner.getPanelState(panel.id), mapZoom: normalizeMapZoom(detail.mapZoom) },
       });
       if (panel.id === "map") requestSave?.();
     };

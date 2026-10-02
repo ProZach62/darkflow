@@ -50,7 +50,6 @@ const CANONICAL_PACKAGES = new Map<string, string>([
   ["darkwind.mapdata2.error", "Darkwind.MapData2.Error"],
   ["darkwind.mapdata2.sync", "Darkwind.MapData2.Sync"],
   ["darkwind.mapdata2.browse", "Darkwind.MapData2.Browse"],
-  ["darkwind.room.occupants", "Darkwind.Room.Occupants"],
 ]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
