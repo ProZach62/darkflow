@@ -1794,6 +1794,13 @@ body.zork-only-mode #panels-menu {
   from { scale: var(--map-zoom-from, 1); }
   to { scale: 1; }
 }
+/* The frame lives on between renders, so each new glide switches to the
+   other of a pair of identical keyframes, which makes the browser start it
+   afresh rather than carry on the last one. */
+@keyframes map-zoom-glide-b {
+  from { scale: var(--map-zoom-from, 1); }
+  to { scale: 1; }
+}
 #panel-body-map.map-coasting .map-grid-frame {
   cursor: grabbing;
 }
@@ -1868,6 +1875,10 @@ body.zork-only-mode #panels-menu {
   100% { box-shadow: 0 0 0 2px rgba(255, 236, 160, 0), 0 0 14px 4px rgba(255, 220, 120, 0); }
 }
 @keyframes map-camera-glide {
+  from { translate: var(--map-cam-x, 0px) var(--map-cam-y, 0px); }
+  to { translate: 0 0; }
+}
+@keyframes map-camera-glide-b {
   from { translate: var(--map-cam-x, 0px) var(--map-cam-y, 0px); }
   to { translate: 0 0; }
 }

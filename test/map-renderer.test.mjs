@@ -146,7 +146,11 @@ test('map overscan does not enlarge the frame layout box', () => {
   assert.deepEqual(debug.viewport, { width: 7, height: 5 });
   assert.deepEqual(debug.grid, { width: 11, height: 9 });
   assert.ok(body.innerHTML.includes('class="map-grid-frame" style="width:272px;height:192px'));
-  assert.ok(body.innerHTML.includes('class="map-grid" style="left:-80px;top:-80px'));
+  // The grid covers a window four cells past the view's grid on each side,
+  // anchored to the world (x from -12, y from -8 here), and sits offset so
+  // the frame shows the view: (gridX + overscan - anchor) cells of 40px.
+  assert.ok(body.innerHTML.includes('class="map-grid" style="left:-360px;top:-240px'));
+  assert.ok(body.innerHTML.includes('grid-template-columns:repeat(19,32px);grid-template-rows:repeat(17,32px)'));
 });
 
 test('content-sized map frames stabilize instead of growing on resize rerenders', () => {

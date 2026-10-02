@@ -130,7 +130,7 @@ test('zooming at a point eases in around it, with the camera glide when both run
   renderer.render(map, tower(), { zoomAnchor: { x: 20, y: -10 } });
   const frame = map.innerHTML.match(/<div class="map-grid-frame[^>]*>/)[0];
   assert.match(frame, /map-grid-frame map-zoom-glide"/);
-  assert.match(frame, /--map-zoom-from:0.8;transform-origin:\d+(\.\d+)?px \d+(\.\d+)?px;animation-delay:-0ms;/);
+  assert.match(frame, /--map-zoom-from:0.8;transform-origin:\d+(\.\d+)?px \d+(\.\d+)?px;animation-name:map-zoom-glide;animation-delay:-0ms;/);
   now += 300;
   renderer.render(map, tower());
   assert.doesNotMatch(map.innerHTML, /map-zoom-glide/, 'over once it has run');

@@ -151,7 +151,7 @@ test('empty cells beside explored rooms are fog, and an unexplored exit leads in
   assert.equal((html.match(/map-tile map-tile-fog/g) || []).length, 12);
   assert.ok(!html.includes('<div class="map-tile"></div>') && !/class="map-tile" style/.test(html),
     'cells far from anything are not drawn at all');
-  assert.match(html, /<div class="map-tile map-tile-fog" style="grid-area:\d+ \/ \d+;"><\/div>/, 'what is drawn is placed explicitly');
+  assert.match(html, /<div class="map-tile map-tile-fog" style="grid-area:\d+ \/ \d+;" data-cell="-?\d+"><\/div>/, 'what is drawn is placed explicitly, and names its cell');
 });
 
 test('rooms known but not yet visited are drawn as silhouettes', () => {

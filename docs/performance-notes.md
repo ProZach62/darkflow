@@ -184,12 +184,42 @@ frame, walking four rooms a second, at normal zoom and at 20%.
 6. Grid cells are keyed by number rather than by `"x,y"` strings.
 
 Under the busy-fight load with the map open in the same area and walking
-two rooms a second, the client is about 45% busy against 26% with the map
-still. What remains per move is restyling and repainting the rebuilt tile
-DOM: the map still rebuilds its tiles with `innerHTML` on every render.
-Keeping tiles at world positions inside the painted window and sliding the
-frame, so a move only adds and removes edge tiles, is the next step. The
-terminal's virtualized renderer measures new lines with
+two rooms a second, the client was about 45% busy against 26% with the map
+still, the difference being the tile DOM rebuilt on every render. That led
+to the next two changes.
+
+### Tile reuse and compositor glides
+
+7. **Tiles live at world positions and are patched, not rebuilt.** The grid
+   covers the same world-anchored window as the painted terrain (four cells
+   past the view's grid on each side), and the frame slides it. Each render
+   still builds every tile's markup, but compares it with the last render's:
+   tiles whose markup is unchanged keep their element (and with it their
+   focus, hover, and route marks), and only changed, new, or departed tiles
+   are touched. The frame, grid, marks (tint, marker, ghost), and overlays
+   (area name, level badge, Resync) are updated in place. The map rebuilds
+   with one `innerHTML` only when the window moves (every four cells), the
+   zoom or level changes, or the painted look is switched. With no live DOM
+   (the tests' stand-in body) it always builds the markup whole.
+8. **The glides run through the Web Animations API.** The camera glide, zoom
+   ease, and marker step were CSS keyframes built on custom properties,
+   which the compositor cannot run, so the frame was restyled on every frame
+   of every glide. On a page they are now `element.animate` with plain
+   values, started once at the time already spent; a render during a glide
+   leaves it running. Without reduced motion, walking cost 337 ms of style a
+   15-move run with the CSS keyframes against 89 ms with no glides at all.
+
+Old against new on the same build, alternating three runs each:
+
+| Walking, 4,900 rooms | Rebuild, CSS glides | Patch, animation API |
+| --- | --- | --- |
+| Busy, normal zoom | 51-65% | 43-47% |
+| Style, normal zoom (15 moves) | 378-457 ms | 165-190 ms |
+| Busy, 20% zoom | 89-112% | 62-70% |
+| Style, 20% zoom (10 moves) | 476-732 ms | 209-219 ms |
+| Full rebuilds per 15 moves | 15 | 3 |
+
+The terminal's virtualized renderer measures new lines with
 `getBoundingClientRect` (about 1.6% of the busy load); that is upstream's.
 
 ## Still open

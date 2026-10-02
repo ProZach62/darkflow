@@ -32,9 +32,10 @@ const CAMERA_GLIDE_MS = 380;
 const MAX_GLIDE_CELLS = 2;
 // Below this zoom the map leaves out connectors, door ticks, and badges.
 export const LOW_DETAIL_ZOOM = 0.5;
-// How many cells past the grid on each side the painted terrain reaches;
-// the grid can move this far within one painting.
-const TERRAIN_MARGIN = 4;
+// How many cells past the view's grid on each side the map's window
+// reaches: the tiles and the painted terrain are laid out for the window,
+// and the view can move this far within it before either is rebuilt.
+const WINDOW_MARGIN = 4;
 // Zooming at a point eases in from the old scale around that point.
 const ZOOM_GLIDE_MS = 220;
 // Rooms that appear while the player explores an area clear out of the fog.
@@ -343,6 +344,7 @@ function renderMap(bodyEl, source, state, extras = {}) {
     if (areaRooms.length === 0) {
       bodyEl.innerHTML = '<div class="map-grid map-empty">'
         + '<div class="map-empty-msg">No rooms mapped for this area yet.</div></div>';
+      state.dom = null;
       return;
     }
     centerRoom = currentRoom && currentRoom.x !== null
@@ -360,6 +362,7 @@ function renderMap(bodyEl, source, state, extras = {}) {
         : 'No map data yet.<br>Explore to build the map.';
       bodyEl.innerHTML = '<div class="map-grid map-empty">'
         + '<div class="map-empty-msg">' + message + '</div></div>';
+      state.dom = null;
       return;
     }
     centerRoom = pickCenterRoom(area, areaRooms, source, false, state);
@@ -450,48 +453,62 @@ function renderMap(bodyEl, source, state, extras = {}) {
     }
   }
 
-  // Build grid HTML
+  // The grid covers a window anchored to the world, a few cells past the
+  // view on every side, and the frame slides it so the view shows its part.
+  // While the view stays inside one window, each tile keeps its place in the
+  // grid, so a render can keep every tile that did not change and only
+  // replace, add, or remove the ones that did.
+  const gridX = cx - radiusX;
+  const gridY = cy - radiusY;
+  const anchorX = Math.floor((gridX - WINDOW_MARGIN) / WINDOW_MARGIN) * WINDOW_MARGIN;
+  const anchorY = Math.floor((gridY - WINDOW_MARGIN) / WINDOW_MARGIN) * WINDOW_MARGIN;
+  const windowW = gridW + WINDOW_MARGIN * 2;
+  const windowH = gridH + WINDOW_MARGIN * 2;
   const viewportPixelWidth = (viewportW * TILE_SIZE)
     + (Math.max(0, viewportW - 1) * TILE_GAP);
   const viewportPixelHeight = (viewportH * TILE_SIZE)
     + (Math.max(0, viewportH - 1) * TILE_GAP);
-  const overscanOffset = MAP_OVERSCAN_CELLS * (TILE_SIZE + TILE_GAP) * zoom;
+  // The view's first column is the grid's overscan in from gridX.
+  const gridOffsetX = (gridX + MAP_OVERSCAN_CELLS - anchorX) * (TILE_SIZE + TILE_GAP) * zoom;
+  const gridOffsetY = (gridY + MAP_OVERSCAN_CELLS - anchorY) * (TILE_SIZE + TILE_GAP) * zoom;
   // Painted terrain: the rooms' land is painted on a canvas under them as
   // joined regions, and the room boxes become plates on it.
   const painted = !!(bodyEl.dataset && bodyEl.dataset.mapStyle === 'painted');
-  const gridPixelWidth = (gridW * TILE_SIZE) + ((gridW - 1) * TILE_GAP);
-  const gridPixelHeight = (gridH * TILE_SIZE) + ((gridH - 1) * TILE_GAP);
+  const windowPixelWidth = (windowW * TILE_SIZE) + ((windowW - 1) * TILE_GAP);
+  const windowPixelHeight = (windowH * TILE_SIZE) + ((windowH - 1) * TILE_GAP);
+  // Everything that sizes or places the grid's cells; when it changes, the
+  // map is rebuilt rather than patched.
+  const windowKey = [anchorX, anchorY, cz, windowW, windowH, zoom, painted ? 'painted' : 'tiles'].join('|');
+  const patching = canPatchMap(bodyEl, state, windowKey);
 
   const cameraGliding = !!motion && motionElapsed < CAMERA_GLIDE_MS
     && (motion.cam.x !== 0 || motion.cam.y !== 0);
-  let zoomStyle = '';
-  if (zoomGliding) {
-    const anchor = state.zoomGlide.anchor;
-    zoomStyle = '--map-zoom-from:' + round2(state.zoomGlide.from) + ';transform-origin:'
-      + round2((viewportPixelWidth * zoom) / 2 + (Number(anchor.x) || 0)) + 'px '
-      + round2((viewportPixelHeight * zoom) / 2 + (Number(anchor.y) || 0)) + 'px;'
-      + 'animation-delay:' + (cameraGliding ? '-' + Math.round(motionElapsed) + 'ms,' : '')
-      + '-' + Math.round(zoomElapsed) + 'ms;';
-  }
-  let html = '<div class="map-grid-frame' + (cameraGliding ? ' map-camera-glide' : '')
-    + (zoomGliding ? ' map-zoom-glide' : '')
-    + '" style="width:' + (viewportPixelWidth * zoom)
+  // On a page the glides run through the Web Animations API with plain
+  // values, which the compositor can run off the main thread; CSS keyframes
+  // built on custom properties cannot, and restyled the frame every frame.
+  // The markup alone (the tests' stand-in body) keeps the CSS form.
+  const useAnimations = canAnimate(bodyEl);
+  const glide = {
+    camera: cameraGliding ? motion : null,
+    cameraElapsed: motionElapsed,
+    zoom: zoomGliding ? state.zoomGlide : null,
+    zoomElapsed,
+    pitch,
+    originX: round2((viewportPixelWidth * zoom) / 2),
+    originY: round2((viewportPixelHeight * zoom) / 2),
+  };
+  const frameStyle = 'width:' + (viewportPixelWidth * zoom)
     + 'px;height:' + (viewportPixelHeight * zoom) + 'px;transform:translate('
     + horizontalPan.offset + 'px,' + verticalPan.offset + 'px);'
-    + (cameraGliding ? glideStyle('cam', motion.cam, pitch, motionElapsed) : '') + zoomStyle + '"'
-    + ' data-map-pitch="' + pitch + '"'
-    + ' data-map-pan-offset-x="' + horizontalPan.offset + '"'
-    + ' data-map-pan-offset-y="' + verticalPan.offset + '">'
-    + '<div class="map-grid" style="left:-' + overscanOffset
-    + 'px;top:-' + overscanOffset + 'px;gap:' + TILE_GAP + 'px;'
-    + 'grid-template-columns:repeat(' + gridW + ',' + TILE_SIZE + 'px);'
-    + 'grid-template-rows:repeat(' + gridH + ',' + TILE_SIZE + 'px);'
-    + 'transform:scale(' + zoom + ')"'
-    + (painted ? ' data-map-style="painted"' : '') + '>'
-    + (painted
-      ? '<canvas class="map-terrain" aria-hidden="true" style="grid-column:1 / -1;grid-row:1 / -1;width:'
-        + gridPixelWidth + 'px;height:' + gridPixelHeight + 'px"></canvas>'
-      : '');
+    + (useAnimations ? zoomOriginStyle(glide) : frameGlideStyle(state, glide, patching));
+  const frameClass = 'map-grid-frame'
+    + (!useAnimations && cameraGliding ? ' map-camera-glide' : '')
+    + (!useAnimations && zoomGliding ? ' map-zoom-glide' : '');
+  const gridStyle = 'left:-' + round2(gridOffsetX)
+    + 'px;top:-' + round2(gridOffsetY) + 'px;gap:' + TILE_GAP + 'px;'
+    + 'grid-template-columns:repeat(' + windowW + ',' + TILE_SIZE + 'px);'
+    + 'grid-template-rows:repeat(' + windowH + ',' + TILE_SIZE + 'px);'
+    + 'transform:scale(' + zoom + ')';
 
   let markerCell = null;
   // Far zoomed out, connectors, door ticks, and badges are under a pixel or
@@ -500,22 +517,24 @@ function renderMap(bodyEl, source, state, extras = {}) {
   // Each room is a button: on the live map it walks there; browsing, it only
   // names the room.
   const tileLabel = extras.tileLabel === 'browse' ? 'browse' : extras.tileLabel === 'walk' ? 'walk' : null;
-  for (let ry = 0; ry < gridH; ry++) {
-    for (let rx = 0; rx < gridW; rx++) {
-      const worldX = cx - radiusX + rx;
-      const worldY = cy - radiusY + ry;
-      const bucket = buckets.get(cellId(worldX, worldY)) || [];
+  const tiles = new Map();
+  for (let ry = 0; ry < windowH; ry++) {
+    for (let rx = 0; rx < windowW; rx++) {
+      const worldX = anchorX + rx;
+      const worldY = anchorY + ry;
+      const key = cellId(worldX, worldY);
+      const bucket = buckets.get(key) || [];
       const room = chooseRoomForTile(bucket, playerId, distances, connectedVisibleCount);
 
       // Every tile is placed on the grid explicitly, so empty cells far from
       // any room need no element at all.
       const place = 'grid-area:' + (ry + 1) + ' / ' + (rx + 1) + ';';
       if (!room) {
-        if (ghostKeys.has(cellId(worldX, worldY))) {
-          html += '<div class="map-tile map-tile-ghost" style="' + place + '"></div>';
+        if (ghostKeys.has(key)) {
+          tiles.set(key, '<div class="map-tile map-tile-ghost" style="' + place + '"></div>');
         } else {
           const fog = fogClass(worldX, worldY, buckets, source);
-          if (fog) html += '<div class="map-tile' + fog + '" style="' + place + '"></div>';
+          if (fog) tiles.set(key, '<div class="map-tile' + fog + '" style="' + place + '"></div>');
         }
         continue;
       }
@@ -529,32 +548,33 @@ function renderMap(bodyEl, source, state, extras = {}) {
       const revealElapsed = revealAt === undefined ? Infinity : now - revealAt;
       const revealing = revealElapsed < REVEAL_MS;
       const pin = pins && pins[room.id] ? pins[room.id] : null;
-      html += '<div class="map-tile map-tile-room map-tile-' + terrain
+      tiles.set(key, '<div class="map-tile map-tile-room map-tile-' + terrain
         + (isPlayer ? ' map-tile-player' : '') + trustClass + conflictClass(bucket)
         + lastPos + unseen + (revealing ? ' map-tile-revealed' : '') + (pin ? ' map-tile-pinned' : '')
-        + '" title="' + escAttr(tileTitle(room, bucket, source, pin)) + '"'
+        + '" title="' + escAttr(tileTitle(room, bucket, source, pin, detailed)) + '"'
         + ' data-room-id="' + escAttr(room.id) + '"'
         + conflictAttr(bucket)
         + (tileLabel ? tileButtonAttrs(room, tileLabel) : '')
         + ' style="' + place + (revealing ? 'animation-delay:-' + Math.round(revealElapsed) + 'ms;' : '') + '">'
         + (detailed ? buildExitSpans(room, cz, source) : '')
         + (pin ? '<span class="map-pin map-pin-' + escAttr(pin.kind) + '">' + mapPinIconSvg(pin.kind) + '</span>' : '')
-        + '</div>';
+        + '</div>');
     }
   }
 
+  let marks = '';
   if (markerCell) {
-    html += tintHtml(markerCell, extras.ambience);
-    html += playerMarkerHtml(markerCell, motion, motionElapsed);
+    marks += tintHtml(markerCell, extras.ambience);
+    marks += playerMarkerHtml(markerCell, useAnimations ? null : motion, motionElapsed);
   }
   // On another floor, a ghost of the marker shows where the player is, and
   // which way: below this floor or above it.
   if (levelOffset !== 0 && playerRoom) {
-    const column = playerRoom.x - (cx - radiusX) + 1;
-    const row = playerRoom.y - (cy - radiusY) + 1;
-    if (column >= 1 && column <= gridW && row >= 1 && row <= gridH) {
+    const column = playerRoom.x - anchorX + 1;
+    const row = playerRoom.y - anchorY + 1;
+    if (column >= 1 && column <= windowW && row >= 1 && row <= windowH) {
       const below = levelOffset > 0;
-      html += '<div class="map-player-ghost" style="grid-column:' + column + ' / span 1;grid-row:'
+      marks += '<div class="map-player-ghost" style="grid-column:' + column + ' / span 1;grid-row:'
         + row + ' / span 1" title="You are ' + Math.abs(levelOffset)
         + (Math.abs(levelOffset) === 1 ? ' level ' : ' levels ') + (below ? 'below' : 'above') + '">'
         + '<span class="map-player-ghost-arrow" aria-hidden="true">' + (below ? '&#x25BC;' : '&#x25B2;')
@@ -562,20 +582,19 @@ function renderMap(bodyEl, source, state, extras = {}) {
     }
   }
 
-  html += '</div></div>';
-
+  let overlays = '';
   // Z-level indicator overlay. Reflects the room the player is in when known,
   // otherwise the parked center room.
   const zRoom = playerRoom || centerRoom;
   const hasUp = zRoom.exits && zRoom.exits.up !== undefined;
   const hasDown = zRoom.exits && zRoom.exits.down !== undefined;
   if (hasUp || hasDown || cz !== 0 || levelOffset !== 0) {
-    html += '<div class="map-zlevel' + (levelOffset !== 0 ? ' map-zlevel-away' : '') + '">';
-    if (hasUp && levelOffset === 0) html += '<span class="map-zlevel-arrow">&#x25B2;</span> ';
-    html += 'Z:' + cz;
-    if (levelOffset !== 0) html += ' <span class="map-zlevel-home">(you: ' + homeZ + ')</span>';
-    if (hasDown && levelOffset === 0) html += ' <span class="map-zlevel-arrow">&#x25BC;</span>';
-    html += '</div>';
+    overlays += '<div class="map-zlevel' + (levelOffset !== 0 ? ' map-zlevel-away' : '') + '">';
+    if (hasUp && levelOffset === 0) overlays += '<span class="map-zlevel-arrow">&#x25B2;</span> ';
+    overlays += 'Z:' + cz;
+    if (levelOffset !== 0) overlays += ' <span class="map-zlevel-home">(you: ' + homeZ + ')</span>';
+    if (hasDown && levelOffset === 0) overlays += ' <span class="map-zlevel-arrow">&#x25BC;</span>';
+    overlays += '</div>';
   }
 
   // Area name on top (updates as you cross areas); the raw area key is the
@@ -585,76 +604,83 @@ function renderMap(bodyEl, source, state, extras = {}) {
   const areaKey = titleRoom.area || '';
   const areaName = (source.getAreaName && source.getAreaName()) || areaKey;
   if (areaName) {
-    html += '<div class="map-areaname" title="' + escAttr(areaKey) + '">'
+    overlays += '<div class="map-areaname" title="' + escAttr(areaKey) + '">'
       + escAttr(areaName) + '</div>';
   }
   if (!browse && source.getAuthority) {
     const authority = source.getAuthority();
-    html += '<div class="map-authority map-authority-' + escAttr(authority)
+    overlays += '<div class="map-authority map-authority-' + escAttr(authority)
       + '" title="' + (authority === 'authoritative'
         ? 'Server-authoritative map data' : 'Locally learned map data') + '">'
       + (authority === 'authoritative' ? 'Server' : 'Learned') + '</div>';
   }
   if (!browse) {
-    html += '<div class="map-roomname">' + escAttr(titleRoom.name) + '</div>';
+    overlays += '<div class="map-roomname">' + escAttr(titleRoom.name) + '</div>';
   }
-  html += '<div class="map-compass">N&#x2191;</div>';
+  overlays += '<div class="map-compass">N&#x2191;</div>';
   if (browse) {
     // No player marker, pending banner, or Resync for a read-only browse view.
   } else if (pending) {
-    html += '<div class="map-pending">&#x25C9; Locating you...</div>';
+    overlays += '<div class="map-pending">&#x25C9; Locating you...</div>';
   } else {
     const status = source.getMapStatus();
-    if (status) html += '<div class="map-status">' + escAttr(status) + '</div>';
+    if (status) overlays += '<div class="map-status">' + escAttr(status) + '</div>';
   }
   if (!browse) {
     const clearLabel = source.getClearMapActionLabel ? source.getClearMapActionLabel() : 'Resync';
     const clearTitle = source.getClearMapActionTitle
       ? source.getClearMapActionTitle()
       : 'Clear and resync map for this area';
-    html += '<button class="map-resync-btn" title="' + escAttr(clearTitle) + '">'
+    overlays += '<button class="map-resync-btn" title="' + escAttr(clearTitle) + '"'
+      + ' data-area="' + escAttr((currentRoom || centerRoom).area || '') + '">'
       + escAttr(clearLabel) + '</button>';
   }
 
-  bodyEl.innerHTML = html;
+  writeMapDom(bodyEl, state, {
+    windowKey,
+    patching,
+    frameClass,
+    frameStyle,
+    frameData: { pitch, offsetX: horizontalPan.offset, offsetY: verticalPan.offset },
+    gridStyle,
+    painted,
+    canvasHtml: painted
+      ? '<canvas class="map-terrain" aria-hidden="true" style="grid-column:1 / -1;grid-row:1 / -1;width:'
+        + windowPixelWidth + 'px;height:' + windowPixelHeight + 'px"></canvas>'
+      : '',
+    tiles,
+    marks,
+    overlays,
+  });
+  state.source = source;
 
   if (painted) {
-    // The land is painted for a window a few cells wider than the grid on
-    // every side, anchored to the world, and the grid shows its part of it.
-    // A move shifts the grid within the same painting; the land is painted
-    // again only when the grid nears the window's edge or the rooms in the
-    // window change.
-    const gridX = cx - radiusX;
-    const gridY = cy - radiusY;
-    const anchorX = Math.floor((gridX - TERRAIN_MARGIN) / TERRAIN_MARGIN) * TERRAIN_MARGIN;
-    const anchorY = Math.floor((gridY - TERRAIN_MARGIN) / TERRAIN_MARGIN) * TERRAIN_MARGIN;
-    const windowW = gridW + TERRAIN_MARGIN * 2;
-    const windowH = gridH + TERRAIN_MARGIN * 2;
+    // The land is painted for the same window, so the canvas lines up with
+    // the grid. It is painted again only when the window moves or the rooms
+    // in it change.
     const scene = terrainWindow(state, buckets, playerId, distances, connectedVisibleCount, {
       anchorX, anchorY, z: cz, width: windowW, height: windowH,
     });
-    const pitchPx = TILE_SIZE + TILE_GAP;
     paintTerrainLayer(bodyEl, state, scene.plan, {
       worldX: anchorX,
       worldY: anchorY,
-      width: (windowW * TILE_SIZE) + ((windowW - 1) * TILE_GAP),
-      height: (windowH * TILE_SIZE) + ((windowH - 1) * TILE_GAP),
+      width: windowPixelWidth,
+      height: windowPixelHeight,
       zoom,
       dpr: typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1,
       sceneKey: scene.key,
-    }, {
-      left: -(gridX - anchorX) * pitchPx,
-      top: -(gridY - anchorY) * pitchPx,
-    });
+    }, { left: 0, top: 0 });
   } else {
     state.lastTerrain = null;
   }
 
-  const resyncBtn = bodyEl.querySelector('.map-resync-btn');
-  if (resyncBtn) {
-    resyncBtn.addEventListener('click', () => {
-      const area = (currentRoom || centerRoom).area;
-      if (area) source.clearMapDataForArea(area);
+  wireResync(bodyEl, state);
+  if (useAnimations) {
+    runGlides(state, {
+      ...glide,
+      marker: motion && motionElapsed < MARKER_STEP_MS && (motion.marker.x !== 0 || motion.marker.y !== 0)
+        ? motion : null,
+      markerElapsed: motionElapsed,
     });
   }
 
@@ -682,6 +708,210 @@ function renderMap(bodyEl, source, state, extras = {}) {
     viewport: { width: viewportW, height: viewportH },
     grid: { width: gridW, height: gridH },
   };
+}
+
+// Writes the map into the body. The first time, after a rebuild, or when
+// there is no live DOM (the tests' stand-in body), it is one innerHTML. On
+// later renders inside the same window it patches: the frame and grid get
+// their new attributes, tiles whose markup is unchanged are kept as they are
+// (with their focus, hover, and route marks), and only changed, new, or gone
+// tiles are touched.
+function canPatchMap(bodyEl, state, windowKey) {
+  const dom = state.dom;
+  return !!(dom && dom.windowKey === windowKey && dom.frame && dom.frame.isConnected
+    && typeof bodyEl.contains === 'function' && bodyEl.contains(dom.frame));
+}
+
+function writeMapDom(bodyEl, state, parts) {
+  const dom = state.dom;
+  if (!parts.patching) {
+    let tilesHtml = '';
+    for (const [key, html] of parts.tiles) tilesHtml += withCell(html, key);
+    bodyEl.innerHTML = '<div class="' + parts.frameClass + '" style="' + parts.frameStyle + '"'
+      + ' data-map-pitch="' + parts.frameData.pitch + '"'
+      + ' data-map-pan-offset-x="' + parts.frameData.offsetX + '"'
+      + ' data-map-pan-offset-y="' + parts.frameData.offsetY + '">'
+      + '<div class="map-grid" style="' + parts.gridStyle + '"'
+      + (parts.painted ? ' data-map-style="painted"' : '') + '>'
+      + parts.canvasHtml + tilesHtml + '<span class="map-marks" hidden></span>' + parts.marks
+      + '</div></div>'
+      + '<div class="map-overlays">' + parts.overlays + '</div>';
+    state.dom = indexMapDom(bodyEl, parts);
+    return;
+  }
+  // Only write what changed: even an unchanged class or attribute write marks
+  // the frame's whole subtree for a style recalculation.
+  const setIfChanged = (el, name, value) => {
+    if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+  };
+  setIfChanged(dom.frame, 'class', parts.frameClass);
+  setIfChanged(dom.frame, 'style', parts.frameStyle);
+  setIfChanged(dom.frame, 'data-map-pitch', String(parts.frameData.pitch));
+  setIfChanged(dom.frame, 'data-map-pan-offset-x', String(parts.frameData.offsetX));
+  setIfChanged(dom.frame, 'data-map-pan-offset-y', String(parts.frameData.offsetY));
+  setIfChanged(dom.grid, 'style', parts.gridStyle);
+  for (const [key, entry] of dom.tiles) {
+    if (!parts.tiles.has(key)) {
+      entry.el.remove();
+      dom.tiles.delete(key);
+    }
+  }
+  for (const [key, html] of parts.tiles) {
+    const entry = dom.tiles.get(key);
+    if (entry && entry.html === html) continue;
+    const el = elementFrom(dom.template, withCell(html, key));
+    if (entry) entry.el.replaceWith(el);
+    else dom.grid.insertBefore(el, dom.marksStart);
+    dom.tiles.set(key, { html, el });
+  }
+  if (dom.marks !== parts.marks) {
+    for (const el of dom.markEls) el.remove();
+    dom.template.innerHTML = parts.marks;
+    dom.markEls = [...dom.template.content.children];
+    dom.grid.append(dom.template.content);
+    dom.marks = parts.marks;
+  }
+  if (dom.overlays !== parts.overlays) {
+    dom.overlayBox.innerHTML = parts.overlays;
+    dom.overlays = parts.overlays;
+  }
+}
+
+// Each tile carries its cell, so a rebuilt map can be indexed for patching.
+function withCell(html, key) {
+  return html.replace('>', ' data-cell="' + key + '">');
+}
+
+function elementFrom(template, html) {
+  template.innerHTML = html;
+  return template.content.firstElementChild;
+}
+
+function indexMapDom(bodyEl, parts) {
+  if (typeof bodyEl.querySelector !== 'function' || typeof document === 'undefined') return null;
+  const frame = bodyEl.querySelector('.map-grid-frame');
+  const grid = frame && frame.querySelector('.map-grid');
+  const marksStart = grid && grid.querySelector(':scope > .map-marks');
+  const overlayBox = bodyEl.querySelector(':scope > .map-overlays');
+  if (!frame || !grid || !marksStart || !overlayBox) return null;
+  const tiles = new Map();
+  for (const el of grid.querySelectorAll(':scope > [data-cell]')) {
+    const key = Number(el.dataset.cell);
+    tiles.set(key, { html: parts.tiles.get(key), el });
+  }
+  const markEls = [];
+  for (let el = marksStart.nextElementSibling; el; el = el.nextElementSibling) markEls.push(el);
+  return {
+    windowKey: parts.windowKey,
+    frame,
+    grid,
+    marksStart,
+    overlayBox,
+    tiles,
+    markEls,
+    marks: parts.marks,
+    overlays: parts.overlays,
+    template: document.createElement('template'),
+  };
+}
+
+const GLIDE_EASING = 'cubic-bezier(0.33, 1, 0.68, 1)';
+
+function canAnimate(bodyEl) {
+  return !!(bodyEl && bodyEl.ownerDocument && typeof Element !== 'undefined'
+    && typeof Element.prototype.animate === 'function');
+}
+
+function zoomOriginStyle(glide) {
+  if (!glide.zoom) return '';
+  const anchor = glide.zoom.anchor;
+  return 'transform-origin:' + round2(glide.originX + (Number(anchor.x) || 0)) + 'px '
+    + round2(glide.originY + (Number(anchor.y) || 0)) + 'px;';
+}
+
+// Starts each glide once, on the element it belongs to, at the time already
+// spent; a render during a glide leaves it running. A glide whose element
+// was rebuilt starts again on the new one from where it had got to.
+function runGlides(state, glide) {
+  const frame = state.dom && state.dom.frame;
+  if (!frame || typeof frame.animate !== 'function') return;
+  const running = state.glideAnimations || (state.glideAnimations = {});
+  const start = (slot, el, key, keyframes, duration, elapsed) => {
+    const previous = running[slot];
+    if (previous && previous.el === el && previous.key === key) return;
+    if (previous && previous.animation) previous.animation.cancel();
+    const animation = el.animate(keyframes, { duration, easing: GLIDE_EASING });
+    animation.currentTime = Math.max(0, Math.min(elapsed, duration));
+    running[slot] = { el, key, animation };
+  };
+  if (glide.camera) {
+    const x = round2(glide.camera.cam.x * glide.pitch);
+    const y = round2(glide.camera.cam.y * glide.pitch);
+    start('camera', frame, glide.camera.at,
+      [{ translate: x + 'px ' + y + 'px' }, { translate: '0px 0px' }], CAMERA_GLIDE_MS, glide.cameraElapsed);
+  }
+  if (glide.zoom) {
+    start('zoom', frame, glide.zoom.at,
+      [{ scale: String(round2(glide.zoom.from)) }, { scale: '1' }], ZOOM_GLIDE_MS, glide.zoomElapsed);
+  }
+  const marker = glide.marker && frame.querySelector('.map-player-marker');
+  if (marker) {
+    const pitch = TILE_SIZE + TILE_GAP;
+    const x = round2(-glide.marker.marker.x * pitch);
+    const y = round2(-glide.marker.marker.y * pitch);
+    start('marker', marker, glide.marker.at,
+      [{ translate: x + 'px ' + y + 'px' }, { translate: '0px 0px' }], MARKER_STEP_MS, glide.markerElapsed);
+  }
+}
+
+// The frame lives on between renders now, so its glide animations must not
+// be restarted or re-timed by a render that only rewrites its style: a glide
+// keeps the style it started with until a new glide begins, and each new
+// glide flips to a twin keyframe name so the browser starts it afresh.
+function frameGlideStyle(state, glide, patching) {
+  const cameraKey = glide.camera ? glide.camera.at : null;
+  const zoomKey = glide.zoom ? glide.zoom.at : null;
+  const previous = state.frameGlide;
+  // A rebuilt frame is a new element: its glides start now, at the time
+  // already spent. Only a frame carried over keeps its old style.
+  if (patching && previous && previous.cameraKey === cameraKey && previous.zoomKey === zoomKey) {
+    return previous.style;
+  }
+  const cameraParity = patching && previous && cameraKey !== null && previous.cameraKey !== cameraKey
+    ? 1 - previous.cameraParity : (patching && previous ? previous.cameraParity : 0);
+  const zoomParity = patching && previous && zoomKey !== null && previous.zoomKey !== zoomKey
+    ? 1 - previous.zoomParity : (patching && previous ? previous.zoomParity : 0);
+  const names = [];
+  const delays = [];
+  let style = '';
+  if (glide.camera) {
+    style += glideStyle('cam', glide.camera.cam, glide.pitch, glide.cameraElapsed);
+    names.push(cameraParity ? 'map-camera-glide-b' : 'map-camera-glide');
+    delays.push('-' + Math.round(glide.cameraElapsed) + 'ms');
+  }
+  if (glide.zoom) {
+    const anchor = glide.zoom.anchor;
+    style += '--map-zoom-from:' + round2(glide.zoom.from) + ';transform-origin:'
+      + round2(glide.originX + (Number(anchor.x) || 0)) + 'px '
+      + round2(glide.originY + (Number(anchor.y) || 0)) + 'px;';
+    names.push(zoomParity ? 'map-zoom-glide-b' : 'map-zoom-glide');
+    delays.push('-' + Math.round(glide.zoomElapsed) + 'ms');
+  }
+  if (names.length) style += 'animation-name:' + names.join(',') + ';animation-delay:' + delays.join(',') + ';';
+  state.frameGlide = { cameraKey, zoomKey, cameraParity, zoomParity, style };
+  return style;
+}
+
+// The Resync button clears the area it was drawn for; it is wired once per
+// button element, which lives as long as the overlays do not change.
+function wireResync(bodyEl, state) {
+  const button = typeof bodyEl.querySelector === 'function' ? bodyEl.querySelector('.map-resync-btn') : null;
+  if (!button || button.dataset.wired) return;
+  button.dataset.wired = '1';
+  button.addEventListener('click', () => {
+    const area = button.dataset.area;
+    if (area && state.source) state.source.clearMapDataForArea(area);
+  });
 }
 
 // The rooms of the painted window and a key that changes only when what
@@ -932,7 +1162,7 @@ export function mapLevelOffset(value) {
   return Number.isFinite(offset) ? Math.max(-50, Math.min(50, offset)) : 0;
 }
 
-function tileTitle(room, bucket, source, pin) {
+function tileTitle(room, bucket, source, pin, detailed = true) {
   let title = room.name;
   if (pin) title += '\nPinned: ' + mapPinLabel(pin.kind) + (pin.note ? ' - ' + pin.note : '');
   if (bucket.length > 1) {
@@ -941,7 +1171,9 @@ function tileTitle(room, bucket, source, pin) {
     title += '\n' + bucket.length + ' mapped rooms share this coordinate:\n'
       + names.join('\n') + suffix;
   }
-  const boundaries = boundaryExitLines(room, source);
+  // Far zoomed out the exits are not drawn, and naming where each leads
+  // costs a lookup per exit per room.
+  const boundaries = detailed ? boundaryExitLines(room, source) : [];
   if (boundaries.length) title += '\n' + boundaries.join('\n');
   if (room.details && room.details.length) {
     title += '\n[' + room.details.join(', ') + ']';
@@ -1016,6 +1248,13 @@ export function createMapRenderer(options = {}) {
       state.zoomGlide = null;
       state.lastView = null;
       state.terrainScene = null;
+      state.dom = null;
+      state.frameGlide = null;
+      state.source = null;
+      for (const entry of Object.values(state.glideAnimations || {})) {
+        if (entry && entry.animation) entry.animation.cancel();
+      }
+      state.glideAnimations = null;
       if (state.painter) state.painter.dispose();
       state.painter = null;
       state.lastTerrain = null;

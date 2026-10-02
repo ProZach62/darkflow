@@ -453,6 +453,48 @@ test("the map marks you, previews a route on hover, draws service icons, and has
   await expect(legend).toHaveCount(0);
 });
 
+test("the map keeps unchanged room tiles across renders, with their focus, and patches what changed", async ({
+  page,
+}) => {
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(103, "Far Hall", 2, { west: 102 }));
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    currentRoom(102, "East Hall", 1, { west: 101, east: 103 }),
+  );
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  const farHall = map.getByRole("button", { name: "Speedwalk to Far Hall" });
+  await expect(farHall).toBeVisible();
+
+  // Tag the tile's element and give it keyboard focus, then make the map
+  // render again without changing that room.
+  await farHall.evaluate((el) => {
+    (el as HTMLElement & { keptAcrossRenders?: boolean }).keptAcrossRenders = true;
+    (el as HTMLElement).focus();
+  });
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
+  await expect(map.locator(".map-tile-player")).toHaveAttribute("data-room-id", "101");
+  await expect
+    .poll(() =>
+      farHall.evaluate((el) => ({
+        kept: !!(el as HTMLElement & { keptAcrossRenders?: boolean }).keptAcrossRenders,
+        focused: document.activeElement === el,
+      })),
+    )
+    .toEqual({ kept: true, focused: true });
+
+  // A move changes the player's old and new tiles; the map shows it either way.
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    currentRoom(102, "East Hall", 1, { west: 101, east: 103 }),
+  );
+  await expect(map.locator(".map-tile-player")).toHaveAttribute("data-room-id", "102");
+  await expect(map.locator(".map-tile-player")).toHaveCount(1);
+  await expect(map.locator(".map-player-marker")).toHaveCount(1);
+});
+
 test("the map zooms at the pointer, shows other floors, keeps pins, and searches", async ({
   page,
 }) => {
