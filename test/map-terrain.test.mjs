@@ -58,11 +58,40 @@ test('a road stands on the land around it and runs along its exits', () => {
   assert.ok(regionOf(plan, 'forest').cells.some((c) => c.col === 1 && c.row === 1), 'the road is painted over forest');
   assert.ok(regionOf(plan, 'forest').cells.some((c) => c.col === 1 && c.row === 0), 'and so is the path beside it');
   assert.deepEqual(plan.roads, [
-    { kind: 'road', from: { col: 1, row: 1 }, to: { col: 1, row: 0 } },
-  ], 'road to road only, and a road meeting a path is a road; the forest and the town keep their connectors');
+    { kind: 'road', from: { col: 1, row: 1 }, to: { col: 1, row: 0.5 } },
+    { kind: 'path', from: { col: 1, row: 0 }, to: { col: 1, row: 0.5 } },
+  ], 'road to road only, in halves that meet midway, each its own kind; the forest and the town keep their connectors');
 
   const byWater = planTerrain([cell(0, 0, 'lake'), cell(1, 0, 'lake'), cell(0, 1, 'road'), cell(1, 1, 'farm')]);
   assert.ok(regionOf(byWater, 'farm').cells.some((c) => c.col === 0 && c.row === 1), 'a road beside a lake stands on land');
+});
+
+test('a road across water is a bridge, with the water running on under it', () => {
+  // A river running north to south, crossed by an east-west road.
+  const plan = planTerrain(
+    [
+      cell(0, 1, 'road'), cell(1, 1, 'road'), cell(2, 1, 'road'),
+      cell(1, 0, 'river'), cell(1, 2, 'river'), cell(0, 0, 'plains'), cell(2, 2, 'plains'),
+    ],
+    [link([0, 1], [1, 1]), link([1, 1], [2, 1])],
+  );
+  assert.ok(regionOf(plan, 'river').cells.some((c) => c.col === 1 && c.row === 1), 'the river runs under the bridge');
+  assert.ok(!regionOf(plan, 'plains').cells.some((c) => c.col === 1 && c.row === 1));
+  assert.deepEqual(plan.roads, [
+    { kind: 'road', from: { col: 0, row: 1 }, to: { col: 0.5, row: 1 } },
+    { kind: 'bridge', from: { col: 1, row: 1 }, to: { col: 0.5, row: 1 } },
+    { kind: 'bridge', from: { col: 1, row: 1 }, to: { col: 1.5, row: 1 } },
+    { kind: 'road', from: { col: 2, row: 1 }, to: { col: 1.5, row: 1 } },
+  ], 'the deck covers the bridge room\'s own halves; the banks stay road');
+
+  const named = planTerrain([cell(0, 0, 'road', { water: 'lake' }), cell(1, 0, 'plains')]);
+  assert.deepEqual(named.roads, [{ kind: 'bridge', from: { col: 0, row: 0 }, to: { col: 0, row: 0 } }],
+    'a road room whose description names water is a bridge, even without water beside it');
+  assert.ok(regionOf(named, 'lake').cells.some((c) => c.col === 0 && c.row === 0), 'over the water it names');
+
+  const shore = planTerrain([cell(0, 0, 'road'), cell(0, 1, 'lake'), cell(1, 0, 'plains')]);
+  assert.equal(shore.roads[0].kind, 'road', 'water on one side only is a shore road, not a bridge');
+  assert.equal(planTerrain([cell(0, 0, 'road', { water: 'puddle' })]).roads[0].kind, 'road', 'only real water counts');
 });
 
 test('a lone road room is a patch of road; distant links and unseen rooms are not painted', () => {
@@ -128,4 +157,40 @@ test('the renderer lays the terrain canvas under the rooms only in painted mode'
     assert.doesNotMatch(plain.innerHTML, /map-terrain|data-map-style/);
     assert.match(plain.innerHTML, /map-tile-forest/, 'the terrain class stays for the tile look');
   }
+});
+
+test('living terrain animates water, swamp mist, and town torchlight at night, each cell in its own phase', async () => {
+  const { cellPhase } = await import('../public/js/map-renderer-core.js');
+  const rooms = new Map([
+    ['L', { id: 'L', name: 'Lake', area: 'T', environment: 'lake', x: 0, y: 0, z: 0, exits: {} }],
+    ['R', { id: 'R', name: 'Ford', area: 'T', environment: 'river', x: 1, y: 0, z: 0, exits: {} }],
+    ['S', { id: 'S', name: 'Bog', area: 'T', environment: 'swamp', x: 0, y: 1, z: 0, exits: {} }],
+    ['C', { id: 'C', name: 'Square', area: 'T', environment: 'city', x: 1, y: 1, z: 0, exits: {} }],
+    ['U', { id: 'U', name: 'Far Lake', area: 'T', environment: 'lake', x: 2, y: 0, z: 0, exits: {}, observed: false }],
+  ]);
+  const map = {
+    DIR_OFFSETS: {},
+    getCurrentRoomId: () => 'C',
+    getRoom: (id) => rooms.get(id) || null,
+    getRoomsByArea: () => [...rooms.values()],
+    getMapStatus: () => '',
+    getAreaName: () => 'T',
+    getAuthority: () => 'authoritative',
+    clearMapDataForArea: () => {},
+  };
+  const kinds = (extras, dataset = {}) => {
+    const out = body();
+    Object.assign(out.dataset, dataset);
+    createMapRenderer({ now: () => 0 }).render(out, map, extras);
+    return [...out.innerHTML.matchAll(/class="map-live map-live-(\w+)"/g)].map((m) => m[1]).sort();
+  };
+  assert.deepEqual(kinds({ living: true }), ['mist', 'river', 'water'], 'the unvisited lake is left still');
+  assert.deepEqual(kinds({ living: true, ambience: { color: '#22335f', alpha: 0.4, light: true } }), ['mist', 'river', 'torch', 'water']);
+  assert.deepEqual(kinds({}), [], 'off unless asked for');
+  assert.deepEqual(kinds({ living: true }, { mapMotion: 'reduce' }), [], 'and still with reduced motion');
+
+  assert.equal(cellPhase(3, 4), cellPhase(3, 4), 'the same cell, the same phase');
+  const phases = new Set(Array.from({ length: 50 }, (_, i) => Math.floor(cellPhase(i, 7) * 10)));
+  assert.ok(phases.size >= 7, 'neighbours spread across the cycle');
+  assert.ok([...Array(200).keys()].every((i) => cellPhase(i, -i) >= 0 && cellPhase(i, -i) < 1));
 });

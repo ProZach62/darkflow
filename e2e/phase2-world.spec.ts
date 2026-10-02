@@ -475,6 +475,10 @@ test("the map zooms at the pointer, shows other floors, keeps pins, and searches
   const mapBody = map.locator(".map-body");
   const atrium = map.getByRole("button", { name: "Speedwalk to Atrium" });
   await expect(atrium).toBeVisible();
+  await expect(
+    map.locator(".map-title-card"),
+    "no banner for the area the map opens in",
+  ).toHaveCount(0);
 
   // Wheel zoom steps once, around the pointer.
   const box = await atrium.boundingBox();
@@ -519,6 +523,16 @@ test("the map zooms at the pointer, shows other floors, keeps pins, and searches
   await expect(map.locator(".map-level-label")).toHaveText("+1 level");
   await expect(map.locator(".map-tile-found")).toHaveCount(1);
   await expect(mapBody).toBeVisible();
+
+  // Crossing into another area shows its name, then the banner fades away.
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(301, "Salt Road", 0),
+    area: "The Saltmarsh",
+  });
+  const card = map.locator(".map-title-card");
+  await expect(card).toContainText("Entering");
+  await expect(card).toContainText("Saltmarsh");
+  await expect(card).toHaveCount(0, { timeout: 6_000 });
 });
 
 test("map navigation and room imagery survive layout persistence without stale media", async ({

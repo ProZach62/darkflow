@@ -36,7 +36,7 @@ const GROW = 6;
 const CORNER = 11;
 const FEATHER = 4;
 const SHORE = 5;
-const ROAD_WIDTH = { road: 10, path: 6 };
+const ROAD_WIDTH = { road: 10, path: 6, bridge: 11 };
 // Keep the backing store modest; the paint is soft, so it need not be sharp.
 const MAX_PIXELS = 2_600_000;
 const MAX_SCALE = 2;
@@ -48,7 +48,7 @@ const TERRAIN_COLORS = {
   arctic: '#dfe8ee', plains: '#6f8f45', outside: '#5f7a44', farm: '#8e8a44',
   sky: '#9fc3e0', inside: '#6a5a48', underground: '#3e3a36', city: '#77736c',
   hills: '#6c7a45', jungle: '#2f5a2c', forest: '#35532d', canopy: '#2a4a26',
-  mountain: '#7a756d', road: '#8a7c66', path: '#8b6f4a',
+  mountain: '#7a756d', road: '#8a7c66', path: '#8b6f4a', bridge: '#7a6248',
 };
 
 function makeCanvas(width, height) {
@@ -184,6 +184,47 @@ export function createTerrainPainter(options = {}) {
       ctx.lineWidth = ROAD_WIDTH[kind] * k;
       ctx.stroke();
     }
+    paintBridges(ctx, roads.filter((road) => road.kind === 'bridge'), geom, centre);
+  }
+
+  // Bridge decks are drawn one half-link at a time: dark rails, then the
+  // plank texture turned to the deck's direction, so the boards always run
+  // across it. Square ends, so the halves meet in one straight deck.
+  function paintBridges(ctx, bridges, geom, centre) {
+    const k = geom.scale;
+    const width = ROAD_WIDTH.bridge * k;
+    for (const bridge of bridges) {
+      const x1 = centre(bridge.from.col);
+      const y1 = centre(bridge.from.row);
+      const x2 = centre(bridge.to.col);
+      const y2 = centre(bridge.to.row);
+      const lone = x1 === x2 && y1 === y2;
+      const angle = lone ? 0 : Math.atan2(y2 - y1, x2 - x1);
+      ctx.save();
+      ctx.lineCap = lone ? 'square' : 'butt';
+      ctx.beginPath();
+      ctx.moveTo(lone ? x1 - width / 2 : x1, y1);
+      ctx.lineTo(lone ? x1 + width / 2 : x2, lone ? y1 : y2);
+      ctx.strokeStyle = 'rgba(28, 18, 8, 0.75)';
+      ctx.lineWidth = width + 4 * k;
+      ctx.stroke();
+      ctx.strokeStyle = bridgeFill(ctx, angle, geom);
+      ctx.lineWidth = width;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function bridgeFill(ctx, angle, geom) {
+    const entry = texture('bridge');
+    if (!entry.ready || !entry.image.naturalWidth) return TERRAIN_COLORS.bridge;
+    const pattern = ctx.createPattern(entry.image, 'repeat');
+    if (!pattern) return TERRAIN_COLORS.bridge;
+    // The painted planks run up and down the swatch, across a deck that
+    // runs left to right; turn them with the deck.
+    const scale = (TERRAIN_TILE * 0.9 / entry.image.naturalWidth) * geom.scale;
+    pattern.setTransform(new DOMMatrix().rotateSelf((angle * 180) / Math.PI).scaleSelf(scale));
+    return pattern;
   }
 
   function draw(target, plan, geom) {

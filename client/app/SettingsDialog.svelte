@@ -925,6 +925,11 @@
             label="Paint the map's terrain"
             help="Rooms of the same terrain join into painted land, water gets a shore, and roads run between rooms. Off, each room is its own square tile."
           />
+          <SettingsCheckbox
+            bind:checked={settings.mapLivingTerrain}
+            label="Animate the map"
+            help="Water shimmers, swamp mist drifts, and towns show torchlight at night. Off, or with reduced motion, the map holds still."
+          />
           <label class="settings-row"
             ><span class="settings-copy"
               ><span class="settings-label">Theme</span>

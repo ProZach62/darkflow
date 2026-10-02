@@ -131,6 +131,10 @@
   let foundTimer = 0;
   // A zoom that just happened at a point, for the renderer to ease in.
   let pendingZoomAnchor: { x: number; y: number } | null = null;
+  // The banner shown on crossing into a new area, and the area last seen.
+  let titleCard = $state<{ name: string; key: number } | null>(null);
+  let titleCardTimer = 0;
+  let lastArea: string | null = null;
   let wheelTotal = 0;
   let lastWheelStep = -Infinity;
   let viewport: HTMLElement;
@@ -239,6 +243,18 @@
     render();
   }
 
+  // Crossing into a new area shows its name as a banner that fades; the
+  // area the map opens in does not.
+  function announceArea(area: string): void {
+    if (area === lastArea) return;
+    const first = lastArea === null;
+    lastArea = area;
+    if (first) return;
+    titleCard = { name: source().getAreaName() || area, key: Date.now() };
+    window.clearTimeout(titleCardTimer);
+    titleCardTimer = window.setTimeout(() => (titleCard = null), 3_400);
+  }
+
   function decorateFound(): void {
     if (!foundId) return;
     tileFor(foundId)?.classList.add("map-tile-found");
@@ -329,6 +345,7 @@
       ambience: ambienceInput(),
       pins: pins.pins,
       zoomAnchor: pendingZoomAnchor,
+      living: mapSettings.mapLivingTerrain,
     });
     pendingZoomAnchor = null;
     const current = view();
@@ -340,6 +357,7 @@
       return;
     }
     if (current) lastHomeZ = current.homeZ;
+    if (live && current?.area) announceArea(current.area);
     updateLevelControls(current);
     enhanceRoomTiles();
     decorateRoute();
@@ -711,6 +729,7 @@
       body.removeEventListener("wheel", handleWheel);
       panel.removeEventListener("keydown", handleLegendKeydown);
       window.clearTimeout(foundTimer);
+      window.clearTimeout(titleCardTimer);
       renderer.dispose();
       if (!live) activeSession.world.closeBrowse();
     };
@@ -789,6 +808,14 @@
   </div>
   <div class="map-viewport" bind:this={viewport}>
     <div bind:this={body} class="map-body" id={`panel-body-${panelId}`}></div>
+    {#if titleCard}
+      {#key titleCard.key}
+        <div class="map-title-card" role="status">
+          <span class="map-title-card-kicker">Entering</span>
+          <span class="map-title-card-name">{titleCard.name}</span>
+        </div>
+      {/key}
+    {/if}
     {#if searchOpen}
       <div class="map-search" role="search">
         <input
@@ -1065,6 +1092,74 @@
     z-index: 3;
     outline: 2px solid var(--df-accent-blue);
     outline-offset: 1px;
+  }
+
+  .map-title-card {
+    position: absolute;
+    top: 16%;
+    left: 50%;
+    z-index: 19;
+    display: grid;
+    justify-items: center;
+    gap: 0.125rem;
+    max-width: calc(100% - 1.5rem);
+    padding: 0.5rem 1.5rem 0.625rem;
+    background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0) 72%);
+    pointer-events: none;
+    text-align: center;
+    transform: translateX(-50%);
+    animation: map-title-card 3.2s ease both;
+  }
+
+  .map-title-card-kicker {
+    color: #cdb88a;
+    font-size: calc(0.625rem * var(--pane-font-scale, 1));
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+  }
+
+  .map-title-card-name {
+    padding: 0 0.75rem 0.25rem;
+    border-bottom: 1px solid rgba(214, 186, 120, 0.6);
+    color: #f3e3b5;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: calc(1.25rem * var(--pane-font-scale, 1));
+    letter-spacing: 0.04em;
+    text-shadow:
+      0 2px 6px #000,
+      0 0 14px rgba(0, 0, 0, 0.85);
+  }
+
+  @keyframes map-title-card {
+    0% {
+      opacity: 0;
+      translate: 0 6px;
+    }
+    15%,
+    72% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    100% {
+      opacity: 0;
+      translate: 0 -4px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .map-title-card {
+      animation: map-title-card-still 3.2s linear both;
+    }
+
+    @keyframes map-title-card-still {
+      0%,
+      85% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 0;
+      }
+    }
   }
 
   .map-level-controls {

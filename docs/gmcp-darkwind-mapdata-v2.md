@@ -252,3 +252,21 @@ also a store, a pub an inn or tavern), and by pin kind and note; every word
 must match, and names that start with a word rank first. Empty, it lists the
 area's pins. Enter flies to the room, on its floor, and rings it; Shift+Enter
 or Walk also speedwalks there.
+
+A road or path room is a bridge when its description names water (a
+`river`, `lake`, or `sea` token in `env`) or when it has water on two
+opposite sides; water on one side is a shore road. The water runs on under a
+bridge, and its deck is painted with plank texture turned to the deck's
+direction, between dark rails. Road links are drawn in two halves, from each
+room to the midpoint, so a deck, a road, and a path each cover only their own
+room's half.
+
+With "Animate the map" on (Settings, Appearance; on by default), water
+shimmers (a river runs faster), swamp mist drifts, and at night town rooms
+show flickering torchlight above the night tint. Each is a soft CSS layer
+over a visited room's cell, started at a stable point in its cycle from the
+cell's world position so neighbours do not pulse together. Reduced motion
+leaves the map still.
+
+Crossing into a new area shows its name as an "Entering ..." banner that
+fades after about three seconds; the area the map opens in gets none.

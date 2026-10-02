@@ -25,9 +25,10 @@ const NEIGHBOURS = [
 
 // The textures each terrain is painted with. `span` is how many cells one
 // repeat of the texture covers. The stand-ins are the 32px map tiles.
+// Bridges have no map tile of their own; the road tile stands in.
 export const TERRAIN_TEXTURES = Object.freeze(Object.fromEntries(
-  TERRAIN_DRAW_ORDER.map((terrain) => [terrain, {
-    src: '/assets/tiles/' + terrain + '.jpg',
+  [...TERRAIN_DRAW_ORDER, 'bridge'].map((terrain) => [terrain, {
+    src: '/assets/tiles/' + (terrain === 'bridge' ? 'road' : terrain) + '.jpg',
     span: 0.8,
   }]),
 ));
@@ -78,27 +79,71 @@ function groundUnder(cell, byKey) {
   return best;
 }
 
+function waterAt(byKey, col, row) {
+  const cell = byKey.get(cellKey(col, row));
+  return cell && !cell.unseen && WATER.has(cell.terrain) ? cell.terrain : null;
+}
+
+// A road or path room is a bridge when its own description names water, or
+// when it has water on two opposite sides: it crosses the water rather than
+// running beside it.
+function isBridge(cell, byKey) {
+  if (!ROAD_KINDS.has(cell.terrain)) return false;
+  if (cell.water) return true;
+  const { col, row } = cell;
+  return (!!waterAt(byKey, col, row - 1) && !!waterAt(byKey, col, row + 1))
+    || (!!waterAt(byKey, col - 1, row) && !!waterAt(byKey, col + 1, row));
+}
+
+// The water under a bridge: what its description names, or else the
+// commonest water beside it.
+function waterUnder(cell, byKey) {
+  if (cell.water) return cell.water;
+  const counts = new Map();
+  for (const [dx, dy] of NEIGHBOURS) {
+    const water = waterAt(byKey, cell.col + dx, cell.row + dy);
+    if (water) counts.set(water, (counts.get(water) || 0) + 1);
+  }
+  let best = 'river';
+  let bestCount = 0;
+  for (const [water, count] of counts) {
+    if (count > bestCount) {
+      best = water;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 /**
  * Plans the painted terrain for one render.
- * cells: [{ col, row, terrain, unseen }] for each room drawn, by grid column
- *   and row. Unseen rooms are left unpainted.
+ * cells: [{ col, row, terrain, unseen, water }] for each room drawn, by grid
+ *   column and row. Unseen rooms are left unpainted. water names the water
+ *   (sea, lake, or river) a room's description mentions, if any.
  * links: [{ from: { col, row }, to: { col, row } }] for exits between rooms
  *   drawn in neighbouring cells.
  * Returns { layers: [{ terrain, cells: [{ col, row }], shore }], roads:
- *   [{ kind, from, to }] } with layers in draw order.
+ *   [{ kind, from, to }] } with layers in draw order. Each road link is two
+ *   halves, from each room to the midpoint, so a road meeting a path or a
+ *   bridge changes where the rooms meet. kind is road, path, or bridge.
  */
 export function planTerrain(cells, links = []) {
   const byKey = new Map();
   for (const cell of cells || []) {
     if (!cell || !Number.isInteger(cell.col) || !Number.isInteger(cell.row)) continue;
     const terrain = TERRAIN_DRAW_ORDER.includes(cell.terrain) ? cell.terrain : 'outside';
-    byKey.set(cellKey(cell.col, cell.row), { col: cell.col, row: cell.row, terrain, unseen: !!cell.unseen });
+    const water = WATER.has(cell.water) ? cell.water : null;
+    byKey.set(cellKey(cell.col, cell.row), { col: cell.col, row: cell.row, terrain, water, unseen: !!cell.unseen });
   }
+  for (const cell of byKey.values()) cell.bridge = !cell.unseen && isBridge(cell, byKey);
+  const roadKind = (cell) => (cell.bridge ? 'bridge' : cell.terrain);
 
   const regions = new Map();
   for (const cell of byKey.values()) {
     if (cell.unseen) continue;
-    const ground = ROAD_KINDS.has(cell.terrain) ? groundUnder(cell, byKey) : cell.terrain;
+    const ground = cell.bridge
+      ? waterUnder(cell, byKey)
+      : ROAD_KINDS.has(cell.terrain) ? groundUnder(cell, byKey) : cell.terrain;
     if (!regions.has(ground)) regions.set(ground, []);
     regions.get(ground).push({ col: cell.col, row: cell.row });
   }
@@ -117,9 +162,9 @@ export function planTerrain(cells, links = []) {
     const pair = [cellKey(from.col, from.row), cellKey(to.col, to.row)].sort().join('|');
     if (seen.has(pair)) continue;
     seen.add(pair);
-    // A road meeting a path is still a road.
-    const kind = from.terrain === 'road' || to.terrain === 'road' ? 'road' : 'path';
-    roads.push({ kind, from: { col: from.col, row: from.row }, to: { col: to.col, row: to.row } });
+    const mid = { col: (from.col + to.col) / 2, row: (from.row + to.row) / 2 };
+    roads.push({ kind: roadKind(from), from: { col: from.col, row: from.row }, to: mid });
+    roads.push({ kind: roadKind(to), from: { col: to.col, row: to.row }, to: { ...mid } });
   }
   // A road room with no road links still shows a patch of road.
   for (const cell of byKey.values()) {
@@ -127,7 +172,7 @@ export function planTerrain(cells, links = []) {
     const key = cellKey(cell.col, cell.row);
     const linked = [...seen].some((pair) => pair.split('|').includes(key));
     if (!linked) {
-      roads.push({ kind: cell.terrain, from: { col: cell.col, row: cell.row }, to: { col: cell.col, row: cell.row } });
+      roads.push({ kind: roadKind(cell), from: { col: cell.col, row: cell.row }, to: { col: cell.col, row: cell.row } });
     }
   }
 
