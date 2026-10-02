@@ -345,7 +345,6 @@
       ambience: ambienceInput(),
       pins: pins.pins,
       zoomAnchor: pendingZoomAnchor,
-      living: mapSettings.mapLivingTerrain,
     });
     pendingZoomAnchor = null;
     const current = view();

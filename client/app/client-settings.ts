@@ -105,8 +105,6 @@ export interface Phase2ClientSettings {
   mapDayNight: boolean;
   /** Paint the map's land as joined terrain instead of one square tile per room. */
   mapPaintedTerrain: boolean;
-  /** Animate the map: shimmering water, drifting swamp mist, and torchlight in towns at night. */
-  mapLivingTerrain: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -147,7 +145,6 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   sceneDayNight: true,
   mapDayNight: true,
   mapPaintedTerrain: true,
-  mapLivingTerrain: true,
 };
 
 export type ClientSettingsResult =
@@ -249,7 +246,6 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     sceneDayNight: settings.sceneDayNight !== false,
     mapDayNight: settings.mapDayNight !== false,
     mapPaintedTerrain: settings.mapPaintedTerrain !== false,
-    mapLivingTerrain: settings.mapLivingTerrain !== false,
   };
 }
 
@@ -442,7 +438,6 @@ export function validateClientSettingsDocument(
     "sceneDayNight",
     "mapDayNight",
     "mapPaintedTerrain",
-    "mapLivingTerrain",
   ] as const;
   for (const key of booleanKeys) {
     if (key in value && typeof value[key] !== "boolean")

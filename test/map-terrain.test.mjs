@@ -158,39 +158,3 @@ test('the renderer lays the terrain canvas under the rooms only in painted mode'
     assert.match(plain.innerHTML, /map-tile-forest/, 'the terrain class stays for the tile look');
   }
 });
-
-test('living terrain animates water, swamp mist, and town torchlight at night, each cell in its own phase', async () => {
-  const { cellPhase } = await import('../public/js/map-renderer-core.js');
-  const rooms = new Map([
-    ['L', { id: 'L', name: 'Lake', area: 'T', environment: 'lake', x: 0, y: 0, z: 0, exits: {} }],
-    ['R', { id: 'R', name: 'Ford', area: 'T', environment: 'river', x: 1, y: 0, z: 0, exits: {} }],
-    ['S', { id: 'S', name: 'Bog', area: 'T', environment: 'swamp', x: 0, y: 1, z: 0, exits: {} }],
-    ['C', { id: 'C', name: 'Square', area: 'T', environment: 'city', x: 1, y: 1, z: 0, exits: {} }],
-    ['U', { id: 'U', name: 'Far Lake', area: 'T', environment: 'lake', x: 2, y: 0, z: 0, exits: {}, observed: false }],
-  ]);
-  const map = {
-    DIR_OFFSETS: {},
-    getCurrentRoomId: () => 'C',
-    getRoom: (id) => rooms.get(id) || null,
-    getRoomsByArea: () => [...rooms.values()],
-    getMapStatus: () => '',
-    getAreaName: () => 'T',
-    getAuthority: () => 'authoritative',
-    clearMapDataForArea: () => {},
-  };
-  const kinds = (extras, dataset = {}) => {
-    const out = body();
-    Object.assign(out.dataset, dataset);
-    createMapRenderer({ now: () => 0 }).render(out, map, extras);
-    return [...out.innerHTML.matchAll(/class="map-live map-live-(\w+)"/g)].map((m) => m[1]).sort();
-  };
-  assert.deepEqual(kinds({ living: true }), ['mist', 'river', 'water'], 'the unvisited lake is left still');
-  assert.deepEqual(kinds({ living: true, ambience: { color: '#22335f', alpha: 0.4, light: true } }), ['mist', 'river', 'torch', 'water']);
-  assert.deepEqual(kinds({}), [], 'off unless asked for');
-  assert.deepEqual(kinds({ living: true }, { mapMotion: 'reduce' }), [], 'and still with reduced motion');
-
-  assert.equal(cellPhase(3, 4), cellPhase(3, 4), 'the same cell, the same phase');
-  const phases = new Set(Array.from({ length: 50 }, (_, i) => Math.floor(cellPhase(i, 7) * 10)));
-  assert.ok(phases.size >= 7, 'neighbours spread across the cycle');
-  assert.ok([...Array(200).keys()].every((i) => cellPhase(i, -i) >= 0 && cellPhase(i, -i) < 1));
-});

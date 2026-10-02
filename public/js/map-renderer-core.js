@@ -310,7 +310,6 @@ function getTerrainName(environment) {
 // extras.ambience: { color, alpha, light } tints the map from the player's
 // marker, with a pool of light around it when light is set.
 // extras.pins: { roomId: { kind, note } } draws the player's pins.
-// extras.living: animate water, swamp mist, and (at night) town torchlight.
 // extras.zoomAnchor: { x, y } in pixels from the middle of the map, when the
 // zoom just changed at that point, eases the change in around it.
 // bodyEl.dataset.mapLevel shows a level that many floors above (or below)
@@ -492,9 +491,6 @@ function renderMap(bodyEl, source, state, extras = {}) {
       : '');
 
   let markerCell = null;
-  const living = !!extras.living && !reducedMotion;
-  const torchlight = living && !!(extras.ambience && extras.ambience.light);
-  let livingHtml = '';
   for (let ry = 0; ry < gridH; ry++) {
     for (let rx = 0; rx < gridW; rx++) {
       const worldX = cx - radiusX + rx;
@@ -511,9 +507,6 @@ function renderMap(bodyEl, source, state, extras = {}) {
       const isPlayer = room.id === playerId;
       if (isPlayer) markerCell = { column: rx + 1, row: ry + 1 };
       const terrain = getTerrainName(room.environment);
-      if (living && room.observed !== false) {
-        livingHtml += livingTerrainHtml(terrain, rx + 1, ry + 1, worldX, worldY, torchlight);
-      }
       if (painted) {
         terrainCells.push({
           col: rx, row: ry, terrain, unseen: room.observed === false, water: namedWater(room.environment),
@@ -540,7 +533,6 @@ function renderMap(bodyEl, source, state, extras = {}) {
     }
   }
 
-  html += livingHtml;
   if (markerCell) html += playerMarkerHtml(markerCell, motion, motionElapsed, extras.ambience);
   // On another floor, a ghost of the marker shows where the player is, and
   // which way: below this floor or above it.
@@ -826,36 +818,6 @@ const WATER_WORDS = ['sea', 'lake', 'river'];
 // The water a room's description names (a bridge's river, say), or null.
 function namedWater(environment) {
   return extractTerrainTokens(environment).find((token) => WATER_WORDS.includes(token)) || null;
-}
-
-// A stable 0..1 value for a world cell, so each cell's animation starts at
-// its own point in the cycle and neighbours do not pulse in step.
-export function cellPhase(x, y, salt = 0) {
-  let h = Math.imul((x | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((y | 0) + salt * 0x27d4eb2d, 0xc2b2ae35);
-  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
-  h ^= h >>> 13;
-  return (h >>> 0) / 4294967296;
-}
-
-const LIVING_CYCLE_MS = { water: 7000, river: 3200, mist: 11000, torch: 1700 };
-
-// Living terrain: a soft animated layer over one room's cell. Water shimmers
-// (a river runs faster), swamp mist drifts, and at night town torchlight
-// flickers at a spot of its own in each cell.
-function livingTerrainHtml(terrain, column, row, x, y, torchlight) {
-  let kind = null;
-  if (terrain === 'river') kind = 'river';
-  else if (terrain === 'sea' || terrain === 'lake') kind = 'water';
-  else if (terrain === 'swamp') kind = 'mist';
-  else if (terrain === 'city' && torchlight) kind = 'torch';
-  if (!kind) return '';
-  const delay = Math.round(cellPhase(x, y) * LIVING_CYCLE_MS[kind]);
-  let style = 'grid-column:' + column + ' / span 1;grid-row:' + row + ' / span 1;animation-delay:-' + delay + 'ms;';
-  if (kind === 'torch') {
-    style += '--torch-x:' + Math.round(25 + cellPhase(x, y, 1) * 50) + '%;--torch-y:'
-      + Math.round(25 + cellPhase(x, y, 2) * 50) + '%;';
-  }
-  return '<div class="map-live map-live-' + kind + '" style="' + style + '" aria-hidden="true"></div>';
 }
 
 // The floor offset a map body asks to see, as a whole number of levels.
