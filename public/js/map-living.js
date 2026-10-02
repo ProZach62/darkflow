@@ -1,0 +1,207 @@
+// Living terrain: water that shimmers, swamp mist that drifts, and torchlight
+// in towns at night, drawn so the compositor can run it without the main
+// thread. Each kind is one layer for the whole painted window, not one per
+// cell: water and mist are a patterned layer masked to their regions (the
+// masks come from the terrain painter), whose pattern slides with a
+// transform; torches are painted once onto three canvases that flicker with
+// opacity, each at its own pace. Layers are rebuilt only when the painting
+// is, and every animation is started once.
+
+const PITCH = 40;
+const TILE = 32;
+// One stripe period of the water pattern measured along the x axis: the
+// stripes repeat every 16px at 115 degrees, so a 16 / sin(115) shift lands on
+// the same pattern and the slide loops without a seam.
+const WATER_SHIFT = 16 / Math.sin((115 * Math.PI) / 180);
+// The mist's two cloud layers repeat every 120px and 160px; 480px is both.
+const MIST_SHIFT = 480;
+const TORCH_LAYERS = 3;
+const TORCH_RESOLUTION = 0.5;
+
+function hash01(x, y, salt) {
+  let h = Math.imul((x | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((y | 0) + salt * 0x27d4eb2d, 0xc2b2ae35);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+function canvasToUrl(canvas) {
+  if (typeof canvas.convertToBlob === 'function') {
+    return canvas.convertToBlob({ type: 'image/png' }).then((blob) => URL.createObjectURL(blob));
+  }
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(URL.createObjectURL(blob)) : reject(new Error('no mask'))), 'image/png');
+  });
+}
+
+/** Creates the living-terrain layers for one map; update() keeps them current. */
+export function createLivingLayers() {
+  const masked = {};
+  const torches = [];
+  let maskKey = null;
+  let torchKey = null;
+  let disposed = false;
+
+  function animateOnce(el, slot, keyframes, options) {
+    const running = el[slot];
+    if (running && running.playState !== 'idle') return;
+    el[slot] = el.animate(keyframes, options);
+  }
+
+  function maskedLayer(kind) {
+    if (masked[kind]) return masked[kind];
+    const layer = document.createElement('div');
+    layer.className = 'map-live-layer map-live-' + kind;
+    layer.setAttribute('aria-hidden', 'true');
+    layer.hidden = true;
+    const pattern = document.createElement('div');
+    pattern.className = 'map-live-pattern';
+    layer.append(pattern);
+    masked[kind] = { layer, pattern, url: null };
+    return masked[kind];
+  }
+
+  function placeAfterTerrain(grid, el) {
+    if (el.parentNode === grid) return;
+    const terrain = grid.querySelector(':scope > canvas.map-terrain');
+    if (terrain) terrain.after(el);
+    else grid.prepend(el);
+  }
+
+  // Renders come often; even a write of an unchanged value restyles, so
+  // sizes and visibility are written only when they change.
+  function sizeLayer(entry, width, height, shift) {
+    const size = width + 'x' + height;
+    if (entry.size === size) return;
+    entry.size = size;
+    entry.layer.style.width = width + 'px';
+    entry.layer.style.height = height + 'px';
+    entry.pattern.style.width = Math.ceil(width + shift) + 'px';
+    entry.pattern.style.height = Math.ceil(height + shift) + 'px';
+  }
+
+  function show(el, visible) {
+    if (el.hidden === !visible) return;
+    el.hidden = !visible;
+  }
+
+  function setMask(kind, canvas, key) {
+    const entry = maskedLayer(kind);
+    if (!canvas) {
+      show(entry.layer, false);
+      return;
+    }
+    canvasToUrl(canvas).then((url) => {
+      if (disposed || maskKey !== key) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (entry.url) URL.revokeObjectURL(entry.url);
+      entry.url = url;
+      entry.layer.style.maskImage = 'url(' + url + ')';
+      entry.layer.style.webkitMaskImage = 'url(' + url + ')';
+      show(entry.layer, true);
+    }).catch(() => {
+      show(entry.layer, false);
+    });
+  }
+
+  function drawTorches(cells, width, height) {
+    while (torches.length < TORCH_LAYERS) {
+      const canvas = document.createElement('canvas');
+      canvas.className = 'map-live-torches';
+      canvas.setAttribute('aria-hidden', 'true');
+      torches.push(canvas);
+    }
+    const w = Math.max(1, Math.round(width * TORCH_RESOLUTION));
+    const h = Math.max(1, Math.round(height * TORCH_RESOLUTION));
+    for (const canvas of torches) {
+      canvas.width = w;
+      canvas.height = h;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      canvas.getContext('2d').clearRect(0, 0, w, h);
+    }
+    for (const cell of cells) {
+      const layer = torches[Math.floor(hash01(cell.x, cell.y, 3) * TORCH_LAYERS)];
+      const ctx = layer.getContext('2d');
+      const x = (cell.col * PITCH + TILE * (0.25 + hash01(cell.x, cell.y, 1) * 0.5)) * TORCH_RESOLUTION;
+      const y = (cell.row * PITCH + TILE * (0.25 + hash01(cell.x, cell.y, 2) * 0.5)) * TORCH_RESOLUTION;
+      const radius = 9 * TORCH_RESOLUTION;
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      glow.addColorStop(0, 'rgba(255, 214, 130, 1)');
+      glow.addColorStop(0.18, 'rgba(255, 180, 80, 0.85)');
+      glow.addColorStop(0.45, 'rgba(255, 140, 50, 0.3)');
+      glow.addColorStop(1, 'rgba(255, 120, 40, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    }
+  }
+
+  return {
+    /**
+     * Brings the layers up to date in grid. opts: { maskKey, masks: { water,
+     * swamp } (canvases in the painting's coordinates, or null), width,
+     * height (the painting's CSS size), torches: [{ col, row, x, y }] (town
+     * cells to light, empty by day), torchKey }.
+     */
+    update(grid, opts) {
+      if (disposed || !grid) return;
+      const water = maskedLayer('water');
+      const swamp = maskedLayer('swamp');
+      sizeLayer(water, opts.width, opts.height, WATER_SHIFT);
+      sizeLayer(swamp, opts.width, opts.height, MIST_SHIFT);
+      if (opts.maskKey !== maskKey) {
+        maskKey = opts.maskKey;
+        setMask('water', opts.masks && opts.masks.water, maskKey);
+        setMask('swamp', opts.masks && opts.masks.swamp, maskKey);
+      }
+      placeAfterTerrain(grid, swamp.layer);
+      placeAfterTerrain(grid, water.layer);
+      animateOnce(water.pattern, '__slide', [
+        { translate: '0px 0px' },
+        { translate: -WATER_SHIFT + 'px 0px' },
+      ], { duration: 3600, iterations: Infinity, easing: 'linear' });
+      animateOnce(swamp.pattern, '__slide', [
+        { translate: '0px 0px' },
+        { translate: -MIST_SHIFT + 'px ' + (-MIST_SHIFT / 4) + 'px' },
+      ], { duration: 90000, iterations: Infinity, easing: 'linear' });
+      animateOnce(swamp.layer, '__breathe', [
+        { opacity: 0.45 },
+        { opacity: 1 },
+      ], { duration: 9000, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' });
+
+      const lit = opts.torches && opts.torches.length;
+      if (lit && opts.torchKey !== torchKey) {
+        torchKey = opts.torchKey;
+        drawTorches(opts.torches, opts.width, opts.height);
+      }
+      torches.forEach((canvas, index) => {
+        show(canvas, !!lit);
+        if (!lit) return;
+        // Before the marks, so the player's marker (same z-index) draws on
+        // top; above the night tint, so the torches glow in the dark.
+        if (canvas.parentNode !== grid) grid.insertBefore(canvas, grid.querySelector(':scope > .map-marks'));
+        animateOnce(canvas, '__flicker', [
+          { opacity: 0.9 }, { opacity: 0.55 }, { opacity: 1 }, { opacity: 0.7 }, { opacity: 0.95 }, { opacity: 0.6 },
+        ], { duration: 1300 + index * 430, iterations: Infinity, easing: 'linear' });
+      });
+      if (!lit) torchKey = null;
+    },
+    /** Takes the layers out of the map (the setting is off, or motion is reduced). */
+    clear() {
+      for (const entry of Object.values(masked)) entry.layer.remove();
+      for (const canvas of torches) canvas.remove();
+      maskKey = null;
+      torchKey = null;
+    },
+    dispose() {
+      disposed = true;
+      for (const entry of Object.values(masked)) {
+        entry.layer.remove();
+        if (entry.url) URL.revokeObjectURL(entry.url);
+      }
+      for (const canvas of torches) canvas.remove();
+    },
+  };
+}

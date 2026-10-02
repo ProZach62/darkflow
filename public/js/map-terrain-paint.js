@@ -37,6 +37,10 @@ const CORNER = 11;
 const FEATHER = 4;
 const SHORE = 5;
 const ROAD_WIDTH = { road: 10, path: 6, bridge: 11 };
+// The living-terrain layers are masked to water and swamp regions with
+// copies of the painter's own region masks, kept small: they are soft.
+const LIVING_MASK_SCALE = 0.25;
+const LIVING_KIND = { sea: 'water', lake: 'water', river: 'water', swamp: 'swamp' };
 // Keep the backing store modest; the paint is soft, so it need not be sharp.
 const MAX_PIXELS = 2_600_000;
 const MAX_SCALE = 2;
@@ -85,6 +89,7 @@ export function createTerrainPainter(options = {}) {
   let mask = null;
   let layer = null;
   let lastPaintMs = 0;
+  let livingMasks = { key: null, water: null, swamp: null };
 
   // When the painted textures' index arrives, drop the stand-ins and paint
   // again with whatever it lists.
@@ -149,6 +154,13 @@ export function createTerrainPainter(options = {}) {
     }
     maskCtx.fill();
     maskCtx.filter = 'none';
+    const kind = geom.living && LIVING_KIND[terrain];
+    if (kind) {
+      const w = Math.max(1, Math.round(mask.width * LIVING_MASK_SCALE));
+      const h = Math.max(1, Math.round(mask.height * LIVING_MASK_SCALE));
+      const into = geom.living[kind] || (geom.living[kind] = makeCanvas(w, h));
+      into.getContext('2d').drawImage(mask, 0, 0, w, h);
+    }
 
     const layerCtx = layer.getContext('2d');
     layerCtx.globalCompositeOperation = 'source-over';
@@ -263,7 +275,7 @@ export function createTerrainPainter(options = {}) {
       const width = Math.max(1, Math.round(view.width));
       const height = Math.max(1, Math.round(view.height));
       const { scale, pixelWidth, pixelHeight } = pixelSize(width, height, view);
-      const geom = { scale, worldX: view.worldX, worldY: view.worldY };
+      const geom = { scale, worldX: view.worldX, worldY: view.worldY, living: {} };
       const key = (view.sceneKey || terrainPlanKey(plan)) + '|' + view.worldX + ',' + view.worldY + '|'
         + pixelWidth + 'x' + pixelHeight + '|' + textureVersion;
       if (!scene || scene.key !== key) {
@@ -276,6 +288,7 @@ export function createTerrainPainter(options = {}) {
         const bitmap = sized(scene ? scene.bitmap : makeCanvas(pixelWidth, pixelHeight), pixelWidth, pixelHeight);
         draw(bitmap, plan, geom);
         scene = { key, bitmap };
+        livingMasks = { key, water: geom.living.water || null, swamp: geom.living.swamp || null };
         lastPaintMs = (typeof performance !== 'undefined' ? performance.now() : 0) - started;
       }
       const crop = view.crop || { x: 0, y: 0, width, height };
@@ -298,6 +311,8 @@ export function createTerrainPainter(options = {}) {
         + pixelWidth + 'x' + pixelHeight + '|' + textureVersion;
     },
     lastPaintMs: () => lastPaintMs,
+    /** The water and swamp masks of the last painting, and its key. */
+    livingMasks: () => livingMasks,
     dispose() {
       paintedIndexListeners.delete(onPaintedIndex);
       scene = null;

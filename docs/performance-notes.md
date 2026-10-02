@@ -222,6 +222,29 @@ Old against new on the same build, alternating three runs each:
 The terminal's virtualized renderer measures new lines with
 `getBoundingClientRect` (about 1.6% of the busy load); that is upstream's.
 
+### Living terrain, the second time
+
+The first living terrain was a masked element per water or swamp cell
+animating `background-position`, plus a blended torch per town cell: every
+one repainted on every frame, forever, and the client lagged. It came back
+built for the compositor: one masked layer per kind for the whole painted
+window, a pattern that slides by transform, and torches on three canvases
+that flicker by opacity (`map-living.js`). Measured in the 4,900-room area
+at night, alternating off and on:
+
+| | Off | On |
+| --- | --- | --- |
+| Busy at idle | 10% | 11-12% |
+| Busy walking, normal zoom | 36-39% | 53-56% |
+| Busy walking, 20% zoom | 52-59% | 61-67% |
+
+At idle the animations run on the compositor. While walking, every frame
+the main thread makes for a glide also updates the layers' animated styles,
+about 0.2 ms a frame; headless renders without a frame cap, roughly four
+times a 60 Hz display's frames, so in the desktop client the walking cost
+should be about a quarter of the difference shown. Writing the layers' size
+and visibility only when they change made no measurable difference.
+
 ## Still open
 
 - `Char.Vitals` fans out to every information panel, the combat, audio,

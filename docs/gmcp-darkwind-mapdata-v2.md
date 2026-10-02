@@ -261,5 +261,15 @@ direction, between dark rails. Road links are drawn in two halves, from each
 room to the midpoint, so a deck, a road, and a path each cover only their own
 room's half.
 
+With "Animate the map" on (Settings, Appearance; on by default), the painted
+map's water shimmers, swamp mist drifts, and at night town rooms show
+flickering torchlight above the night tint. Each kind is one layer over the
+painted window, not one per room: water and mist are a patterned layer
+masked to their regions, using small copies of the painter's own region
+masks, whose pattern slides by transform; torches are painted once onto
+three canvases that flicker by opacity, each at its own pace. All of it can
+run on the compositor, and it is rebuilt only when the painted terrain is.
+Reduced motion, the setting off, or the tile look leaves the map still.
+
 Crossing into a new area shows its name as an "Entering ..." banner that
 fades after about three seconds; the area the map opens in gets none.

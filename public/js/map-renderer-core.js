@@ -3,6 +3,7 @@ import { normalizeMapPan, splitMapPan } from './map-pan.js';
 import { extractTerrainTokens, getPrimaryTerrain } from './terrain-semantics.mjs';
 import { planTerrain } from './map-terrain-core.js';
 import { createTerrainPainter } from './map-terrain-paint.js';
+import { createLivingLayers } from './map-living.js';
 import { mapPinIconSvg, mapPinLabel } from './map-pins-core.js';
 
 const TILE_SIZE = 32;
@@ -316,6 +317,8 @@ function getTerrainName(environment) {
 // extras.ambience: { color, alpha, light } tints the map from the player's
 // marker, with a pool of light around it when light is set.
 // extras.pins: { roomId: { kind, note } } draws the player's pins.
+// extras.living: animate the painted map: water shimmers, swamp mist drifts,
+// and towns show torchlight at night (see map-living.js).
 // extras.zoomAnchor: { x, y } in pixels from the middle of the map, when the
 // zoom just changed at that point, eases the change in around it.
 // bodyEl.dataset.mapLevel shows a level that many floors above (or below)
@@ -670,8 +673,25 @@ function renderMap(bodyEl, source, state, extras = {}) {
       dpr: typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1,
       sceneKey: scene.key,
     }, { left: 0, top: 0 });
+    const living = !!extras.living && !reducedMotion && canAnimate(bodyEl) && state.dom && state.painter;
+    if (living) {
+      const night = !!(extras.ambience && extras.ambience.light);
+      const masks = state.painter.livingMasks();
+      state.living = state.living || createLivingLayers();
+      state.living.update(state.dom.grid, {
+        maskKey: masks.key,
+        masks,
+        width: windowPixelWidth,
+        height: windowPixelHeight,
+        torches: night ? scene.cells.filter((cell) => cell.terrain === 'city' && !cell.unseen) : [],
+        torchKey: night ? scene.key : null,
+      });
+    } else if (state.living) {
+      state.living.clear();
+    }
   } else {
     state.lastTerrain = null;
+    if (state.living) state.living.clear();
   }
 
   wireResync(bodyEl, state);
@@ -930,7 +950,9 @@ function terrainWindow(state, buckets, playerId, distances, connectedVisibleCoun
       if (!room) continue;
       const terrain = getTerrainName(room.environment);
       const unseen = room.observed === false;
-      cells.push({ col, row, terrain, unseen, water: namedWater(room.environment) });
+      cells.push({
+        col, row, x: win.anchorX + col, y: win.anchorY + row, terrain, unseen, water: namedWater(room.environment),
+      });
       placed.set(room.id, { col, row, room });
       signature.push(col + ',' + row + ':' + room.id + ':' + room.environment + (unseen ? ':u' : '')
         + (terrain === 'road' || terrain === 'path' ? ':' + Object.keys(room.exits || {}).join('.') : ''));
@@ -947,6 +969,7 @@ function terrainWindow(state, buckets, playerId, distances, connectedVisibleCoun
     ...win,
     signature,
     key: 'scene' + state.terrainSceneSerial,
+    cells,
     plan: planTerrain(cells, terrainLinks(placed)),
   };
   return state.terrainScene;
@@ -1255,6 +1278,8 @@ export function createMapRenderer(options = {}) {
         if (entry && entry.animation) entry.animation.cancel();
       }
       state.glideAnimations = null;
+      if (state.living) state.living.dispose();
+      state.living = null;
       if (state.painter) state.painter.dispose();
       state.painter = null;
       state.lastTerrain = null;

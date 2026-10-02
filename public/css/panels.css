@@ -1866,6 +1866,48 @@ body.zork-only-mode #panels-menu {
 .map-pin-loot { color: #5cc8f2; }
 .map-pin-home { color: #7fd47a; }
 
+/* Living terrain (map-living.js): one layer per kind over the painted
+   window. Water and mist are masked to their regions and their pattern
+   slides by transform; torches are canvases that flicker by opacity. All of
+   it can run on the compositor. */
+.map-live-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.map-live-pattern {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+.map-live-water .map-live-pattern {
+  background: repeating-linear-gradient(
+    115deg,
+    transparent 0 7px,
+    rgba(225, 242, 255, 0.16) 8px 9px,
+    transparent 10px 16px
+  );
+}
+.map-live-swamp .map-live-pattern {
+  background:
+    radial-gradient(circle at 30% 40%, rgba(208, 218, 198, 0.36), transparent 45%) 0 0 / 120px 120px,
+    radial-gradient(circle at 70% 65%, rgba(192, 206, 186, 0.28), transparent 42%) 0 0 / 160px 160px;
+}
+.map-live-torches {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
 /* A room the search flew to: a brief ring so the eye finds it. */
 .map-tile-found {
   animation: map-tile-found 1.6s ease-out 2;

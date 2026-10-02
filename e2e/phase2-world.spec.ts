@@ -453,6 +453,37 @@ test("the map marks you, previews a route on hover, draws service icons, and has
   await expect(legend).toHaveCount(0);
 });
 
+test("living terrain masks a water layer to the lake, and holds still with reduced motion", async ({
+  page,
+}) => {
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  const lake = (id: number, name: string, x: number, exits: Record<string, number>) => ({
+    ...currentRoom(id, name, x, exits),
+    env: "outside, lake",
+  });
+  endpoint.sendGmcp("Darkwind.MapData2.Current", lake(102, "Lake Shallows", 1, { west: 101 }));
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  await expect(map.getByRole("button", { name: "Speedwalk to Lake Shallows" })).toBeVisible();
+  const water = map.locator(".map-live-water");
+  await expect(water).toHaveCount(1);
+  await expect
+    .poll(() =>
+      water.evaluate((el) => !el.hidden && /blob:/.test((el as HTMLElement).style.maskImage)),
+    )
+    .toBe(true);
+  expect(
+    await water.evaluate((el) =>
+      [el, ...el.querySelectorAll("*")].flatMap((e) => e.getAnimations()).map((a) => a.playState),
+    ),
+  ).toContain("running");
+
+  // The preference applies at once, without waiting for a move.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(map.locator(".map-live-layer, .map-live-torches")).toHaveCount(0);
+});
+
 test("the map keeps unchanged room tiles across renders, with their focus, and patches what changed", async ({
   page,
 }) => {

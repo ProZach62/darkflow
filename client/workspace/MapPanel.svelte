@@ -337,6 +337,7 @@
       zoomAnchor: pendingZoomAnchor,
       // The renderer writes each room's button role and label itself.
       tileLabel: live ? "walk" : "browse",
+      living: mapSettings.mapLivingTerrain,
     });
     pendingZoomAnchor = null;
     const current = view();
@@ -647,7 +648,13 @@
       else delete body.dataset.mapMotion;
     };
     syncMotion();
-    motionQuery.addEventListener("change", syncMotion);
+    // Redraw at once, so living terrain and glides stop (or start) without
+    // waiting for the next move.
+    const onMotionChange = (): void => {
+      syncMotion();
+      render();
+    };
+    motionQuery.addEventListener("change", onMotionChange);
 
     const unsubscribeState = panelState.subscribe((next) => {
       const nextZoom = normalizeMapZoom(next.mapZoom);
@@ -706,7 +713,7 @@
       unsubscribeSky();
       window.clearInterval(ambienceTicker);
       window.removeEventListener("darkflow:client-settings-changed", refreshSettings);
-      motionQuery.removeEventListener("change", syncMotion);
+      motionQuery.removeEventListener("change", onMotionChange);
       disposePan?.();
       resizeObserver.disconnect();
       body.removeEventListener("click", handleClick);
