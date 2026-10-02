@@ -146,6 +146,52 @@ per frame. What remains while it runs is the panel's CSS animation paint
 (the water strip animates `background-position`; two pulses animate
 `border-color` and `box-shadow`), which is bounded to those elements.
 
+## The map in a large area
+
+Measured with a 70 by 70 area of 4,900 rooms sent as one `MapData2.Area`
+frame, walking four rooms a second, at normal zoom and at 20%.
+
+| Walking | Before | After |
+| --- | --- | --- |
+| Busy, normal zoom | 104% | 28-35% |
+| Script, normal zoom (15 moves) | 3,480 ms | 360-470 ms |
+| Busy, 20% zoom | 584% | 66-88% |
+| Map DOM elements at 20% zoom | 22,915 | 3,980 |
+
+1. **The world adapter copied the map on every lookup.** `getRoom` returned
+   `deepFreeze(structuredClone(room))` and `getRoomsByArea` did the same for
+   the whole area, and the renderer makes thousands of lookups a render.
+   Each retained room's frozen copy is now kept in a `WeakMap` and reused
+   until one of its top-level fields changes; both map stores replace nested
+   objects rather than editing them, so the top-level comparison is enough.
+2. **Terrain words were matched with 23 freshly built regexes per room per
+   render.** The patterns are compiled once and each environment string's
+   tokens remembered.
+3. **The marker's step animated `left` and `top`**, laying out the whole map
+   grid every frame of every step (396 layouts in 15 steps). It steps with a
+   transform again; the time-of-day tint moved to its own still element so it
+   keeps a backdrop to blend with.
+4. **Every empty cell was a `div`.** Tiles are placed with `grid-area`, so cells
+   far from any room are not emitted, and below 50% zoom connectors, door
+   ticks, and badges (under a pixel or two) are left out. The renderer writes
+   each room's button role and label instead of the panel walking every tile
+   after each render.
+5. **The terrain was repainted on every move**, since every move shifts the
+   grid. The painting covers a window four cells past the grid on each side,
+   anchored to the world; the same canvas element is carried from render to
+   render and slid into place, and only repainted when the grid nears the
+   window's edge or the rooms in it change.
+6. Grid cells are keyed by number rather than by `"x,y"` strings.
+
+Under the busy-fight load with the map open in the same area and walking
+two rooms a second, the client is about 45% busy against 26% with the map
+still. What remains per move is restyling and repainting the rebuilt tile
+DOM: the map still rebuilds its tiles with `innerHTML` on every render.
+Keeping tiles at world positions inside the painted window and sliding the
+frame, so a move only adds and removes edge tiles, is the next step. The
+terminal's virtualized renderer measures new lines with
+`getBoundingClientRect` (about 1.6% of the busy load); that is upstream's.
+
 ## Still open
 
 - `Char.Vitals` fans out to every information panel, the combat, audio,

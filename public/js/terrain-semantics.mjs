@@ -22,15 +22,38 @@ function flattenTerrainValues(value) {
   return typeof value === 'string' ? [value.toLowerCase()] : [];
 }
 
-export function extractTerrainTokens(environment, limit = TERRAIN_PRIORITY.length) {
-  const haystacks = flattenTerrainValues(environment);
-  const found = new Set();
-  for (const terrain of TERRAIN_PRIORITY) {
-    const pattern = new RegExp('(?:^|[^a-z])' + terrain + '(?:$|[^a-z])');
-    if (haystacks.some((value) => pattern.test(value))) found.add(terrain);
+// One compiled pattern per terrain word, made once.
+const TERRAIN_PATTERNS = TERRAIN_PRIORITY.map((terrain) => [
+  terrain,
+  new RegExp('(?:^|[^a-z])' + terrain + '(?:$|[^a-z])'),
+]);
+
+// The map reads every visible room's environment on every render, and a
+// world has only a few hundred distinct environment strings, so the tokens
+// of each string are remembered. Bounded, and cleared whole when full.
+const STRING_TOKENS = new Map();
+const MAX_REMEMBERED = 4000;
+
+function tokensOf(environment) {
+  if (typeof environment === 'string') {
+    const known = STRING_TOKENS.get(environment);
+    if (known) return known;
   }
+  const haystacks = flattenTerrainValues(environment);
+  const tokens = Object.freeze(TERRAIN_PATTERNS
+    .filter(([, pattern]) => haystacks.some((value) => pattern.test(value)))
+    .map(([terrain]) => terrain));
+  if (typeof environment === 'string') {
+    if (STRING_TOKENS.size >= MAX_REMEMBERED) STRING_TOKENS.clear();
+    STRING_TOKENS.set(environment, tokens);
+  }
+  return tokens;
+}
+
+export function extractTerrainTokens(environment, limit = TERRAIN_PRIORITY.length) {
+  const tokens = tokensOf(environment);
   const safeLimit = Number.isSafeInteger(limit) && limit > 0 ? limit : TERRAIN_PRIORITY.length;
-  return TERRAIN_PRIORITY.filter((terrain) => found.has(terrain)).slice(0, safeLimit);
+  return tokens.slice(0, safeLimit);
 }
 
 export function getPrimaryTerrain(environment) {

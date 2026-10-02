@@ -149,7 +149,9 @@ test('empty cells beside explored rooms are fog, and an unexplored exit leads in
   assert.equal((html.match(/map-tile-fog-lead/g) || []).length, 1, 'just the cell north of the crossing');
   // Three rooms in a row: the eight cells around each, less the rooms themselves.
   assert.equal((html.match(/map-tile map-tile-fog/g) || []).length, 12);
-  assert.ok(html.includes('<div class="map-tile"></div>'), 'cells far from anything are left dark');
+  assert.ok(!html.includes('<div class="map-tile"></div>') && !/class="map-tile" style/.test(html),
+    'cells far from anything are not drawn at all');
+  assert.match(html, /<div class="map-tile map-tile-fog" style="grid-area:\d+ \/ \d+;"><\/div>/, 'what is drawn is placed explicitly');
 });
 
 test('rooms known but not yet visited are drawn as silhouettes', () => {
@@ -174,10 +176,10 @@ test('rooms found while exploring clear out of the fog; arriving and bulk loads 
   source.add({ id: 'N', name: 'North Lane', area: 'T', environment: 'road', x: 0, y: -1, exits: { south: 'A' } });
   clock.t += 5;
   renderer.render(body, source);
-  assert.match(body.innerHTML, /map-tile-revealed" style="animation-delay:-0ms"[^>]*data-room-id="N"/);
+  assert.match(body.innerHTML, /map-tile-revealed"[^>]*data-room-id="N"[^>]*style="grid-area:[^;]+;animation-delay:-0ms;"/);
   clock.t += 300;
   renderer.render(body, source);
-  assert.match(body.innerHTML, /map-tile-revealed" style="animation-delay:-300ms"[^>]*data-room-id="N"/);
+  assert.match(body.innerHTML, /map-tile-revealed"[^>]*data-room-id="N"[^>]*style="grid-area:[^;]+;animation-delay:-300ms;"/);
   clock.t += 500;
   renderer.render(body, source);
   assert.doesNotMatch(body.innerHTML, /map-tile-revealed/, 'and then it is just a room');
@@ -189,22 +191,47 @@ test('rooms found while exploring clear out of the fog; arriving and bulk loads 
   assert.equal(calm.at.size, 0, 'nor is anything with reduced motion');
 });
 
-test('the time of day tints the map from the marker, with a pool of light at night', () => {
+test('the time of day tints the map from the player\'s cell, with a pool of light at night', () => {
   const renderer = createMapRenderer({ now: () => 0 });
   const body = makeBody();
   const source = makeSource(road(), 'A');
+  const tintOf = (html) => (html.match(/<div class="map-tint[^>]*>/) || [''])[0];
   renderer.render(body, source, { ambience: { color: '#22335f', alpha: 0.45, light: true } });
-  const marker = markerOf(body.innerHTML);
-  assert.match(marker, /map-tinted map-lit/);
-  assert.match(marker, /--map-tint:#22335f;--map-tint-alpha:0.45;/);
+  const tint = tintOf(body.innerHTML);
+  assert.match(tint, /class="map-tint map-lit"/);
+  assert.match(tint, /--map-tint:#22335f;--map-tint-alpha:0.45;/);
+  const cell = (tag) => (tag.match(/grid-column:\d+ \/ span 1;grid-row:\d+ \/ span 1;/) || [''])[0];
+  assert.equal(cell(tint), cell(markerOf(body.innerHTML)), 'on the player\'s cell');
+  assert.doesNotMatch(markerOf(body.innerHTML), /--map-tint/, 'and not part of the stepping marker');
 
   renderer.render(body, source, { ambience: { color: '#ffb27a', alpha: 0.2, light: false } });
-  assert.match(markerOf(body.innerHTML), /map-tinted"/);
+  assert.match(tintOf(body.innerHTML), /class="map-tint"/);
 
   renderer.render(body, source, { ambience: { color: 'red;background:url(x)', alpha: 1 } });
-  assert.doesNotMatch(markerOf(body.innerHTML), /map-tinted|--map-tint/, 'only a plain hex colour is used');
+  assert.equal(tintOf(body.innerHTML), '', 'only a plain hex colour is used');
   renderer.render(body, source);
-  assert.doesNotMatch(markerOf(body.innerHTML), /map-tinted/);
+  assert.equal(tintOf(body.innerHTML), '');
+});
+
+test('far zoomed out the map leaves out connectors and badges, and rooms carry their own button labels', () => {
+  const renderer = createMapRenderer({ now: () => 0 });
+  const rooms = road();
+  rooms[2].details = ['pub'];
+  const near = makeBody();
+  renderer.render(near, makeSource(rooms, 'A'), { tileLabel: 'walk' });
+  assert.match(near.innerHTML, /map-conn map-conn-e/);
+  assert.match(near.innerHTML, /map-detail-pub/);
+  assert.match(near.innerHTML, /data-room-id="E" tabindex="0" role="button" aria-label="Speedwalk to East End"/);
+
+  const far = makeBody({ mapZoom: '0.3' });
+  renderer.render(far, makeSource(rooms, 'A'), { tileLabel: 'browse', pins: { E: { kind: 'quest', note: '' } } });
+  assert.doesNotMatch(far.innerHTML, /map-conn|map-detail/);
+  assert.match(far.innerHTML, /map-pin-quest/, 'pins still show');
+  assert.match(far.innerHTML, /aria-label="East End" aria-disabled="true"/);
+
+  const unlabelled = makeBody();
+  renderer.render(unlabelled, makeSource(rooms, 'A'));
+  assert.doesNotMatch(unlabelled.innerHTML, /role="button"/, 'the legacy client labels its own tiles');
 });
 
 test('services get drawn icons and anything else keeps its initial', () => {

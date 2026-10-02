@@ -307,10 +307,42 @@ export function createSessionWorld(
     rerender: publish,
   });
 
-  const readonlyRoom = (value: WorldMapRoom | null | undefined): WorldMapRoom | null =>
-    value ? deepFreeze(structuredClone(value)) : null;
+  // Renderers get frozen copies, never the retained records. Copying and
+  // freezing a room on every lookup made a large area cost seconds a move
+  // (the map looks rooms up thousands of times a render), so each record's
+  // copy is kept and reused until one of its top-level fields changes. Both
+  // map stores replace a room's nested objects (exits, flags, details) rather
+  // than editing them, and set top-level fields (position, layout state) in
+  // place, so comparing the top level by identity catches every change.
+  const frozenRooms = new WeakMap<
+    object,
+    { keys: string[]; values: unknown[]; frozen: WorldMapRoom }
+  >();
+  const readonlyRoom = (value: WorldMapRoom | null | undefined): WorldMapRoom | null => {
+    if (!value) return null;
+    const record = value as Record<string, unknown>;
+    const cached = frozenRooms.get(value);
+    if (cached) {
+      // Walk the fields in order without allocating: this runs for every
+      // room in the area on every render.
+      let index = 0;
+      let same = true;
+      for (const key in record) {
+        if (key !== cached.keys[index] || record[key] !== cached.values[index]) {
+          same = false;
+          break;
+        }
+        index++;
+      }
+      if (same && index === cached.keys.length) return cached.frozen;
+    }
+    const keys = Object.keys(record);
+    const frozen = deepFreeze(structuredClone(value));
+    frozenRooms.set(value, { keys, values: keys.map((key) => record[key]), frozen });
+    return frozen;
+  };
   const readonlyRooms = (values: WorldMapRoom[]): readonly WorldMapRoom[] =>
-    deepFreeze(structuredClone(values));
+    Object.freeze(values.map((value) => readonlyRoom(value) as WorldMapRoom));
 
   const makeSource = (browse: boolean): WorldMapSource => {
     const retained = (): RetainedMapSource =>

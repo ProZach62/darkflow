@@ -1739,16 +1739,15 @@ body.zork-only-mode #panels-menu {
 /* The player's marker is its own layer over the player's cell, so it can
    step between rooms while the camera glides after it. Both glides are CSS
    animations whose negative delay is the time already spent, so a re-render
-   mid-glide carries on rather than restarting.
-   The marker itself must not form a stacking context (no z-index, and it
-   steps by left/top rather than a transform), or the time-of-day tint in its
-   ::before would have nothing beneath it to blend with. Its parts carry the
-   z-index instead: the tint over the rooms and connectors, then the ring and
-   the figure above the tint. */
+   mid-glide carries on rather than restarting. The marker steps with a
+   transform, which costs no layout; the time-of-day tint is a separate,
+   still element (.map-tint) because a transform would give it a stacking
+   context of its own and nothing to blend with. */
 .map-player-marker {
   position: absolute;
   left: 0;
   top: 0;
+  z-index: 5;
   width: 32px;
   height: 32px;
   pointer-events: none;
@@ -1756,7 +1755,6 @@ body.zork-only-mode #panels-menu {
 .map-player-ring {
   position: absolute;
   inset: 0;
-  z-index: 5;
   box-shadow:
     0 0 0 1px #00ffff,
     0 0 8px 2px rgba(0, 255, 255, 0.95),
@@ -1769,16 +1767,15 @@ body.zork-only-mode #panels-menu {
   height: 44px;
   left: 50%;
   top: 50%;
-  z-index: 6;
   background: url('/assets/tiles/player.png') center/contain no-repeat;
   transform: translate(-50%, -50%);
 }
 .map-marker-step {
-  animation: map-marker-step 180ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
+  animation: map-marker-step 180ms cubic-bezier(0.33, 1, 0.68, 1) both;
 }
 @keyframes map-marker-step {
-  from { left: var(--map-marker-x, 0px); top: var(--map-marker-y, 0px); }
-  to { left: 0; top: 0; }
+  from { translate: var(--map-marker-x, 0px) var(--map-marker-y, 0px); }
+  to { translate: 0 0; }
 }
 .map-camera-glide {
   animation: map-camera-glide 380ms cubic-bezier(0.33, 1, 0.68, 1) both;
@@ -1875,10 +1872,19 @@ body.zork-only-mode #panels-menu {
   to { translate: 0 0; }
 }
 
-/* Time of day: a multiply tint over the map from the marker outward, with a
-   pool of light around the player at night. The tint sits under the ring and
-   the player's figure, which paint after it. */
-.map-player-marker.map-tinted::before {
+/* Time of day: a multiply tint over the map from the player's cell outward,
+   with a pool of light around the player at night. The element itself is
+   no stacking context (no z-index, no transform), so its ::before blends with
+   the rooms and connectors beneath; the marker paints above it. */
+.map-tint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+}
+.map-tint::before {
   content: '';
   position: absolute;
   z-index: 4;
@@ -1893,7 +1899,7 @@ body.zork-only-mode #panels-menu {
   opacity: var(--map-tint-alpha, 0);
   mix-blend-mode: multiply;
 }
-.map-player-marker.map-lit::before {
+.map-tint.map-lit::before {
   width: 220px;
   height: 220px;
 }

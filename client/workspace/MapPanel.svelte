@@ -260,16 +260,6 @@
     tileFor(foundId)?.classList.add("map-tile-found");
   }
 
-  function enhanceRoomTiles(): void {
-    for (const tile of body.querySelectorAll<HTMLElement>(".map-tile-room[data-room-id]")) {
-      const name = tile.title.split("\n", 1)[0] || "Mapped room";
-      tile.tabIndex = 0;
-      tile.setAttribute("role", "button");
-      tile.setAttribute("aria-label", live ? `Speedwalk to ${name}` : name);
-      if (!live) tile.setAttribute("aria-disabled", "true");
-    }
-  }
-
   function routeTo(targetId: string): { marks: RouteMarks | null } | null {
     const from = source().getCurrentRoomId();
     if (!from || from === targetId) return null;
@@ -345,6 +335,8 @@
       ambience: ambienceInput(),
       pins: pins.pins,
       zoomAnchor: pendingZoomAnchor,
+      // The renderer writes each room's button role and label itself.
+      tileLabel: live ? "walk" : "browse",
     });
     pendingZoomAnchor = null;
     const current = view();
@@ -358,7 +350,6 @@
     if (current) lastHomeZ = current.homeZ;
     if (live && current?.area) announceArea(current.area);
     updateLevelControls(current);
-    enhanceRoomTiles();
     decorateRoute();
     decorateFound();
     mapStatus = snapshot.speedwalking
