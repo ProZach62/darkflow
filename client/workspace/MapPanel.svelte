@@ -25,6 +25,8 @@
   import * as pinHelpers from "../../public/js/map-pins-core.js";
   // @ts-expect-error Map search is JavaScript without declarations.
   import { pinnedRoomsInArea, searchMapRooms } from "../../public/js/map-search-core.js";
+  // @ts-expect-error The room card is JavaScript without declarations.
+  import { mapRoomCard } from "../../public/js/map-card-core.js";
 
   const { MAP_ZOOM_LEVELS, anchoredZoomPan, formatMapZoom, normalizeMapZoom, stepMapZoom } =
     zoomHelpers;
@@ -79,6 +81,26 @@
     z: number;
     details: string[];
     pin: MapPin | null;
+  }
+  interface RoomCard {
+    name: string;
+    terrain: string;
+    services: string[];
+    exits: Array<{ dir: string; to: string | null; area: string | null }>;
+    moreExits: number;
+    stack: string[];
+    moreStack: number;
+    pin: { kind: string; label: string; note: string } | null;
+  }
+  interface CardShown {
+    id: string;
+    data: RoomCard;
+    version: string;
+    steps: number | null;
+    unreachable: boolean;
+    left: number;
+    top: number | null;
+    bottom: number | null;
   }
   interface PinEditor {
     roomId: string;
@@ -146,6 +168,8 @@
   let hoverId: string | null = null;
   let walkTargetId: string | null = null;
   let routeCache: { key: string; marks: RouteMarks | null } | null = null;
+  // The card over the room under the pointer or keyboard focus.
+  let card = $state<CardShown | null>(null);
 
   const source = (): WorldMapSource => (live ? snapshot.source : snapshot.browseSource);
 
@@ -327,6 +351,63 @@
     }
   }
 
+  const cardId = `map-card-${resolvedPanelId}`;
+  let describedTile: HTMLElement | null = null;
+
+  // The card describes its room's tile to assistive technology, as the
+  // tile's title once did.
+  function describeTile(tile: HTMLElement | null): void {
+    if (describedTile === tile) return;
+    describedTile?.removeAttribute("aria-describedby");
+    describedTile = tile;
+    tile?.setAttribute("aria-describedby", cardId);
+  }
+
+  function hideCard(): void {
+    card = null;
+    describeTile(null);
+  }
+
+  // Shows the card for a room tile beside it, inside the map, or hides it.
+  // The card's facts are kept while the map data and pins are unchanged;
+  // its place and the route's steps are measured again on each call.
+  function showCard(tile: HTMLElement | null): void {
+    const roomId = tile?.dataset.roomId;
+    const room = roomId ? source().getRoom(roomId) : null;
+    if (!tile || !roomId || !room || pinEditor || body.classList.contains("map-panning")) {
+      hideCard();
+      return;
+    }
+    const version = `${snapshot.sourceVersion}|${pins.pins[roomId]?.at ?? ""}`;
+    const data =
+      card?.id === roomId && card.version === version
+        ? card.data
+        : (mapRoomCard(room, source(), pins.pins[roomId] ?? null) as RoomCard | null);
+    if (!data) {
+      hideCard();
+      return;
+    }
+    const route = live ? routeTo(roomId) : null;
+    const box = viewport.getBoundingClientRect();
+    const at = tile.getBoundingClientRect();
+    const roomRight = at.right - box.left;
+    const lower = at.top + at.height / 2 > box.top + box.height / 2;
+    card = {
+      id: roomId,
+      data,
+      version,
+      steps: route?.marks?.steps ?? null,
+      unreachable: !!route && !route.marks,
+      left:
+        roomRight + 248 <= box.width
+          ? roomRight + 8
+          : Math.max(4, Math.min(box.width - 244, at.left - box.left - 248)),
+      top: lower ? null : Math.max(4, at.top - box.top),
+      bottom: lower ? Math.max(4, box.bottom - at.bottom) : null,
+    };
+    describeTile(tile);
+  }
+
   function render(): void {
     body.dataset.mapZoom = String(mapZoom);
     body.dataset.mapStyle = mapSettings.mapPaintedTerrain ? "painted" : "tiles";
@@ -353,6 +434,7 @@
     updateLevelControls(current);
     decorateRoute();
     decorateFound();
+    if (card) showCard(tileFor(card.id));
     mapStatus = snapshot.speedwalking
       ? "Speedwalking"
       : source().getMapStatus() || (live ? "Live map" : "Area map");
@@ -382,30 +464,53 @@
     activateTile(tile);
   }
 
+  // The room under the pointer or focus gets its card, and on the live map
+  // its route.
   function previewFrom(target: EventTarget | null): void {
     const tile =
       target instanceof Element
         ? target.closest<HTMLElement>(".map-tile-room[data-room-id]")
         : null;
     const next = tile?.dataset.roomId ?? null;
-    if (next === hoverId) return;
+    if (next === (card?.id ?? null) && (!live || next === hoverId)) return;
+    showCard(tile);
+    if (!live || next === hoverId) return;
     hoverId = next;
     decorateRoute();
   }
 
   function handlePointerOver(event: PointerEvent): void {
-    if (!live || event.pointerType === "touch" || body.classList.contains("map-panning")) return;
+    if (event.pointerType === "touch" || body.classList.contains("map-panning")) return;
     previewFrom(event.target);
   }
 
   function handlePointerLeave(): void {
+    hideCard();
     if (hoverId === null) return;
     hoverId = null;
     decorateRoute();
   }
 
   function handleFocusIn(event: FocusEvent): void {
-    if (live) previewFrom(event.target);
+    previewFrom(event.target);
+  }
+
+  // A double-click on the map centres the view there, gliding. On the live
+  // map a click on a room walks there, so only the ground between rooms
+  // takes a double-click; on the area map, rooms do too.
+  function handleDoubleClick(event: MouseEvent): void {
+    if (!(event.target instanceof Element) || event.target.closest("button")) return;
+    if (live && event.target.closest(".map-tile-room[data-room-id]")) return;
+    const current = view();
+    if (!current) return;
+    const rect = body.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    const pan = currentPan();
+    setPan({ x: pan.x - dx / current.pitch, y: pan.y - dy / current.pitch });
+    hideCard();
+    render();
+    glideFrom(dx, dy);
   }
 
   function handleFocusOut(event: FocusEvent): void {
@@ -502,6 +607,7 @@
     const existing = pins.pins[roomId];
     const box = viewport.getBoundingClientRect();
     const at = tile.getBoundingClientRect();
+    hideCard();
     pinEditor = {
       roomId,
       name: String(room.name || "this room"),
@@ -697,6 +803,7 @@
     const resizeObserver = new ResizeObserver(render);
     resizeObserver.observe(body);
     body.addEventListener("click", handleClick);
+    body.addEventListener("dblclick", handleDoubleClick);
     body.addEventListener("keydown", handleKeydown);
     body.addEventListener("pointerover", handlePointerOver);
     body.addEventListener("pointerleave", handlePointerLeave);
@@ -717,6 +824,7 @@
       disposePan?.();
       resizeObserver.disconnect();
       body.removeEventListener("click", handleClick);
+      body.removeEventListener("dblclick", handleDoubleClick);
       body.removeEventListener("keydown", handleKeydown);
       body.removeEventListener("pointerover", handlePointerOver);
       body.removeEventListener("pointerleave", handlePointerLeave);
@@ -805,6 +913,56 @@
   </div>
   <div class="map-viewport" bind:this={viewport}>
     <div bind:this={body} class="map-body" id={`panel-body-${panelId}`}></div>
+    {#if card}
+      <div
+        class="map-card"
+        id={cardId}
+        role="tooltip"
+        style:left={`${card.left}px`}
+        style:top={card.top === null ? null : `${card.top}px`}
+        style:bottom={card.bottom === null ? null : `${card.bottom}px`}
+      >
+        <p class="map-card-name">{card.data.name}</p>
+        {#if card.data.terrain}<p class="map-card-terrain">{card.data.terrain}</p>{/if}
+        {#if card.data.pin}
+          <p class="map-card-pin">
+            <span class={`map-card-pin-icon map-pin-${card.data.pin.kind}`}>
+              <!-- Fixed icon markup from the pin helpers. -->
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+              {@html mapPinIconSvg(card.data.pin.kind)}
+            </span>
+            <span>{card.data.pin.label}{card.data.pin.note ? `: ${card.data.pin.note}` : ""}</span>
+          </p>
+        {/if}
+        {#if card.data.services.length}
+          <p class="map-card-services">{card.data.services.join(" · ")}</p>
+        {/if}
+        {#if card.data.exits.length}
+          <ul class="map-card-exits" aria-label="Exits">
+            {#each card.data.exits as exit (exit.dir)}
+              <li>
+                <span class="map-card-dir">{exit.dir}</span>
+                <span class:map-card-unmapped={!exit.to}>{exit.to ?? "unmapped"}</span>
+                {#if exit.area}<span class="map-card-area">{exit.area}</span>{/if}
+              </li>
+            {/each}
+            {#if card.data.moreExits}<li class="map-card-more">+{card.data.moreExits} more</li>{/if}
+          </ul>
+        {/if}
+        {#if card.data.stack.length}
+          <p class="map-card-stack">
+            Also mapped here: {card.data.stack.join(", ")}{card.data.moreStack
+              ? `, +${card.data.moreStack} more`
+              : ""}
+          </p>
+        {/if}
+        {#if card.steps !== null}
+          <p class="map-card-steps">{card.steps} {card.steps === 1 ? "step" : "steps"} away</p>
+        {:else if card.unreachable}
+          <p class="map-card-steps map-card-noroute">No known route</p>
+        {/if}
+      </div>
+    {/if}
     {#if titleCard}
       {#key titleCard.key}
         <div class="map-title-card" role="status">
@@ -899,7 +1057,7 @@
         <input
           bind:this={pinNoteInput}
           bind:value={pinEditor.note}
-          class="map-pin-note"
+          class="map-pin-note-input"
           type="text"
           maxlength={MAX_PIN_NOTE}
           placeholder="Note (optional)"
@@ -1159,6 +1317,121 @@
     }
   }
 
+  /* The room card: shown a moment after the pointer settles on a room, then
+     straight away as it moves between rooms. */
+  .map-card {
+    position: absolute;
+    z-index: 20;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: 15rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid rgba(214, 186, 120, 0.45);
+    border-radius: 6px;
+    background: rgba(12, 12, 14, 0.94);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+    color: var(--df-text);
+    font-size: calc(0.6875rem * var(--pane-font-scale, 1));
+    line-height: 1.35;
+    pointer-events: none;
+    animation: map-card-in 140ms ease-out 220ms both;
+  }
+
+  @keyframes map-card-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  :where(.map-card) p {
+    margin: 0;
+  }
+
+  .map-card-name {
+    color: #f3e3b5;
+    font-weight: 600;
+  }
+
+  .map-card-terrain,
+  .map-card-stack,
+  .map-card-more {
+    color: var(--df-muted);
+  }
+
+  .map-card-pin {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.125rem;
+    color: #ffd77a;
+  }
+
+  .map-card-pin-icon {
+    display: inline-grid;
+    flex: 0 0 auto;
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .map-card-pin-icon :global(svg) {
+    width: 100%;
+    height: 100%;
+    fill: currentColor;
+  }
+
+  .map-card-services {
+    margin-top: 0.125rem;
+    color: #9fd3a8;
+  }
+
+  .map-card-exits {
+    display: grid;
+    gap: 0.0625rem;
+    margin: 0.25rem 0 0;
+    padding: 0.25rem 0 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    list-style: none;
+  }
+
+  .map-card-exits li {
+    display: flex;
+    gap: 0.375rem;
+    min-width: 0;
+  }
+
+  .map-card-dir {
+    flex: 0 0 4.75rem;
+    color: var(--df-muted);
+  }
+
+  .map-card-unmapped {
+    color: var(--df-muted);
+    font-style: italic;
+  }
+
+  .map-card-area {
+    color: #e0a64a;
+  }
+
+  .map-card-stack {
+    margin-top: 0.25rem;
+  }
+
+  .map-card-steps {
+    margin-top: 0.25rem;
+    color: #7fe3ff;
+  }
+
+  .map-card-noroute {
+    color: #eb6e64;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .map-card {
+      animation: none;
+    }
+  }
+
   .map-level-controls {
     display: inline-flex;
     align-items: center;
@@ -1309,7 +1582,7 @@
     box-shadow: 0 0 0 2px currentColor;
   }
 
-  .map-pin-note {
+  .map-pin-note-input {
     box-sizing: border-box;
     width: 100%;
     padding: 0.25rem 0.375rem;

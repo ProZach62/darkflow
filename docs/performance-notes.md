@@ -245,6 +245,27 @@ times a 60 Hz display's frames, so in the desktop client the walking cost
 should be about a quarter of the difference shown. Writing the layers' size
 and visibility only when they change made no measurable difference.
 
+## Room cards, labels, and the marker
+
+Each room tile had carried a `title`: its name, pin, the rooms sharing its
+cell, a lookup per exit for those leading to another area, and its services,
+built for every room in the window on every render. The tiles now carry
+none; a card is built for the one room under the pointer
+(`map-card-core.js`). Landmark labels are drawn only below 50% zoom, at most
+40, chosen by a greedy pass over a few rectangles.
+
+The marker's ring breathes with a scale and opacity animation. Running all
+the time it cost about six points of busy time while walking (headless,
+alternating with it held still): the marker is drawn afresh on each move, so
+the animation restarted with every step. It now waits 1.2 s before it
+starts, so it runs only while the player stands still:
+
+| | Ring held still | Ring breathing when still |
+| --- | --- | --- |
+| Busy at idle | 8-11% | 13% |
+| Busy walking, normal zoom | 32-36% | 35% |
+| Busy walking, 20% zoom | 61-66% | 54-59% |
+
 ## Still open
 
 - `Char.Vitals` fans out to every information panel, the combat, audio,

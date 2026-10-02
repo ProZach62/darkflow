@@ -608,6 +608,66 @@ test("the map zooms at the pointer, shows other floors, keeps pins, and searches
   await expect(card).toHaveCount(0, { timeout: 6_000 });
 });
 
+test("the map shows a room's card on hover, faces the way you step, labels landmarks, and centres on a double-click", async ({
+  page,
+}) => {
+  test.skip(
+    (page.viewportSize()?.width ?? Infinity) <= 700,
+    "hover cards and double-clicks are pointer interactions",
+  );
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(102, "East Hall", 1, { west: 101 }),
+    details: ["shop"],
+  });
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  const mapBody = map.locator(".map-body");
+  const hall = map.getByRole("button", { name: "Speedwalk to East Hall" });
+  await expect(hall).toBeVisible();
+
+  // The card: what the room is, where its exits go, and how far it is.
+  await hall.hover();
+  const card = map.getByRole("tooltip");
+  await expect(card).toContainText("East Hall");
+  await expect(card).toContainText("Shop");
+  await expect(card).toContainText("Atrium");
+  await expect(card).toContainText("1 step away");
+  await expect(map.locator(".map-tile[title]")).toHaveCount(0);
+  await expect(hall).toHaveAccessibleDescription(/East Hall.*Shop/s);
+  await page.mouse.move(1, 1);
+  await expect(card).toHaveCount(0);
+  await expect(hall).not.toHaveAttribute("aria-describedby");
+
+  // A step east: the marker faces east.
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(102, "East Hall", 1, { west: 101 }),
+    details: ["shop"],
+  });
+  await expect(map.locator(".map-player-facing")).toHaveAttribute("style", "rotate:90deg");
+
+  // Zoomed out past the badges, the shop is named.
+  for (let step = 0; step < 6; step++) {
+    await map.getByRole("button", { name: "Zoom map out" }).click();
+  }
+  await expect(map.locator(".map-zoom-level")).toHaveText("40%");
+  await expect(map.locator(".map-label")).toHaveText(["East Hall"]);
+
+  // A double-click on the ground centres the view there, without walking.
+  const box = (await mapBody.boundingBox())!;
+  await page.mouse.dblclick(box.x + box.width / 2 - 120, box.y + box.height / 2 - 80);
+  await expect
+    .poll(() =>
+      mapBody.evaluate((body) =>
+        // To a quarter cell: the middle of the map need not be on a whole pixel.
+        [body.dataset.mapPanX, body.dataset.mapPanY].map((pan) => Math.round(Number(pan) * 4) / 4),
+      ),
+    )
+    .toEqual([7.5, 5]);
+  await expect(map.locator(".map-panel-status")).not.toHaveText("Speedwalking");
+});
+
 test("map navigation and room imagery survive layout persistence without stale media", async ({
   page,
 }, testInfo) => {

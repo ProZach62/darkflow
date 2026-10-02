@@ -183,7 +183,11 @@ and the view settles on it; a longer jump, a new area, or reduced motion cuts
 instead. Both are CSS animations given a negative delay equal to the time
 already spent, so the several renders a single move causes carry one glide
 on rather than restarting it. A move made mid-glide starts from wherever the
-glide had got to.
+glide had got to. An arrow on the marker points the way the player last
+stepped; a jump, the stairs, or a new area keeps the old facing. Standing
+still, the marker's ring breathes slowly; the marker is drawn afresh on each
+move, and the breathing waits 1.2 s to start, so it does not run while the
+player walks.
 
 Empty cells beside known rooms are drawn as mist, the edge of the explored
 map, and a cell that an unexplored exit leads into is brighter. A room with
@@ -245,7 +249,7 @@ player there.
 Right-click a room (or press the menu key on it) to pin it as a note, quest,
 danger, loot, or home, with a short note. Pins are kept per character in
 `localStorage["darkflow-map-pins:<characterProfileId>"]`, at most 500, and
-show as a badge on the room, in its tooltip, and in the legend.
+show as a badge on the room, on its card, and in the legend.
 
 The search box (⌕) finds rooms in the area by name, by service (a shop is
 also a store, a pub an inn or tavern), and by pin kind and note; every word
@@ -273,3 +277,20 @@ Reduced motion, the setting off, or the tile look leaves the map still.
 
 Crossing into a new area shows its name as an "Entering ..." banner that
 fades after about three seconds; the area the map opens in gets none.
+
+Hovering or focusing a room shows its card beside it: the room's name, its
+terrain, its pin and note, its services, each exit with the room it leads to
+(and that room's area when it is another), the other rooms mapped to the same
+cell, and on the live map the steps there or "No known route". The card is
+built for the one room when it is hovered (`map-card-core.js`); the tiles
+carry no `title`, which had been a string per room written on every render.
+
+Below 50% zoom, where badges are left out, pinned rooms are labelled with
+their note (or name) and rooms with services with their name, as many as fit
+without overlapping (`map-labels-core.js`): pins first, then rooms in view,
+at most 40. The labels sit in the grid, which is scaled down, so their text
+is scaled up by as much to stay readable.
+
+A double-click on the map centres the view on that point, gliding. On the
+live map a click on a room walks there, so only the ground between rooms
+takes a double-click; on the area map, rooms do too.

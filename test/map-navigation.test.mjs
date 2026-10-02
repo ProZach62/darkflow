@@ -110,11 +110,12 @@ test('the map shows another floor with the player ghosted where they stand', () 
   assert.equal(mapLevelOffset(-999), -50);
 });
 
-test('pins draw as a badge on the room and in its tooltip', () => {
+test('pins draw as a badge on the room, whose card (not a title) names them', () => {
   const renderer = createMapRenderer({ now: () => 0 });
   const map = body();
   renderer.render(map, tower(), { pins: { yard: { kind: 'danger', note: 'Wasps nest' } } });
-  assert.match(map.innerHTML, /map-tile-pinned" title="Yard\nPinned: Danger - Wasps nest\n\[shop\]"/);
+  assert.match(map.innerHTML, /map-tile-pinned" data-room-id="yard"/);
+  assert.doesNotMatch(map.innerHTML, /class="map-tile[^"]*" title=/, 'tiles carry no title');
   assert.match(map.innerHTML, /<span class="map-pin map-pin-danger"><svg/);
   renderer.render(map, tower());
   assert.doesNotMatch(map.innerHTML, /map-pin/);

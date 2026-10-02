@@ -4,7 +4,8 @@ import { extractTerrainTokens, getPrimaryTerrain } from './terrain-semantics.mjs
 import { planTerrain } from './map-terrain-core.js';
 import { createTerrainPainter } from './map-terrain-paint.js';
 import { createLivingLayers } from './map-living.js';
-import { mapPinIconSvg, mapPinLabel } from './map-pins-core.js';
+import { mapPinIconSvg } from './map-pins-core.js';
+import { pickMapLabels } from './map-labels-core.js';
 
 const TILE_SIZE = 32;
 // Gap between room boxes. Rooms are drawn as separate boxes spaced apart, with
@@ -77,18 +78,25 @@ function easeOutCubic(t) {
 }
 
 // Where the marker and camera are coming from, in cells relative to the
-// player's room: { area, z, x, y, at, cam, marker }. A move during a glide
-// starts from wherever the glide had got to.
+// player's room: { area, z, x, y, at, cam, marker, facing }. A move during a
+// glide starts from wherever the glide had got to. facing is the way the
+// player last stepped, in degrees clockwise from north, or null; a jump,
+// the stairs, or a new area keeps the facing the player had.
 export function advanceMapMotion(previous, room, now, reducedMotion) {
   if (!room) return null;
   const next = {
     area: room.area, z: room.z, x: room.x, y: room.y, at: now,
     cam: { x: 0, y: 0 }, marker: { x: 0, y: 0 },
+    facing: previous ? previous.facing : null,
   };
-  if (!previous || reducedMotion || previous.area !== room.area || previous.z !== room.z) {
-    return next;
-  }
+  if (!previous || previous.area !== room.area || previous.z !== room.z) return next;
   if (previous.x === room.x && previous.y === room.y) return previous;
+  const stepX = room.x - previous.x;
+  const stepY = room.y - previous.y;
+  if (Math.abs(stepX) <= 1 && Math.abs(stepY) <= 1) {
+    next.facing = (Math.round((Math.atan2(stepX, -stepY) * 180) / Math.PI) + 360) % 360;
+  }
+  if (reducedMotion) return next;
   const elapsed = now - previous.at;
   const camLeft = 1 - easeOutCubic(elapsed / CAMERA_GLIDE_MS);
   const markerLeft = 1 - easeOutCubic(elapsed / MARKER_STEP_MS);
@@ -511,7 +519,7 @@ function renderMap(bodyEl, source, state, extras = {}) {
     + 'px;top:-' + round2(gridOffsetY) + 'px;gap:' + TILE_GAP + 'px;'
     + 'grid-template-columns:repeat(' + windowW + ',' + TILE_SIZE + 'px);'
     + 'grid-template-rows:repeat(' + windowH + ',' + TILE_SIZE + 'px);'
-    + 'transform:scale(' + zoom + ')';
+    + 'transform:scale(' + zoom + ');--map-zoom:' + zoom;
 
   let markerCell = null;
   // Far zoomed out, connectors, door ticks, and badges are under a pixel or
@@ -521,6 +529,7 @@ function renderMap(bodyEl, source, state, extras = {}) {
   // names the room.
   const tileLabel = extras.tileLabel === 'browse' ? 'browse' : extras.tileLabel === 'walk' ? 'walk' : null;
   const tiles = new Map();
+  const labelCandidates = [];
   for (let ry = 0; ry < windowH; ry++) {
     for (let rx = 0; rx < windowW; rx++) {
       const worldX = anchorX + rx;
@@ -551,11 +560,21 @@ function renderMap(bodyEl, source, state, extras = {}) {
       const revealElapsed = revealAt === undefined ? Infinity : now - revealAt;
       const revealing = revealElapsed < REVEAL_MS;
       const pin = pins && pins[room.id] ? pins[room.id] : null;
+      if (!detailed && (pin || (room.details && room.details.length))) {
+        labelCandidates.push({
+          id: room.id, x: worldX, y: worldY, column: rx + 1, row: ry + 1,
+          text: pin && pin.note ? pin.note : room.name,
+          pinned: !!pin,
+          inView: worldX >= visibleBounds.minX && worldX <= visibleBounds.maxX
+            && worldY >= visibleBounds.minY && worldY <= visibleBounds.maxY,
+        });
+      }
+      // A room's name, services, exits, and pin show on a card when it is
+      // hovered (map-card-core.js), not in a title written into every tile.
       tiles.set(key, '<div class="map-tile map-tile-room map-tile-' + terrain
         + (isPlayer ? ' map-tile-player' : '') + trustClass + conflictClass(bucket)
         + lastPos + unseen + (revealing ? ' map-tile-revealed' : '') + (pin ? ' map-tile-pinned' : '')
-        + '" title="' + escAttr(tileTitle(room, bucket, source, pin, detailed)) + '"'
-        + ' data-room-id="' + escAttr(room.id) + '"'
+        + '" data-room-id="' + escAttr(room.id) + '"'
         + conflictAttr(bucket)
         + (tileLabel ? tileButtonAttrs(room, tileLabel) : '')
         + ' style="' + place + (revealing ? 'animation-delay:-' + Math.round(revealElapsed) + 'ms;' : '') + '">'
@@ -565,10 +584,17 @@ function renderMap(bodyEl, source, state, extras = {}) {
     }
   }
 
+  // Zoomed out, landmarks are named; before the marker, so it draws on top.
   let marks = '';
+  for (const label of pickMapLabels(labelCandidates, pitch)) {
+    marks += '<div class="map-label' + (label.pinned ? ' map-label-pinned' : '') + '" style="grid-column:'
+      + label.column + ' / span 1;grid-row:' + label.row + ' / span 1" aria-hidden="true"><span>'
+      + escAttr(label.text) + '</span></div>';
+  }
   if (markerCell) {
     marks += tintHtml(markerCell, extras.ambience);
-    marks += playerMarkerHtml(markerCell, useAnimations ? null : motion, motionElapsed);
+    marks += playerMarkerHtml(markerCell, useAnimations ? null : motion, motionElapsed,
+      motion ? motion.facing : null);
   }
   // On another floor, a ghost of the marker shows where the player is, and
   // which way: below this floor or above it.
@@ -1028,7 +1054,7 @@ function paintTerrainLayer(bodyEl, state, plan, view, offset) {
 // can step between rooms while the camera follows. It also carries the time
 // of day: a tint over the whole map, with a pool of light around the player
 // at night.
-function playerMarkerHtml(cell, motion, elapsed) {
+function playerMarkerHtml(cell, motion, elapsed, facingDeg) {
   const stepping = !!motion && elapsed < MARKER_STEP_MS
     && (motion.marker.x !== 0 || motion.marker.y !== 0);
   // An absolutely placed grid item with only a start line would stretch to
@@ -1038,9 +1064,13 @@ function playerMarkerHtml(cell, motion, elapsed) {
     style += glideStyle('marker', { x: -motion.marker.x, y: -motion.marker.y },
       TILE_SIZE + TILE_GAP, elapsed);
   }
+  // An arrow on the ring points the way the player last stepped.
+  const facing = Number.isFinite(facingDeg)
+    ? '<span class="map-player-facing" style="rotate:' + facingDeg + 'deg"></span>'
+    : '';
   return '<div class="map-player-marker' + (stepping ? ' map-marker-step' : '')
     + '" style="' + style + '" aria-hidden="true">'
-    + '<span class="map-player-ring"></span></div>';
+    + '<span class="map-player-ring"></span>' + facing + '</div>';
 }
 
 // The time of day's tint spreads from the player's cell. It is its own still
@@ -1183,40 +1213,6 @@ function cellId(x, y) {
 export function mapLevelOffset(value) {
   const offset = Math.trunc(Number(value));
   return Number.isFinite(offset) ? Math.max(-50, Math.min(50, offset)) : 0;
-}
-
-function tileTitle(room, bucket, source, pin, detailed = true) {
-  let title = room.name;
-  if (pin) title += '\nPinned: ' + mapPinLabel(pin.kind) + (pin.note ? ' - ' + pin.note : '');
-  if (bucket.length > 1) {
-    const names = bucket.slice(0, 6).map((entry) => entry.name || 'Unknown');
-    const suffix = bucket.length > names.length ? '\n+' + (bucket.length - names.length) + ' more' : '';
-    title += '\n' + bucket.length + ' mapped rooms share this coordinate:\n'
-      + names.join('\n') + suffix;
-  }
-  // Far zoomed out the exits are not drawn, and naming where each leads
-  // costs a lookup per exit per room.
-  const boundaries = detailed ? boundaryExitLines(room, source) : [];
-  if (boundaries.length) title += '\n' + boundaries.join('\n');
-  if (room.details && room.details.length) {
-    title += '\n[' + room.details.join(', ') + ']';
-  }
-  return title;
-}
-
-// "east -> darkwind.forest" lines for exits that lead to another zone, so the
-// amber boundary stubs are explained on hover.
-function boundaryExitLines(room, source) {
-  if (!room || !room.exits || !source) return [];
-  const lines = [];
-  for (const [dir, destId] of Object.entries(room.exits)) {
-    if (!MAP_DIRECTIONS.has(dir)) continue;
-    const dest = source.getRoom(destId);
-    if (dest && dest.area && room.area && dest.area !== room.area) {
-      lines.push(dir + ' -> ' + dest.area);
-    }
-  }
-  return lines;
 }
 
 function countVisibleConnectedRooms(areaRooms, distances, z, bounds) {

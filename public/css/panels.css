@@ -1760,6 +1760,36 @@ body.zork-only-mode #panels-menu {
     0 0 8px 2px rgba(0, 255, 255, 0.95),
     0 0 16px 4px rgba(0, 190, 255, 0.55);
 }
+/* The ring breathes slowly while the player stands still: the marker is
+   drawn afresh on every move, so the delay holds it steady while walking,
+   when the breathing would only add work to every frame. Scale and
+   opacity, so the compositor runs it. */
+.map-player-ring {
+  animation: map-player-breathe 2.6s ease-in-out 1.2s infinite;
+}
+@keyframes map-player-breathe {
+  0%,
+  100% { opacity: 1; scale: 1; }
+  50% { opacity: 0.6; scale: 1.08; }
+}
+/* An arrow outside the ring points the way the player last stepped; the
+   span is turned about the cell's centre. */
+.map-player-facing {
+  position: absolute;
+  inset: -15px;
+  z-index: 1;
+}
+.map-player-facing::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  translate: -50% 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid #00ffff;
+  filter: drop-shadow(0 0 3px rgba(0, 255, 255, 0.9));
+}
 .map-player-marker::after {
   content: '';
   position: absolute;
@@ -2038,7 +2068,35 @@ body.zork-only-mode #panels-menu {
   outline-offset: 1px;
 }
 
+/* Landmark names on the zoomed-out map. The grid is scaled down, so the
+   text is scaled up by as much to stay readable. */
+.map-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+}
+.map-label > span {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  translate: -50% 0;
+  padding: 0 calc(4px / var(--map-zoom, 1));
+  border-radius: calc(3px / var(--map-zoom, 1));
+  background: rgba(0, 0, 0, 0.74);
+  color: #e8dcc0;
+  font: 600 calc(11px / var(--map-zoom, 1)) / 1.35 var(--df-font-mono);
+  white-space: nowrap;
+}
+.map-label-pinned > span {
+  color: #ffd77a;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .map-player-ring,
   .map-marker-step,
   .map-camera-glide,
   .map-zoom-glide,
