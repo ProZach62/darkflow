@@ -74,6 +74,21 @@ test('dragging empty map space updates pan coordinates and uses grabbing state',
   assert.equal(renders, 1);
 });
 
+test('isometric drag converts screen movement back to world axes', () => {
+  const body = makeBody();
+  body.frame.dataset.mapProjection = 'iso';
+  body.frame.dataset.mapPitchX = '128';
+  body.frame.dataset.mapPitchY = '64';
+  wireMapPan(body);
+
+  body.listeners.get('pointerdown')(pointerEvent());
+  body.listeners.get('pointermove')(pointerEvent({ clientX: 64, clientY: 32 }));
+  body.listeners.get('pointerup')(pointerEvent({ clientX: 64, clientY: 32 }));
+
+  assert.equal(body.dataset.mapPanX, '1');
+  assert.equal(body.dataset.mapPanY, '0');
+});
+
 test('room cells do not start a map drag', () => {
   const body = makeBody();
   wireMapPan(body);

@@ -137,6 +137,9 @@ export function convertLegacyWorkspace(
     const dock = value.dock === "left" || value.dock === "right" ? value.dock : "float";
     const state: Record<string, unknown> = {};
     if (id === "map" && typeof value.mapZoom === "number") state.mapZoom = value.mapZoom;
+    if (id === "map" && (value.mapMode === "flat" || value.mapMode === "iso")) {
+      state.mapMode = value.mapMode;
+    }
     panels.push({
       id,
       dock,

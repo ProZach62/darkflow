@@ -52,6 +52,7 @@ export interface CompositeWorkspaceSnapshot {
   layout: {
     collapsed: Record<string, string[]>;
     dockview: unknown;
+    mapMode?: "flat" | "iso";
     mapZoom?: number;
     railVisibility?: { left: boolean; right: boolean };
     scrollviews: Record<string, string[]>;

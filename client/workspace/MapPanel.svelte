@@ -4,6 +4,7 @@
   import type { Session } from "../runtime/session.ts";
   import type { SessionWorldSnapshot, WorldMapSource } from "../runtime/world.ts";
   import type { PanelState } from "./workspace.ts";
+  import type { MapOccupant } from "./map-iso-renderer.ts";
   import { loadClientSettings } from "../app/client-settings.ts";
   // @ts-expect-error Retained renderer factory is JavaScript without declarations.
   import { createMapRenderer, mapDetailIconSvg } from "../../public/js/map-renderer-core.js";
@@ -91,6 +92,9 @@
     stack: string[];
     moreStack: number;
     pin: { kind: string; label: string; note: string } | null;
+    occupants: MapOccupant[];
+    occupantsDark: boolean;
+    occupantsMore: number;
   }
   interface CardShown {
     id: string;
@@ -111,6 +115,12 @@
     left: number;
     top: number;
   }
+  interface MapRenderer {
+    render(body: HTMLElement, source: WorldMapSource, extras: Record<string, unknown>): void;
+    getView(): MapView | null;
+    dispose(): void;
+  }
+  type MapMode = "flat" | "iso";
 
   let {
     panelId,
@@ -127,10 +137,11 @@
   }
 
   const live = resolvedPanelId === "map";
-  const renderer = createMapRenderer();
+  let renderer: MapRenderer = createMapRenderer() as MapRenderer;
   let panel: HTMLElement;
   let body: HTMLElement;
   let mapZoom = $state(1);
+  let mapMode = $state<MapMode>("flat");
   let mapStatus = $state("");
   let legendOpen = $state(false);
   // Levels: how many floors above (+) or below (-) the player's the map shows.
@@ -172,6 +183,42 @@
   let card = $state<CardShown | null>(null);
 
   const source = (): WorldMapSource => (live ? snapshot.source : snapshot.browseSource);
+
+  function normalizeMapMode(value: unknown): MapMode {
+    return value === "iso" ? "iso" : "flat";
+  }
+
+  function roomOccupants(): MapOccupant[] {
+    if (!live || snapshot.occupantsDark) return [];
+    if (snapshot.occupantsReady) {
+      return snapshot.occupants.map((occupant) => ({
+        id: occupant.id,
+        name: occupant.name,
+        kind: occupant.kind,
+        ...(occupant.race ? { race: occupant.race } : {}),
+        ...(occupant.family ? { family: occupant.family } : {}),
+        ...(occupant.gender ? { gender: occupant.gender } : {}),
+        ...(occupant.size ? { size: occupant.size } : {}),
+        hostile: occupant.hostile === true || occupant.hostile === 1,
+        elite: occupant.elite === true || occupant.elite === 1,
+        boss: occupant.boss === true || occupant.boss === 1,
+        ...(typeof occupant.level === "number" ? { level: occupant.level } : {}),
+      }));
+    }
+    const status = activeSession.information.getSnapshot().status;
+    const selfName = String(status?.name || status?.fullname || "You");
+    const foldedSelf = selfName.toLocaleLowerCase();
+    return [
+      { id: "self", name: selfName, kind: "self" },
+      ...snapshot.players
+        .filter((player) => player.name.toLocaleLowerCase() !== foldedSelf)
+        .map((player) => ({
+          id: `player:${player.name}`,
+          name: player.fullname || player.name,
+          kind: "player" as const,
+        })),
+    ];
+  }
 
   // The game's time of day, as a tint for the live map. Rooms with no sky
   // are left alone, as on the Scene.
@@ -379,14 +426,21 @@
       return;
     }
     const version = `${snapshot.sourceVersion}|${pins.pins[roomId]?.at ?? ""}`;
-    const data =
+    const baseData =
       card?.id === roomId && card.version === version
         ? card.data
         : (mapRoomCard(room, source(), pins.pins[roomId] ?? null) as RoomCard | null);
-    if (!data) {
+    if (!baseData) {
       hideCard();
       return;
     }
+    const currentRoom = live && roomId === source().getCurrentRoomId();
+    const data: RoomCard = {
+      ...baseData,
+      occupants: currentRoom ? roomOccupants() : [],
+      occupantsDark: currentRoom && snapshot.occupantsDark,
+      occupantsMore: currentRoom ? snapshot.occupantsMore : 0,
+    };
     const route = live ? routeTo(roomId) : null;
     const box = viewport.getBoundingClientRect();
     const at = tile.getBoundingClientRect();
@@ -399,9 +453,9 @@
       steps: route?.marks?.steps ?? null,
       unreachable: !!route && !route.marks,
       left:
-        roomRight + 248 <= box.width
+        roomRight + 216 <= box.width
           ? roomRight + 8
-          : Math.max(4, Math.min(box.width - 244, at.left - box.left - 248)),
+          : Math.max(4, Math.min(box.width - 212, at.left - box.left - 216)),
       top: lower ? null : Math.max(4, at.top - box.top),
       bottom: lower ? Math.max(4, box.bottom - at.bottom) : null,
     };
@@ -410,6 +464,7 @@
 
   function render(): void {
     body.dataset.mapZoom = String(mapZoom);
+    body.dataset.mapMode = mapMode;
     body.dataset.mapStyle = mapSettings.mapPaintedTerrain ? "painted" : "tiles";
     body.dataset.mapLevel = String(levelOffset);
     renderer.render(body, source(), {
@@ -419,6 +474,7 @@
       // The renderer writes each room's button role and label itself.
       tileLabel: live ? "walk" : "browse",
       living: mapSettings.mapLivingTerrain,
+      occupants: roomOccupants(),
     });
     pendingZoomAnchor = null;
     const current = view();
@@ -563,9 +619,38 @@
     panel.dispatchEvent(
       new CustomEvent("darkflow:map-panel-state", {
         bubbles: true,
-        detail: { panelId: resolvedPanelId, mapZoom },
+        detail: { panelId: resolvedPanelId, mapMode, mapZoom },
       }),
     );
+  }
+
+  async function setMapMode(value: unknown, persist = true): Promise<void> {
+    const next = normalizeMapMode(value);
+    if (next === mapMode) return;
+    mapMode = next;
+    renderer.dispose();
+    // The retained renderers own this intentionally empty host.
+    // eslint-disable-next-line svelte/no-dom-manipulating
+    body.replaceChildren();
+    if (next === "iso") {
+      body.setAttribute("aria-busy", "true");
+      const { createIsoMapRenderer } = await import("./map-iso-renderer.ts");
+      if (mapMode !== next) return;
+      renderer = createIsoMapRenderer();
+      body.removeAttribute("aria-busy");
+    } else {
+      renderer = createMapRenderer() as MapRenderer;
+      body.removeAttribute("aria-busy");
+    }
+    render();
+    if (persist) {
+      panel.dispatchEvent(
+        new CustomEvent("darkflow:map-panel-state", {
+          bubbles: true,
+          detail: { panelId: resolvedPanelId, mapMode, mapZoom },
+        }),
+      );
+    }
   }
 
   // Back to the player, on the player's own floor, gliding there.
@@ -763,6 +848,8 @@
     motionQuery.addEventListener("change", onMotionChange);
 
     const unsubscribeState = panelState.subscribe((next) => {
+      const nextMode = normalizeMapMode(next.mapMode);
+      if (nextMode !== mapMode) void setMapMode(nextMode, false);
       const nextZoom = normalizeMapZoom(next.mapZoom);
       if (nextZoom !== mapZoom) {
         mapZoom = nextZoom;
@@ -843,6 +930,22 @@
 
 <section bind:this={panel} class="map-panel" data-panel-id={panelId} data-workspace-owned="true">
   <div class="map-toolbar" role="toolbar" aria-label="Map controls">
+    <span class="map-mode-toggle" role="group" aria-label="Map view">
+      <button
+        class:map-mode-active={mapMode === "flat"}
+        class="panel-btn map-mode-btn"
+        type="button"
+        aria-pressed={mapMode === "flat"}
+        onclick={() => void setMapMode("flat")}>Flat</button
+      >
+      <button
+        class:map-mode-active={mapMode === "iso"}
+        class="panel-btn map-mode-btn"
+        type="button"
+        aria-pressed={mapMode === "iso"}
+        onclick={() => void setMapMode("iso")}>Iso</button
+      >
+    </span>
     <button
       class="panel-btn map-zoom-btn map-zoom-out"
       type="button"
@@ -936,6 +1039,27 @@
         {/if}
         {#if card.data.services.length}
           <p class="map-card-services">{card.data.services.join(" · ")}</p>
+        {/if}
+        {#if card.data.occupantsDark}
+          <p class="map-card-occupants map-card-dark">It is too dark to see who is here.</p>
+        {:else if card.data.occupants.length}
+          <div class="map-card-occupants">
+            <span class="map-card-section-title">Occupants</span>
+            <ul aria-label="Occupants">
+              {#each card.data.occupants as occupant (occupant.id)}
+                <li class:map-card-hostile={occupant.hostile}>
+                  <span class={`map-occupant-mark map-occupant-${occupant.kind}`}></span>
+                  <span>{occupant.name}</span>
+                  {#if occupant.level !== undefined}<span class="map-occupant-level"
+                      >L{occupant.level}</span
+                    >{/if}
+                  {#if occupant.boss}<span class="map-occupant-rank">Boss</span>
+                  {:else if occupant.elite}<span class="map-occupant-rank">Elite</span>{/if}
+                </li>
+              {/each}
+              {#if card.data.occupantsMore}<li>+{card.data.occupantsMore} more</li>{/if}
+            </ul>
+          </div>
         {/if}
         {#if card.data.exits.length}
           <ul class="map-card-exits" aria-label="Exits">
@@ -1215,6 +1339,26 @@
     white-space: nowrap;
   }
 
+  .map-mode-toggle {
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid var(--df-border);
+    border-radius: 4px;
+  }
+
+  .map-mode-btn {
+    min-width: 2.25rem;
+    border: 0;
+    border-radius: 0;
+    color: var(--df-muted);
+    font-size: calc(0.625rem * var(--pane-font-scale, 1));
+  }
+
+  .map-mode-btn.map-mode-active {
+    background: color-mix(in srgb, var(--df-accent-blue, #4aa3ff) 25%, var(--df-panel));
+    color: var(--df-text);
+  }
+
   .map-viewport {
     position: relative;
     display: flex;
@@ -1247,6 +1391,46 @@
     z-index: 3;
     outline: 2px solid var(--df-accent-blue);
     outline-offset: 1px;
+  }
+
+  .map-body :global(.map-iso-frame),
+  .map-body :global(.map-iso-canvas),
+  .map-body :global(.map-iso-rooms) {
+    position: absolute;
+    inset: 0;
+  }
+
+  .map-body :global(.map-iso-canvas canvas) {
+    display: block;
+  }
+
+  .map-body :global(.map-iso-room) {
+    position: absolute;
+    box-sizing: border-box;
+    border: 0;
+    background: transparent !important;
+    box-shadow: none;
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    cursor: pointer;
+  }
+
+  .map-body :global(.map-iso-room.map-tile-route-target),
+  .map-body :global(.map-iso-room.map-tile-found) {
+    background: rgba(255, 221, 112, 0.2);
+    outline: 3px solid #ffe38a;
+    outline-offset: -5px;
+  }
+
+  .map-body :global(.map-iso-room .map-route-dot) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: #8de8ff;
+    box-shadow: 0 0 5px #0a8fb4;
+    transform: translate(-50%, -50%);
   }
 
   .map-title-card {
@@ -1324,7 +1508,7 @@
     z-index: 20;
     box-sizing: border-box;
     width: max-content;
-    max-width: 15rem;
+    max-width: 13rem;
     padding: 0.375rem 0.5rem;
     border: 1px solid rgba(214, 186, 120, 0.45);
     border-radius: 6px;
@@ -1382,6 +1566,65 @@
   .map-card-services {
     margin-top: 0.125rem;
     color: #9fd3a8;
+  }
+
+  .map-card-occupants {
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .map-card-section-title {
+    color: #d9c99b;
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .map-card-occupants ul {
+    display: grid;
+    gap: 0.0625rem;
+    margin: 0.125rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .map-card-occupants li {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .map-card-dark {
+    color: var(--df-muted);
+    font-style: italic;
+  }
+
+  .map-occupant-mark {
+    width: 0.45rem;
+    height: 0.45rem;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    background: #aaa18e;
+  }
+
+  .map-occupant-self {
+    background: #efc75e;
+  }
+  .map-occupant-player {
+    background: #54a5d6;
+  }
+  .map-card-hostile .map-occupant-mark {
+    background: #d9574f;
+  }
+  .map-card-hostile {
+    color: #f19a91;
+  }
+
+  .map-occupant-level,
+  .map-occupant-rank {
+    color: var(--df-muted);
+    font-size: 0.625rem;
   }
 
   .map-card-exits {
