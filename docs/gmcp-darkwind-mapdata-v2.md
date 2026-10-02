@@ -225,3 +225,30 @@ glides over it. Each terrain uses the painted texture that
 sheets and writes that index. The planner (`map-terrain-core.js`) is pure
 and unit-tested; the painter (`map-terrain-paint.js`) caches the last
 painting, so the several renders one move causes paint once.
+
+The map zooms with the mouse wheel or a trackpad pinch, one zoom step at a
+time, keeping the world point under the pointer still (`anchoredZoomPan`)
+and easing the step in around it; the + and - buttons do the same around the
+middle. A wheel event of 40 pixels or more is one notch, since a notch's size
+depends on the screen's scaling; smaller deltas are gathered, and steps are
+at least 70 ms apart. A drag let go while still moving coasts on and slows to
+a stop (`releaseVelocity`), and catching it stops it. Re-center and search
+glide the view to where they land, over at most two cells, since the grid
+only reaches that far past the edge.
+
+The ▲ and ▼ buttons show other floors of the area: the next level up or down
+that has rooms. The player's own floor shows beneath as dashed outlines, and
+a ghost of the marker marks where the player is, with an arrow toward them.
+Re-center returns to the player's floor, and taking the stairs follows the
+player there.
+
+Right-click a room (or press the menu key on it) to pin it as a note, quest,
+danger, loot, or home, with a short note. Pins are kept per character in
+`localStorage["darkflow-map-pins:<characterProfileId>"]`, at most 500, and
+show as a badge on the room, in its tooltip, and in the legend.
+
+The search box (⌕) finds rooms in the area by name, by service (a shop is
+also a store, a pub an inn or tavern), and by pin kind and note; every word
+must match, and names that start with a word rank first. Empty, it lists the
+area's pins. Enter flies to the room, on its floor, and rings it; Shift+Enter
+or Walk also speedwalks there.

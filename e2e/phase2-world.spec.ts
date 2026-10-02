@@ -453,6 +453,74 @@ test("the map marks you, previews a route on hover, draws service icons, and has
   await expect(legend).toHaveCount(0);
 });
 
+test("the map zooms at the pointer, shows other floors, keeps pins, and searches", async ({
+  page,
+}) => {
+  test.skip(
+    (page.viewportSize()?.width ?? Infinity) <= 700,
+    "wheel zoom and right-click pins are pointer interactions",
+  );
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(102, "East Hall", 1, { west: 101 }));
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(201, "Loft", 0, { down: 101 }),
+    z: 1,
+  });
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    currentRoom(101, "Atrium", 0, { east: 102, up: 201 }),
+  );
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  const mapBody = map.locator(".map-body");
+  const atrium = map.getByRole("button", { name: "Speedwalk to Atrium" });
+  await expect(atrium).toBeVisible();
+
+  // Wheel zoom steps once, around the pointer.
+  const box = await atrium.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.wheel(0, -120);
+  await expect(map.locator(".map-zoom-level")).toHaveText("110%");
+
+  // The floor above, with the player ghosted below it.
+  await map.getByRole("button", { name: "Show the level above" }).click();
+  await expect(map.locator(".map-level-label")).toHaveText("+1 level");
+  await expect(map.getByRole("button", { name: "Speedwalk to Loft" })).toBeVisible();
+  await expect(atrium).toHaveCount(0);
+  await expect(map.locator(".map-player-ghost")).toHaveCount(1);
+  await map.getByRole("button", { name: "Re-center map" }).click();
+  await expect(map.locator(".map-level-label")).toHaveText("Your level");
+  await expect(atrium).toBeVisible();
+
+  // A pin by right-click, kept per character.
+  await map.getByRole("button", { name: "Speedwalk to East Hall" }).click({ button: "right" });
+  const editor = map.getByRole("dialog", { name: "Pin East Hall" });
+  await editor.getByRole("radio", { name: "Danger" }).click();
+  await editor.getByLabel("Pin note").fill("Loose floorboards");
+  await editor.getByLabel("Pin note").press("Enter");
+  await expect(editor).toHaveCount(0);
+  await expect(map.locator(".map-pin-danger")).toHaveCount(1);
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith("darkflow-map-pins:"))
+        .map((key) => JSON.parse(localStorage.getItem(key) ?? "{}").pins?.["102"]?.note),
+    ),
+  ).toEqual(["Loose floorboards"]);
+
+  // Search by pin note, and by name onto another floor.
+  await map.getByRole("button", { name: "Search the map" }).click();
+  const search = map.getByRole("searchbox", { name: "Search the map" });
+  await search.fill("floorboards");
+  await expect(map.locator(".map-search-name")).toHaveText(["East Hall"]);
+  await search.fill("loft");
+  await expect(map.locator(".map-search-meta")).toHaveText(["1 level up"]);
+  await search.press("Enter");
+  await expect(map.locator(".map-level-label")).toHaveText("+1 level");
+  await expect(map.locator(".map-tile-found")).toHaveCount(1);
+  await expect(mapBody).toBeVisible();
+});
+
 test("map navigation and room imagery survive layout persistence without stale media", async ({
   page,
 }, testInfo) => {

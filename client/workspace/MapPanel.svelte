@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import type { Readable } from "svelte/store";
   import type { Session } from "../runtime/session.ts";
   import type { SessionWorldSnapshot, WorldMapSource } from "../runtime/world.ts";
@@ -21,8 +21,23 @@
   import { getPrimaryTerrain } from "../../public/js/terrain-semantics.mjs";
   // @ts-expect-error Retained information renderers are JavaScript without declarations.
   import { skyCurrentState } from "../../public/js/core-information-panel-renderers.mjs";
+  // @ts-expect-error Map pins are JavaScript without declarations.
+  import * as pinHelpers from "../../public/js/map-pins-core.js";
+  // @ts-expect-error Map search is JavaScript without declarations.
+  import { pinnedRoomsInArea, searchMapRooms } from "../../public/js/map-search-core.js";
 
-  const { MAP_ZOOM_LEVELS, formatMapZoom, normalizeMapZoom, stepMapZoom } = zoomHelpers;
+  const { MAP_ZOOM_LEVELS, anchoredZoomPan, formatMapZoom, normalizeMapZoom, stepMapZoom } =
+    zoomHelpers;
+  const {
+    MAP_PIN_KINDS,
+    MAX_PIN_NOTE,
+    mapPinIconSvg,
+    mapPinLabel,
+    mapPinStorageKey,
+    normalizeMapPins,
+    removeMapPin,
+    setMapPin,
+  } = pinHelpers;
 
   interface RouteMarks {
     rooms: Array<{ id: string; order: number }>;
@@ -35,6 +50,44 @@
     color: string;
     alpha: number;
     light: boolean;
+  }
+  interface MapPin {
+    kind: string;
+    note: string;
+    name: string;
+    area: string;
+    z: number;
+    at: number;
+  }
+  interface MapPins {
+    version: 1;
+    pins: Record<string, MapPin>;
+  }
+  interface MapView {
+    area: string;
+    levels: number[];
+    viewZ: number;
+    homeZ: number;
+    levelOffset: number;
+    centerX: number;
+    centerY: number;
+    pitch: number;
+  }
+  interface SearchResult {
+    id: string;
+    name: string;
+    z: number;
+    details: string[];
+    pin: MapPin | null;
+  }
+  interface PinEditor {
+    roomId: string;
+    name: string;
+    kind: string;
+    note: string;
+    existing: boolean;
+    left: number;
+    top: number;
   }
 
   let {
@@ -58,6 +111,29 @@
   let mapZoom = $state(1);
   let mapStatus = $state("");
   let legendOpen = $state(false);
+  // Levels: how many floors above (+) or below (-) the player's the map shows.
+  let levelOffset = $state(0);
+  let canLevelUp = $state(false);
+  let canLevelDown = $state(false);
+  let lastHomeZ: number | null = null;
+  let viewLevels: number[] = [];
+  // Pins, and the editor open on one room.
+  const pinStorageKey = mapPinStorageKey(activeSession.characterProfileId) as string;
+  let pins = $state<MapPins>(loadPins());
+  let pinEditor = $state<PinEditor | null>(null);
+  let pinNoteInput = $state<HTMLInputElement | null>(null);
+  // Search, and the room it last flew to.
+  let searchOpen = $state(false);
+  let searchQuery = $state("");
+  let searchActive = $state(0);
+  let searchInput = $state<HTMLInputElement | null>(null);
+  let foundId: string | null = null;
+  let foundTimer = 0;
+  // A zoom that just happened at a point, for the renderer to ease in.
+  let pendingZoomAnchor: { x: number; y: number } | null = null;
+  let wheelTotal = 0;
+  let lastWheelStep = -Infinity;
+  let viewport: HTMLElement;
   let snapshot: SessionWorldSnapshot = activeSession.world.getSnapshot();
   let mapSettings = loadClientSettings(localStorage).settings;
 
@@ -88,6 +164,84 @@
       alpha: ambience.backdrop * 0.85,
       light: ambience.key.startsWith("night"),
     };
+  }
+
+  function loadPins(): MapPins {
+    try {
+      return normalizeMapPins(JSON.parse(localStorage.getItem(pinStorageKey) ?? "null")) as MapPins;
+    } catch {
+      return normalizeMapPins(null) as MapPins;
+    }
+  }
+
+  function savePins(next: MapPins): void {
+    pins = next;
+    try {
+      localStorage.setItem(pinStorageKey, JSON.stringify(next));
+    } catch {
+      // The pins still hold for this session.
+    }
+  }
+
+  const reducedMotion = (): boolean => body?.dataset.mapMotion === "reduce";
+
+  function view(): MapView | null {
+    return renderer.getView() as MapView | null;
+  }
+
+  function currentPan(): { x: number; y: number } {
+    return { x: Number(body.dataset.mapPanX) || 0, y: Number(body.dataset.mapPanY) || 0 };
+  }
+
+  function setPan(pan: { x: number; y: number }): void {
+    if (pan.x || pan.y) {
+      body.dataset.mapPanX = String(Math.round(pan.x * 1e6) / 1e6);
+      body.dataset.mapPanY = String(Math.round(pan.y * 1e6) / 1e6);
+    } else {
+      delete body.dataset.mapPanX;
+      delete body.dataset.mapPanY;
+    }
+  }
+
+  // Eases the view in from where it was, given how far the content has to
+  // travel in pixels. The grid only reaches a couple of cells past the edge,
+  // so a long jump glides the last two cells rather than showing blank map.
+  function glideFrom(dx: number, dy: number): void {
+    if (reducedMotion()) return;
+    const frame = body.querySelector<HTMLElement>(".map-grid-frame");
+    if (!frame || typeof frame.animate !== "function") return;
+    const pitch = Number(frame.dataset.mapPitch) || 40;
+    const length = Math.hypot(dx, dy);
+    if (length < 1) return;
+    const scale = Math.min(1, (pitch * 2) / length);
+    frame.animate([{ translate: `${dx * scale}px ${dy * scale}px` }, { translate: "0px 0px" }], {
+      duration: 320,
+      easing: "cubic-bezier(0.33, 1, 0.68, 1)",
+    });
+  }
+
+  function updateLevelControls(current: MapView | null): void {
+    viewLevels = current?.levels ?? [];
+    canLevelUp = !!current && viewLevels.some((z) => z > current.viewZ);
+    canLevelDown = !!current && viewLevels.some((z) => z < current.viewZ);
+  }
+
+  // Steps to the next floor up (1) or down (-1) that has rooms.
+  function stepLevel(direction: 1 | -1): void {
+    const current = view();
+    if (!current) return;
+    const next =
+      direction > 0
+        ? viewLevels.find((z) => z > current.viewZ)
+        : [...viewLevels].reverse().find((z) => z < current.viewZ);
+    if (next === undefined) return;
+    levelOffset = next - current.homeZ;
+    render();
+  }
+
+  function decorateFound(): void {
+    if (!foundId) return;
+    tileFor(foundId)?.classList.add("map-tile-found");
   }
 
   function enhanceRoomTiles(): void {
@@ -170,9 +324,26 @@
   function render(): void {
     body.dataset.mapZoom = String(mapZoom);
     body.dataset.mapStyle = mapSettings.mapPaintedTerrain ? "painted" : "tiles";
-    renderer.render(body, source(), { ambience: ambienceInput() });
+    body.dataset.mapLevel = String(levelOffset);
+    renderer.render(body, source(), {
+      ambience: ambienceInput(),
+      pins: pins.pins,
+      zoomAnchor: pendingZoomAnchor,
+    });
+    pendingZoomAnchor = null;
+    const current = view();
+    // Taking the stairs brings the view back to the player's own floor.
+    if (current && lastHomeZ !== null && current.homeZ !== lastHomeZ && levelOffset !== 0) {
+      lastHomeZ = current.homeZ;
+      levelOffset = 0;
+      render();
+      return;
+    }
+    if (current) lastHomeZ = current.homeZ;
+    updateLevelControls(current);
     enhanceRoomTiles();
     decorateRoute();
+    decorateFound();
     mapStatus = snapshot.speedwalking
       ? "Speedwalking"
       : source().getMapStatus() || (live ? "Live map" : "Area map");
@@ -232,6 +403,44 @@
     if (!body.contains(event.relatedTarget as Node | null)) handlePointerLeave();
   }
 
+  // Zooms with the world point under anchor (pixels from the middle of the
+  // map) held still, and the change eased in around it.
+  function zoomAt(value: unknown, anchor: { x: number; y: number }): void {
+    const next = normalizeMapZoom(value);
+    if (next === mapZoom) return;
+    const fromPitch = view()?.pitch ?? 40 * mapZoom;
+    const toPitch = (fromPitch / mapZoom) * next;
+    setPan(anchoredZoomPan(currentPan(), anchor, fromPitch, toPitch));
+    pendingZoomAnchor = anchor;
+    setZoom(next);
+  }
+
+  // A mouse wheel notch is one zoom step. Its size depends on the screen's
+  // scaling (about 50 to 100 pixels), so any single event of 40 or more is a
+  // notch. A trackpad's pinch (a wheel with Ctrl held) and its two-finger
+  // scroll send many small deltas, gathered into steps. Steps are spaced out
+  // so a flick of momentum scrolling does not run through every level.
+  function handleWheel(event: WheelEvent): void {
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 400 : 1;
+    const delta = event.deltaY * unit;
+    if (!event.ctrlKey && Math.abs(delta) >= 40) {
+      wheelTotal = delta;
+    } else {
+      wheelTotal += delta;
+      if (Math.abs(wheelTotal) < (event.ctrlKey ? 24 : 100)) return;
+    }
+    const direction = wheelTotal < 0 ? 1 : -1;
+    wheelTotal = 0;
+    if (event.timeStamp - lastWheelStep < 70) return;
+    lastWheelStep = event.timeStamp;
+    const rect = body.getBoundingClientRect();
+    zoomAt(stepMapZoom(mapZoom, direction), {
+      x: event.clientX - (rect.left + rect.width / 2),
+      y: event.clientY - (rect.top + rect.height / 2),
+    });
+  }
+
   function setZoom(value: unknown): void {
     const next = normalizeMapZoom(value);
     if (next === mapZoom) return;
@@ -245,17 +454,174 @@
     );
   }
 
+  // Back to the player, on the player's own floor, gliding there.
   function recenter(): void {
-    delete body.dataset.mapPanX;
-    delete body.dataset.mapPanY;
+    const pitch = view()?.pitch ?? 40 * mapZoom;
+    const pan = currentPan();
+    setPan({ x: 0, y: 0 });
+    levelOffset = 0;
     render();
+    glideFrom(pan.x * pitch, pan.y * pitch);
   }
 
-  // Escape anywhere in the panel closes an open legend.
-  function handleLegendKeydown(event: KeyboardEvent): void {
-    if (!legendOpen || event.key !== "Escape") return;
-    event.stopPropagation();
+  // Centres the view on a room, on its floor, gliding there, and rings it.
+  function flyTo(roomId: string): void {
+    const current = view();
+    const room = source().getRoom(roomId);
+    if (!current || !room || typeof room.x !== "number" || typeof room.y !== "number") return;
+    const before = currentPan();
+    const after = { x: current.centerX - room.x, y: current.centerY - room.y };
+    setPan(after);
+    levelOffset = typeof room.z === "number" ? room.z - current.homeZ : 0;
+    foundId = roomId;
+    window.clearTimeout(foundTimer);
+    foundTimer = window.setTimeout(() => {
+      foundId = null;
+      for (const tile of body.querySelectorAll(".map-tile-found")) {
+        tile.classList.remove("map-tile-found");
+      }
+    }, 3_400);
+    render();
+    glideFrom((before.x - after.x) * current.pitch, (before.y - after.y) * current.pitch);
+  }
+
+  // --- Pins ----------------------------------------------------------------
+  function openPinEditor(tile: HTMLElement): void {
+    const roomId = tile.dataset.roomId;
+    const room = roomId ? source().getRoom(roomId) : null;
+    if (!roomId || !room) return;
+    const existing = pins.pins[roomId];
+    const box = viewport.getBoundingClientRect();
+    const at = tile.getBoundingClientRect();
+    pinEditor = {
+      roomId,
+      name: String(room.name || "this room"),
+      kind: existing?.kind ?? "note",
+      note: existing?.note ?? "",
+      existing: !!existing,
+      left: Math.max(4, Math.min(box.width - 244, at.right - box.left + 6)),
+      top: Math.max(4, Math.min(box.height - 170, at.top - box.top - 6)),
+    };
     legendOpen = false;
+    void tick().then(() => pinNoteInput?.focus());
+  }
+
+  function setPinKind(kind: string): void {
+    if (pinEditor) pinEditor.kind = kind;
+  }
+
+  function closePinEditor(): void {
+    const roomId = pinEditor?.roomId;
+    pinEditor = null;
+    if (roomId) void tick().then(() => tileFor(roomId)?.focus());
+  }
+
+  function savePin(): void {
+    if (!pinEditor) return;
+    const room = source().getRoom(pinEditor.roomId);
+    if (room) savePins(setMapPin(pins, room, pinEditor.kind, pinEditor.note) as MapPins);
+    render();
+    closePinEditor();
+  }
+
+  function deletePin(): void {
+    if (!pinEditor) return;
+    savePins(removeMapPin(pins, pinEditor.roomId) as MapPins);
+    render();
+    closePinEditor();
+  }
+
+  function handleContextMenu(event: MouseEvent): void {
+    if (!(event.target instanceof Element)) return;
+    const tile = event.target.closest<HTMLElement>(".map-tile-room[data-room-id]");
+    if (!tile) return;
+    event.preventDefault();
+    openPinEditor(tile);
+  }
+
+  // --- Search ----------------------------------------------------------------
+  const searchResults = $derived.by((): SearchResult[] => {
+    if (!searchOpen) return [];
+    const area = view()?.area;
+    if (!area) return [];
+    if (!searchQuery.trim()) {
+      return (pinnedRoomsInArea(pins.pins, area) as SearchResult[]).slice(0, 8);
+    }
+    return searchMapRooms(
+      source().getRoomsByArea(area),
+      searchQuery,
+      pins.pins,
+      8,
+    ) as SearchResult[];
+  });
+
+  function toggleSearch(): void {
+    searchOpen = !searchOpen;
+    searchActive = 0;
+    if (searchOpen) {
+      legendOpen = false;
+      void tick().then(() => searchInput?.focus());
+    }
+  }
+
+  function closeSearch(): void {
+    searchOpen = false;
+    searchQuery = "";
+    searchActive = 0;
+  }
+
+  function goToResult(result: SearchResult | undefined, walk = false): void {
+    if (!result) return;
+    closeSearch();
+    flyTo(result.id);
+    if (walk && live) {
+      walkTargetId = result.id;
+      if (!activeSession.world.speedwalkTo(result.id)) walkTargetId = null;
+    }
+    void tick().then(() => tileFor(result.id)?.focus());
+  }
+
+  function handleSearchKeydown(event: KeyboardEvent): void {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const count = searchResults.length;
+      if (!count) return;
+      searchActive = (searchActive + (event.key === "ArrowDown" ? 1 : count - 1)) % count;
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      goToResult(searchResults[searchActive], event.shiftKey);
+    }
+  }
+
+  function resultMeta(result: SearchResult): string {
+    const parts: string[] = [];
+    if (result.pin) {
+      parts.push(mapPinLabel(result.pin.kind) + (result.pin.note ? `: ${result.pin.note}` : ""));
+    }
+    if (result.details.length) parts.push(result.details.join(", "));
+    const current = view();
+    if (current && result.z !== current.homeZ) {
+      const levels = result.z - current.homeZ;
+      parts.push(
+        `${Math.abs(levels)} ${Math.abs(levels) === 1 ? "level" : "levels"} ${levels > 0 ? "up" : "down"}`,
+      );
+    }
+    return parts.join(" · ");
+  }
+
+  // Escape closes whatever is open in the panel, innermost first.
+  function handleLegendKeydown(event: KeyboardEvent): void {
+    if (event.key !== "Escape") return;
+    if (pinEditor) {
+      event.stopPropagation();
+      closePinEditor();
+    } else if (searchOpen) {
+      event.stopPropagation();
+      closeSearch();
+    } else if (legendOpen) {
+      event.stopPropagation();
+      legendOpen = false;
+    }
   }
 
   const LEGEND_ICONS: Array<{ kind: string; label: string }> = [
@@ -282,6 +648,13 @@
         render();
       }
     });
+    // Pins edited in another Map panel (the area map) show here too.
+    const onStorage = (event: StorageEvent): void => {
+      if (event.key !== pinStorageKey) return;
+      pins = loadPins();
+      render();
+    };
+    window.addEventListener("storage", onStorage);
     const unsubscribeWorld = activeSession.world.subscribe((next) => {
       snapshot = next;
       if (!next.speedwalking) walkTargetId = null;
@@ -314,10 +687,13 @@
     body.addEventListener("pointerleave", handlePointerLeave);
     body.addEventListener("focusin", handleFocusIn);
     body.addEventListener("focusout", handleFocusOut);
+    body.addEventListener("contextmenu", handleContextMenu);
+    body.addEventListener("wheel", handleWheel, { passive: false });
     panel.addEventListener("keydown", handleLegendKeydown);
 
     return () => {
       unsubscribeWorld();
+      window.removeEventListener("storage", onStorage);
       unsubscribeState();
       unsubscribeSky();
       window.clearInterval(ambienceTicker);
@@ -331,7 +707,10 @@
       body.removeEventListener("pointerleave", handlePointerLeave);
       body.removeEventListener("focusin", handleFocusIn);
       body.removeEventListener("focusout", handleFocusOut);
+      body.removeEventListener("contextmenu", handleContextMenu);
+      body.removeEventListener("wheel", handleWheel);
       panel.removeEventListener("keydown", handleLegendKeydown);
+      window.clearTimeout(foundTimer);
       renderer.dispose();
       if (!live) activeSession.world.closeBrowse();
     };
@@ -346,7 +725,7 @@
       aria-label="Zoom map out"
       title="Zoom map out"
       disabled={mapZoom === MAP_ZOOM_LEVELS[0]}
-      onclick={() => setZoom(stepMapZoom(mapZoom, -1))}>−</button
+      onclick={() => zoomAt(stepMapZoom(mapZoom, -1), { x: 0, y: 0 })}>−</button
     >
     <span class="map-zoom-level" aria-live="polite">{formatMapZoom(mapZoom)}</span>
     <button
@@ -355,7 +734,7 @@
       aria-label="Zoom map in"
       title="Zoom map in"
       disabled={mapZoom === MAP_ZOOM_LEVELS[MAP_ZOOM_LEVELS.length - 1]}
-      onclick={() => setZoom(stepMapZoom(mapZoom, 1))}>+</button
+      onclick={() => zoomAt(stepMapZoom(mapZoom, 1), { x: 0, y: 0 })}>+</button
     >
     <button
       class="panel-btn map-recenter-btn"
@@ -363,6 +742,39 @@
       aria-label="Re-center map"
       title="Re-center map"
       onclick={recenter}>◎</button
+    >
+    {#if canLevelUp || canLevelDown || levelOffset !== 0}
+      <span class="map-level-controls" role="group" aria-label="Map level">
+        <button
+          class="panel-btn map-level-btn"
+          type="button"
+          aria-label="Show the level above"
+          title="Show the level above"
+          disabled={!canLevelUp}
+          onclick={() => stepLevel(1)}>▲</button
+        >
+        <span class="map-level-label" aria-live="polite"
+          >{levelOffset === 0
+            ? "Your level"
+            : `${levelOffset > 0 ? "+" : ""}${levelOffset} level${Math.abs(levelOffset) === 1 ? "" : "s"}`}</span
+        >
+        <button
+          class="panel-btn map-level-btn"
+          type="button"
+          aria-label="Show the level below"
+          title="Show the level below"
+          disabled={!canLevelDown}
+          onclick={() => stepLevel(-1)}>▼</button
+        >
+      </span>
+    {/if}
+    <button
+      class="panel-btn map-search-btn"
+      type="button"
+      aria-label="Search the map"
+      title="Search the map"
+      aria-expanded={searchOpen}
+      onclick={toggleSearch}>⌕</button
     >
     <button
       class="panel-btn map-legend-btn"
@@ -375,8 +787,115 @@
     >
     <span class="map-panel-status" role="status" aria-live="polite">{mapStatus}</span>
   </div>
-  <div class="map-viewport">
+  <div class="map-viewport" bind:this={viewport}>
     <div bind:this={body} class="map-body" id={`panel-body-${panelId}`}></div>
+    {#if searchOpen}
+      <div class="map-search" role="search">
+        <input
+          bind:this={searchInput}
+          bind:value={searchQuery}
+          type="search"
+          class="map-search-input"
+          placeholder="Find a room, shop, or pin"
+          aria-label="Search the map"
+          autocomplete="off"
+          spellcheck="false"
+          oninput={() => (searchActive = 0)}
+          onkeydown={handleSearchKeydown}
+        />
+        <p class="map-search-count" aria-live="polite">
+          {searchQuery.trim()
+            ? `${searchResults.length} ${searchResults.length === 1 ? "room" : "rooms"} found`
+            : searchResults.length
+              ? "Pinned in this area"
+              : "Type to search this area"}
+        </p>
+        {#if searchResults.length}
+          <ul class="map-search-results" aria-label="Search results">
+            {#each searchResults as result, index (result.id)}
+              <li class:map-search-active={index === searchActive}>
+                <button
+                  type="button"
+                  class="map-search-go"
+                  aria-label={`Show ${result.name} on the map`}
+                  onclick={() => goToResult(result)}
+                >
+                  {#if result.pin}
+                    <span class={`map-search-pin map-pin-${result.pin.kind}`}>
+                      <!-- Fixed icon markup from the pin helpers. -->
+                      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                      {@html mapPinIconSvg(result.pin.kind)}
+                    </span>
+                  {/if}
+                  <span class="map-search-name">{result.name}</span>
+                  {#if resultMeta(result)}<span class="map-search-meta">{resultMeta(result)}</span
+                    >{/if}
+                </button>
+                {#if live}
+                  <button
+                    type="button"
+                    class="map-search-walk"
+                    aria-label={`Walk to ${result.name}`}
+                    title="Walk there (Shift+Enter)"
+                    onclick={() => goToResult(result, true)}>Walk</button
+                  >
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
+    {#if pinEditor}
+      <div
+        class="map-pin-editor"
+        role="dialog"
+        aria-label={`Pin ${pinEditor.name}`}
+        style:left={`${pinEditor.left}px`}
+        style:top={`${pinEditor.top}px`}
+      >
+        <p class="map-pin-editor-title">{pinEditor.name}</p>
+        <div class="map-pin-kinds" role="radiogroup" aria-label="Kind of pin">
+          {#each MAP_PIN_KINDS as option (option.kind)}
+            <button
+              type="button"
+              role="radio"
+              class={`map-pin-kind map-pin-${option.kind}`}
+              aria-checked={pinEditor.kind === option.kind}
+              aria-label={option.label}
+              title={option.label}
+              onclick={() => setPinKind(option.kind)}
+            >
+              <!-- Fixed icon markup from the pin helpers. -->
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+              {@html mapPinIconSvg(option.kind)}
+            </button>
+          {/each}
+        </div>
+        <input
+          bind:this={pinNoteInput}
+          bind:value={pinEditor.note}
+          class="map-pin-note"
+          type="text"
+          maxlength={MAX_PIN_NOTE}
+          placeholder="Note (optional)"
+          aria-label="Pin note"
+          onkeydown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              savePin();
+            }
+          }}
+        />
+        <div class="map-pin-actions">
+          <button type="button" class="map-pin-save" onclick={savePin}>Save pin</button>
+          {#if pinEditor.existing}
+            <button type="button" class="map-pin-remove" onclick={deletePin}>Remove</button>
+          {/if}
+          <button type="button" onclick={closePinEditor}>Cancel</button>
+        </div>
+      </div>
+    {/if}
     {#if legendOpen}
       <div class="map-legend" id={`map-legend-${panelId}`} role="region" aria-label="Map legend">
         <div class="map-legend-head">
@@ -461,6 +980,22 @@
             <dt><span class="lg-fog"></span></dt>
             <dd>Edge of the explored map</dd>
           </div>
+          <div>
+            <dt><span class="lg-ghost"></span></dt>
+            <dd>Your floor, seen from another level</dd>
+          </div>
+          {#each MAP_PIN_KINDS as option (option.kind)}
+            <div>
+              <dt>
+                <span class={`lg-pin map-pin-${option.kind}`}>
+                  <!-- Fixed icon markup from the pin helpers. -->
+                  <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                  {@html mapPinIconSvg(option.kind)}
+                </span>
+              </dt>
+              <dd>Your pin: {option.label.toLowerCase()} (right-click a room)</dd>
+            </div>
+          {/each}
         </dl>
       </div>
     {/if}
@@ -530,6 +1065,192 @@
     z-index: 3;
     outline: 2px solid var(--df-accent-blue);
     outline-offset: 1px;
+  }
+
+  .map-level-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    margin-left: 0.25rem;
+  }
+
+  .map-level-label {
+    min-width: 4.5rem;
+    color: var(--df-muted);
+    font-size: calc(0.625rem * var(--pane-font-scale, 1));
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .map-search {
+    position: absolute;
+    top: 0.375rem;
+    left: 50%;
+    z-index: 21;
+    width: min(20rem, calc(100% - 0.75rem));
+    padding: 0.375rem;
+    border: 1px solid var(--df-border);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--df-panel) 95%, transparent);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+    transform: translateX(-50%);
+  }
+
+  .map-search-input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.25rem 0.375rem;
+    border: 1px solid var(--df-border);
+    border-radius: 4px;
+    background: var(--df-bg, #0f1115);
+    color: var(--df-text);
+    font: inherit;
+  }
+
+  .map-search-count {
+    margin: 0.25rem 0.125rem 0;
+    color: var(--df-muted);
+    font-size: calc(0.625rem * var(--pane-font-scale, 1));
+  }
+
+  .map-search-results {
+    margin: 0.25rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .map-search-results li {
+    display: flex;
+    align-items: stretch;
+    gap: 0.25rem;
+    border-radius: 4px;
+  }
+
+  .map-search-results li.map-search-active {
+    background: color-mix(in srgb, var(--df-accent-blue, #4aa3ff) 22%, transparent);
+  }
+
+  .map-search-go {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.125rem 0.375rem;
+    min-width: 0;
+    padding: 0.25rem 0.375rem;
+    border: 0;
+    background: none;
+    color: var(--df-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .map-search-name {
+    font-weight: 600;
+  }
+
+  .map-search-meta {
+    color: var(--df-muted);
+    font-size: calc(0.625rem * var(--pane-font-scale, 1));
+  }
+
+  .map-search-pin :global(svg),
+  .lg-pin :global(svg),
+  .map-pin-kind :global(svg) {
+    display: block;
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+  }
+
+  .map-search-walk {
+    padding: 0 0.5rem;
+    border: 1px solid var(--df-border);
+    border-radius: 4px;
+    background: none;
+    color: var(--df-muted);
+    font: inherit;
+    font-size: calc(0.625rem * var(--pane-font-scale, 1));
+    cursor: pointer;
+  }
+
+  .map-pin-editor {
+    position: absolute;
+    z-index: 22;
+    width: 15rem;
+    padding: 0.5rem;
+    border: 1px solid var(--df-border);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--df-panel) 96%, transparent);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+    color: var(--df-text);
+    font-size: calc(0.6875rem * var(--pane-font-scale, 1));
+  }
+
+  .map-pin-editor-title {
+    margin: 0 0 0.375rem;
+    overflow: hidden;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .map-pin-kinds {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .map-pin-kind {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--df-border);
+    border-radius: 50%;
+    background: rgba(16, 16, 16, 0.85);
+    cursor: pointer;
+  }
+
+  .map-pin-kind[aria-checked="true"] {
+    box-shadow: 0 0 0 2px currentColor;
+  }
+
+  .map-pin-note {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.25rem 0.375rem;
+    border: 1px solid var(--df-border);
+    border-radius: 4px;
+    background: var(--df-bg, #0f1115);
+    color: var(--df-text);
+    font: inherit;
+  }
+
+  .map-pin-actions {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: flex-end;
+    margin-top: 0.375rem;
+  }
+
+  .map-pin-actions button {
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--df-border);
+    border-radius: 4px;
+    background: none;
+    color: var(--df-text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .map-pin-actions .map-pin-save {
+    border-color: var(--df-accent-blue, #4aa3ff);
+  }
+
+  .map-pin-actions .map-pin-remove {
+    color: #ef8a80;
   }
 
   .map-legend {
@@ -700,6 +1421,22 @@
     width: 12px;
     height: 12px;
     background: #4a4d52;
+  }
+
+  .lg-ghost {
+    width: 12px;
+    height: 12px;
+    outline: 1px dashed rgba(170, 190, 210, 0.6);
+  }
+
+  .lg-pin {
+    display: grid;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: rgba(16, 16, 16, 0.88);
+    box-shadow: 0 0 0 1px currentColor;
   }
 
   .lg-fog {

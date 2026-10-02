@@ -1783,6 +1783,93 @@ body.zork-only-mode #panels-menu {
 .map-camera-glide {
   animation: map-camera-glide 380ms cubic-bezier(0.33, 1, 0.68, 1) both;
 }
+/* Zooming at a point eases in from the old scale around it. With a camera
+   glide at the same time both run; the inline delays list both in order. */
+.map-zoom-glide {
+  animation: map-zoom-glide 220ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.map-camera-glide.map-zoom-glide {
+  animation:
+    map-camera-glide 380ms cubic-bezier(0.33, 1, 0.68, 1) both,
+    map-zoom-glide 220ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+@keyframes map-zoom-glide {
+  from { scale: var(--map-zoom-from, 1); }
+  to { scale: 1; }
+}
+#panel-body-map.map-coasting .map-grid-frame {
+  cursor: grabbing;
+}
+
+/* Another floor: the player's own floor faint beneath it, and a ghost of the
+   marker where the player is. */
+.map-tile-ghost {
+  background: transparent;
+  outline: 1px dashed rgba(170, 190, 210, 0.28);
+  outline-offset: -3px;
+}
+.map-player-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  z-index: 5;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 255, 255, 0.55), 0 0 8px rgba(0, 220, 255, 0.35);
+  pointer-events: none;
+}
+.map-player-ghost-arrow {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(120, 240, 255, 0.85);
+  font-size: 12px;
+  text-shadow: 0 0 3px #000;
+}
+.map-zlevel-away {
+  color: #cfe9ff;
+  background: rgba(20, 50, 80, 0.85);
+}
+.map-zlevel-home {
+  color: #8fb4cf;
+}
+
+/* The player's pins: a coloured badge riding the room's top-right corner. */
+.map-pin {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 6;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(16, 16, 16, 0.88);
+  box-shadow: 0 0 0 1px currentColor, 0 1px 3px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+.map-pin svg {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+}
+.map-pin-note { color: #e9e3cf; }
+.map-pin-quest { color: #f6c445; }
+.map-pin-danger { color: #ef5b4f; }
+.map-pin-loot { color: #5cc8f2; }
+.map-pin-home { color: #7fd47a; }
+
+/* A room the search flew to: a brief ring so the eye finds it. */
+.map-tile-found {
+  animation: map-tile-found 1.6s ease-out 2;
+}
+@keyframes map-tile-found {
+  0% { box-shadow: 0 0 0 2px rgba(255, 236, 160, 0.95), 0 0 14px 4px rgba(255, 220, 120, 0.7); }
+  100% { box-shadow: 0 0 0 2px rgba(255, 236, 160, 0), 0 0 14px 4px rgba(255, 220, 120, 0); }
+}
 @keyframes map-camera-glide {
   from { translate: var(--map-cam-x, 0px) var(--map-cam-y, 0px); }
   to { translate: 0 0; }
@@ -1895,8 +1982,13 @@ body.zork-only-mode #panels-menu {
 @media (prefers-reduced-motion: reduce) {
   .map-marker-step,
   .map-camera-glide,
+  .map-zoom-glide,
   .map-tile-revealed {
     animation: none;
+  }
+  .map-tile-found {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(255, 236, 160, 0.95);
   }
 }
 
@@ -1959,10 +2051,12 @@ body.zork-only-mode #panels-menu {
 .map-tile-outside     { background-image: url('/assets/tiles/outside.jpg'); }
 
 /* Z-level indicator overlay */
+/* Stacked above the Server/Learned badge, which owns the corner. */
 .map-zlevel {
   position: absolute;
-  bottom: 4px;
+  bottom: calc(10px + 1.6em * var(--pane-font-scale, 1));
   right: 4px;
+  z-index: 4;
   background: rgba(0, 0, 0, 0.7);
   color: #888;
   font-size: calc(11px * var(--pane-font-scale, 1));

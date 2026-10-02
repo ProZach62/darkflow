@@ -3,6 +3,7 @@ import { normalizeMapPan, splitMapPan } from './map-pan.js';
 import { getPrimaryTerrain } from './terrain-semantics.mjs';
 import { planTerrain } from './map-terrain-core.js';
 import { createTerrainPainter } from './map-terrain-paint.js';
+import { mapPinIconSvg, mapPinLabel } from './map-pins-core.js';
 
 const TILE_SIZE = 32;
 // Gap between room boxes. Rooms are drawn as separate boxes spaced apart, with
@@ -29,6 +30,8 @@ const MARKER_STEP_MS = 180;
 const CAMERA_GLIDE_MS = 380;
 // Longer jumps (a teleport, a recall) cut rather than slide across the map.
 const MAX_GLIDE_CELLS = 2;
+// Zooming at a point eases in from the old scale around that point.
+const ZOOM_GLIDE_MS = 220;
 // Rooms that appear while the player explores an area clear out of the fog.
 const REVEAL_MS = 700;
 // More than this many at once is a load or a resync, not exploring.
@@ -52,6 +55,9 @@ function createRendererState(options = {}) {
     reveal: null,
     painter: null,
     lastTerrain: null,
+    lastZoom: 0,
+    zoomGlide: null,
+    lastView: null,
     now: typeof options.now === 'function'
       ? options.now
       : () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
@@ -303,8 +309,14 @@ function getTerrainName(environment) {
 
 // extras.ambience: { color, alpha, light } tints the map from the player's
 // marker, with a pool of light around it when light is set.
+// extras.pins: { roomId: { kind, note } } draws the player's pins.
+// extras.zoomAnchor: { x, y } in pixels from the middle of the map, when the
+// zoom just changed at that point, eases the change in around it.
+// bodyEl.dataset.mapLevel shows a level that many floors above (or below)
+// the player's, with the player's own floor faint beneath it.
 function renderMap(bodyEl, source, state, extras = {}) {
   const now = state.now();
+  state.lastView = null;
   const reducedMotion = !!(bodyEl.dataset && bodyEl.dataset.mapMotion === 'reduce');
   // Browse mode renders an arbitrary catalog area (opened in the Area Map pane)
   // with no player marker; the live map is the default source.
@@ -388,9 +400,31 @@ function renderMap(bodyEl, source, state, extras = {}) {
   const verticalPan = splitMapPan(panY, pitch);
   const cx = centerRoom.x - horizontalPan.cells;
   const cy = centerRoom.y - verticalPan.cells;
-  const cz = centerRoom.z;
+  const levelOffset = mapLevelOffset(bodyEl.dataset && bodyEl.dataset.mapLevel);
+  const homeZ = centerRoom.z;
+  const cz = homeZ + levelOffset;
 
   const areaRooms = source.getRoomsByArea(centerRoom.area);
+  const levels = [...new Set(areaRooms.map((room) => room.z).filter(Number.isInteger))].sort((a, b) => a - b);
+  state.lastView = {
+    area: centerRoom.area, levels, viewZ: cz, homeZ, levelOffset,
+    centerX: centerRoom.x, centerY: centerRoom.y, pitch,
+  };
+  // Viewing another floor, the player's own floor shows faintly beneath it.
+  const ghostKeys = new Set();
+  if (levelOffset !== 0) {
+    for (const room of areaRooms) {
+      if (room.z === homeZ && room.x !== null) ghostKeys.add(room.x + ',' + room.y);
+    }
+  }
+  const pins = extras.pins && typeof extras.pins === 'object' ? extras.pins : null;
+
+  if (state.lastZoom && zoom !== state.lastZoom && extras.zoomAnchor && !reducedMotion) {
+    state.zoomGlide = { from: state.lastZoom / zoom, at: now, anchor: extras.zoomAnchor };
+  }
+  state.lastZoom = zoom;
+  const zoomElapsed = state.zoomGlide ? now - state.zoomGlide.at : Infinity;
+  const zoomGliding = zoomElapsed < ZOOM_GLIDE_MS;
   state.reveal = trackMapReveals(state.reveal, centerRoom.area, areaRooms, now, reducedMotion);
   const revealedAt = state.reveal.at;
   const distances = buildConnectedDistances(centerRoom, Math.max(gridW, gridH) + 8, source);
@@ -427,11 +461,21 @@ function renderMap(bodyEl, source, state, extras = {}) {
 
   const cameraGliding = !!motion && motionElapsed < CAMERA_GLIDE_MS
     && (motion.cam.x !== 0 || motion.cam.y !== 0);
+  let zoomStyle = '';
+  if (zoomGliding) {
+    const anchor = state.zoomGlide.anchor;
+    zoomStyle = '--map-zoom-from:' + round2(state.zoomGlide.from) + ';transform-origin:'
+      + round2((viewportPixelWidth * zoom) / 2 + (Number(anchor.x) || 0)) + 'px '
+      + round2((viewportPixelHeight * zoom) / 2 + (Number(anchor.y) || 0)) + 'px;'
+      + 'animation-delay:' + (cameraGliding ? '-' + Math.round(motionElapsed) + 'ms,' : '')
+      + '-' + Math.round(zoomElapsed) + 'ms;';
+  }
   let html = '<div class="map-grid-frame' + (cameraGliding ? ' map-camera-glide' : '')
+    + (zoomGliding ? ' map-zoom-glide' : '')
     + '" style="width:' + (viewportPixelWidth * zoom)
     + 'px;height:' + (viewportPixelHeight * zoom) + 'px;transform:translate('
     + horizontalPan.offset + 'px,' + verticalPan.offset + 'px);'
-    + (cameraGliding ? glideStyle('cam', motion.cam, pitch, motionElapsed) : '') + '"'
+    + (cameraGliding ? glideStyle('cam', motion.cam, pitch, motionElapsed) : '') + zoomStyle + '"'
     + ' data-map-pitch="' + pitch + '"'
     + ' data-map-pan-offset-x="' + horizontalPan.offset + '"'
     + ' data-map-pan-offset-y="' + verticalPan.offset + '">'
@@ -455,7 +499,9 @@ function renderMap(bodyEl, source, state, extras = {}) {
       const room = chooseRoomForTile(bucket, playerId, distances, connectedVisibleCount);
 
       if (!room) {
-        html += '<div class="map-tile' + fogClass(worldX, worldY, buckets, source) + '"></div>';
+        html += ghostKeys.has(worldX + ',' + worldY)
+          ? '<div class="map-tile map-tile-ghost"></div>'
+          : '<div class="map-tile' + fogClass(worldX, worldY, buckets, source) + '"></div>';
         continue;
       }
       const isPlayer = room.id === playerId;
@@ -471,18 +517,35 @@ function renderMap(bodyEl, source, state, extras = {}) {
       const revealAt = revealedAt.get(room.id);
       const revealElapsed = revealAt === undefined ? Infinity : now - revealAt;
       const revealing = revealElapsed < REVEAL_MS;
+      const pin = pins && pins[room.id] ? pins[room.id] : null;
       html += '<div class="map-tile map-tile-room map-tile-' + terrain
         + (isPlayer ? ' map-tile-player' : '') + trustClass + conflictClass(bucket)
-        + lastPos + unseen + (revealing ? ' map-tile-revealed' : '')
+        + lastPos + unseen + (revealing ? ' map-tile-revealed' : '') + (pin ? ' map-tile-pinned' : '')
         + '"' + (revealing ? ' style="animation-delay:-' + Math.round(revealElapsed) + 'ms"' : '')
-        + ' title="' + escAttr(tileTitle(room, bucket, source)) + '"'
+        + ' title="' + escAttr(tileTitle(room, bucket, source, pin)) + '"'
         + ' data-room-id="' + escAttr(room.id) + '"'
         + conflictAttr(bucket) + '>'
-        + buildExitSpans(room, cz, source) + '</div>';
+        + buildExitSpans(room, cz, source)
+        + (pin ? '<span class="map-pin map-pin-' + escAttr(pin.kind) + '">' + mapPinIconSvg(pin.kind) + '</span>' : '')
+        + '</div>';
     }
   }
 
   if (markerCell) html += playerMarkerHtml(markerCell, motion, motionElapsed, extras.ambience);
+  // On another floor, a ghost of the marker shows where the player is, and
+  // which way: below this floor or above it.
+  if (levelOffset !== 0 && playerRoom) {
+    const column = playerRoom.x - (cx - radiusX) + 1;
+    const row = playerRoom.y - (cy - radiusY) + 1;
+    if (column >= 1 && column <= gridW && row >= 1 && row <= gridH) {
+      const below = levelOffset > 0;
+      html += '<div class="map-player-ghost" style="grid-column:' + column + ' / span 1;grid-row:'
+        + row + ' / span 1" title="You are ' + Math.abs(levelOffset)
+        + (Math.abs(levelOffset) === 1 ? ' level ' : ' levels ') + (below ? 'below' : 'above') + '">'
+        + '<span class="map-player-ghost-arrow" aria-hidden="true">' + (below ? '&#x25BC;' : '&#x25B2;')
+        + '</span></div>';
+    }
+  }
 
   html += '</div></div>';
 
@@ -491,11 +554,12 @@ function renderMap(bodyEl, source, state, extras = {}) {
   const zRoom = playerRoom || centerRoom;
   const hasUp = zRoom.exits && zRoom.exits.up !== undefined;
   const hasDown = zRoom.exits && zRoom.exits.down !== undefined;
-  if (hasUp || hasDown || cz !== 0) {
-    html += '<div class="map-zlevel">';
-    if (hasUp) html += '<span class="map-zlevel-arrow">&#x25B2;</span> ';
+  if (hasUp || hasDown || cz !== 0 || levelOffset !== 0) {
+    html += '<div class="map-zlevel' + (levelOffset !== 0 ? ' map-zlevel-away' : '') + '">';
+    if (hasUp && levelOffset === 0) html += '<span class="map-zlevel-arrow">&#x25B2;</span> ';
     html += 'Z:' + cz;
-    if (hasDown) html += ' <span class="map-zlevel-arrow">&#x25BC;</span>';
+    if (levelOffset !== 0) html += ' <span class="map-zlevel-home">(you: ' + homeZ + ')</span>';
+    if (hasDown && levelOffset === 0) html += ' <span class="map-zlevel-arrow">&#x25BC;</span>';
     html += '</div>';
   }
 
@@ -747,8 +811,15 @@ function conflictAttr(bucket) {
   return bucket.length > 1 ? ' data-stack="' + bucket.length + '"' : '';
 }
 
-function tileTitle(room, bucket, source) {
+// The floor offset a map body asks to see, as a whole number of levels.
+export function mapLevelOffset(value) {
+  const offset = Math.trunc(Number(value));
+  return Number.isFinite(offset) ? Math.max(-50, Math.min(50, offset)) : 0;
+}
+
+function tileTitle(room, bucket, source, pin) {
   let title = room.name;
+  if (pin) title += '\nPinned: ' + mapPinLabel(pin.kind) + (pin.note ? ' - ' + pin.note : '');
   if (bucket.length > 1) {
     const names = bucket.slice(0, 6).map((entry) => entry.name || 'Unknown');
     const suffix = bucket.length > names.length ? '\n+' + (bucket.length - names.length) + ' more' : '';
@@ -816,11 +887,21 @@ export function createMapRenderer(options = {}) {
     getDebug() {
       return state.lastRenderDebug;
     },
+    /**
+     * What the last render showed, or null: { area, levels, viewZ, homeZ,
+     * levelOffset, centerX, centerY, pitch }. The pan is relative to the centre
+     * room at (centerX, centerY), and pitch is one cell in pixels.
+     */
+    getView() {
+      return state.lastView;
+    },
     dispose() {
       state.lastCenterByArea.clear();
       state.lastRenderDebug = null;
       state.motion = null;
       state.reveal = null;
+      state.zoomGlide = null;
+      state.lastView = null;
       if (state.painter) state.painter.dispose();
       state.painter = null;
       state.lastTerrain = null;
