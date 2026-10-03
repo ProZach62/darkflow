@@ -17,7 +17,8 @@ const {
   isoRoomVariant,
   isoTerrainColor,
   isoTerrainMotion,
-  isoTerrainSprite,
+  isoTerrainOrientation,
+  isoTerrainSpriteForExits,
   isoVisible,
   projectIso,
 } = isoCore;
@@ -104,6 +105,7 @@ interface RoomMovement {
 
 const WATER = new Set(["sea", "lake", "river", "underwater"]);
 const WOODED = new Set(["forest", "jungle", "canopy"]);
+const ROUTED_TERRAIN = new Set(["bridge", "path", "road"]);
 const ISO_RENDER_SCALE = 2;
 const MOVE_DURATION_MS = 900;
 const SPATIAL_EXITS = new Set([
@@ -375,6 +377,48 @@ export function createIsoMapRenderer() {
     livingNodes.push({ node, terrain, variant });
   };
 
+  const addRouteSurface = (
+    layer: Container,
+    room: WorldMapRoom,
+    terrain: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): void => {
+    if (!pixi || !ROUTED_TERRAIN.has(terrain)) return;
+    const points: Record<string, [number, number]> = {
+      north: [x + width * 0.25, y - height * 0.25],
+      northeast: [x + width * 0.5, y],
+      east: [x + width * 0.25, y + height * 0.25],
+      southeast: [x, y + height * 0.5],
+      south: [x - width * 0.25, y + height * 0.25],
+      southwest: [x - width * 0.5, y],
+      west: [x - width * 0.25, y - height * 0.25],
+      northwest: [x, y - height * 0.5],
+    };
+    const exits = Object.keys(room.exits ?? {}).filter((direction) => SPATIAL_EXITS.has(direction));
+    if (!exits.length) return;
+    const outerWidth =
+      (terrain === "path" ? 10 : 18) * (width / (ISO_TILE_WIDTH * ISO_RENDER_SCALE));
+    const innerWidth = outerWidth * 0.68;
+    const outer = new pixi.Graphics();
+    const inner = new pixi.Graphics();
+    for (const direction of exits) {
+      const point = points[direction];
+      if (!point) continue;
+      outer.moveTo(x, y).lineTo(point[0], point[1]);
+      inner.moveTo(x, y).lineTo(point[0], point[1]);
+    }
+    outer.stroke({ color: 0x4b3c2d, alpha: 0.72, width: outerWidth });
+    inner.stroke({
+      color: terrain === "bridge" ? 0x8b6842 : terrain === "path" ? 0xa78b61 : 0x9b866b,
+      alpha: terrain === "path" ? 0.7 : 0.88,
+      width: innerWidth,
+    });
+    layer.addChild(outer, inner);
+  };
+
   const addExits = (
     layer: Container,
     room: WorldMapRoom,
@@ -399,6 +443,7 @@ export function createIsoMapRenderer() {
       const point = points[direction];
       if (!point) continue;
       const door = Number(room.exitDoors?.[direction]) || 0;
+      if (!door) continue;
       layer.addChild(
         new pixi.Graphics()
           .moveTo(x, y)
@@ -680,6 +725,9 @@ export function createIsoMapRenderer() {
     }
 
     const ground = new pixi.Container();
+    const terrainBases = new pixi.Container();
+    const terrainArt = new pixi.Container();
+    ground.addChild(terrainBases, terrainArt);
     const features = new pixi.Container();
     const figures = new pixi.Container();
     const world = new pixi.Container();
@@ -710,7 +758,25 @@ export function createIsoMapRenderer() {
     let paintedTerrainSprites = 0;
     for (const { room, point } of visibleRooms) {
       const terrain = String(getPrimaryTerrain(room.environment));
+      const terrainOrientation = ROUTED_TERRAIN.has(terrain)
+        ? String(isoTerrainOrientation(room.exits))
+        : "";
+      const terrainSpriteName = String(isoTerrainSpriteForExits(terrain, room.exits));
       const color = isoTerrainColor(terrain);
+      const underlayColor = WATER.has(terrain)
+        ? 0x24383a
+        : ROUTED_TERRAIN.has(terrain)
+          ? isoTerrainColor("outside")
+          : color;
+      terrainBases.addChild(
+        new pixi.Graphics()
+          .moveTo(point.x, point.y - tileHeight / 2)
+          .lineTo(point.x + tileWidth / 2, point.y)
+          .lineTo(point.x, point.y + tileHeight / 2)
+          .lineTo(point.x - tileWidth / 2, point.y)
+          .closePath()
+          .fill({ color: underlayColor, alpha: WATER.has(terrain) ? 1 : 0.55 }),
+      );
       const diamond = new pixi.Graphics()
         .moveTo(point.x, point.y - tileHeight / 2)
         .lineTo(point.x + tileWidth / 2, point.y)
@@ -719,17 +785,20 @@ export function createIsoMapRenderer() {
         .closePath()
         .fill({ color: lighten(color, isoRoomVariant(room.id, 3) * 5), alpha: 0.98 })
         .stroke({ color: darken(color, 30), alpha: 0.9, width: Math.max(1, zoom) });
-      ground.addChild(diamond);
-      const terrainTexture = loadTexture(textureUrl("terrain", String(isoTerrainSprite(terrain))));
+      const terrainTexture = loadTexture(textureUrl("terrain", terrainSpriteName));
       if (terrainTexture) {
         const terrainSprite = new pixi.Sprite(terrainTexture);
-        terrainSprite.anchor.set(0.5, 0.6);
+        terrainSprite.anchor.set(0.5, 0.46);
         terrainSprite.position.set(point.x, point.y);
-        terrainSprite.width = tileWidth;
-        terrainSprite.height = tileWidth;
-        ground.addChild(terrainSprite);
+        terrainSprite.width = tileWidth * 1.18;
+        terrainSprite.height = tileWidth * 1.18;
+        if (terrainSpriteName === terrain && terrainOrientation === "east-west") {
+          terrainSprite.scale.x = -Math.abs(terrainSprite.scale.x);
+        }
+        terrainArt.addChild(terrainSprite);
         paintedTerrainSprites += 1;
       } else {
+        terrainBases.addChild(diamond);
         addTerrainDetails(
           features,
           terrain,
@@ -740,6 +809,7 @@ export function createIsoMapRenderer() {
           isoRoomVariant(room.id, 3),
         );
       }
+      addRouteSurface(features, room, terrain, point.x, point.y, tileWidth, tileHeight);
       addLivingTerrain(
         features,
         terrain,
@@ -783,6 +853,7 @@ export function createIsoMapRenderer() {
       const button = document.createElement("div");
       button.className = `map-tile map-tile-room map-iso-room map-tile-${terrain}${String(room.id) === currentRoomId ? " map-tile-player" : ""}`;
       button.dataset.roomId = room.id;
+      if (terrainOrientation) button.dataset.terrainOrientation = terrainOrientation;
       button.setAttribute("role", "button");
       button.setAttribute("tabindex", "0");
       button.setAttribute("aria-label", roomLabel(room, extras.tileLabel));

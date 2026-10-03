@@ -434,7 +434,10 @@ test("standalone isometric map renders beside the flat map with terrain, service
     area: "Fixture Town",
     rooms: [
       atrium,
-      { ...currentRoom(102, "Eastern Forest", 1, { west: 101 }), environment: "forest" },
+      {
+        ...currentRoom(102, "Eastern Forest", 1, { west: 101, east: 105 }),
+        environment: "forest",
+      },
       {
         ...currentRoom(103, "South Road", 0, { north: 101, east: 104 }),
         x: 0,
@@ -447,6 +450,11 @@ test("standalone isometric map renders beside the flat map with terrain, service
         y: 1,
         environment: "river",
       },
+      {
+        ...currentRoom(105, "East Road", 2, { west: 102, east: 106 }),
+        environment: "road",
+      },
+      { ...currentRoom(106, "Far East", 3, { west: 105 }), environment: "plains" },
     ],
   });
   endpoint.sendGmcp("Room.Info", {
@@ -478,7 +486,11 @@ test("standalone isometric map renders beside the flat map with terrain, service
   await expect(current).toHaveClass(/map-tile-player/);
   await expect(isoMap.locator(".map-iso-frame")).toHaveAttribute("data-map-occupants", "3");
   await expect(isoMap.locator(".map-iso-frame")).toHaveAttribute("data-map-sprites", "6");
-  await expect(isoMap.locator(".map-iso-frame")).toHaveAttribute("data-map-terrain-sprites", "4");
+  await expect(isoMap.locator(".map-iso-frame")).toHaveAttribute("data-map-terrain-sprites", "6");
+  await expect(isoMap.getByRole("button", { name: "Speedwalk to East Road" })).toHaveAttribute(
+    "data-terrain-orientation",
+    "east-west",
+  );
   await expect(isoMap.getByRole("button", { name: "Speedwalk to Eastern Forest" })).toBeVisible();
   await current.focus();
   const tooltip = isoMap.getByRole("tooltip");

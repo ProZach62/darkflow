@@ -8,9 +8,11 @@ import {
   isoMovementProgress,
   isoOccupantSprite,
   isoRoomVariant,
+  isoTerrainOrientation,
   isoTerrainMotion,
   isoTerrainColor,
   isoTerrainSprite,
+  isoTerrainSpriteForExits,
   isoVisible,
   projectIso,
   unprojectIso,
@@ -48,6 +50,17 @@ test('isometric art selection maps services and occupant appearance hints', () =
 
   assert.equal(isoTerrainSprite('UNDERWATER'), 'underwater');
   assert.equal(isoTerrainSprite('../../unknown'), 'outside');
+});
+
+test('road-like terrain follows the axis represented by mapped exits', () => {
+  assert.equal(isoTerrainOrientation({ north: 1, south: 2 }), 'north-south');
+  assert.equal(isoTerrainOrientation({ east: 1, west: 2 }), 'east-west');
+  assert.equal(isoTerrainOrientation({ north: 1, east: 2 }), 'junction');
+  assert.equal(isoTerrainOrientation({}), 'junction');
+  assert.equal(isoTerrainSpriteForExits('road', { east: 1, west: 2 }), 'road');
+  assert.equal(isoTerrainSpriteForExits('road', { west: 2 }), 'outside');
+  assert.equal(isoTerrainSpriteForExits('path', { north: 1, east: 2 }), 'outside');
+  assert.equal(isoTerrainSpriteForExits('forest', { east: 1, west: 2 }), 'forest');
 });
 
 test('isometric culling retains overscan but rejects distant rooms', () => {

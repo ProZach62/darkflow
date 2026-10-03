@@ -75,6 +75,31 @@ export function isoTerrainSprite(terrain) {
   return TERRAIN_SPRITES.has(key) ? key : 'outside';
 }
 
+/** Chooses the painted isometric axis from a road-like room's mapped exits. */
+export function isoTerrainOrientation(exits = {}) {
+  const directions = new Set(Object.keys(exits || {}));
+  const northSouth = directions.has('north') || directions.has('south');
+  const eastWest = directions.has('east') || directions.has('west');
+  if (eastWest && !northSouth) return 'east-west';
+  if (northSouth && !eastWest) return 'north-south';
+  return 'junction';
+}
+
+/** Uses directional art only for a true straight; connectors draw every other road shape. */
+export function isoTerrainSpriteForExits(terrain, exits = {}) {
+  const sprite = isoTerrainSprite(terrain);
+  if (sprite !== 'road' && sprite !== 'path' && sprite !== 'bridge') return sprite;
+  const directions = new Set(
+    Object.keys(exits || {}).filter((direction) =>
+      ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'].includes(direction),
+    ),
+  );
+  const straightNorthSouth =
+    directions.size === 2 && directions.has('north') && directions.has('south');
+  const straightEastWest = directions.size === 2 && directions.has('east') && directions.has('west');
+  return straightNorthSouth || straightEastWest ? sprite : 'outside';
+}
+
 /** Stable small variant number, so a room never changes appearance on redraw. */
 export function isoRoomVariant(roomId, variants = 3) {
   const count = Math.max(1, Math.floor(Number(variants) || 1));
