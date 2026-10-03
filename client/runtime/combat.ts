@@ -23,6 +23,7 @@ import type { SessionInformation } from "./information";
 import type { Disposer, ResourceScope } from "./resource-scope";
 
 const {
+  ACTION_DURATION_MS,
   clearCurrentCombatEvent,
   createCombatVisualState,
   reduceCombatEvents,
@@ -30,7 +31,7 @@ const {
   takeNextCombatEvent,
 } = combatCore;
 
-export const COMBAT_BEAT_MS = 440;
+export const COMBAT_BEAT_MS = ACTION_DURATION_MS;
 
 export interface SessionCombatEvent extends Omit<DarkwindCombatEvent, "actor_id" | "target_id"> {
   readonly actorId: string;

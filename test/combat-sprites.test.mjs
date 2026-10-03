@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const {
   anchorToStage,
   createSpriteLibrary,
+  enemySpriteKey,
   isSheetKey,
   normalizeSpriteManifest,
   placeSpriteFrame,
@@ -50,13 +51,17 @@ test('manifest normalization keeps known poses and rejects unusable files', () =
   assert.equal(normalizeSpriteManifest(manifest({ pixelated: 'yes' }), 'humanoid').pixelated, false, 'only a real true enables it');
   assert.equal(normalizeSpriteManifest(manifest(), 'humanoid').weaponsInArt, false);
   assert.equal(normalizeSpriteManifest(manifest({ weaponsInArt: true }), 'humanoid').weaponsInArt, true);
+  assert.equal(normalizeSpriteManifest(manifest(), 'humanoid').portrait, true);
+  assert.equal(normalizeSpriteManifest(manifest({ portrait: false }), 'humanoid').portrait, false);
+  assert.equal(normalizeSpriteManifest(manifest(), 'humanoid').secondary, true);
+  assert.equal(normalizeSpriteManifest(manifest({ secondary: false }), 'humanoid').secondary, false);
 });
 
 test('frame selection crossfades between the two poses of a phase', () => {
   const sheet = normalizeSpriteManifest(manifest(), 'humanoid');
   assert.deepEqual(selectSpriteFrames(sheet, null).map((f) => [f.name, f.alpha]), [['idle', 1]]);
   const mid = selectSpriteFrames(sheet, { from: 'idle', to: 'strike', t: 0.4 }, 0.4);
-  assert.deepEqual(mid.map((f) => [f.name, f.alpha]), [['idle', 1], ['strike', 0.4]]);
+  assert.deepEqual(mid.map((f) => [f.name, f.alpha]), [['idle', 0.6], ['strike', 0.4]]);
   assert.deepEqual(selectSpriteFrames(sheet, { from: 'idle', to: 'strike', t: 1 }, 1).map((f) => f.name), ['strike']);
   assert.deepEqual(selectSpriteFrames(sheet, { from: 'strike', to: 'strike', t: 1 }, 1).map((f) => f.name), ['strike']);
   const missing = selectSpriteFrames(sheet, { from: 'idle', to: 'chop', t: 0.5 }, 0.5);
@@ -146,19 +151,46 @@ test('sheet keys go from character to race to kind, and only for the recipient',
   assert.deepEqual(spriteKeysFor({ name: 'Gorbag', gender: 'male', race: 'Uruk' }, figure, 'player'),
     ['characters/gorbag', 'male-uruk', 'male-scro', 'humanoid'], 'Uruk borrow the Scro sheet');
   assert.deepEqual(spriteKeysFor({ name: 'Pip', gender: 'male', race: 'Kender' }, figure, 'player'),
-    ['characters/pip', 'male-kender', 'humanoid'], 'a race outside every family gets no family key');
+    ['characters/pip', 'male-kender', 'male-human', 'humanoid']);
   assert.deepEqual(spriteKeysFor({ name: 'Bryn', race: 'High Elf' }, figure, 'player'),
     ['characters/bryn', 'humanoid'], 'no gender means no race key');
   assert.deepEqual(spriteKeysFor({ name: 'Bryn', gender: 'male', race: 'Scro' }, figure, 'target'),
     ['humanoid'], 'targets only get the body kind');
+  assert.deepEqual(spriteKeysFor({ name: 'an ash drake', isNpc: true }, { kind: 'beast' }, 'target'),
+    ['enemies/drake', 'beast'], 'recognized NPC names select an enemy archetype before the fallback');
   assert.deepEqual(spriteKeysFor({ name: 'Bryn', gender: 'male', race: 'Scro', observed: true }, figure, 'player'),
     ['humanoid'], 'an observed fighter never gets identity keys');
   assert.deepEqual(spriteKeysFor({ name: '../../x', gender: '..', race: 'Scro' }, { kind: 'beast' }, 'player'),
     ['characters/x', 'beast'], 'names and races are slugged before becoming keys');
   assert.equal(isSheetKey('characters/grash'), true);
+  assert.equal(isSheetKey('enemies/drake'), true);
   assert.equal(isSheetKey('male-scro'), true);
   assert.equal(isSheetKey('../etc'), false);
   assert.equal(isSheetKey('characters/'), false);
+});
+
+test('every playable race resolves to a shipped sheet or a shared archetype', () => {
+  const races = [
+    'arctic-elf', 'barbarian', 'crannian-gnome', 'crinos', 'darkwinder', 'desert-dwarf',
+    'desert-nomad', 'dragon', 'faerie', 'glavian', 'gypsy', 'halfling', 'high-elf',
+    'hyperborean-gnome', 'ice-gnoll', 'ice-ogre', 'kender', 'northman', 'pixie',
+    'rift-duergar', 'scro', 'shel-zaranite', 'sidhe', 'silver-elf', 'souvraeli',
+    'stone-dwarf', 'swamp-troll', 'sylph', 'thraxian', 'uruk', 'wayfarian', 'wolf',
+    'yugoloth', 'arthok', 'ursavar',
+  ];
+  const shipped = new Set(['arthok', 'dwarf', 'elf', 'human', 'scro', 'ursavar']);
+  for (const race of races) {
+    const keys = spriteKeysFor({ gender: 'female', race }, { kind: 'humanoid' }, 'player');
+    assert.ok(keys.some((key) => shipped.has(key.replace(/^female-/, ''))), race + ' has art coverage');
+  }
+});
+
+test('enemy names map to distinct shipped archetypes', () => {
+  assert.equal(enemySpriteKey('an ash drake'), 'enemies/drake');
+  assert.equal(enemySpriteKey('a giant venom spider'), 'enemies/spider');
+  assert.equal(enemySpriteKey('the skeletal knight'), 'enemies/undead');
+  assert.equal(enemySpriteKey('a swamp troll'), 'enemies/troll');
+  assert.equal(enemySpriteKey('Aurora'), '');
 });
 
 test('a race sheet takes over from the kind sheet once it is ready, and cloak overrides parse', async () => {

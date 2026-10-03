@@ -48,6 +48,12 @@ import {
   selectSpriteFrames,
   spriteKeysFor,
 } from './combat-sprites.mjs';
+import {
+  WEAPON_SPRITES,
+  placeShieldSprite,
+  placeWeaponSprite,
+  weaponSpriteFor,
+} from './combat-weapon-sprites.mjs';
 
 const MAX_CONCURRENT_ACTIONS = 3;
 // Body unit for the procedural figures, as a fraction of the stage radius.
@@ -1342,12 +1348,13 @@ export function createCombatStage(doc, options = {}) {
         this._drawLeg(c, geo, geo.legs.front, material, 1);
         this._drawNeck(c, geo, material);
       }
-      this._drawHead(c, head, side, combatant, material.ring, isActor, flashMix);
-      if (geo.helmet) this._drawHelmet(c, head, geo.facing);
+      const drawPortrait = !sprite || sprite.sheet.portrait !== false;
+      if (drawPortrait) this._drawHead(c, head, side, combatant, material.ring, isActor, flashMix);
+      if (drawPortrait && geo.helmet) this._drawHelmet(c, head, geo.facing);
       if (!sprite) this._drawArm(c, geo, geo.arms.right, material, 1);
       if (!weaponsInArt && figure.weapon !== 'bow') {
         if (smear) this._drawSmear(c, figure, joints, phase, token, groundLine, unit, material, smear);
-        this._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, material.ring, geo.twoHanded ? 1.2 : 1, 1);
+        this._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, material.ring, geo.twoHanded ? 1.2 : 1, 1, geo.weapon.style);
       }
       c.restore();
     },
@@ -1382,8 +1389,8 @@ export function createCombatStage(doc, options = {}) {
       };
       // Cloak and tail are live overlays (spring-lagged), so a baked sheet
       // leaves them out and they draw here behind the body.
-      if (geo.tail && sheet.rigAligned) this._drawTail(c, geo, material, secondary);
-      if (geo.cloak && sheet.rigAligned && sheet.cloak !== false) {
+      if (sheet.secondary && geo.tail && sheet.rigAligned) this._drawTail(c, geo, material, secondary);
+      if (sheet.secondary && geo.cloak && sheet.rigAligned && sheet.cloak !== false) {
         this._drawCloak(c, geo, material, secondary, typeof sheet.cloak === 'string' ? sheet.cloak : '');
       }
       if (flashMix > 0 && this._tintCanvas !== false) {
@@ -1737,7 +1744,7 @@ export function createCombatStage(doc, options = {}) {
         const ghostJoints = resolvePose({ ...smear, t: ghostT }, this._lastFrameAt, { reducedMotion: false });
         const ghost = figureGeometry(figure, ghostJoints, token.x, groundLine, unit, { baseX: token.baseX });
         c.globalAlpha = 0.12 + fraction * 0.16;
-        this._drawHeldWeapon(c, ghost, ghost.weapon.kind, ghost.weapon.hand, ghost.weapon.dx, ghost.weapon.dy, material.ring, ghost.twoHanded ? 1.2 : 1, 0.6);
+        this._drawHeldWeapon(c, ghost, ghost.weapon.kind, ghost.weapon.hand, ghost.weapon.dx, ghost.weapon.dy, material.ring, ghost.twoHanded ? 1.2 : 1, 0.6, ghost.weapon.style);
       }
       c.restore();
       void joints;
@@ -1748,12 +1755,30 @@ export function createCombatStage(doc, options = {}) {
       const w = geo.weapon;
       if (geo.shield) this._drawShieldArm(c, geo, material.ring);
       else if (w.offKind && w.offKind !== 'bow') {
-        this._drawHeldWeapon(c, geo, w.offKind, w.offHand, w.offDx, w.offDy, material.ring, 0.85, 0.75);
+        this._drawHeldWeapon(c, geo, w.offKind, w.offHand, w.offDx, w.offDy, material.ring, 0.85, 0.75, w.offStyle);
       }
     },
 
-    // One-handed weapon shapes, all drawn from the hand along (dx, dy).
-    _drawHeldWeapon(c, geo, kind, hand, dx, dy, ringColor, size, depth) {
+    // Weapon shapes, all drawn from the hand along (dx, dy). `style`
+    // distinguishes paintings that share one animation family. The vector
+    // shapes remain as the loading and error fallback.
+    _drawHeldWeapon(c, geo, kind, hand, dx, dy, ringColor, size, depth, style = '') {
+      const sprite = weaponSpriteFor(kind, style);
+      if (sprite) {
+        this._ensureImage(sprite.image);
+        const image = this._imageFor(sprite.image);
+        const placed = image ? placeWeaponSprite(sprite, hand, dx, dy, geo.unit, size) : null;
+        if (placed) {
+          c.save();
+          c.globalAlpha *= depth;
+          c.imageSmoothingEnabled = true;
+          c.translate(placed.x, placed.y);
+          c.rotate(placed.angle);
+          c.drawImage(image, placed.offsetX, placed.offsetY, placed.width, placed.height);
+          c.restore();
+          return;
+        }
+      }
       const u = geo.unit * size;
       const tip = (length) => ({ x: hand.x + dx * u * length, y: hand.y + dy * u * length });
       const across = (point, length) => ({ x: point.x - dy * u * length, y: point.y + dx * u * length });
@@ -1763,8 +1788,8 @@ export function createCombatStage(doc, options = {}) {
       c.lineJoin = 'round';
       c.globalAlpha *= depth;
       if (kind === 'blade' || kind === 'knife' || kind === 'rapier') {
-        const length = kind === 'knife' ? 0.55 : (kind === 'rapier' ? 1.3 : 1.2);
-        const width = u * (kind === 'knife' ? 0.09 : (kind === 'rapier' ? 0.06 : 0.13));
+        const length = style === 'great-sword' ? 1.65 : (kind === 'knife' ? 0.55 : (kind === 'rapier' ? 1.3 : 1.2));
+        const width = u * (style === 'great-sword' ? 0.2 : (kind === 'knife' ? 0.09 : (kind === 'rapier' ? 0.06 : 0.13)));
         const end = tip(length);
         const base = tip(0.08);
         // Blade as a tapered polygon with a bright edge.
@@ -1816,8 +1841,9 @@ export function createCombatStage(doc, options = {}) {
       } else if (kind === 'axe' || kind === 'blunt') {
         c.lineWidth = Math.max(3, u * 0.1);
         c.strokeStyle = '#6d5232';
-        const butt = tip(-0.25);
-        const end = tip(kind === 'axe' ? 0.95 : 0.85);
+        const heavy = style === 'great-axe' || style === 'maul';
+        const butt = tip(heavy ? -0.42 : -0.25);
+        const end = tip(kind === 'axe' ? (heavy ? 1.3 : 0.95) : (heavy ? 1.18 : 0.9));
         c.beginPath();
         c.moveTo(butt.x, butt.y);
         c.lineTo(end.x, end.y);
@@ -1826,10 +1852,10 @@ export function createCombatStage(doc, options = {}) {
         c.strokeStyle = outline;
         c.lineWidth = 1.2;
         if (kind === 'axe') {
-          const neck = tip(0.7);
-          const edgeA = across(tip(1.02), 0.4);
-          const edgeB = across(tip(0.45), 0.34);
-          const edgeMid = across(tip(0.74), 0.5);
+          const neck = tip(heavy ? 1.02 : 0.7);
+          const edgeA = across(tip(heavy ? 1.42 : 1.02), heavy ? 0.52 : 0.4);
+          const edgeB = across(tip(heavy ? 0.72 : 0.45), heavy ? 0.43 : 0.34);
+          const edgeMid = across(tip(heavy ? 1.08 : 0.74), heavy ? 0.64 : 0.5);
           c.beginPath();
           c.moveTo(neck.x, neck.y);
           c.lineTo(edgeB.x, edgeB.y);
@@ -1837,15 +1863,36 @@ export function createCombatStage(doc, options = {}) {
           c.closePath();
           c.fill();
           c.stroke();
+          if (heavy) {
+            const backA = across(tip(1.34), -0.42);
+            const backB = across(tip(0.78), -0.34);
+            c.beginPath();
+            c.moveTo(neck.x, neck.y);
+            c.lineTo(backB.x, backB.y);
+            c.lineTo(backA.x, backA.y);
+            c.closePath();
+            c.fill();
+            c.stroke();
+          }
         } else {
-          const head = tip(0.85);
+          const head = tip(heavy ? 1.18 : 0.9);
+          const halfLength = heavy ? 0.42 : 0.28;
+          const halfWidth = heavy ? 0.3 : 0.2;
+          const a = across(tip((heavy ? 1.18 : 0.9) - halfWidth), halfLength);
+          const b = across(tip((heavy ? 1.18 : 0.9) + halfWidth), halfLength);
+          const d = across(tip((heavy ? 1.18 : 0.9) - halfWidth), -halfLength);
+          const e = across(tip((heavy ? 1.18 : 0.9) + halfWidth), -halfLength);
           c.beginPath();
-          c.arc(head.x, head.y, u * 0.19, 0, Math.PI * 2);
+          c.moveTo(a.x, a.y);
+          c.lineTo(b.x, b.y);
+          c.lineTo(e.x, e.y);
+          c.lineTo(d.x, d.y);
+          c.closePath();
           c.fill();
           c.stroke();
           c.fillStyle = '#eef2f5';
           c.beginPath();
-          c.arc(head.x - u * 0.05, head.y - u * 0.06, u * 0.06, 0, Math.PI * 2);
+          c.arc(head.x - dx * u * 0.08 - dy * u * halfLength * 0.55, head.y - dy * u * 0.08 + dx * u * halfLength * 0.55, u * 0.06, 0, Math.PI * 2);
           c.fill();
         }
       } else if (kind === 'polearm') {
@@ -1943,13 +1990,25 @@ export function createCombatStage(doc, options = {}) {
       c.restore();
     },
 
-    // Shield strapped to the left forearm, following its angle.
+    // A compact kite shield strapped to the left forearm.
     _drawShieldArm(c, geo, ringColor) {
       const u = geo.unit;
       const arm = geo.arms.left;
       const angle = Math.atan2(arm.hand.y - arm.elbow.y, arm.hand.x - arm.elbow.x);
       const cx = (arm.hand.x + arm.elbow.x) / 2;
       const cy = (arm.hand.y + arm.elbow.y) / 2;
+      this._ensureImage(WEAPON_SPRITES.shield.image);
+      const image = this._imageFor(WEAPON_SPRITES.shield.image);
+      const placed = image ? placeShieldSprite({ x: cx, y: cy }, u) : null;
+      if (placed) {
+        c.save();
+        c.imageSmoothingEnabled = true;
+        c.translate(placed.x, placed.y);
+        c.rotate(angle);
+        c.drawImage(image, placed.offsetX, placed.offsetY, placed.width, placed.height);
+        c.restore();
+        return;
+      }
       c.save();
       c.translate(cx, cy);
       c.rotate(angle);
@@ -1957,13 +2016,21 @@ export function createCombatStage(doc, options = {}) {
       c.strokeStyle = '#07090c';
       c.lineWidth = 1.5;
       c.beginPath();
-      c.ellipse(0, 0, u * 0.52, u * 0.38, 0, 0, Math.PI * 2);
+      c.moveTo(-u * 0.46, -u * 0.38);
+      c.quadraticCurveTo(0, -u * 0.55, u * 0.46, -u * 0.38);
+      c.lineTo(u * 0.34, u * 0.22);
+      c.lineTo(0, u * 0.56);
+      c.lineTo(-u * 0.34, u * 0.22);
+      c.closePath();
       c.fill();
       c.stroke();
       c.strokeStyle = rgba(ringColor, 0.9);
       c.lineWidth = Math.max(2, u * 0.06);
       c.beginPath();
-      c.ellipse(0, 0, u * 0.42, u * 0.29, 0, 0, Math.PI * 2);
+      c.moveTo(0, -u * 0.4);
+      c.lineTo(0, u * 0.43);
+      c.moveTo(-u * 0.32, -u * 0.22);
+      c.lineTo(u * 0.32, -u * 0.22);
       c.stroke();
       c.fillStyle = '#b3bcc4';
       c.beginPath();

@@ -46,7 +46,7 @@ test('equipment outranks guild for the weapon and adds shield, helmet, and armor
   const armed = resolveFigure({
     guild: 'Mage',
     equipment: {
-      mainHand: { name: 'a great axe', kind: 'axe' },
+      mainHand: { name: 'a great axe', kind: 'axe', style: 'great-axe' },
       offHand: null,
       shield: true,
       helmet: true,
@@ -55,6 +55,7 @@ test('equipment outranks guild for the weapon and adds shield, helmet, and armor
     },
   }, 'player');
   assert.equal(armed.weapon, 'axe');
+  assert.equal(armed.weaponStyle, 'great-axe');
   assert.equal(armed.offKind, '');
   assert.equal(armed.shield, true);
   assert.equal(armed.helmet, true);
@@ -78,6 +79,7 @@ test('equipment outranks guild for the weapon and adds shield, helmet, and armor
   assert.equal(geo.helmet, true);
   assert.equal(geo.armor, true);
   assert.equal(typeof geo.weapon.offDx, 'number');
+  assert.equal(geo.weapon.style, 'great-axe');
 });
 
 test('pose phases anticipate, snap, hold, and settle along the action timeline', () => {

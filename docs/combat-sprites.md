@@ -2,9 +2,12 @@
 
 The visual Combat pane draws each fighter as a body plus overlays. The body
 comes from a sprite sheet when one is shipped for the figure kind, and from
-the procedural rig in `combat-rig-core.mjs` otherwise. Weapons, an off-hand
-item, shield, helmet, cloak, and the portrait head always draw on top, so
-equipment and identity work with any art.
+the procedural rig in `combat-rig-core.mjs` otherwise. Generated transparent
+paintings in `public/assets/sprites/weapons/` supply sword, axe, hammer,
+shield, spear, great sword, great axe, and maul overlays. Their grip metadata
+lives in `combat-weapon-sprites.mjs`; the original vector silhouettes remain
+as loading and error fallbacks. Helmet, cloak, and the portrait head also draw
+on top, so equipment and identity work with any character art.
 
 Sheets live in `public/assets/sprites/` as a PNG plus a manifest with the
 same base name. A missing or invalid sheet costs one request and falls back
@@ -18,19 +21,19 @@ For the recipient's own fighter the stage tries, most specific first:
    runs of non-alphanumerics replaced by `-` (`characters/grash-ironjaw`).
 2. `<gender>-<race>` from `Char.Status`, slugged the same way (`male-scro`).
 3. `<gender>-<family>` when the race belongs to a family in
-   `SPRITE_RACE_FAMILIES`. The human cultures (Barbarian, Darkwinder,
-   Desert Nomad, Glavian, Gypsy, Northman, Souvraeli) all map to `human`, so a
-   Northman without a `male-northman` sheet draws `male-human`. The
-   elven kinds (Arctic Elf, High Elf, Shel-Zaranite, Silver Elf, Wayfarian)
-   map to `elf`, and the dwarven kinds (Desert Dwarf, Rift Duergar, Stone
-   Dwarf) to `dwarf`. A family can also be another race: Uruk map to
-   `scro`, so an Uruk without an `uruk` sheet draws the Scro one.
+   `SPRITE_RACE_FAMILIES`. Every playable race maps to shipped art. Human
+   cultures and smallfolk share `human`; elven and fae races share `elf`;
+   dwarves and gnomes share `dwarf`; wolf-like races share `ursavar`; and
+   the larger monstrous races share `scro` or `arthok`. A race-specific
+   sheet still wins whenever one exists.
 4. The body kind, `humanoid` or `beast`.
 
-Targets and observed fighters only get the body kind: nothing recipient-safe
-identifies them further. Every candidate is requested, so a more specific
-sheet that finishes loading later takes over on the next frame. A character
-or race sheet must still declare `kind` as `humanoid` or `beast`.
+NPC targets first match their display name to a bundled enemy archetype:
+drake/dragon, spider/arachnid, skeleton/undead, or troll/ogre. Unmatched NPCs
+use `beast`. Observed players only get the body kind. Every candidate is
+requested, so a more specific sheet that finishes loading later takes over
+on the next frame. A character, race, or enemy sheet must still declare
+`kind` as `humanoid` or `beast`.
 
 ## Manifest
 
@@ -63,6 +66,8 @@ or race sheet must still declare `kind` as `humanoid` or `beast`.
 | `facing` | Direction the art faces, `right` or `left`. The stage mirrors the frame for the other side. |
 | `pixelated` | Optional. `true` draws the sheet with image smoothing off, for pixel art. The assembler's `--pixel` sets it. |
 | `weaponsInArt` | Optional. `true` means the frames already show the character's weapons, so the stage draws no weapon overlays (the shield still draws). The assembler's `--weapons-in-art` sets it. |
+| `portrait` | Optional. `false` means the sheet includes its complete head, so the stage does not overlay the circular avatar portrait. Enemy archetype sheets use this. |
+| `secondary` | Optional. `false` means complete creature art owns its tail or cloak silhouette, so the stage does not add the rig's procedural secondary motion. |
 | `cloak` | Optional. `false` hides the stage's cloak overlay because the art has its own; a `#rrggbb` color recolors it. |
 | `rigAligned` | `true` only for sheets baked from the rig. The stage then positions overlays from rig geometry. Hand-drawn art sets `false` and supplies anchors per frame. |
 | `frames` | One entry per pose name. Unknown names are ignored; `idle` is required. |
@@ -104,9 +109,9 @@ a subset and grow.
 | `dodge` | Sidestep and crouch. |
 | `guard` | Arms up behind a shield or crossed forearms on an absorb. |
 
-The stage blends between the current and next pose by crossfading the two
-frames over the blend, then holds the target frame. Squash and stretch, the
-hit flash, and hit-stop apply to sprites the same way they apply to the rig.
+The stage blends between the current and next pose with complementary alpha,
+then holds the target frame. Squash and stretch, the hit flash, and hit-stop
+apply to sprites the same way they apply to the rig.
 
 ## Baking a stand-in sheet
 

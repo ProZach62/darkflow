@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "kind": "beast",
+  "image": "/assets/sprites/enemies/drake.png",
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "unit": 128,
+  "anchor": { "x": 200, "y": 464 },
+  "facing": "right",
+  "rigAligned": true,
+  "portrait": false,
+  "secondary": false,
+  "weaponsInArt": true,
+  "frames": {
+    "idle": { "x": 0, "y": 0 },
+    "windup": { "x": 512, "y": 0 },
+    "strike": { "x": 1024, "y": 0 },
+    "thrust": { "x": 1536, "y": 0 },
+    "cast": { "x": 0, "y": 512 },
+    "draw": { "x": 512, "y": 512 },
+    "loose": { "x": 1024, "y": 512 },
+    "maul": { "x": 1536, "y": 512 },
+    "whiff": { "x": 0, "y": 1024 },
+    "recoil": { "x": 512, "y": 1024 },
+    "dodge": { "x": 1024, "y": 1024 },
+    "guard": { "x": 1536, "y": 1024 },
+    "raise": { "x": 0, "y": 1536 },
+    "chop": { "x": 512, "y": 1536 }
+  }
+}

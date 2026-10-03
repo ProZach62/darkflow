@@ -357,6 +357,7 @@ test('status descriptor shows under the player name and its portrait loads befor
 
 test('inventory equipment reaches the stage figure', () => {
   const body = bodyElement();
+  createdImages.length = 0;
   mountRenderer(body).render({
     model: combatModel({ encounter_id: 'encounter-gear' }),
     vitals: { hp: 50, maxhp: 100 },
@@ -379,6 +380,23 @@ test('inventory equipment reaches the stage figure', () => {
   runFrame(4000);
   // Only the strapped shield rotates the context; ground shadows draw ellipses too.
   assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield drawn on the left forearm');
+  const sword = stage._images.get('/assets/sprites/weapons/sword.png')?.img;
+  const shield = stage._images.get('/assets/sprites/weapons/shield.png')?.img;
+  assert.ok(sword, 'generated sword requested for the wielded blade');
+  assert.ok(shield, 'generated shield requested for the equipped shield');
+  sword.finishLoading();
+  shield.finishLoading();
+  canvas.drawLog.length = 0;
+  stage._drawHeldWeapon(stage.ctx, { unit: 40 }, 'blade', { x: 120, y: 80 }, 1, 0, '#fff', 1, 1, 'sword');
+  stage._drawShieldArm(stage.ctx, {
+    unit: 40,
+    arms: { left: { elbow: { x: 80, y: 80 }, hand: { x: 100, y: 100 } } },
+  }, '#fff');
+  const painted = canvas.drawLog
+    .filter(([name]) => name === 'drawImage')
+    .map(([, args]) => args[0] && args[0].src);
+  assert.ok(painted.includes('/assets/sprites/weapons/sword.png'), 'loaded sword painting replaces the vector fallback');
+  assert.ok(painted.includes('/assets/sprites/weapons/shield.png'), 'loaded shield painting replaces the vector fallback');
 });
 
 test('a humanoid sprite sheet replaces the body and overlays keep drawing', async () => {

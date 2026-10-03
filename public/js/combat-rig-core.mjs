@@ -127,14 +127,19 @@ function slug(value) {
 // with a recognized kind sets the weapon, an inventory with nothing wielded
 // means bare hands, and an unrecognized name keeps the guild weapon.
 function weaponFromEquipment(equipment, guildWeapon) {
-  if (!equipment) return { weapon: guildWeapon, offKind: '' };
+  if (!equipment) return { weapon: guildWeapon, weaponStyle: guildWeapon === 'blade' ? 'sword' : '', offKind: '', offStyle: '' };
   const main = equipment.mainHand;
   const off = equipment.offHand;
   let weapon = guildWeapon;
   if (!main) weapon = 'claws';
   else if (main.kind && WEAPONS.includes(main.kind)) weapon = main.kind;
   const offKind = off && off.kind && WEAPONS.includes(off.kind) ? off.kind : '';
-  return { weapon, offKind };
+  return {
+    weapon,
+    weaponStyle: (main && main.style) || (weapon === 'blade' ? 'sword' : ''),
+    offKind,
+    offStyle: (off && off.style) || (offKind === 'blade' ? 'sword' : ''),
+  };
 }
 
 export function resolveFigure(combatant = {}, side = 'player') {
@@ -143,13 +148,15 @@ export function resolveFigure(combatant = {}, side = 'player') {
   const race = slug(combatant.race);
   const equipment = isBeast ? null : (combatant.equipment || null);
   const held = isBeast
-    ? { weapon: 'claws', offKind: '' }
+    ? { weapon: 'claws', weaponStyle: '', offKind: '', offStyle: '' }
     : weaponFromEquipment(equipment, WEAPON_BY_GUILD[guild] || 'blade');
   return {
     kind: isBeast ? 'beast' : 'humanoid',
     proportions: isBeast ? BEAST : HUMANOID,
     weapon: held.weapon,
+    weaponStyle: held.weaponStyle,
     offKind: held.offKind,
+    offStyle: held.offStyle,
     shield: !!(equipment && equipment.shield),
     helmet: !!(equipment && equipment.helmet),
     armor: !!(equipment && equipment.bodyArmor),
@@ -466,12 +473,14 @@ export function figureGeometry(figure, joints, x, groundY, unit, options = {}) {
     },
     weapon: {
       kind: figure.weapon,
+      style: figure.weaponStyle || '',
       hand: rHand,
       offHand: lHand,
       // Direction the weapon points, as a unit vector.
       dx: Math.sin(weaponAngle) * facing,
       dy: Math.cos(weaponAngle),
       offKind: figure.offKind || '',
+      offStyle: figure.offStyle || '',
       offDx: Math.sin(offAngle) * facing,
       offDy: Math.cos(offAngle),
     },

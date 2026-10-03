@@ -17,7 +17,7 @@ export const SPRITE_KINDS = Object.freeze(['humanoid', 'beast']);
 // A sheet key is a path fragment under the sprites folder: a body kind
 // (`humanoid`), a gender and race pair (`male-scro`), or a character
 // (`characters/elyndar`). Only these shapes become URLs.
-const SHEET_KEY_PATTERN = /^(?:characters\/)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SHEET_KEY_PATTERN = /^(?:(?:characters|enemies)\/)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function spriteSlug(value) {
   return String(value === undefined || value === null ? '' : value)
@@ -37,12 +37,28 @@ export function isSheetKey(key) {
 // another race borrows: Uruk draw the Scro sheet.
 export const SPRITE_RACE_FAMILIES = Object.freeze({
   'barbarian': 'human',
+  'crannian-gnome': 'dwarf',
+  'crinos': 'ursavar',
   'darkwinder': 'human',
   'desert-nomad': 'human',
+  'dragon': 'arthok',
+  'faerie': 'elf',
   'glavian': 'human',
   'gypsy': 'human',
+  'halfling': 'human',
+  'hyperborean-gnome': 'dwarf',
+  'ice-gnoll': 'ursavar',
+  'ice-ogre': 'scro',
+  'kender': 'human',
   'northman': 'human',
+  'pixie': 'elf',
+  'sidhe': 'elf',
   'souvraeli': 'human',
+  'swamp-troll': 'arthok',
+  'sylph': 'elf',
+  'thraxian': 'scro',
+  'wolf': 'ursavar',
+  'yugoloth': 'arthok',
   'arctic-elf': 'elf',
   'high-elf': 'elf',
   'shel-zaranite': 'elf',
@@ -56,6 +72,19 @@ export const SPRITE_RACE_FAMILIES = Object.freeze({
 
 export function spriteRaceFamily(race) {
   return SPRITE_RACE_FAMILIES[spriteSlug(race)] || '';
+}
+
+const ENEMY_SPRITE_PATTERNS = Object.freeze([
+  ['drake', /\b(?:dragon|drake|wyvern|wyrm|whelp)\b/],
+  ['spider', /\b(?:spider|arachnid|scorpion)\b/],
+  ['undead', /\b(?:skeleton|skeletal|zombie|undead|ghoul|wight|lich)\b/],
+  ['troll', /\b(?:troll|ogre|giant)\b/],
+]);
+
+export function enemySpriteKey(name) {
+  const text = String(name || '').toLowerCase();
+  const match = ENEMY_SPRITE_PATTERNS.find(([, pattern]) => pattern.test(text));
+  return match ? 'enemies/' + match[0] : '';
 }
 
 // Sheets to try for a figure, most specific first. Only the recipient's
@@ -75,6 +104,10 @@ export function spriteKeysFor(combatant, figure, side) {
       const family = spriteRaceFamily(race);
       if (family && family !== race) keys.push(gender + '-' + family);
     }
+  }
+  if (side === 'target' && combatant && combatant.isNpc) {
+    const enemy = enemySpriteKey(combatant.name);
+    if (enemy) keys.push(enemy);
   }
   if (figure && SPRITE_KINDS.includes(figure.kind)) keys.push(figure.kind);
   return keys.filter(isSheetKey);
@@ -149,6 +182,11 @@ export function normalizeSpriteManifest(raw, kind) {
     // The art already shows the character's weapons, so the stage must not
     // draw its own on top.
     weaponsInArt: raw.weaponsInArt === true,
+    // Creature sheets can include their own complete head. Humanoid sheets
+    // retain the portrait disc unless they explicitly opt out.
+    portrait: raw.portrait !== false,
+    // Complete creature art also owns its tail or cloak silhouette.
+    secondary: raw.secondary !== false,
     cloak,
     frames,
   };
@@ -169,7 +207,7 @@ export function selectSpriteFrames(sheet, phase, easedT) {
   if (from === to || t >= 1) return [{ frame: to, name: toName, alpha: 1 }];
   if (t <= 0) return [{ frame: from, name: fromName, alpha: 1 }];
   return [
-    { frame: from, name: fromName, alpha: 1 },
+    { frame: from, name: fromName, alpha: 1 - t },
     { frame: to, name: toName, alpha: t },
   ];
 }

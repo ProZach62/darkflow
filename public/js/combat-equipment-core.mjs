@@ -60,13 +60,29 @@ export function classifyWeapon(name) {
   return '';
 }
 
+export function classifyWeaponStyle(name) {
+  const text = cleanItemName(name).toLowerCase();
+  if (/\b(?:great\s*swords?|claymores?|zweihanders?)\b/.test(text)) return 'great-sword';
+  if (/\b(?:great\s*axes?|giant\s*axes?|bardiches?)\b/.test(text)) return 'great-axe';
+  if (/\bmauls?\b/.test(text)) return 'maul';
+  if (/\b(?:war\s*)?hammers?\b/.test(text)) return 'hammer';
+  if (/\baxes?\b|\bhatchets?\b|\btomahawks?\b/.test(text)) return 'axe';
+  if (/\b(?:spears?|pikes?|lances?|tridents?)\b/.test(text)) return 'spear';
+  if (/\bswords?\b|\bblades?\b|\bscimitars?\b|\bsab(?:re|er)s?\b|\bkatanas?\b/.test(text)) return 'sword';
+  return '';
+}
+
 function hasAttribute(item, flag) {
   return !!(item && typeof item.attrib === 'string' && item.attrib.includes(flag));
 }
 
 function weaponEntry(item) {
   if (!item) return null;
-  return { name: cleanItemName(item.name), kind: classifyWeapon(item.name) };
+  return {
+    name: cleanItemName(item.name),
+    kind: classifyWeapon(item.name),
+    style: classifyWeaponStyle(item.name),
+  };
 }
 
 // `items` is the inventory array from Char.Items. Returns null when no
