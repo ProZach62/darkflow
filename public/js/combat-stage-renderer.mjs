@@ -94,6 +94,23 @@ function bossToggleHtml(combatant, boss) {
     (marked ? '\u2605 Boss' : '\u2606 Mark boss') + '</button></div>';
 }
 
+// A CSS url() for an image path: characters that would end the url or the
+// style attribute are percent-encoded.
+function cssUrl(url) {
+  return "url('" + String(url).replace(/['"()\\\s<>]/g, (ch) => encodeURIComponent(ch)) + "')";
+}
+
+// The fighter's picture, cropped like the old portrait disc (cover, a little
+// above centre). The fallback is layered underneath, so it shows while the
+// picture loads or if it fails, with no script.
+function portraitHtml(side, combatant) {
+  const fallback = side === 'target' && combatant.isNpc ? NPC_FALLBACK_IMAGE : PLAYER_FALLBACK_IMAGE;
+  const layers = [combatant.image, combatant.fallbackImage, fallback].filter(Boolean);
+  const unique = layers.filter((url, index) => layers.indexOf(url) === index);
+  return '<span class="combat-hud-portrait" aria-hidden="true" style="background-image:' +
+    escHtml(unique.map(cssUrl).join(',')) + '"></span>';
+}
+
 function tokenHudHtml(side, combatant, sideClass, boss) {
   let html = '<div class="combat-token-hud combat-token-hud-' + side + sideClass +
     (side === 'target' && boss && (boss.marked || boss.tagged) ? ' combat-token-hud-boss' : '') + '">';
@@ -101,7 +118,8 @@ function tokenHudHtml(side, combatant, sideClass, boss) {
   // which is short on room; the full name stays as the hover text.
   const tagged = side === 'target' && boss && boss.tagged;
   const shown = tagged ? combatant.name.replace(/\s*\(\s*boss\s*\)\s*/gi, ' ').trim() : combatant.name;
-  html += '<div class="combat-hud-name"><span' + (tagged ? ' title="' + escHtml(combatant.name) + '"' : '') +
+  html += '<div class="combat-hud-name">' + portraitHtml(side, combatant) + '<span' +
+    (tagged ? ' title="' + escHtml(combatant.name) + '"' : '') +
     '>' + escHtml(shown || combatant.name) + '</span></div>';
   if (combatant.descriptor) {
     html += '<div class="combat-hud-descriptor">' + escHtml(combatant.descriptor) + '</div>';

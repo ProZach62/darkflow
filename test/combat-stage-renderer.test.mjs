@@ -240,6 +240,20 @@ test('canvas stage renders the DOM overlay with escaped names and accessible hea
   assert.ok(createdImages.some((img) => img.src === 'https://media.example/acer.jpg'), 'avatar requested');
 });
 
+test("each side's header shows the fighter's picture in a square before the name", () => {
+  const body = bodyElement();
+  mountRenderer(body).render({
+    model: combatModel(),
+    vitals: { hp: 78, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 41, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+  });
+  const html = deepHtml(body);
+  const squares = html.match(/<span class="combat-hud-portrait" aria-hidden="true" style="background-image:[^"]*"><\/span><span/g) || [];
+  assert.equal(squares.length, 2, 'one square per side, right before the name');
+  assert.match(html, /generic-monster\.png/, 'an unpictured monster falls back to the monster art');
+});
+
 test('re-rendering reuses the same canvas and plays each event once', () => {
   const body = bodyElement();
   let model = combatModel();
@@ -275,7 +289,8 @@ test('re-rendering reuses the same canvas and plays each event once', () => {
   assert.equal(stage._actions.length, 1, 'repeated publishes of the same beat do not replay it');
   assert.match(deepHtml(body), /You critically hit a drake for 42 damage\./);
 
-  runFrame(1100);
+  // Past contact (a fifth of the 1.4 s blow), when the number shows.
+  runFrame(1600);
   assert.ok(stage.frames > framesBefore, 'a frame was drawn after the event');
   assert.ok(canvas.drawLog.some(([name]) => name === 'fillText' || name === 'strokeText'),
     'damage number drawn on the canvas');

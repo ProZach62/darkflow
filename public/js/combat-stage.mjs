@@ -130,7 +130,9 @@ function hexToRgb(hex) {
 const PIXEL_BUDGET = 2_200_000;
 const STATS_WINDOW_MS = 5000;
 const GLOW_SPRITE_LIMIT = 24;
-const PORTRAIT_SPRITE_LIMIT = 8;
+// The rig's head is sized for the portrait it used to carry; a plain head
+// reads better a little smaller.
+const HEAD_SCALE = 0.82;
 function bucketRadius(radius) {
   return Math.max(4, Math.round(radius / 4) * 4);
 }
@@ -198,7 +200,6 @@ export function createCombatStage(doc, options = {}) {
     _restFrameSkip: false,
     _hasSize: false,
     _glowSprites: new Map(),
-    _portraitSprites: new Map(),
     _spriteSurfaces: true,
     // Rolling draw cost: a smoothed per-frame draw time and the worst frame
     // of the last few seconds. Shown on the canvas when stats are enabled
@@ -417,7 +418,6 @@ export function createCombatStage(doc, options = {}) {
       }
       this._images.clear();
       this._glowSprites.clear();
-      this._portraitSprites.clear();
       if (element.parentNode && typeof element.parentNode.removeChild === 'function') {
         element.parentNode.removeChild(element);
       }
@@ -880,27 +880,6 @@ export function createCombatStage(doc, options = {}) {
     // The portrait disc at the size it is drawn, so a fight does not
     // downscale a full-resolution portrait every frame. Keyed by image and
     // radius bucket; the disc is cropped the way the live draw was.
-    _portraitSprite(img, radius) {
-      const bucket = bucketRadius(radius);
-      const dpr = this._dpr;
-      const key = (img.src || '') + '|' + bucket + '|' + dpr;
-      const cached = this._portraitSprites.get(key);
-      if (cached && cached.img === img) return cached;
-      const size = bucket * 2;
-      const surface = this._offscreen(size * dpr, size * dpr);
-      if (!surface) return null;
-      const g = surface.ctx;
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const scale = Math.max(size / img.naturalWidth, size / img.naturalHeight);
-      const drawW = img.naturalWidth * scale;
-      const drawH = img.naturalHeight * scale;
-      g.drawImage(img, bucket - drawW / 2, -(drawH - size) * 0.3, drawW, drawH);
-      if (this._portraitSprites.size >= PORTRAIT_SPRITE_LIMIT) this._portraitSprites.clear();
-      const sprite = { canvas: surface.canvas, img, size };
-      this._portraitSprites.set(key, sprite);
-      return sprite;
-    },
-
     // The static part of the backdrop at device resolution, rebuilt only when
     // the art, the canvas size, or the pixel ratio changes. null when this
     // environment cannot make an offscreen canvas, in which case the caller
@@ -1348,9 +1327,11 @@ export function createCombatStage(doc, options = {}) {
         this._drawLeg(c, geo, geo.legs.front, material, 1);
         this._drawNeck(c, geo, material);
       }
-      const drawPortrait = !sprite || sprite.sheet.portrait !== false;
-      if (drawPortrait) this._drawHead(c, head, side, combatant, material.ring, isActor, flashMix);
-      if (drawPortrait && geo.helmet) this._drawHelmet(c, head, geo.facing);
+      // The drawn figure and a sheet without painted heads get a plain head;
+      // the fighter's picture is in the header, beside the name.
+      const drawsHead = !sprite || sprite.sheet.portrait !== false;
+      if (drawsHead) this._drawHead(c, head, material, isActor, flashMix);
+      if (drawsHead && geo.helmet) this._drawHelmet(c, head, geo.facing);
       if (!sprite) this._drawArm(c, geo, geo.arms.right, material, 1);
       if (!weaponsInArt && figure.weapon !== 'bow') {
         if (smear) this._drawSmear(c, figure, joints, phase, token, groundLine, unit, material, smear);
@@ -2060,52 +2041,24 @@ export function createCombatStage(doc, options = {}) {
       c.restore();
     },
 
-    _drawHead(c, head, side, combatant, ringColor, isActor, flashMix) {
-      const radius = head.r;
-      const fallback = side === 'player' ? this._playerFallback : this._targetFallback;
-      const img = this._imageFor(combatant.image, fallback);
+    // A plain head in the figure's skin, lit from the upper left. The side
+    // acting glows faintly in its team colour, as the portrait ring did.
+    _drawHead(c, head, material, isActor, flashMix) {
+      const r = head.r * HEAD_SCALE;
       const x = head.x;
       const y = head.y;
       c.save();
-      this._drawGlow(c, x, y, radius * 1.6, ringColor, isActor ? 0.34 : 0.16, 0.7 / 1.6);
-
-      c.save();
+      if (isActor) this._drawGlow(c, x, y, r * 1.7, material.ring, 0.3, 0.7 / 1.7);
+      const skin = flashMix > 0 ? this._flashMix(material.skin, flashMix) : material.skin;
+      const shade = c.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.15, x, y, r);
+      shade.addColorStop(0, skin);
+      shade.addColorStop(1, material.skinShade);
+      c.fillStyle = shade;
       c.beginPath();
-      c.arc(x, y, radius, 0, Math.PI * 2);
-      c.closePath();
-      c.clip();
-      c.fillStyle = side === 'player' ? '#07131a' : '#180d0b';
-      c.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-      if (img && img.naturalWidth > 0) {
-        const portrait = this._portraitSprite(img, radius);
-        if (portrait) {
-          c.drawImage(portrait.canvas, x - radius, y - radius, radius * 2, radius * 2);
-        } else {
-          const scale = Math.max((radius * 2) / img.naturalWidth, (radius * 2) / img.naturalHeight);
-          const drawW = img.naturalWidth * scale;
-          const drawH = img.naturalHeight * scale;
-          c.drawImage(img, x - drawW / 2, y - radius - (drawH - radius * 2) * 0.3, drawW, drawH);
-        }
-      } else {
-        this._drawSilhouette(c, { x, y }, radius, combatant, ringColor);
-      }
-      if (flashMix > 0) {
-        c.fillStyle = 'rgba(255, 244, 230, ' + (0.42 * flashMix) + ')';
-        c.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-      }
-      c.restore();
-
-      // The ring's soft edge used to be a shadowBlur, which rasterises a
-      // blur every frame; a wider translucent stroke underneath reads the
-      // same at token size and costs a second arc.
-      const ringWidth = Math.max(2, radius * 0.1);
-      c.beginPath();
-      c.arc(x, y, radius, 0, Math.PI * 2);
-      c.lineWidth = ringWidth + (isActor ? radius * 0.3 : radius * 0.12);
-      c.strokeStyle = rgba(ringColor, isActor ? 0.28 : 0.18);
-      c.stroke();
-      c.lineWidth = ringWidth;
-      c.strokeStyle = rgba(ringColor, 0.95);
+      c.arc(x, y, r, 0, Math.PI * 2);
+      c.fill();
+      c.lineWidth = Math.max(1.5, r * 0.09);
+      c.strokeStyle = '#07090c';
       c.stroke();
       c.restore();
     },

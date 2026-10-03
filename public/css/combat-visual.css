@@ -1076,6 +1076,9 @@
 
 [data-panel-id="enemy"] .combat-hud-name {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
   max-width: 100%;
   padding-bottom: 5px;
   color: var(--df-text);
@@ -1088,9 +1091,36 @@
 
 [data-panel-id="enemy"] .combat-hud-name span {
   display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The fighter's picture, a square before the name. It is sized from the
+   name's font, so it grows and shrinks with the panel; the crop matches the
+   portrait disc it replaced on the figure (cover, a little above centre). */
+[data-panel-id="enemy"] .combat-hud-name .combat-hud-portrait {
+  flex: 0 0 auto;
+  width: 2.2em;
+  height: 2.2em;
+  border: 2px solid var(--combat-cyan);
+  border-radius: 4px;
+  background-color: #07131a;
+  background-position: 50% 30%;
+  background-repeat: no-repeat;
+  background-size: cover;
+  box-shadow: 0 0 6px rgba(66, 214, 201, 0.45), 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+[data-panel-id="enemy"] .combat-token-hud-target .combat-hud-name {
+  justify-content: flex-end;
+}
+
+[data-panel-id="enemy"] .combat-token-hud-target .combat-hud-portrait {
+  border-color: var(--combat-red);
+  background-color: #180d0b;
+  box-shadow: 0 0 6px rgba(248, 81, 73, 0.45), 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 [data-panel-id="enemy"] .combat-hud-descriptor,

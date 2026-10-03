@@ -10,6 +10,7 @@
     "y": 464.0
   },
   "facing": "right",
+  "portrait": false,
   "rigAligned": false,
   "frames": {
     "idle": {
