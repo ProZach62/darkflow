@@ -202,5 +202,7 @@
       }
     }
   },
-  "weaponsInArt": true
+  "weaponsInArt": true,
+  "portrait": false,
+  "secondary": false
 }
