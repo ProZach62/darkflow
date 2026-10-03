@@ -85,24 +85,24 @@ test('equipment outranks guild for the weapon and adds shield, helmet, and armor
 test('pose phases anticipate, snap, hold, and settle along the action timeline', () => {
   const hit = { result: 'hit', landed: true };
   assert.deepEqual(posePhase('actor', hit, 0), { from: 'idle', to: 'windup', t: 0, ease: 'settle' });
-  assert.equal(posePhase('actor', hit, 0.1).t, 1, 'windup holds before the strike');
-  const snap = posePhase('actor', hit, 0.145);
+  assert.equal(posePhase('actor', hit, 0.13).t, 1, 'windup holds before the strike');
+  const snap = posePhase('actor', hit, 0.19);
   assert.equal(snap.to, 'strike');
   assert.equal(snap.ease, 'snap');
   assert.ok(snap.t > 0 && snap.t < 1);
-  assert.equal(posePhase('actor', hit, 0.25).to, 'strike');
-  assert.equal(posePhase('actor', hit, 0.25).t, 1, 'follow-through holds');
-  assert.equal(posePhase('actor', hit, 0.5).to, 'idle');
+  assert.equal(posePhase('actor', hit, 0.3).to, 'strike');
+  assert.equal(posePhase('actor', hit, 0.3).t, 1, 'follow-through holds');
+  assert.equal(posePhase('actor', hit, 0.55).to, 'idle');
   assert.equal(posePhase('actor', hit, 0.7), null);
-  assert.equal(posePhase('actor', hit, 0.145, 'staff').to, 'cast');
-  assert.equal(posePhase('actor', hit, 0.145, 'bow').to, 'loose');
+  assert.equal(posePhase('actor', hit, 0.19, 'staff').to, 'cast');
+  assert.equal(posePhase('actor', hit, 0.19, 'bow').to, 'loose');
   assert.equal(posePhase('actor', hit, 0.05, 'bow').to, 'draw');
   assert.equal(posePhase('actor', hit, 0.05, 'axe').to, 'raise');
-  assert.equal(posePhase('actor', hit, 0.145, 'blunt').to, 'chop');
-  assert.equal(posePhase('actor', hit, 0.145, 'polearm').to, 'thrust');
-  assert.equal(posePhase('actor', hit, 0.145, 'rapier').to, 'thrust');
-  assert.equal(posePhase('actor', hit, 0.145, 'claws').to, 'maul');
-  assert.equal(posePhase('actor', { result: 'miss', landed: false }, 0.145).to, 'whiff');
+  assert.equal(posePhase('actor', hit, 0.19, 'blunt').to, 'chop');
+  assert.equal(posePhase('actor', hit, 0.19, 'polearm').to, 'thrust');
+  assert.equal(posePhase('actor', hit, 0.19, 'rapier').to, 'thrust');
+  assert.equal(posePhase('actor', hit, 0.19, 'claws').to, 'maul');
+  assert.equal(posePhase('actor', { result: 'miss', landed: false }, 0.19).to, 'whiff');
 
   assert.equal(posePhase('impact', hit, 0.1), null, 'victim waits for contact');
   assert.equal(posePhase('impact', hit, 0.2).to, 'recoil');
@@ -208,8 +208,8 @@ test('a staff casts only for caster guilds; anyone else swings it', () => {
   assert.equal(monk.caster, false);
   assert.equal(monk.weapon, 'staff');
   assert.equal(poseWeaponFor(monk), 'blade', 'a monk swings the staff with the blade poses');
-  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.145, poseWeaponFor(monk)).to, 'strike');
-  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.145, poseWeaponFor(mage)).to, 'cast');
+  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.19, poseWeaponFor(monk)).to, 'strike');
+  assert.equal(posePhase('actor', { result: 'hit', landed: true }, 0.19, poseWeaponFor(mage)).to, 'cast');
   const idle = figureGeometry(mage, resolvePose(null, 0, still), 100, 300, 40);
   assert.ok(idle.weapon.dy > 0, 'at rest the grip points down, so the staff head (drawn opposite) is up');
   const cast = figureGeometry(mage, resolvePose({ from: 'cast', to: 'cast', t: 1 }, 0, still), 100, 300, 40);

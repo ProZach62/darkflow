@@ -17,21 +17,29 @@ import { validateCharEnemy } from "../gmcp/contracts/validators";
 import type { TransportReconnectStatusPayload } from "../transport/types";
 // @ts-expect-error Retained combat reducer is JavaScript without a declaration file.
 import * as combatCore from "../../public/js/combat-visual-core.mjs";
+// @ts-expect-error The Scene's timing helpers are retained JavaScript without a declaration file.
+import * as stageCore from "../../public/js/combat-stage-core.mjs";
 import type { SessionEventBus } from "./event-bus";
 import type { Unsubscribe } from "./events";
 import type { SessionInformation } from "./information";
 import type { Disposer, ResourceScope } from "./resource-scope";
 
 const {
-  ACTION_DURATION_MS,
   clearCurrentCombatEvent,
   createCombatVisualState,
   reduceCombatEvents,
   reduceCombatState,
   takeNextCombatEvent,
 } = combatCore;
+// The action length and beat live with the Scene's timeline, in the stage
+// core; the visual core does not export them.
+const { ACTION_DURATION_MS, combatBeatMs } = stageCore as {
+  ACTION_DURATION_MS: number;
+  combatBeatMs: (waiting: number) => number;
+};
 
-export const COMBAT_BEAT_MS = ACTION_DURATION_MS;
+/** One blow's length on the Scene; the beat between blows when none wait. */
+export const COMBAT_BEAT_MS: number = ACTION_DURATION_MS;
 
 export interface SessionCombatEvent extends Omit<DarkwindCombatEvent, "actor_id" | "target_id"> {
   readonly actorId: string;
@@ -179,7 +187,7 @@ export function createSessionCombat(
       model = clearCurrentCombatEvent(model) as SessionCombatModel;
       publish();
       drainEvents();
-    }, COMBAT_BEAT_MS);
+    }, combatBeatMs(model.pending.length));
   };
 
   const acceptEvents = (events: DarkwindCombatEvents): void => {

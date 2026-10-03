@@ -302,7 +302,14 @@ test("combat orders batch and singular events and cancels every late beat", asyn
 
   assert.equal(harness.combat.getSnapshot().model.currentEvent?.seq, 2);
   assert.equal(harness.combat.getSnapshot().model.pending[0]?.seq, 3);
-  assert.equal(timers[0].delay, modules.COMBAT_BEAT_MS);
+  // A real length: imported from the wrong module it was undefined, and
+  // every queued blow started at once.
+  assert.ok(modules.COMBAT_BEAT_MS >= 1000, "the beat is a real action length");
+  assert.equal(
+    timers[0].delay,
+    Math.round(modules.COMBAT_BEAT_MS * 0.7),
+    "with a blow waiting, the next starts before this one ends",
+  );
   timers[0].callback();
   assert.equal(harness.combat.getSnapshot().model.currentEvent?.seq, 3);
   timers[1].callback();

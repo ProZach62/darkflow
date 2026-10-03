@@ -281,41 +281,45 @@ function lerp(a, b, t) {
 // snaps into the strike over a few frames around the contact point, holds
 // the follow-through, then settles home. The victim snaps into its reaction
 // and settles back. Returns null when the side just idles.
+// Timed for a 1,400 ms action (ACTION_DURATION_MS) with contact at 0.2
+// (ACTION_CONTACT_FRACTION), so each held pose lasts long enough to read as
+// a painted sprite frame: the windup holds about 100 ms, the strike about
+// 260 ms, and the victim's reaction about 270 ms.
 export function posePhase(role, action, progress, weapon = 'blade') {
   const p = clamp01(progress);
-  const contact = 0.16;
+  const contact = 0.2;
   if (role === 'actor') {
     const windup = WINDUP_POSE_BY_WEAPON[weapon] || 'windup';
     const strike = action.result === 'miss'
       ? 'whiff'
       : (STRIKE_POSE_BY_WEAPON[weapon] || 'strike');
-    if (p < 0.08) return { from: 'idle', to: windup, t: p / 0.08, ease: 'settle' };
-    if (p < 0.12) return { from: windup, to: windup, t: 1, ease: 'settle' };
-    if (p < 0.17) return { from: windup, to: strike, t: (p - 0.12) / 0.05, ease: 'snap' };
-    if (p < 0.3) return { from: strike, to: strike, t: 1, ease: 'settle' };
-    if (p < 0.62) return { from: strike, to: 'idle', t: (p - 0.3) / 0.32, ease: 'settle' };
+    if (p < 0.1) return { from: 'idle', to: windup, t: p / 0.1, ease: 'settle' };
+    if (p < 0.17) return { from: windup, to: windup, t: 1, ease: 'settle' };
+    if (p < 0.21) return { from: windup, to: strike, t: (p - 0.17) / 0.04, ease: 'snap' };
+    if (p < 0.4) return { from: strike, to: strike, t: 1, ease: 'settle' };
+    if (p < 0.7) return { from: strike, to: 'idle', t: (p - 0.4) / 0.3, ease: 'settle' };
     return null;
   }
   if (role === 'impact') {
     if (action.landed) {
       if (p < contact) return null;
-      if (p < 0.24) return { from: 'idle', to: 'recoil', t: (p - contact) / (0.24 - contact), ease: 'snap' };
-      if (p < 0.4) return { from: 'recoil', to: 'recoil', t: 1, ease: 'settle' };
-      if (p < 0.76) return { from: 'recoil', to: 'idle', t: (p - 0.4) / 0.36, ease: 'settle' };
+      if (p < 0.27) return { from: 'idle', to: 'recoil', t: (p - contact) / (0.27 - contact), ease: 'snap' };
+      if (p < 0.46) return { from: 'recoil', to: 'recoil', t: 1, ease: 'settle' };
+      if (p < 0.8) return { from: 'recoil', to: 'idle', t: (p - 0.46) / 0.34, ease: 'settle' };
       return null;
     }
     if (action.result === 'dodge') {
-      if (p < 0.08) return null;
-      if (p < 0.2) return { from: 'idle', to: 'dodge', t: (p - 0.08) / 0.12, ease: 'snap' };
-      if (p < 0.34) return { from: 'dodge', to: 'dodge', t: 1, ease: 'settle' };
-      if (p < 0.66) return { from: 'dodge', to: 'idle', t: (p - 0.34) / 0.32, ease: 'settle' };
+      if (p < 0.12) return null;
+      if (p < 0.24) return { from: 'idle', to: 'dodge', t: (p - 0.12) / 0.12, ease: 'snap' };
+      if (p < 0.42) return { from: 'dodge', to: 'dodge', t: 1, ease: 'settle' };
+      if (p < 0.72) return { from: 'dodge', to: 'idle', t: (p - 0.42) / 0.3, ease: 'settle' };
       return null;
     }
     if (action.result === 'absorb') {
-      if (p < 0.08) return null;
-      if (p < 0.18) return { from: 'idle', to: 'guard', t: (p - 0.08) / 0.1, ease: 'snap' };
-      if (p < 0.5) return { from: 'guard', to: 'guard', t: 1, ease: 'settle' };
-      if (p < 0.78) return { from: 'guard', to: 'idle', t: (p - 0.5) / 0.28, ease: 'settle' };
+      if (p < 0.12) return null;
+      if (p < 0.22) return { from: 'idle', to: 'guard', t: (p - 0.12) / 0.1, ease: 'snap' };
+      if (p < 0.54) return { from: 'guard', to: 'guard', t: 1, ease: 'settle' };
+      if (p < 0.8) return { from: 'guard', to: 'idle', t: (p - 0.54) / 0.26, ease: 'settle' };
       return null;
     }
   }

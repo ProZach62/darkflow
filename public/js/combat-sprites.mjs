@@ -193,7 +193,8 @@ export function normalizeSpriteManifest(raw, kind) {
 }
 
 // Which frames to draw for a pose phase, with alphas. Sparse sheets carry
-// one frame per pose, so a blend is a short crossfade between the two.
+// one painted frame per pose, and two of them faded over each other read as
+// a see-through ghost, so a blend cuts from one to the other halfway.
 export function selectSpriteFrames(sheet, phase, easedT) {
   const idle = sheet.frames.idle;
   if (!phase) return [{ frame: idle, name: 'idle', alpha: 1 }];
@@ -204,12 +205,8 @@ export function selectSpriteFrames(sheet, phase, easedT) {
   const toName = sheet.frames[phase.to] ? phase.to : fromName;
   const to = sheet.frames[toName];
   const t = Math.max(0, Math.min(1, Number.isFinite(easedT) ? easedT : phase.t));
-  if (from === to || t >= 1) return [{ frame: to, name: toName, alpha: 1 }];
-  if (t <= 0) return [{ frame: from, name: fromName, alpha: 1 }];
-  return [
-    { frame: from, name: fromName, alpha: 1 - t },
-    { frame: to, name: toName, alpha: t },
-  ];
+  if (from === to || t >= 0.5) return [{ frame: to, name: toName, alpha: 1 }];
+  return [{ frame: from, name: fromName, alpha: 1 }];
 }
 
 // Destination rectangle for a frame so its ground anchor lands on

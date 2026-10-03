@@ -57,11 +57,13 @@ test('manifest normalization keeps known poses and rejects unusable files', () =
   assert.equal(normalizeSpriteManifest(manifest({ secondary: false }), 'humanoid').secondary, false);
 });
 
-test('frame selection crossfades between the two poses of a phase', () => {
+test('frame selection cuts from one pose to the other halfway, never fading two frames together', () => {
   const sheet = normalizeSpriteManifest(manifest(), 'humanoid');
   assert.deepEqual(selectSpriteFrames(sheet, null).map((f) => [f.name, f.alpha]), [['idle', 1]]);
   const mid = selectSpriteFrames(sheet, { from: 'idle', to: 'strike', t: 0.4 }, 0.4);
-  assert.deepEqual(mid.map((f) => [f.name, f.alpha]), [['idle', 0.6], ['strike', 0.4]]);
+  assert.deepEqual(mid.map((f) => [f.name, f.alpha]), [['idle', 1]], 'before halfway, the from pose alone');
+  const past = selectSpriteFrames(sheet, { from: 'idle', to: 'strike', t: 0.6 }, 0.6);
+  assert.deepEqual(past.map((f) => [f.name, f.alpha]), [['strike', 1]], 'from halfway, the to pose alone');
   assert.deepEqual(selectSpriteFrames(sheet, { from: 'idle', to: 'strike', t: 1 }, 1).map((f) => f.name), ['strike']);
   assert.deepEqual(selectSpriteFrames(sheet, { from: 'strike', to: 'strike', t: 1 }, 1).map((f) => f.name), ['strike']);
   const missing = selectSpriteFrames(sheet, { from: 'idle', to: 'chop', t: 0.5 }, 0.5);

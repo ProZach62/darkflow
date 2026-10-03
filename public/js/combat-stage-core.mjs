@@ -26,9 +26,29 @@ const RESULT_TINTS = Object.freeze({
   absorb: '#b4abff',
 });
 
-export const ACTION_DURATION_MS = 900;
+// Long enough for painted sprite frames to read: the attacker holds its
+// windup for about 100 ms and its follow-through for about 260 ms. At 900 ms
+// the windup held for 36 ms and flashed past.
+export const ACTION_DURATION_MS = 1400;
 // Fraction of an action at which the blow lands. The sound cue fires here too.
-export const ACTION_CONTACT_FRACTION = 0.16;
+// It falls in the posePhase snap from windup to strike (combat-rig-core.mjs).
+export const ACTION_CONTACT_FRACTION = 0.2;
+// The lunge carries the actor in over this much of the action, peaking just
+// after contact.
+const LUNGE_FRACTION = 0.45;
+
+/**
+ * How long until the next queued blow starts. With nothing else waiting the
+ * next one starts when this one ends, so each pose reads; with blows
+ * waiting it starts sooner and overlaps (the stage plays up to three at
+ * once), so a burst keeps up with the fight rather than going stale.
+ */
+export function combatBeatMs(waiting) {
+  const count = Number(waiting) || 0;
+  if (count >= 3) return Math.round(ACTION_DURATION_MS * 0.45);
+  if (count >= 1) return Math.round(ACTION_DURATION_MS * 0.7);
+  return ACTION_DURATION_MS;
+}
 
 export function clamp01(value) {
   if (!Number.isFinite(value)) return 0;
@@ -317,13 +337,13 @@ export function sampleAction(action, now, options = {}) {
   let zoom = 0;
   let whiteFlash = 0;
 
-  // Timeline in normalized progress: lunge 0-0.36 (contact at 0.16),
-  // outcome 0.16-0.7, numbers drift until the end.
+  // Timeline in normalized progress: lunge 0-0.45 (contact at 0.2),
+  // outcome 0.2-0.7, numbers drift until the end.
   const contactAt = ACTION_CONTACT_FRACTION;
   const afterContact = clamp01((progress - contactAt) / (1 - contactAt));
 
   if (!reducedMotion) {
-    const lunge = lungeCurve(progress / 0.36);
+    const lunge = lungeCurve(progress / LUNGE_FRACTION);
     // The strike pose steps the front foot forward, so the body itself only
     // needs a short lunge to close distance.
     actor.x = direction * lunge * 0.7;

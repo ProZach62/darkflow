@@ -30,6 +30,7 @@ const {
   encounterSoundCue,
   sceneAmbience,
   buildAction,
+  combatBeatMs,
   buildSceneAction,
   computeStageLayout,
   createSeededRandom,
@@ -144,6 +145,14 @@ test('lunge curve leaves and returns to rest', () => {
   assert.ok(Math.abs(lungeCurve(1)) < 1e-9);
 });
 
+test('the next blow waits for this one to end unless others are queued', () => {
+  assert.equal(ACTION_DURATION_MS, 1400);
+  assert.equal(combatBeatMs(0), ACTION_DURATION_MS, 'alone, each blow plays out');
+  assert.equal(combatBeatMs(1), 980, 'one waiting starts it a little early');
+  assert.equal(combatBeatMs(3), 630, 'a backlog overlaps blows to keep up');
+  assert.equal(combatBeatMs(undefined), ACTION_DURATION_MS);
+});
+
 test('an outgoing hit lunges the player, recoils the target, and floats the number', () => {
   const action = buildAction(event(), view, 0);
   const early = sampleAction(action, 60);
@@ -153,7 +162,7 @@ test('an outgoing hit lunges the player, recoils the target, and floats the numb
   assert.equal(early.effects.length, 0);
   assert.equal(early.number, null);
 
-  const contact = sampleAction(action, ACTION_DURATION_MS * 0.2);
+  const contact = sampleAction(action, ACTION_DURATION_MS * 0.24);
   assert.ok(contact.target.x > 0, 'target recoils away from the player');
   assert.ok(contact.target.flash > 0);
   assert.ok(contact.shake > 0 && contact.shake < 1, 'target-side hits shake lightly');
@@ -174,7 +183,7 @@ test('an outgoing hit lunges the player, recoils the target, and floats the numb
 
 test('an incoming critical shakes and flashes the player side', () => {
   const action = buildAction(event({ perspective: 'incoming', result: 'critical', damage: 77 }), view, 0);
-  const contact = sampleAction(action, ACTION_DURATION_MS * 0.18);
+  const contact = sampleAction(action, ACTION_DURATION_MS * 0.22);
   assert.ok(contact.target.x < 0, 'enemy lunges left');
   assert.ok(contact.player.x < 0, 'player is knocked left');
   assert.ok(contact.shake > 1, 'critical incoming shakes hardest');

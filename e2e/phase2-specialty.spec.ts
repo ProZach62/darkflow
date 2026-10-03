@@ -465,7 +465,8 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   await expect(combat.locator(".combat-current-event")).toContainText("Hit 3.", {
     timeout: 2_000,
   });
-  await page.waitForTimeout(500);
+  // Past the last blow's beat (1.4 s), so the pane is at rest.
+  await page.waitForTimeout(1_600);
   const stableCombat = await combat.textContent();
   endpoint.sendGmcp("Darkwind.Combat.Event", {
     epoch: "old-combat",
