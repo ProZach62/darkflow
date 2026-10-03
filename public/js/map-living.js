@@ -101,6 +101,19 @@ export function createLivingLayers() {
   function show(el, visible) {
     if (el.hidden === !visible) return;
     el.hidden = !visible;
+    syncPlayback(el);
+  }
+
+  // A hidden layer (a kind with no region in the window, or torches by day)
+  // has no box for the compositor to move, so its animations would tick on
+  // the main thread and restyle the page every frame. They pause while it is
+  // hidden and carry on when it shows.
+  function syncPlayback(el) {
+    if (typeof el.getAnimations !== 'function') return;
+    for (const animation of el.getAnimations({ subtree: true })) {
+      if (el.hidden && animation.playState === 'running') animation.pause();
+      else if (!el.hidden && animation.playState === 'paused') animation.play();
+    }
   }
 
   function setMask(kind, canvas, key) {
@@ -189,6 +202,8 @@ export function createLivingLayers() {
         { opacity: 0.55 },
         { opacity: 1 },
       ], { duration: 12000, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' });
+      // Animations just started on a layer that is already hidden.
+      for (const entry of Object.values(entries)) syncPlayback(entry.layer);
 
       const lit = opts.torches && opts.torches.length;
       if (lit && opts.torchKey !== torchKey) {
