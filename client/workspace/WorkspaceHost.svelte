@@ -130,6 +130,16 @@
       placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
     },
     {
+      id: "isoMap",
+      kind: "isoMap",
+      title: "Isometric Map",
+      state: { mapZoom: 1 },
+      placement: {
+        kind: "floating",
+        bounds: { left: 80, top: 60, width: 720, height: 560 },
+      },
+    },
+    {
       id: "roomImage",
       kind: "roomImage",
       title: "Room Image",
@@ -317,10 +327,11 @@
     "stats",
   ];
   type DefaultRailPanelId = InformationPanelId | "room";
-  type RailPanelId = DefaultRailPanelId | "map" | "roomImage" | "roomPlaylist";
+  type RailPanelId = DefaultRailPanelId | "map" | "isoMap" | "roomImage" | "roomPlaylist";
   type RailSide = "left" | "right";
   const optionalRailPanelIds: readonly RailPanelId[] = [
     "map",
+    "isoMap",
     "roomImage",
     "roomPlaylist",
     "connection-health",
@@ -1141,6 +1152,14 @@
         floatable: true,
         session,
       },
+      isoMap: {
+        canClose: () => true,
+        collapsible: true,
+        component: MapPanel,
+        componentProps: { projection: "iso" },
+        floatable: true,
+        session,
+      },
       areaMap: { canClose: () => true, component: MapPanel, session },
       room: {
         canClose: () => true,
@@ -1470,6 +1489,11 @@
         ...(railFor("map")
           ? { mapZoom: normalizeMapZoom(railFor("map")?.getPanelState("map")?.mapZoom) }
           : {}),
+        ...(railFor("isoMap")
+          ? {
+              isoMapZoom: normalizeMapZoom(railFor("isoMap")?.getPanelState("isoMap")?.mapZoom),
+            }
+          : {}),
         railVisibility: { left: leftRailVisible, right: rightRailVisible },
         scrollviews: { left: leftRail?.ids() ?? [], right: rightRail?.ids() ?? [] },
       },
@@ -1529,7 +1553,11 @@
             [...informationPanels, ...worldPanels].some((panel) => panel.id === id)
           ) {
             const state =
-              id === "map" ? { mapZoom: normalizeMapZoom(next.layout.mapZoom) } : undefined;
+              id === "map"
+                ? { mapZoom: normalizeMapZoom(next.layout.mapZoom) }
+                : id === "isoMap"
+                  ? { mapZoom: normalizeMapZoom(next.layout.isoMapZoom) }
+                  : undefined;
             rail.addOrUpdatePanel(railPanelSpec(id as RailPanelId, state));
           }
         }
@@ -1895,7 +1923,7 @@
         title: panel.title,
         state: { ...owner.getPanelState(panel.id), mapZoom: normalizeMapZoom(detail.mapZoom) },
       });
-      if (panel.id === "map") requestSave?.();
+      if (panel.id === "map" || panel.id === "isoMap") requestSave?.();
     };
     const zoneForWidth = (width: number): typeof responsiveZone =>
       width <= 700 ? "mobile" : width < 940 ? "compact" : "desktop";

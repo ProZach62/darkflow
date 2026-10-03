@@ -21,6 +21,8 @@ import type {
 } from "../gmcp/contracts/room";
 import type {
   DarkwindRoomImage,
+  DarkwindRoomOccupant,
+  DarkwindRoomOccupants,
   DarkwindRoomPlaylistAction,
   DarkwindRoomPlaylistOpen,
   DarkwindRoomPlaylistReport,
@@ -28,6 +30,7 @@ import type {
 } from "../gmcp/contracts/world";
 import {
   validateDarkwindRoomImage,
+  validateDarkwindRoomOccupants,
   validateDarkwindRoomPlaylistOpen,
   validateDarkwindRoomPlaylistState,
   validateMapData2Area,
@@ -61,7 +64,14 @@ const mapDataWorldRepository = mapDataV2Core.createMapDataV2WorldRepository();
 const learnedMapWorldRepository = learnedMapCore.createLearnedMapWorldRepository();
 const MAX_ROOM_PLAYERS = 512;
 
-export const WORLD_PANEL_IDS = ["room", "map", "areaMap", "roomImage", "roomPlaylist"] as const;
+export const WORLD_PANEL_IDS = [
+  "room",
+  "map",
+  "isoMap",
+  "areaMap",
+  "roomImage",
+  "roomPlaylist",
+] as const;
 export type WorldPanelId = (typeof WORLD_PANEL_IDS)[number];
 
 export interface WorldMapRoom {
@@ -145,6 +155,10 @@ export interface SessionWorldSnapshot {
   readonly speedwalking: boolean;
   readonly room: RoomInfo | null;
   readonly players: readonly RoomPlayer[];
+  readonly occupants: readonly DarkwindRoomOccupant[];
+  readonly occupantsDark: boolean;
+  readonly occupantsMore: number;
+  readonly occupantsReady: boolean;
   readonly roomGeneration: number;
   readonly roomImage: SessionRoomImageSnapshot | null;
   readonly playlist: SessionPlaylistSnapshot;
@@ -264,6 +278,12 @@ export function createSessionWorld(
   let roomGeneration = 0;
   let room: RoomInfo | null = null;
   let players: readonly RoomPlayer[] = [];
+  let occupants: readonly DarkwindRoomOccupant[] = [];
+  let occupantsDark = false;
+  let occupantsMore = 0;
+  let occupantsReady = false;
+  let occupantsRevision = 0;
+  let occupantsRoomId: string | null = null;
   let roomImage: SessionRoomImageSnapshot | null = null;
   let lastSentPanels = "";
   let playlist = deepFreeze(initialPlaylist());
@@ -390,6 +410,10 @@ export function createSessionWorld(
       speedwalking: speedwalk.isSpeedwalking(),
       room,
       players,
+      occupants,
+      occupantsDark,
+      occupantsMore,
+      occupantsReady,
       roomGeneration,
       roomImage,
       playlist,
@@ -432,6 +456,12 @@ export function createSessionWorld(
       roomGeneration += 1;
       roomImage = null;
       players = [];
+      occupants = [];
+      occupantsDark = false;
+      occupantsMore = 0;
+      occupantsReady = false;
+      occupantsRevision = 0;
+      occupantsRoomId = null;
     }
     room = deepFreeze(nextRoom);
     selector.processGenericRoomInfo(data);
@@ -453,8 +483,44 @@ export function createSessionWorld(
     players = deepFreeze(players.filter((player) => player.name !== name));
     publish();
   });
+  listen<DarkwindRoomOccupants>(
+    "Darkwind.Room.Occupants",
+    validateDarkwindRoomOccupants,
+    (data) => {
+      const payloadRoomId = String(data.room);
+      const currentRoomId = room ? roomIdFrom(room) : source.getCurrentRoomId();
+      if (currentRoomId && payloadRoomId !== currentRoomId) return;
+      const snapshotMode = data.mode === "snapshot";
+      if (
+        !snapshotMode &&
+        (occupantsRoomId !== payloadRoomId || data.base_revision !== occupantsRevision)
+      ) {
+        return;
+      }
+      const byId = new Map(
+        (snapshotMode ? [] : occupants).map((occupant) => [occupant.id, occupant] as const),
+      );
+      for (const id of data.removed) byId.delete(id);
+      for (const occupant of data.upsert.slice(0, 24)) byId.set(occupant.id, occupant);
+      occupants = deepFreeze([...byId.values()].slice(0, 24));
+      occupantsDark = data.dark === true || data.dark === 1;
+      occupantsMore = Math.max(0, data.more);
+      occupantsReady = true;
+      occupantsRevision = data.revision;
+      occupantsRoomId = payloadRoomId;
+      publish();
+    },
+  );
 
   listen<MapData2Current>("Darkwind.MapData2.Current", validateMapData2Current, (data) => {
+    if (occupantsRoomId !== null && occupantsRoomId !== String(data.id)) {
+      occupants = [];
+      occupantsDark = false;
+      occupantsMore = 0;
+      occupantsReady = false;
+      occupantsRevision = 0;
+      occupantsRoomId = null;
+    }
     mapData.processCurrent(data);
     selector.markMapData2Active();
     speedwalk.notifyRoomChange(String(data.id));
@@ -527,6 +593,12 @@ export function createSessionWorld(
         void selector.resetLiveMapModeForConnection();
         room = null;
         players = [];
+        occupants = [];
+        occupantsDark = false;
+        occupantsMore = 0;
+        occupantsReady = false;
+        occupantsRevision = 0;
+        occupantsRoomId = null;
         roomGeneration += 1;
         roomImage = null;
       }
@@ -540,6 +612,12 @@ export function createSessionWorld(
       void selector.resetLiveMapModeForConnection();
       room = null;
       players = [];
+      occupants = [];
+      occupantsDark = false;
+      occupantsMore = 0;
+      occupantsReady = false;
+      occupantsRevision = 0;
+      occupantsRoomId = null;
       roomGeneration += 1;
       roomImage = null;
       publish();
@@ -587,6 +665,12 @@ export function createSessionWorld(
     roomGeneration += 1;
     roomImage = null;
     players = [];
+    occupants = [];
+    occupantsDark = false;
+    occupantsMore = 0;
+    occupantsReady = false;
+    occupantsRevision = 0;
+    occupantsRoomId = null;
   });
 
   return {
@@ -600,7 +684,7 @@ export function createSessionWorld(
     setVisiblePanels(ids) {
       if (disposed) return;
       const visible = new Set(ids);
-      const mapVisible = visible.has("map") || visible.has("areaMap");
+      const mapVisible = visible.has("map") || visible.has("isoMap") || visible.has("areaMap");
       const panels = {
         map: mapVisible,
         areaMap: visible.has("areaMap"),

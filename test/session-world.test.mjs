@@ -261,6 +261,72 @@ test("room image tokens follow merged Room.Info identity and playlist Open alone
   scope.dispose();
 });
 
+test("room occupants apply revisioned snapshots and deltas without leaking stale rooms", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, scope, world } = createWorld(modules);
+
+  bus.dispatch("Room.Info", { num: 101, name: "Atrium", exits: {} });
+  bus.dispatch("Darkwind.Room.Occupants", {
+    version: 1,
+    room: 101,
+    mode: "snapshot",
+    revision: 4,
+    dark: 0,
+    more: 0,
+    upsert: [
+      { id: "self", name: "Nacho", kind: "self" },
+      { id: "guard", name: "a city guard", kind: "npc" },
+    ],
+    removed: [],
+  });
+  let snapshot = world.getSnapshot();
+  assert.equal(snapshot.occupantsReady, true);
+  assert.deepEqual(
+    snapshot.occupants.map(({ id }) => id),
+    ["self", "guard"],
+  );
+  assert.equal(Object.isFrozen(snapshot.occupants), true);
+
+  bus.dispatch("Darkwind.Room.Occupants", {
+    version: 1,
+    room: 101,
+    mode: "delta",
+    base_revision: 4,
+    revision: 5,
+    dark: 0,
+    more: 2,
+    upsert: [{ id: "giant", name: "a frost giant", kind: "npc", hostile: 1 }],
+    removed: ["guard"],
+  });
+  snapshot = world.getSnapshot();
+  assert.deepEqual(
+    snapshot.occupants.map(({ id }) => id),
+    ["self", "giant"],
+  );
+  assert.equal(snapshot.occupantsMore, 2);
+
+  bus.dispatch("Darkwind.Room.Occupants", {
+    version: 1,
+    room: 999,
+    mode: "snapshot",
+    revision: 1,
+    dark: 0,
+    more: 0,
+    upsert: [{ id: "hidden", name: "an invisible wizard", kind: "player" }],
+    removed: [],
+  });
+  assert.deepEqual(
+    world.getSnapshot().occupants.map(({ id }) => id),
+    ["self", "giant"],
+  );
+
+  bus.dispatch("Darkwind.MapData2.Current", current(102));
+  assert.equal(world.getSnapshot().occupantsReady, false);
+  assert.deepEqual(world.getSnapshot().occupants, []);
+  bus.dispatch("Room.Info", { num: 102, name: "Street", exits: {} });
+  scope.dispose();
+});
+
 test("world sends exact browse, subscriptions, media, and named playlist actions", async (t) => {
   const modules = await loadModules(t);
   const { bus, eventBus, scope, sent, world } = createWorld(modules);
@@ -279,6 +345,12 @@ test("world sends exact browse, subscriptions, media, and named playlist actions
   assert.equal(subscription.panels.room, true);
   assert.equal(subscription.panels.roomImage, true);
   assert.equal(subscription.panels.roomPlaylist, true);
+
+  world.setVisiblePanels(["isoMap"]);
+  const isoSubscription = JSON.parse(sent.at(-1).slice("Darkwind.Client.Subscriptions ".length));
+  assert.equal(isoSubscription.panels.map, true);
+  assert.equal(isoSubscription.panels.room, true);
+  assert.equal("isoMap" in isoSubscription.panels, false);
 
   world.setVisiblePanels(["room"]);
   const roomSubscription = JSON.parse(sent.at(-1).slice("Darkwind.Client.Subscriptions ".length));

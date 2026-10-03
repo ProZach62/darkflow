@@ -56,6 +56,7 @@ branded Darkflow.
 | `Darkwind.Snoop 1`                | `Open`, `Append`, `Status`, `Close`, `Command`, `Stop`, `Closed`              | Mixed            | [Snoop](gmcp-darkwind-snoop.md)                   |
 | `Darkwind.IDE 2`                  | Single-frame and chunked open/save messages                                   | Mixed            | [IDE](gmcp-darkwind-ide.md)                       |
 | `Darkwind.MapData2 2`             | `Current`, `Area`, `Update`, `Sync`, `Browse`, `BrowseArea`, `Reset`, `Error` | Mixed            | [MapData2](gmcp-darkwind-mapdata-v2.md)           |
+| `Darkwind.Room.Occupants 1`       | Snapshot and revisioned delta payloads                                        | Server -> Client | [Room occupants](gmcp-darkwind-room-occupants.md) |
 | `Darkwind.Completion 1`           | `Request`, `Result`                                                           | Mixed            | [Completion](gmcp-darkwind-completion.md)         |
 | `Darkwind.Quests 1`               | `List`, `Active`, `Update`, `Complete`                                        | Server -> Client | [Quests](gmcp-darkwind-quests.md)                 |
 | `Darkwind.Achievements 1`         | `List`, `Update`                                                              | Server -> Client | [Achievements](gmcp-darkwind-achievements.md)     |

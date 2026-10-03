@@ -1,5 +1,22 @@
 # Darkwind.MapData2 GMCP Protocol
 
+## Isometric map panel
+
+Darkflow's optional Isometric Map panel renders this graph as a 2:1 isometric
+scene while the existing Map panel remains a flat grid. Both panels can be open
+at once and retain independent zoom and pan state. The isometric panel preserves
+map search, pins, speedwalk, floor selection, day/night tint, and focusable room
+buttons. It draws terrain, spatial exits, door state, vertical-exit markers,
+inside walls, and service details from the same room records. Only the current
+room draws living things; those arrive through
+[`Darkwind.Room.Occupants 1`](gmcp-darkwind-room-occupants.md).
+With Living Terrain enabled, water and swamp effects move, figures idle, and
+the player plus persistent companions traverse adjacent rooms before the camera
+recenters. Reduced-motion preferences disable these animations.
+
+The projection is `screenX = (x - y) * W/2` and
+`screenY = (x + y) * H/2 - z * floorLift`; north therefore points up-right.
+
 `Darkwind.MapData2` is Darkwind's server-authoritative collaborative map. The
 server owns room identity, topology, layout, cache generations, and sync
 boundaries. Clients render completed snapshots and must not infer Darkwind
