@@ -335,8 +335,8 @@ function getTerrainName(environment) {
 // extras.ambience: { color, alpha, light } tints the map from the player's
 // marker, with a pool of light around it when light is set.
 // extras.pins: { roomId: { kind, note } } draws the player's pins.
-// extras.living: animate the painted map: water shimmers, swamp mist drifts,
-// and towns show torchlight at night (see map-living.js).
+// extras.living: animate the painted map: seas roll, lakes shimmer, rivers
+// flow, swamp mist drifts, and towns show torchlight at night (map-living.js).
 // extras.zoomAnchor: { x, y } in pixels from the middle of the map, when the
 // zoom just changed at that point, eases the change in around it.
 // bodyEl.dataset.mapLevel shows a level that many floors above (or below)

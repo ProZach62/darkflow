@@ -453,31 +453,73 @@ test("the map marks you, previews a route on hover, draws service icons, and has
   await expect(legend).toHaveCount(0);
 });
 
-test("living terrain masks a water layer to the lake, and holds still with reduced motion", async ({
+test("living terrain gives each kind of water and swamp its own motion, and holds still with reduced motion", async ({
   page,
 }) => {
   const endpoint = await connect(page);
   await togglePanel(page, "Map");
-  const lake = (id: number, name: string, x: number, exits: Record<string, number>) => ({
+  const terrainRoom = (
+    id: number,
+    name: string,
+    x: number,
+    terrain: string,
+    exits: Record<string, number>,
+  ) => ({
     ...currentRoom(id, name, x, exits),
-    env: "outside, lake",
+    env: `outside, ${terrain}`,
   });
-  endpoint.sendGmcp("Darkwind.MapData2.Current", lake(102, "Lake Shallows", 1, { west: 101 }));
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    terrainRoom(105, "Open Sea", 4, "sea", { west: 104 }),
+  );
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    terrainRoom(104, "Swift River", 3, "river", { west: 103, east: 105 }),
+  );
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    terrainRoom(103, "Misty Swamp", 2, "swamp", { west: 102, east: 104 }),
+  );
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    terrainRoom(102, "Lake Shallows", 1, "lake", { west: 101, east: 103 }),
+  );
   endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
   const map = page.locator('.map-panel[data-panel-id="map"]');
-  await expect(map.getByRole("button", { name: "Speedwalk to Lake Shallows" })).toBeVisible();
-  const water = map.locator(".map-live-water");
-  await expect(water).toHaveCount(1);
+  await expect(map.getByRole("button", { name: "Speedwalk to Open Sea" })).toBeVisible();
+  for (const kind of ["sea", "lake", "river", "swamp"]) {
+    const layer = map.locator(`.map-live-${kind}`);
+    await expect(layer).toHaveCount(1);
+    await expect
+      .poll(() =>
+        layer.evaluate((el) => !el.hidden && /blob:/.test((el as HTMLElement).style.maskImage)),
+      )
+      .toBe(true);
+    await expect(layer.locator(".map-live-pattern")).toHaveCount(2);
+    expect(
+      await layer
+        .locator(".map-live-pattern")
+        .evaluateAll((patterns) =>
+          patterns.map((pattern) => pattern.getAnimations()[0]?.playState),
+        ),
+    ).toEqual(["running", "running"]);
+  }
+
+  const riverMotion = await map.locator(".map-live-river .map-live-pattern-1").evaluate((el) => {
+    const animation = el.getAnimations()[0];
+    return {
+      duration: animation.effect?.getTiming().duration,
+      start: animation.currentTime,
+    };
+  });
+  expect(riverMotion.duration).toBe(3400);
   await expect
     .poll(() =>
-      water.evaluate((el) => !el.hidden && /blob:/.test((el as HTMLElement).style.maskImage)),
+      map
+        .locator(".map-live-river .map-live-pattern-1")
+        .evaluate((el) => el.getAnimations()[0]?.currentTime),
     )
-    .toBe(true);
-  expect(
-    await water.evaluate((el) =>
-      [el, ...el.querySelectorAll("*")].flatMap((e) => e.getAnimations()).map((a) => a.playState),
-    ),
-  ).toContain("running");
+    .not.toBe(riverMotion.start);
 
   // The preference applies at once, without waiting for a move.
   await page.emulateMedia({ reducedMotion: "reduce" });

@@ -1896,10 +1896,9 @@ body.zork-only-mode #panels-menu {
 .map-pin-loot { color: #5cc8f2; }
 .map-pin-home { color: #7fd47a; }
 
-/* Living terrain (map-living.js): one layer per kind over the painted
-   window. Water and mist are masked to their regions and their pattern
-   slides by transform; torches are canvases that flicker by opacity. All of
-   it can run on the compositor. */
+/* Living terrain (map-living.js): one masked layer per terrain kind over the
+   painted window. Two pattern planes move at different speeds for depth;
+   torches are canvases that flicker by opacity. It all runs on the compositor. */
 .map-live-layer {
   position: absolute;
   left: 0;
@@ -1917,18 +1916,37 @@ body.zork-only-mode #panels-menu {
   top: 0;
   will-change: transform;
 }
-.map-live-water .map-live-pattern {
-  background: repeating-linear-gradient(
-    115deg,
-    transparent 0 7px,
-    rgba(225, 242, 255, 0.16) 8px 9px,
-    transparent 10px 16px
-  );
+.map-live-sea .map-live-pattern-1 {
+  background: repeating-linear-gradient(174deg, transparent 0 19px, rgba(218, 242, 255, 0.18) 20px 22px, transparent 23px 48px);
+  background-size: 96px 48px;
 }
-.map-live-swamp .map-live-pattern {
-  background:
-    radial-gradient(circle at 30% 40%, rgba(208, 218, 198, 0.36), transparent 45%) 0 0 / 120px 120px,
-    radial-gradient(circle at 70% 65%, rgba(192, 206, 186, 0.28), transparent 42%) 0 0 / 160px 160px;
+.map-live-sea .map-live-pattern-2 {
+  background: radial-gradient(ellipse at 50% 50%, rgba(150, 220, 246, 0.14) 0 8%, transparent 10% 100%);
+  background-size: 64px 64px;
+}
+.map-live-lake .map-live-pattern-1 {
+  background: radial-gradient(ellipse at 50% 50%, transparent 0 38%, rgba(232, 249, 255, 0.18) 42% 45%, transparent 49% 100%);
+  background-size: 128px 64px;
+}
+.map-live-lake .map-live-pattern-2 {
+  background: radial-gradient(ellipse at 35% 45%, rgba(214, 242, 255, 0.12) 0 7%, transparent 11% 100%);
+  background-size: 96px 96px;
+}
+.map-live-river .map-live-pattern-1 {
+  background: repeating-linear-gradient(118deg, transparent 0 12px, rgba(225, 247, 255, 0.22) 13px 15px, transparent 17px 32px);
+  background-size: 96px 48px;
+}
+.map-live-river .map-live-pattern-2 {
+  background: radial-gradient(ellipse at 50% 50%, rgba(175, 229, 249, 0.18) 0 9%, transparent 12% 100%);
+  background-size: 64px 32px;
+}
+.map-live-swamp .map-live-pattern-1 {
+  background: radial-gradient(ellipse at 40% 45%, rgba(218, 225, 207, 0.32) 0 8%, rgba(200, 213, 194, 0.18) 24%, transparent 62%);
+  background-size: 160px 160px;
+}
+.map-live-swamp .map-live-pattern-2 {
+  background: radial-gradient(ellipse at 65% 60%, rgba(196, 209, 190, 0.22) 0 10%, transparent 55%);
+  background-size: 120px 120px;
 }
 .map-live-torches {
   position: absolute;

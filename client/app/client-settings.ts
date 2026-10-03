@@ -105,7 +105,7 @@ export interface Phase2ClientSettings {
   mapDayNight: boolean;
   /** Paint the map's land as joined terrain instead of one square tile per room. */
   mapPaintedTerrain: boolean;
-  /** Animate the painted map: shimmering water, drifting swamp mist, and torchlight in towns at night. */
+  /** Animate the painted map: moving water, drifting swamp mist, and torchlight in towns at night. */
   mapLivingTerrain: boolean;
 }
 

@@ -928,7 +928,7 @@
           <SettingsCheckbox
             bind:checked={settings.mapLivingTerrain}
             label="Animate the map"
-            help="On the painted map, water shimmers, swamp mist drifts, and towns show torchlight at night. Off, or with reduced motion, the map holds still."
+            help="On the painted map, seas roll, lakes shimmer, rivers flow, swamp mist drifts, and towns show torchlight at night. Off, or with reduced motion, the map holds still."
           />
           <label class="settings-row"
             ><span class="settings-copy"

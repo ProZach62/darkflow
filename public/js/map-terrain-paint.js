@@ -40,7 +40,7 @@ const ROAD_WIDTH = { road: 10, path: 6, bridge: 11 };
 // The living-terrain layers are masked to water and swamp regions with
 // copies of the painter's own region masks, kept small: they are soft.
 const LIVING_MASK_SCALE = 0.25;
-const LIVING_KIND = { sea: 'water', lake: 'water', river: 'water', swamp: 'swamp' };
+const LIVING_KIND = { sea: 'sea', lake: 'lake', river: 'river', swamp: 'swamp' };
 // Keep the backing store modest; the paint is soft, so it need not be sharp.
 const MAX_PIXELS = 2_600_000;
 const MAX_SCALE = 2;
@@ -89,7 +89,7 @@ export function createTerrainPainter(options = {}) {
   let mask = null;
   let layer = null;
   let lastPaintMs = 0;
-  let livingMasks = { key: null, water: null, swamp: null };
+  let livingMasks = { key: null, sea: null, lake: null, river: null, swamp: null };
 
   // When the painted textures' index arrives, drop the stand-ins and paint
   // again with whatever it lists.
@@ -288,7 +288,13 @@ export function createTerrainPainter(options = {}) {
         const bitmap = sized(scene ? scene.bitmap : makeCanvas(pixelWidth, pixelHeight), pixelWidth, pixelHeight);
         draw(bitmap, plan, geom);
         scene = { key, bitmap };
-        livingMasks = { key, water: geom.living.water || null, swamp: geom.living.swamp || null };
+        livingMasks = {
+          key,
+          sea: geom.living.sea || null,
+          lake: geom.living.lake || null,
+          river: geom.living.river || null,
+          swamp: geom.living.swamp || null,
+        };
         lastPaintMs = (typeof performance !== 'undefined' ? performance.now() : 0) - started;
       }
       const crop = view.crop || { x: 0, y: 0, width, height };
@@ -311,7 +317,7 @@ export function createTerrainPainter(options = {}) {
         + pixelWidth + 'x' + pixelHeight + '|' + textureVersion;
     },
     lastPaintMs: () => lastPaintMs,
-    /** The water and swamp masks of the last painting, and its key. */
+    /** The sea, lake, river, and swamp masks of the last painting, and its key. */
     livingMasks: () => livingMasks,
     dispose() {
       paintedIndexListeners.delete(onPaintedIndex);

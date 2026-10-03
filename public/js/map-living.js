@@ -1,22 +1,35 @@
-// Living terrain: water that shimmers, swamp mist that drifts, and torchlight
-// in towns at night, drawn so the compositor can run it without the main
-// thread. Each kind is one layer for the whole painted window, not one per
-// cell: water and mist are a patterned layer masked to their regions (the
-// masks come from the terrain painter), whose pattern slides with a
-// transform; torches are painted once onto three canvases that flicker with
-// opacity, each at its own pace. Layers are rebuilt only when the painting
-// is, and every animation is started once.
+// Living terrain: distinct sea, lake, and river movement, drifting swamp
+// mist, and torchlight in towns at night. The compositor runs two pattern
+// planes per terrain kind, masked to the painter's regions, rather than an
+// animation per cell. Torches are painted once onto three canvases. Layers
+// are rebuilt only when the terrain painting is, and animations start once.
 
 const PITCH = 40;
 const TILE = 32;
-// One stripe period of the water pattern measured along the x axis: the
-// stripes repeat every 16px at 115 degrees, so a 16 / sin(115) shift lands on
-// the same pattern and the slide loops without a seam.
-const WATER_SHIFT = 16 / Math.sin((115 * Math.PI) / 180);
-// The mist's two cloud layers repeat every 120px and 160px; 480px is both.
-const MIST_SHIFT = 480;
 const TORCH_LAYERS = 3;
 const TORCH_RESOLUTION = 0.5;
+
+// Every translation is one complete CSS background tile, so each loop joins
+// without a jump. Two planes at different speeds keep the motion organic
+// while remaining a fixed amount of compositor work for any map size.
+const MASKED_MOTION = {
+  sea: [
+    { x: -96, y: 0, duration: 7600 },
+    { x: -64, y: -64, duration: 11800 },
+  ],
+  lake: [
+    { x: -128, y: 0, duration: 19000 },
+    { x: -96, y: -96, duration: 27000 },
+  ],
+  river: [
+    { x: -96, y: -48, duration: 3400 },
+    { x: -64, y: -32, duration: 5300 },
+  ],
+  swamp: [
+    { x: -160, y: 0, duration: 52000 },
+    { x: -120, y: -120, duration: 73000 },
+  ],
+};
 
 function hash01(x, y, salt) {
   let h = Math.imul((x | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((y | 0) + salt * 0x27d4eb2d, 0xc2b2ae35);
@@ -54,10 +67,13 @@ export function createLivingLayers() {
     layer.className = 'map-live-layer map-live-' + kind;
     layer.setAttribute('aria-hidden', 'true');
     layer.hidden = true;
-    const pattern = document.createElement('div');
-    pattern.className = 'map-live-pattern';
-    layer.append(pattern);
-    masked[kind] = { layer, pattern, url: null };
+    const patterns = MASKED_MOTION[kind].map((_, index) => {
+      const pattern = document.createElement('div');
+      pattern.className = 'map-live-pattern map-live-pattern-' + (index + 1);
+      layer.append(pattern);
+      return pattern;
+    });
+    masked[kind] = { layer, patterns, url: null };
     return masked[kind];
   }
 
@@ -70,14 +86,16 @@ export function createLivingLayers() {
 
   // Renders come often; even a write of an unchanged value restyles, so
   // sizes and visibility are written only when they change.
-  function sizeLayer(entry, width, height, shift) {
+  function sizeLayer(entry, width, height, motion) {
     const size = width + 'x' + height;
     if (entry.size === size) return;
     entry.size = size;
     entry.layer.style.width = width + 'px';
     entry.layer.style.height = height + 'px';
-    entry.pattern.style.width = Math.ceil(width + shift) + 'px';
-    entry.pattern.style.height = Math.ceil(height + shift) + 'px';
+    entry.patterns.forEach((pattern, index) => {
+      pattern.style.width = Math.ceil(width + Math.abs(motion[index].x)) + 'px';
+      pattern.style.height = Math.ceil(height + Math.abs(motion[index].y)) + 'px';
+    });
   }
 
   function show(el, visible) {
@@ -140,36 +158,37 @@ export function createLivingLayers() {
 
   return {
     /**
-     * Brings the layers up to date in grid. opts: { maskKey, masks: { water,
-     * swamp } (canvases in the painting's coordinates, or null), width,
+     * Brings the layers up to date in grid. opts: { maskKey, masks: { sea,
+     * lake, river, swamp } (canvases in the painting's coordinates, or null), width,
      * height (the painting's CSS size), torches: [{ col, row, x, y }] (town
      * cells to light, empty by day), torchKey }.
      */
     update(grid, opts) {
       if (disposed || !grid) return;
-      const water = maskedLayer('water');
-      const swamp = maskedLayer('swamp');
-      sizeLayer(water, opts.width, opts.height, WATER_SHIFT);
-      sizeLayer(swamp, opts.width, opts.height, MIST_SHIFT);
+      const entries = {};
+      for (const [kind, motion] of Object.entries(MASKED_MOTION)) {
+        entries[kind] = maskedLayer(kind);
+        sizeLayer(entries[kind], opts.width, opts.height, motion);
+      }
       if (opts.maskKey !== maskKey) {
         maskKey = opts.maskKey;
-        setMask('water', opts.masks && opts.masks.water, maskKey);
-        setMask('swamp', opts.masks && opts.masks.swamp, maskKey);
+        for (const kind of Object.keys(MASKED_MOTION)) {
+          setMask(kind, opts.masks && opts.masks[kind], maskKey);
+        }
       }
-      placeAfterTerrain(grid, swamp.layer);
-      placeAfterTerrain(grid, water.layer);
-      animateOnce(water.pattern, '__slide', [
-        { translate: '0px 0px' },
-        { translate: -WATER_SHIFT + 'px 0px' },
-      ], { duration: 3600, iterations: Infinity, easing: 'linear' });
-      animateOnce(swamp.pattern, '__slide', [
-        { translate: '0px 0px' },
-        { translate: -MIST_SHIFT + 'px ' + (-MIST_SHIFT / 4) + 'px' },
-      ], { duration: 90000, iterations: Infinity, easing: 'linear' });
-      animateOnce(swamp.layer, '__breathe', [
-        { opacity: 0.45 },
+      for (const kind of ['swamp', 'sea', 'lake', 'river']) placeAfterTerrain(grid, entries[kind].layer);
+      for (const [kind, motion] of Object.entries(MASKED_MOTION)) {
+        motion.forEach((move, index) => {
+          animateOnce(entries[kind].patterns[index], '__slide', [
+            { translate: '0px 0px' },
+            { translate: move.x + 'px ' + move.y + 'px' },
+          ], { duration: move.duration, iterations: Infinity, easing: 'linear' });
+        });
+      }
+      animateOnce(entries.swamp.layer, '__breathe', [
+        { opacity: 0.55 },
         { opacity: 1 },
-      ], { duration: 9000, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' });
+      ], { duration: 12000, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' });
 
       const lit = opts.torches && opts.torches.length;
       if (lit && opts.torchKey !== torchKey) {
