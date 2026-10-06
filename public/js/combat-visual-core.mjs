@@ -3,7 +3,7 @@ import { equipmentProfile } from './combat-equipment-core.mjs';
 
 import { isNpcEnemy } from './image-fallbacks.js';
 
-const VALID_RESULTS = new Set(['hit', 'critical', 'miss', 'dodge', 'absorb']);
+const VALID_RESULTS = new Set(['hit', 'critical', 'miss', 'dodge', 'absorb', 'block']);
 
 export const COMBAT_HISTORY_LIMIT = 5;
 export const COMBAT_QUEUE_LIMIT = 12;
@@ -175,9 +175,14 @@ export function reduceCombatState(current, payload, receivedAt = Date.now()) {
 
 export function normalizeCombatEvent(payload, receivedAt = Date.now()) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const result = safeText(payload.result, 24).toLowerCase();
+  const serverResult = safeText(payload.result, 24).toLowerCase();
   const seq = nonNegativeInteger(payload.seq);
-  if (!seq || !VALID_RESULTS.has(result)) return null;
+  if (!seq || !VALID_RESULTS.has(serverResult)) return null;
+
+  // A block is a fully mitigated hit and uses the existing absorb pose, sound,
+  // badge, and DPS accounting. The server summary still describes it as a
+  // block, while older renderers do not need a new result branch.
+  const result = serverResult === 'block' ? 'absorb' : serverResult;
 
   const event = {
     seq,
@@ -192,6 +197,10 @@ export function normalizeCombatEvent(payload, receivedAt = Date.now()) {
 
   const damage = finiteNumber(payload.damage);
   if (damage !== null) event.damage = Math.max(0, Math.trunc(damage));
+  const preMitigationDamage = finiteNumber(payload.pre_mitigation_damage);
+  if (preMitigationDamage !== null) {
+    event.preMitigationDamage = Math.max(0, Math.trunc(preMitigationDamage));
+  }
   const absorbed = finiteNumber(payload.absorbed);
   if (absorbed !== null) event.absorbed = Math.max(0, Math.trunc(absorbed));
   return event;

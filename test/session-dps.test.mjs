@@ -101,7 +101,10 @@ test("the DPS runtime tallies outgoing swings from the session bus and publishes
   harness.gmcp.dispatch("Darkwind.Combat.State", state());
   harness.gmcp.dispatch(
     "Darkwind.Combat.Events",
-    events([swing(1, { damage: 400 }), swing(2, { result: "critical", damage: 600 })]),
+    events([
+      swing(1, { damage: 400, pre_mitigation_damage: 475, absorbed: 75 }),
+      swing(2, { result: "critical", damage: 600 }),
+    ]),
   );
   clock.now += 10_000;
 
@@ -109,6 +112,8 @@ test("the DPS runtime tallies outgoing swings from the session bus and publishes
   assert.equal(snapshot.active, true);
   assert.equal(snapshot.targetName, "an ash drake");
   assert.equal(snapshot.encounter.damage, 1000);
+  assert.equal(snapshot.encounter.absorbed, 75);
+  assert.equal(snapshot.encounter.bestHit, 600, "DPS uses final damage, not pre-mitigation damage");
   assert.equal(snapshot.encounter.crits, 1);
   assert.equal(Object.isFrozen(snapshot), true);
   assert.equal(Object.isFrozen(snapshot.history), true);
@@ -127,6 +132,21 @@ test("the DPS runtime tallies outgoing swings from the session bus and publishes
     events([swing(4, { perspective: "incoming", actor_id: "actor-2", target_id: "self", damage: 999 })]),
   );
   assert.equal(harness.dps.getSnapshot().encounter.damage, 1050);
+
+  harness.gmcp.dispatch(
+    "Darkwind.Combat.Events",
+    events([
+      swing(5, {
+        result: "block",
+        damage: 0,
+        pre_mitigation_damage: 125,
+        absorbed: 125,
+      }),
+    ]),
+  );
+  assert.equal(harness.dps.getSnapshot().encounter.damage, 1050);
+  assert.equal(harness.dps.getSnapshot().encounter.absorbed, 200);
+  assert.equal(harness.dps.getSnapshot().encounter.swings, 4, "a block remains an outgoing swing");
 });
 
 test("a disconnect closes the live fight, a reset clears the session, and disposal stops publishing", async (t) => {

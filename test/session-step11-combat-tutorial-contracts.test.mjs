@@ -125,6 +125,25 @@ test("Step 11 Combat and Tutorial contracts bound and clean every direction", as
     });
     assert.equal(batch.events[0].damage, 12);
     assert.deepEqual(batch.overflow, { omitted: 0, hits: 0, damage: 0 });
+    const blocked = contracts.normalizeDarkwindCombatEvents({
+      epoch: "connection-7",
+      encounter_id: "encounter-12",
+      first_seq: 19,
+      last_seq: 19,
+      events: [
+        combatEvent(19, {
+          result: "block",
+          damage: 0,
+          pre_mitigation_damage: 45,
+          absorbed: 45,
+        }),
+      ],
+      overflow: { omitted: 0, hits: 0, damage: 0 },
+    });
+    assert.deepEqual(blocked.events[0], {
+      ...combatEvent(19, { result: "block", damage: 0, absorbed: 45 }),
+      pre_mitigation_damage: 45,
+    });
     assert.deepEqual(
       contracts.normalizeDarkwindCombatEvent({
         epoch: "connection-7",

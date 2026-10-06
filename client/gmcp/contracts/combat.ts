@@ -23,7 +23,7 @@ export interface DarkwindCombatState {
   summary: string;
 }
 
-export type DarkwindCombatResult = "absorb" | "critical" | "dodge" | "hit" | "miss";
+export type DarkwindCombatResult = "absorb" | "block" | "critical" | "dodge" | "hit" | "miss";
 export type DarkwindCombatPerspective = "incoming" | "observed" | "outgoing";
 
 export interface DarkwindCombatEvent {
@@ -34,6 +34,7 @@ export interface DarkwindCombatEvent {
   target_id: string;
   result: DarkwindCombatResult;
   damage?: number;
+  pre_mitigation_damage?: number;
   absorbed?: number;
   summary: string;
 }
@@ -189,7 +190,7 @@ function normalizeEventRow(input: unknown): DarkwindCombatEvent | null {
     !["incoming", "observed", "outgoing"].includes(perspective ?? "") ||
     !actorId ||
     !targetId ||
-    !["absorb", "critical", "dodge", "hit", "miss"].includes(result ?? "") ||
+    !["absorb", "block", "critical", "dodge", "hit", "miss"].includes(result ?? "") ||
     summary === null
   )
     return null;
@@ -203,7 +204,7 @@ function normalizeEventRow(input: unknown): DarkwindCombatEvent | null {
     result: result as DarkwindCombatResult,
     summary,
   };
-  for (const field of ["damage", "absorbed"] as const) {
+  for (const field of ["damage", "pre_mitigation_damage", "absorbed"] as const) {
     if (!own(value, field)) continue;
     const amount = integer(value[field]);
     if (amount === null) return null;
@@ -286,6 +287,9 @@ export function extractDarkwindCombatEventFields(input: unknown): NamedFields | 
     target_id: value.target_id,
     result: value.result,
     ...(own(value, "damage") ? { damage: value.damage } : {}),
+    ...(own(value, "pre_mitigation_damage")
+      ? { pre_mitigation_damage: value.pre_mitigation_damage }
+      : {}),
     ...(own(value, "absorbed") ? { absorbed: value.absorbed } : {}),
     summary: value.summary,
   };

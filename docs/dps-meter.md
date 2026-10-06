@@ -17,16 +17,16 @@ with `perspective` of `incoming` or `observed` still advance the sequence
 cursor, so a replayed batch cannot be counted twice, but they never reach a
 tally.
 
-| Figure | Meaning |
-| --- | --- |
-| Headline | The rolling ten second rate during a fight; the finished fight's rate when idle |
-| Fight DPS | Encounter damage divided by the elapsed encounter |
-| Peak | The highest rolling value the current encounter reached |
-| Damage / Best hit | Encounter damage total and single largest hit |
-| Swings / Hits / Crits / Missed | Encounter counts, with hit rate and crit rate |
-| Absorbed | Damage the target's armor absorbed, reported separately from damage dealt |
-| Session | Totals since connect or since the last **Reset session** |
-| Recent fights | The last five encounters, newest first |
+| Figure                         | Meaning                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| Headline                       | The rolling ten second rate during a fight; the finished fight's rate when idle       |
+| Fight DPS                      | Encounter damage divided by the elapsed encounter                                     |
+| Peak                           | The highest rolling value the current encounter reached                               |
+| Damage / Best hit              | Encounter damage total and single largest hit                                         |
+| Swings / Hits / Crits / Missed | Encounter counts, with hit rate and crit rate                                         |
+| Absorbed                       | Total mitigation disclosed by the server, reported separately from final damage dealt |
+| Session                        | Totals since connect or since the last **Reset session**                              |
+| Recent fights                  | The last five encounters, newest first                                                |
 
 ## Timing Rules
 
@@ -70,6 +70,12 @@ Two cases are surfaced rather than guessed at:
 
 A new connection epoch clears every tally, since ids from an earlier
 connection carry no meaning.
+
+The server's `damage` field is final applied damage, so it is the value used
+for total damage, best hit, and DPS. Optional `pre_mitigation_damage` is
+retained by the combat contract but is never substituted into DPS. A `block`
+is accepted as a fully mitigated swing and contributes its optional
+`absorbed` amount without increasing damage dealt.
 
 ## Layout
 

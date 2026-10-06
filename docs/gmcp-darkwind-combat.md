@@ -120,6 +120,7 @@ Events are transient and arrive in ordered, bounded batches:
       "target_id": "actor-2",
       "result": "critical",
       "damage": 42,
+      "pre_mitigation_damage": 45,
       "absorbed": 3,
       "summary": "You critically hit an ash drake for 42 damage."
     }
@@ -133,8 +134,12 @@ Events are transient and arrive in ordered, bounded batches:
 ```
 
 Version 1 uses `kind: "attack"` and the results `hit`, `critical`, `miss`,
-`dodge`, and `absorb`. `perspective` is `outgoing`, `incoming`, or
-`observed`. Numeric fields and numeric wording are omitted when the player's
+`dodge`, `absorb`, and `block`. `perspective` is `outgoing`, `incoming`, or
+`observed`. `damage` is the final applied damage for that attack. The optional
+`pre_mitigation_damage` field, and `absorbed` on a landed hit, require
+sufficient Battle Sense fidelity. Fully absorbed and blocked attacks may carry
+`damage: 0` and their total mitigation in `absorbed` whenever damage numbers
+are enabled. Numeric fields and numeric wording are omitted when the player's
 existing `combatbrief damage` toggle is off.
 
 Darkflow rejects events from an older epoch or encounter, ignores duplicate or
