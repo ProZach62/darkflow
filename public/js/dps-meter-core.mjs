@@ -57,15 +57,16 @@ function createTally() {
 
 function addToTally(tally, event) {
   const damage = nonNegativeInteger(event.damage);
+  const attack = event.kind === 'attack';
   return {
     damage: tally.damage + damage,
     absorbed: tally.absorbed + nonNegativeInteger(event.absorbed),
-    swings: tally.swings + 1,
-    hits: tally.hits + (HIT_RESULTS.has(event.result) ? 1 : 0),
-    crits: tally.crits + (event.result === 'critical' ? 1 : 0),
-    misses: tally.misses + (event.result === 'miss' ? 1 : 0),
-    dodges: tally.dodges + (event.result === 'dodge' ? 1 : 0),
-    absorbs: tally.absorbs + (event.result === 'absorb' ? 1 : 0),
+    swings: tally.swings + (attack ? 1 : 0),
+    hits: tally.hits + (attack && HIT_RESULTS.has(event.result) ? 1 : 0),
+    crits: tally.crits + (attack && event.result === 'critical' ? 1 : 0),
+    misses: tally.misses + (attack && event.result === 'miss' ? 1 : 0),
+    dodges: tally.dodges + (attack && event.result === 'dodge' ? 1 : 0),
+    absorbs: tally.absorbs + (attack && event.result === 'absorb' ? 1 : 0),
     bestHit: Math.max(tally.bestHit, damage),
   };
 }
@@ -86,6 +87,7 @@ export function createDpsState(options = {}) {
     peakDps: 0,
     history: [],
     sawOutgoingEvent: false,
+    missingAbilityDamage: false,
     sawDamageNumber: false,
     limits: {
       windowMs: Math.max(1000, nonNegativeInteger(options.windowMs) || DPS_WINDOW_MS),
@@ -112,6 +114,7 @@ function freshEncounter(state, encounterId, targetName) {
     peakDps: 0,
     // Scoped to the fight: a player who turns `combatbrief damage` off
     // mid-session must still get told on the very next encounter.
+    missingAbilityDamage: false,
     sawDamageNumber: false,
   };
 }
@@ -155,7 +158,7 @@ export function finalizeEncounter(state, now = Date.now(), endedAt = now) {
   const settled = { ...state, active: false, endedAt: endedAt || now };
 
   // Nothing was ever swung at this target, so there is no fight to record.
-  if (!settled.encounter.swings) return settled;
+  if (!settled.encounter.swings && !settled.encounter.damage) return settled;
 
   const durationMs = encounterDurationMs(settled, now);
   const dps = perSecond(settled.encounter.damage, durationMs, settled.limits);
@@ -210,6 +213,7 @@ export function reduceDpsState(current, payload, now = Date.now()) {
   }
 
   if (targetName && targetName !== next.targetName) next = { ...next, targetName };
+  if (normalized.resync) next = { ...next, lastSeq: Math.max(next.lastSeq, normalized.seq) };
   if (!normalized.active && next.active) return finalizeEncounter(next, now);
   return next;
 }
@@ -244,8 +248,8 @@ export function reduceDpsEvents(current, payload, now = Date.now()) {
   for (const event of normalized) {
     if (event.seq <= lastSeq) continue;
     lastSeq = event.seq;
-    // Outgoing swings only: this meter reports what the player deals.
-    if (event.perspective !== 'outgoing') continue;
+    // Outgoing attacks and damaging abilities only. Healing never contributes.
+    if (event.perspective !== 'outgoing' || event.kind === 'heal') continue;
     accepted.push(event);
   }
 
@@ -257,6 +261,7 @@ export function reduceDpsEvents(current, payload, now = Date.now()) {
   let session = next.session;
   let samples = next.samples;
   let sawDamageNumber = next.sawDamageNumber;
+  let missingAbilityDamage = next.missingAbilityDamage;
   let firstEventAt = next.firstEventAt;
 
   for (const event of accepted) {
@@ -267,6 +272,8 @@ export function reduceDpsEvents(current, payload, now = Date.now()) {
       encounters: session.encounters,
       peakDps: session.peakDps,
     };
+    if (event.kind !== 'attack' && HIT_RESULTS.has(event.result) &&
+      !Object.prototype.hasOwnProperty.call(event, 'damage')) missingAbilityDamage = true;
     if (Object.prototype.hasOwnProperty.call(event, 'damage')) sawDamageNumber = true;
     const damage = nonNegativeInteger(event.damage);
     if (damage > 0) samples = samples.concat([{ at: event.receivedAt, damage }]);
@@ -281,6 +288,7 @@ export function reduceDpsEvents(current, payload, now = Date.now()) {
     firstEventAt,
     lastEventAt: accepted[accepted.length - 1].receivedAt,
     sawOutgoingEvent: true,
+    missingAbilityDamage,
     sawDamageNumber,
   };
 
@@ -342,7 +350,7 @@ export function selectDpsView(current, now = Date.now()) {
     // Numeric wording is stripped from events while `combatbrief damage` is
     // off. Say so instead of presenting a confident zero. Keyed on landed
     // hits, so a fight that has only missed so far is not mistaken for it.
-    missingDamageNumbers: state.encounter.hits > 0 && !state.sawDamageNumber,
+    missingDamageNumbers: state.missingAbilityDamage || (state.encounter.hits > 0 && !state.sawDamageNumber),
     windowSeconds: state.limits.windowMs / 1000,
     encounter: {
       ...state.encounter,

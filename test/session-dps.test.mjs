@@ -179,3 +179,36 @@ test("a disconnect closes the live fight, a reset clears the session, and dispos
   harness.dps.resetSession();
   assert.equal(published, before, "a disposed runtime publishes nothing");
 });
+
+test("V2 pilots tally damage, not heals or malformed actors, and resync preserves totals", async (t) => {
+  const modules = await loadModules(t);
+  const harness = createHarness(modules, { now: 1_000_000 });
+  t.after(() => harness.scope.dispose());
+  harness.reconnect("connected");
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ version: 2, seq: 0 }));
+  const send = (seq, overrides) => harness.gmcp.dispatch("Darkwind.Combat.Event", {
+    version: 2, epoch: "connection-7", encounter_id: "encounter-12", ...swing(seq, overrides),
+  });
+  send(1, { damage: 10 });
+  send(2, { kind: "skill", ability_id: "street-samurai.snapcut", ability_name: "Snap Cut", damage: 18 });
+  send(3, { kind: "spell", ability_id: "mage.fireball", ability_name: "Fireball", result: "critical", damage: 42 });
+  // Omitted numeric data must be truly absent, rather than undefined on the wire.
+  harness.gmcp.dispatch("Darkwind.Combat.Event", { version: 2, epoch: "connection-7",
+    encounter_id: "encounter-12", seq: 4, kind: "heal", ability_id: "street-samurai.nanomend",
+    ability_name: "Nanomend", perspective: "self", actor_id: "self", target_id: "self",
+    result: "healed", healing: 27, summary: "You restore 27 health." });
+  send(5, { kind: "spell", ability_id: "mage.fireball", ability_name: "Fireball", actor_id: "unknown", damage: 999 });
+  let snapshot = harness.dps.getSnapshot();
+  assert.equal(snapshot.encounter.damage, 70);
+  assert.equal(snapshot.encounter.swings, 1);
+  assert.equal(snapshot.encounter.hits, 1);
+  assert.equal(snapshot.encounter.crits, 0);
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ version: 2, resync: 1, seq: 7 }));
+  send(6, { damage: 999 });
+  assert.equal(harness.dps.getSnapshot().encounter.damage, 70,
+    "resync advances the watermark without erasing existing accounting");
+  send(8, { damage: 11 });
+  snapshot = harness.dps.getSnapshot();
+  assert.equal(snapshot.encounter.damage, 81);
+  assert.equal(snapshot.encounter.swings, 2);
+});

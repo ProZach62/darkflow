@@ -5,7 +5,6 @@ import type {
   DarkwindCombatActor,
   DarkwindCombatEvent,
   DarkwindCombatEvents,
-  DarkwindCombatOverflow,
 } from "../gmcp/contracts/combat";
 import {
   normalizeDarkwindCombatEvent,
@@ -52,6 +51,8 @@ export interface SessionCombatModel {
   readonly encounterId: string;
   readonly stateSeq: number;
   readonly lastSeq: number;
+  readonly version: 1 | 2;
+  readonly presentationReset: number;
   readonly visualEnabled: boolean;
   readonly effective: boolean;
   readonly active: boolean;
@@ -62,7 +63,13 @@ export interface SessionCombatModel {
   readonly summary: string;
   readonly history: readonly SessionCombatEvent[];
   readonly pending: readonly SessionCombatEvent[];
-  readonly overflow: Readonly<DarkwindCombatOverflow>;
+  readonly overflow: Readonly<{
+    omitted: number;
+    hits: number;
+    damage?: number;
+    healing?: number;
+    omittedByKind: Readonly<{ attack: number; skill: number; spell: number; heal: number }>;
+  }>;
   readonly currentEvent: SessionCombatEvent | null;
   readonly announcement: string;
   readonly reducedMotion: boolean;
@@ -123,6 +130,7 @@ export function createSessionCombat(
   let presentationGeneration = 0;
   let manuallyDismissedEncounter = "";
   let cancelBeat: Disposer | null = null;
+  let resyncPending = false;
   let disposed = false;
   const listeners = new Set<(snapshot: SessionCombatSnapshot) => void>();
 
@@ -136,7 +144,7 @@ export function createSessionCombat(
   const createSnapshot = (): SessionCombatSnapshot =>
     deepFreeze({
       connected,
-      presentationReady: canPresent() && rendererHealthy,
+      presentationReady: canPresent() && rendererHealthy && !resyncPending,
       shouldPresent: canPresent(),
       model,
       enemy,
@@ -162,7 +170,7 @@ export function createSessionCombat(
   };
 
   const syncReadiness = (reason: string, force = false): void => {
-    const ready = canPresent() && rendererHealthy;
+    const ready = canPresent() && rendererHealthy && !resyncPending;
     if (!force && ready === advertisedReady) return;
     const sent = gmcp.sendSubscriptions({
       reason,
@@ -170,6 +178,22 @@ export function createSessionCombat(
     });
     if (!ready || sent) advertisedReady = ready;
     if (ready && sent) gmcp.sendCombatResync();
+  };
+
+  const requestResync = (reason: string): void => {
+    if (resyncPending) return;
+    resyncPending = true;
+    rendererHealthy = false;
+    stopBeat();
+    model = {
+      ...model,
+      currentEvent: null,
+      pending: [],
+      presentationReset: model.presentationReset + 1,
+    };
+    syncReadiness(reason, true);
+    gmcp.sendCombatResync();
+    publish();
   };
 
   const drainEvents = (): void => {
@@ -191,6 +215,21 @@ export function createSessionCombat(
   };
 
   const acceptEvents = (events: DarkwindCombatEvents): void => {
+    if (events.epoch !== model.epoch || events.encounter_id !== model.encounterId) return;
+    if ((events.version ?? 1) !== model.version) {
+      requestResync("combat-version-mismatch");
+      return;
+    }
+    if (resyncPending || events.last_seq <= model.lastSeq) return;
+    const fresh = events.events.filter((event) => event.seq > model.lastSeq);
+    const actorIds = new Set(model.actors.map((actor) => actor.id));
+    if (
+      events.first_seq > model.lastSeq + 1 ||
+      fresh.some((event) => !actorIds.has(event.actor_id) || !actorIds.has(event.target_id))
+    ) {
+      requestResync("combat-stream-gap");
+      return;
+    }
     const next = reduceCombatEvents(model, events) as SessionCombatModel;
     if (next === model) return;
     model = next;
@@ -206,9 +245,10 @@ export function createSessionCombat(
     if (next === previous) return;
     const newEncounter = next.epoch !== previous.epoch || next.encounterId !== previous.encounterId;
     model = next;
-    if (newEncounter) {
+    if (newEncounter || state.resync) {
       stopBeat();
-      manuallyDismissedEncounter = "";
+      resyncPending = false;
+      if (newEncounter) manuallyDismissedEncounter = "";
     }
     if (!model.visualEnabled || !model.active) {
       stopBeat();
@@ -224,19 +264,31 @@ export function createSessionCombat(
     if (disposed || !connected) return;
     const events = normalizeDarkwindCombatEvents(input);
     if (events) acceptEvents(events);
+    else if ((input as { version?: unknown } | null)?.version === 2) {
+      requestResync("combat-invalid-v2-event");
+    }
   };
 
   const eventHandler = (input: unknown): void => {
     if (disposed || !connected) return;
     const event = normalizeDarkwindCombatEvent(input);
-    if (!event) return;
+    if (!event) {
+      if ((input as { version?: unknown } | null)?.version === 2) {
+        requestResync("combat-invalid-v2-event");
+      }
+      return;
+    }
     acceptEvents({
       epoch: event.epoch,
       encounter_id: event.encounter_id,
       first_seq: event.seq,
       last_seq: event.seq,
       events: [event],
-      overflow: { omitted: 0, hits: 0, damage: 0 },
+      overflow:
+        event.version === 2
+          ? { omitted: 0, omitted_by_kind: { attack: 0, skill: 0, spell: 0, heal: 0 } }
+          : { omitted: 0, hits: 0, damage: 0 },
+      ...(event.version === 2 ? { version: 2 as const } : {}),
     });
   };
 
@@ -275,6 +327,7 @@ export function createSessionCombat(
     eventBus.subscribe("session:resync", () => {
       stopBeat();
       model = createCombatVisualState({ reducedMotion: model.reducedMotion }) as SessionCombatModel;
+      resyncPending = false;
       enemy = null;
       manuallyDismissedEncounter = "";
       presentationGeneration += 1;
@@ -299,6 +352,7 @@ export function createSessionCombat(
       advertisedReady = false;
       stopBeat();
       model = createCombatVisualState({ reducedMotion: model.reducedMotion }) as SessionCombatModel;
+      resyncPending = false;
       enemy = null;
       manuallyDismissedEncounter = "";
       presentationGeneration += 1;
@@ -343,7 +397,7 @@ export function createSessionCombat(
 
     setPresentationReady(ready) {
       if (disposed) return;
-      if (ready && !canPresent()) return;
+      if (ready && (!canPresent() || resyncPending)) return;
       rendererHealthy = ready;
       presentationGeneration += 1;
       publish();

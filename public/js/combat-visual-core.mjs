@@ -36,15 +36,21 @@ function safeText(value, maxLength = 240) {
 }
 
 function emptyOverflow() {
-  return { omitted: 0, hits: 0, damage: 0 };
+  return { omitted: 0, hits: 0, damage: 0, healing: 0, omittedByKind: { attack: 0, skill: 0, spell: 0, heal: 0 } };
 }
 
 function normalizeOverflow(value) {
   value = value && typeof value === 'object' ? value : {};
+  const version2 = Object.prototype.hasOwnProperty.call(value, 'omitted_by_kind');
   return {
     omitted: nonNegativeInteger(value.omitted),
     hits: nonNegativeInteger(value.hits),
-    damage: nonNegativeInteger(value.damage),
+    ...(!version2 || Object.prototype.hasOwnProperty.call(value, 'damage')
+      ? { damage: nonNegativeInteger(value.damage) } : {}),
+    ...(!version2 || Object.prototype.hasOwnProperty.call(value, 'healing')
+      ? { healing: nonNegativeInteger(value.healing) } : {}),
+    omittedByKind: Object.fromEntries(['attack', 'skill', 'spell', 'heal'].map((kind) =>
+      [kind, nonNegativeInteger(value.omitted_by_kind && value.omitted_by_kind[kind])])),
   };
 }
 
@@ -52,7 +58,14 @@ function mergeOverflow(left, right) {
   return {
     omitted: nonNegativeInteger(left && left.omitted) + nonNegativeInteger(right && right.omitted),
     hits: nonNegativeInteger(left && left.hits) + nonNegativeInteger(right && right.hits),
-    damage: nonNegativeInteger(left && left.damage) + nonNegativeInteger(right && right.damage),
+    ...(left && right && Object.prototype.hasOwnProperty.call(left, 'damage') && Object.prototype.hasOwnProperty.call(right, 'damage')
+      ? { damage: nonNegativeInteger(left.damage) + nonNegativeInteger(right.damage) } : {}),
+    ...(left && right && Object.prototype.hasOwnProperty.call(left, 'healing') && Object.prototype.hasOwnProperty.call(right, 'healing')
+      ? { healing: nonNegativeInteger(left.healing) + nonNegativeInteger(right.healing) } : {}),
+    omittedByKind: Object.fromEntries(['attack', 'skill', 'spell', 'heal'].map((kind) => [kind,
+      nonNegativeInteger(left && left.omittedByKind && left.omittedByKind[kind]) +
+      nonNegativeInteger(right && right.omittedByKind && right.omittedByKind[kind]),
+    ])),
   };
 }
 
@@ -60,9 +73,14 @@ function overflowForEvents(events) {
   const overflow = emptyOverflow();
   for (const event of events) {
     overflow.omitted++;
+    if (overflow.omittedByKind[event.kind] !== undefined) overflow.omittedByKind[event.kind]++;
     if (event.result === 'hit' || event.result === 'critical') overflow.hits++;
-    if (Object.prototype.hasOwnProperty.call(event, 'damage')) {
-      overflow.damage += nonNegativeInteger(event.damage);
+    if (event.kind !== 'heal') {
+      if (!Object.prototype.hasOwnProperty.call(event, 'damage')) delete overflow.damage;
+      else if (Object.prototype.hasOwnProperty.call(overflow, 'damage')) overflow.damage += nonNegativeInteger(event.damage);
+    } else {
+      if (!Object.prototype.hasOwnProperty.call(event, 'healing')) delete overflow.healing;
+      else if (Object.prototype.hasOwnProperty.call(overflow, 'healing')) overflow.healing += nonNegativeInteger(event.healing);
     }
   }
   return overflow;
@@ -189,6 +207,8 @@ export function createCombatVisualState(options = {}) {
     encounterId: '',
     stateSeq: 0,
     lastSeq: 0,
+    version: 1,
+    presentationReset: 0,
     visualEnabled: false,
     effective: false,
     active: false,
@@ -232,6 +252,8 @@ export function normalizeCombatState(payload) {
     movement: normalizeMovement(payload.movement),
     outcome: safeText(payload.outcome, 48).toLowerCase(),
     summary: safeText(payload.summary, 320),
+    version: payload.version === 2 ? 2 : 1,
+    resync: payload.version === 2 && protocolBoolean(payload.resync),
   };
 }
 
@@ -248,12 +270,14 @@ export function reduceCombatState(current, payload, receivedAt = Date.now()) {
     return previous;
   }
 
-  const resetTransient = encounterChanged || !normalized.visualEnabled;
+  const resetTransient = encounterChanged || !normalized.visualEnabled || normalized.resync;
   return {
     ...previous,
     epoch: normalized.epoch,
     encounterId: normalized.encounterId,
     stateSeq: normalized.seq,
+    version: normalized.version,
+    presentationReset: previous.presentationReset + (resetTransient ? 1 : 0),
     lastSeq: encounterChanged
       ? normalized.seq
       : Math.max(previous.lastSeq, normalized.seq),
@@ -281,7 +305,11 @@ export function normalizeCombatEvent(payload, receivedAt = Date.now()) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
   const serverResult = safeText(payload.result, 24).toLowerCase();
   const seq = nonNegativeInteger(payload.seq);
-  if (!seq || !VALID_RESULTS.has(serverResult)) return null;
+  const kind = safeText(payload.kind, 32).toLowerCase() || 'attack';
+  const valid = kind === 'attack' ? VALID_RESULTS.has(serverResult)
+    : ((kind === 'skill' || kind === 'spell') ? ['hit', 'critical', 'no-effect'].includes(serverResult)
+      : kind === 'heal' && ['healed', 'no-effect'].includes(serverResult));
+  if (!seq || !valid) return null;
 
   // A block is a fully mitigated hit and uses the existing absorb pose, sound,
   // badge, and DPS accounting. The server summary still describes it as a
@@ -290,7 +318,7 @@ export function normalizeCombatEvent(payload, receivedAt = Date.now()) {
 
   const event = {
     seq,
-    kind: safeText(payload.kind, 32).toLowerCase() || 'attack',
+    kind,
     perspective: safeText(payload.perspective, 24).toLowerCase(),
     actorId: safeText(payload.actor_id, 96),
     targetId: safeText(payload.target_id, 96),
@@ -298,6 +326,11 @@ export function normalizeCombatEvent(payload, receivedAt = Date.now()) {
     summary: safeText(payload.summary, 320),
     receivedAt,
   };
+  if (kind !== 'attack') {
+    event.abilityId = safeText(payload.ability_id, 96);
+    event.abilityName = safeText(payload.ability_name, 96);
+    if (!event.abilityId || !event.abilityName) return null;
+  }
 
   const damage = finiteNumber(payload.damage);
   if (damage !== null) event.damage = Math.max(0, Math.trunc(damage));
@@ -307,6 +340,8 @@ export function normalizeCombatEvent(payload, receivedAt = Date.now()) {
   }
   const absorbed = finiteNumber(payload.absorbed);
   if (absorbed !== null) event.absorbed = Math.max(0, Math.trunc(absorbed));
+  const healing = finiteNumber(payload.healing);
+  if (kind === 'heal' && healing !== null) event.healing = Math.max(0, Math.trunc(healing));
   return event;
 }
 
@@ -320,7 +355,8 @@ export function reduceCombatEvents(current, payload, receivedAt = Date.now()) {
       || !epoch
       || !encounterId
       || epoch !== previous.epoch
-      || encounterId !== previous.encounterId) {
+      || encounterId !== previous.encounterId
+      || (payload.last_seq !== undefined && Number(payload.last_seq) <= previous.lastSeq)) {
     return previous;
   }
 
@@ -336,6 +372,7 @@ export function reduceCombatEvents(current, payload, receivedAt = Date.now()) {
     accepted.push(event);
     lastSeq = event.seq;
   }
+  lastSeq = Math.max(lastSeq, nonNegativeInteger(payload.last_seq));
 
   if (!accepted.length && !payload.overflow) return previous;
 
@@ -510,6 +547,7 @@ export function buildCombatView(current, sources = {}) {
     epoch: model.epoch,
     encounterId: model.encounterId,
     stateSeq: model.stateSeq,
+    presentationReset: model.presentationReset,
     outcome: model.outcome,
     summary: model.summary,
     announcement: model.announcement || model.summary,

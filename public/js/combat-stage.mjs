@@ -218,6 +218,7 @@ export function createCombatStage(doc, options = {}) {
     _encounterState: null,
     _lowHealthState: null,
     _encounterKey: '',
+    _presentationReset: 0,
     _view: null,
     _reducedMotion: false,
     _backdrop: resolveStageBackdrop(null),
@@ -305,9 +306,13 @@ export function createCombatStage(doc, options = {}) {
     update(view, sources = {}) {
       if (this.destroyed || !view) return;
       const key = String(view.epoch || '') + ':' + String(view.encounterId || '');
+      if (key !== this._encounterKey || view.presentationReset !== this._presentationReset) {
+        this._actions = [];
+        this._clearSoundTimers();
+        this._presentationReset = view.presentationReset;
+      }
       if (key !== this._encounterKey) {
         this._encounterKey = key;
-        this._actions = [];
         this._playedSeqs.clear();
       }
       this._view = view;
@@ -2308,7 +2313,7 @@ export function createCombatStage(doc, options = {}) {
 
     _drawBadge(c, layout, token, badge, number) {
       // Landed hits let the number speak; other results get a label.
-      if ((badge.result === 'hit' || badge.result === 'critical') && number) return;
+      if ((badge.result === 'hit' || badge.result === 'critical' || badge.result === 'healed') && number) return;
       const radius = layout.radius;
       const label = RESULT_BADGES[badge.result] || String(badge.result).toUpperCase();
       c.save();
@@ -2341,11 +2346,11 @@ export function createCombatStage(doc, options = {}) {
       c.textBaseline = 'alphabetic';
       c.lineWidth = Math.max(3, size * 0.12);
       c.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-      c.strokeText(String(number.value), token.x, y);
-      c.fillStyle = number.side === 'player' ? this._palette.danger : number.tint;
+      c.strokeText((number.healing ? '+' : '') + String(number.value), token.x, y);
+      c.fillStyle = number.healing ? number.tint : (number.side === 'player' ? this._palette.danger : number.tint);
       c.shadowColor = rgba(number.tint, 0.6);
       c.shadowBlur = size * 0.4;
-      c.fillText(String(number.value), token.x, y);
+      c.fillText((number.healing ? '+' : '') + String(number.value), token.x, y);
       c.restore();
     },
   };

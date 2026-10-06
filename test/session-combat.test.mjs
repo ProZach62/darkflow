@@ -339,7 +339,7 @@ test("combat orders batch and singular events and cancels every late beat", asyn
     encounter_id: "encounter-1",
     first_seq: 2,
     last_seq: 3,
-    events: [event(3), event(2)],
+    events: [event(2), event(3)],
     overflow: { omitted: 0, hits: 0, damage: 0 },
   });
 
@@ -410,6 +410,49 @@ test("combat orders batch and singular events and cancels every late beat", asyn
   const disposed = harness.combat.getSnapshot();
   disposalBeat();
   assert.equal(harness.combat.getSnapshot(), disposed, "scope guard suppresses a disposed late timer");
+});
+
+test("V2 gaps request one resync, stale identities stay inert, and resync state recovers", async (t) => {
+  const modules = await loadModules(t);
+  const harness = createHarness(modules);
+  t.after(() => harness.scope.dispose());
+  harness.reconnect("connected");
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ version: 2 }));
+  harness.combat.setPresentationReady(true);
+  harness.sent.length = 0;
+
+  const batch = (overrides = {}) => ({
+    version: 2,
+    epoch: "combat-1",
+    encounter_id: "encounter-1",
+    first_seq: 3,
+    last_seq: 3,
+    events: [event(3)],
+    overflow: { omitted: 0, omitted_by_kind: { attack: 0, skill: 0, spell: 0, heal: 0 } },
+    ...overrides,
+  });
+  harness.gmcp.dispatch("Darkwind.Combat.Events", batch({ epoch: "stale" }));
+  assert.equal(framesFor(harness.sent, "Darkwind.Combat.Resync").length, 0,
+    "a valid stale identity is ignored before sequence testing");
+
+  harness.gmcp.dispatch("Darkwind.Combat.Events", batch());
+  harness.gmcp.dispatch("Darkwind.Combat.Events", batch());
+  harness.combat.setPresentationReady(true);
+  assert.equal(harness.combat.getSnapshot().presentationReady, false,
+    "a render callback cannot re-enable readiness while recovery is pending");
+  assert.equal(framesFor(harness.sent, "Darkwind.Combat.Resync").length, 1,
+    "repeated gap delivery cannot create an unbounded refresh loop");
+  assert.equal(harness.combat.getSnapshot().model.lastSeq, 1);
+
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ version: 2, resync: 1, seq: 3 }));
+  assert.equal(harness.combat.getSnapshot().model.lastSeq, 3, "resync retains the sequence watermark");
+  assert.equal(harness.combat.getSnapshot().model.currentEvent, null);
+  harness.combat.setPresentationReady(true);
+  assert.equal(harness.combat.getSnapshot().presentationReady, true);
+  harness.sent.length = 0;
+  harness.gmcp.dispatch("Darkwind.Combat.Events", batch({ first_seq: 5, last_seq: 5, events: [event(5)] }));
+  assert.equal(framesFor(harness.sent, "Darkwind.Combat.Resync").length, 1,
+    "an authoritative resync state re-arms bounded recovery");
 });
 
 test("combat recovery and two sessions isolate readiness, queues, reconnect, and disposal", async (t) => {

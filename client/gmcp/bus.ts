@@ -71,7 +71,7 @@ export const CLIENT_SUPPORTS_SET: readonly string[] = [
   "Group 1",
   "Game 1",
   "Darkwind.Char.Avatar 1",
-  "Darkwind.Combat 1",
+  "Darkwind.Combat 2",
   "Darkwind.Tutorial 1",
   "Darkwind.Visual 1",
   "Darkwind.Room.Image 1",

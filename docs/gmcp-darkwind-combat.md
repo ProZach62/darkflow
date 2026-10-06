@@ -1,10 +1,12 @@
 # Darkwind.Combat GMCP Protocol
 
-`Darkwind.Combat 1` carries recipient-safe combat presentation data for
+`Darkwind.Combat 2` carries recipient-safe combat presentation data for
 Darkflow's visual Combat pane. It complements the standard `Char` packages; it
 does not replace combat authority or provide a second set of hit points.
 
-The client advertises `Darkwind.Combat 1` only when the visual combat manager
+The client advertises `Darkwind.Combat 2`; servers that send unversioned State
+and Events payloads continue to use the V1 attack-only contract unchanged.
+Presentation readiness is still advertised only when the visual combat manager
 and renderer are available. The server does not advertise this package back to
 the client.
 
@@ -184,6 +186,27 @@ Additional actor entries are compact context or threat indicators, not a
 private-stat feed.
 
 ## `Darkwind.Combat.Events`
+
+V2 Events and State payloads carry `"version": 2`; an absent version selects
+V1. V2 adds `skill`, `spell`, and `heal` alongside `attack`. Skills and spells
+require bounded public `ability_id` and `ability_name` labels (96 characters,
+never object paths), use `hit`, `critical`, or `no-effect`, and may expose
+nonnegative `damage`. Heals require the same ability labels, use `healed` or
+`no-effect`, may expose nonnegative `healing`, and may use `perspective: "self"`.
+Hidden or missing numbers remain absent and are never converted to zero.
+
+V2 overflow is `{omitted, omitted_by_kind}` with all four kind counters and
+optional authorized `damage` and `healing` totals. V1 retains
+`{omitted,hits,damage}`. Attack diagnostics and visibility remain governed by
+the existing permissions.
+
+The client accounts each accepted sequence before animation queue decisions.
+Outgoing attack, skill, and spell damage contributes to DPS; only attacks
+enter weapon hit/critical denominators, and healing never contributes. A V2
+State with `resync: true` clears current and queued playback without replaying
+or recounting same-epoch sequences. A sequence gap, unknown kind, or unknown
+actor requests a bounded fresh State and disables readiness; duplicate frames
+only advance nothing and do not disturb valid readiness.
 
 Events are transient and arrive in ordered, bounded batches:
 

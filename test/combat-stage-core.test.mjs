@@ -226,6 +226,21 @@ test('reduced motion removes movement but keeps the outcome readable', () => {
   assert.notEqual(idleOffset('player', 1234, false).y, 0);
 });
 
+test('V2 healing stays on its target without a weapon lunge or damage sound', () => {
+  const heal = buildAction(event({ kind: 'heal', perspective: 'self', actorId: 'self', targetId: 'self',
+    result: 'healed', damage: undefined, healing: 999999, abilityName: 'Renew' }), view, 0);
+  const sample = sampleAction(heal, ACTION_DURATION_MS * 0.3);
+  assert.equal(heal.actorSide, 'player');
+  assert.equal(heal.impactSide, 'player');
+  assert.equal(sample.player.x, 0);
+  assert.equal(sample.number.value, 999999);
+  assert.equal(sample.number.healing, true);
+  assert.equal(actionSoundCue(heal), null);
+  const still = sampleAction(heal, ACTION_DURATION_MS * 0.3, { reducedMotion: true });
+  assert.equal(still.player.x, 0);
+  assert.equal(still.number.value, 999999);
+});
+
 test('a room image rides ahead of the terrain tile as the backdrop', () => {
   assert.deepEqual(resolveStageBackdrop({ terrain: 'forest' }, { url: 'https://media.example/clearing.png' }),
     { terrain: 'forest', tile: '/assets/tiles/forest.jpg', image: 'https://media.example/clearing.png' });
@@ -591,6 +606,36 @@ test('the recap keeps damage taken and streaks, once per event, ignoring fights 
   assert.equal(recapEvents(null, null).lastSeq, 0);
 });
 
+test('heals cannot change streaks and ability damage still contributes to damage taken', () => {
+  let recap = recapEvents(createFightRecap(), [
+    { seq: 1, kind: 'attack', perspective: 'outgoing', result: 'hit' },
+    { seq: 2, kind: 'heal', perspective: 'outgoing', result: 'healed', healing: 99 },
+    { seq: 3, kind: 'attack', perspective: 'incoming', result: 'miss' },
+    { seq: 4, kind: 'heal', perspective: 'incoming', result: 'no-effect' },
+    { seq: 5, kind: 'spell', perspective: 'incoming', result: 'no-effect' },
+  ]);
+  assert.equal(recap.hitStreak, 1);
+  assert.equal(recap.guardStreak, 1);
+  recap = recapEvents(recap, [{ seq: 6, kind: 'spell', perspective: 'incoming', result: 'critical', damage: 23 }]);
+  assert.equal(recap.taken, 23);
+  assert.equal(recap.hitsTaken, 1);
+  assert.equal(recap.guardStreak, 0);
+});
+
+test('the recap never labels redacted incoming damage as a known total', () => {
+  let recap = recapEvents(createFightRecap(), [
+    { seq: 1, kind: 'skill', perspective: 'incoming', result: 'hit' },
+    { seq: 2, kind: 'attack', perspective: 'incoming', result: 'hit', damage: 23 },
+  ]);
+  assert.equal(recap.takenKnown, false);
+  assert.deepEqual(fightSummaryRows(recap, null), []);
+  recap = recapEvents(createFightRecap(), [
+    { seq: 1, kind: 'spell', perspective: 'incoming', result: 'hit', damage: 0 },
+  ]);
+  assert.deepEqual(fightSummaryRows(recap, null), [{ label: 'Taken', value: '0' }],
+    'explicit zero is a known result, unlike an omitted number');
+});
+
 test('the fight summary takes what was dealt from the DPS meter and the rest from the recap', () => {
   const dps = { damage: 1412, swings: 9, hits: 7, crits: 2, bestHit: 310, hitRate: 7 / 9, durationMs: 42_400, dps: 33.31, missingDamageNumbers: false };
   const recap = { ...createFightRecap(), taken: 96, hitsTaken: 3, bestHitStreak: 5, bestGuardStreak: 2 };
@@ -607,7 +652,11 @@ test('the fight summary takes what was dealt from the DPS meter and the rest fro
   const wordless = fightSummaryRows(recap, { ...dps, missingDamageNumbers: true }).map((row) => row.label);
   assert.deepEqual(wordless, ['Taken', 'Accuracy', 'Criticals', 'Time', 'Best streak'], 'no confident zeroes when the game sends no numbers');
   assert.deepEqual(fightSummaryRows(createFightRecap(), null), [], 'nothing happened, nothing to say');
-  assert.deepEqual(fightSummaryRows(createFightRecap(), { ...dps, swings: 0 }), []);
+  assert.deepEqual(fightSummaryRows(createFightRecap(), { ...dps, swings: 0 }), [
+    { label: 'Dealt', value: '1,412' }, { label: 'Best hit', value: '310' },
+    { label: 'Time', value: '0:42' }, { label: 'DPS', value: '33.3' },
+  ], 'ability-only damage still has a recap, without weapon accuracy or criticals');
+  assert.deepEqual(fightSummaryRows(createFightRecap(), { ...dps, swings: 0, damage: 0 }), []);
   assert.equal(formatFightDuration(0), '0:00');
   assert.equal(formatFightDuration(125_000), '2:05');
 });

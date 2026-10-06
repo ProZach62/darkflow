@@ -201,7 +201,7 @@ client versions can opt out of these surfaces without dropping the support
 declaration. The current Darkwind server stores these hints. It uses
 `announcementsBadge`, `announcementsList`, and `enemyAutoOpen` as ordinary
 subscription gates. `combatPane` is intentionally stricter: routine combat
-prose may be replaced only after the client advertised `Darkwind.Combat 1`
+prose may be replaced only after the client advertised `Darkwind.Combat 2`
 and sent a fresh explicit `combatPane: true` for the current connection. See
 [Darkwind.Combat](gmcp-darkwind-combat.md).
 

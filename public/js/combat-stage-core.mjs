@@ -24,6 +24,8 @@ const RESULT_TINTS = Object.freeze({
   miss: '#8fa3b3',
   dodge: '#7ee7df',
   absorb: '#b4abff',
+  healed: '#73e6a2',
+  'no-effect': '#9aa8b3',
 });
 
 // Long enough for painted sprite frames to read: the attacker holds its
@@ -233,6 +235,7 @@ export function resolveActionSides(event, view) {
   const targetId = view && view.target ? view.target.id : '';
   if (event.perspective === 'outgoing') return { actor: 'player', impact: 'target' };
   if (event.perspective === 'incoming') return { actor: 'target', impact: 'player' };
+  if (event.perspective === 'self') return { actor: 'player', impact: 'player' };
   let actor = '';
   let impact = '';
   if (event.actorId === playerId) actor = 'player';
@@ -279,7 +282,9 @@ export function buildAction(event, view, startedAt = 0) {
   const result = String(event.result);
   const seq = Number(event.seq) || 0;
   const critical = result === 'critical';
-  const landed = result === 'hit' || critical;
+  const healing = event.kind === 'heal' && Object.prototype.hasOwnProperty.call(event, 'healing')
+    ? Math.max(0, Math.round(Number(event.healing) || 0)) : null;
+  const landed = result === 'hit' || critical || result === 'healed';
   const damage = damageValue(event);
   const burstCount = critical ? 26 : (landed ? 14 : 0);
   return {
@@ -291,9 +296,12 @@ export function buildAction(event, view, startedAt = 0) {
     startedAt,
     duration: ACTION_DURATION_MS,
     damage,
+    healing,
+    kind: event.kind || 'attack',
+    abilityName: event.abilityName || '',
     critical,
     landed,
-    tint: resultTint(result),
+    tint: event.kind === 'spell' ? '#b4abff' : (event.kind === 'skill' ? '#7ee7df' : resultTint(result)),
     particles: burstCount ? particleBurst(seq * 7919 + 17, burstCount, critical ? 1.6 : 1) : [],
   };
 }
@@ -343,14 +351,14 @@ export function sampleAction(action, now, options = {}) {
   const afterContact = clamp01((progress - contactAt) / (1 - contactAt));
 
   if (!reducedMotion) {
-    const lunge = lungeCurve(progress / LUNGE_FRACTION);
+    const lunge = action.kind === 'heal' ? 0 : lungeCurve(progress / LUNGE_FRACTION);
     // The strike pose steps the front foot forward, so the body itself only
     // needs a short lunge to close distance.
     actor.x = direction * lunge * 0.7;
     actor.y = -lunge * 0.18;
     actor.scale = 1 + lunge * 0.04;
 
-    if (action.landed && progress >= contactAt) {
+    if (action.landed && action.kind !== 'heal' && progress >= contactAt) {
       const recoil = clamp01((progress - contactAt) / 0.34);
       const kick = (1 - easeOutCubic(recoil)) * (action.critical ? 0.55 : 0.32);
       victim.x = direction * kick;
@@ -382,7 +390,10 @@ export function sampleAction(action, now, options = {}) {
   }
 
   if (progress >= contactAt) {
-    if (action.landed) {
+    if (action.kind === 'heal' && action.result === 'healed') {
+      effects.push({ type: 'burst', side: action.impactSide, progress: afterContact,
+        particles: reducedMotion ? [] : action.particles, critical: false, tint: action.tint });
+    } else if (action.landed) {
       effects.push({
         type: 'slash',
         side: action.impactSide,
@@ -426,10 +437,12 @@ export function sampleAction(action, now, options = {}) {
   }
 
   let number = null;
-  if (action.damage !== null && progress >= contactAt) {
+  const shownNumber = action.kind === 'heal' ? action.healing : action.damage;
+  if (shownNumber !== null && progress >= contactAt) {
     number = {
       side: action.impactSide,
-      value: action.damage,
+      value: shownNumber,
+      healing: action.kind === 'heal',
       progress: afterContact,
       rise: reducedMotion ? 0 : easeOutCubic(afterContact) * 1.6,
       alpha: reducedMotion
@@ -536,6 +549,7 @@ const SOUND_BY_RESULT = Object.freeze({
 // A fight the player is only watching is quieter than their own.
 export function actionSoundCue(action) {
   if (!action) return null;
+  if (action.kind === 'heal') return null;
   const sound = SOUND_BY_RESULT[action.result];
   if (!sound) return null;
   const observed = action.perspective === 'observed';
@@ -843,7 +857,7 @@ export function lowHealthAlert(previous, health, active) {
 export const STREAK_MIN = 3;
 
 export function createFightRecap() {
-  return { lastSeq: 0, taken: 0, hitsTaken: 0, hitStreak: 0, bestHitStreak: 0, guardStreak: 0, bestGuardStreak: 0 };
+  return { lastSeq: 0, taken: 0, takenKnown: true, hitsTaken: 0, hitStreak: 0, bestHitStreak: 0, guardStreak: 0, bestGuardStreak: 0 };
 }
 
 export function recapEvents(recap, events) {
@@ -855,14 +869,17 @@ export function recapEvents(recap, events) {
     if (Number(event.seq) <= next.lastSeq) continue;
     next = { ...next, lastSeq: Number(event.seq) };
     const landed = event.result === 'hit' || event.result === 'critical';
+    if (event.kind === 'heal') continue;
     if (event.perspective === 'outgoing') {
       const hitStreak = landed ? next.hitStreak + 1 : 0;
       next = { ...next, hitStreak, bestHitStreak: Math.max(next.bestHitStreak, hitStreak) };
     } else if (event.perspective === 'incoming') {
       if (landed) {
         const damage = Math.max(0, Math.trunc(Number(event.damage)) || 0);
-        next = { ...next, taken: next.taken + damage, hitsTaken: next.hitsTaken + 1, guardStreak: 0 };
-      } else {
+        next = { ...next, taken: next.taken + damage,
+          takenKnown: next.takenKnown && Object.prototype.hasOwnProperty.call(event, 'damage'),
+          hitsTaken: next.hitsTaken + 1, guardStreak: 0 };
+      } else if (!event.kind || event.kind === 'attack') {
         const guardStreak = next.guardStreak + 1;
         next = { ...next, guardStreak, bestGuardStreak: Math.max(next.bestGuardStreak, guardStreak) };
       }
@@ -890,15 +907,16 @@ export function formatFightDuration(ms) {
 export function fightSummaryRows(recap, dps) {
   const rows = [];
   const swung = dps && Number(dps.swings) > 0;
-  const numbers = swung && !dps.missingDamageNumbers;
+  const dealt = dps && Number(dps.damage) > 0;
+  const numbers = (swung || dealt) && !dps.missingDamageNumbers;
   if (numbers) rows.push({ label: 'Dealt', value: Math.round(dps.damage).toLocaleString('en-US') });
-  if (recap && recap.hitsTaken > 0) rows.push({ label: 'Taken', value: Math.round(recap.taken).toLocaleString('en-US') });
+  if (recap && recap.hitsTaken > 0 && recap.takenKnown !== false) rows.push({ label: 'Taken', value: Math.round(recap.taken).toLocaleString('en-US') });
   if (swung && dps.hitRate !== null && dps.hitRate !== undefined) {
     rows.push({ label: 'Accuracy', value: Math.round(Number(dps.hitRate) * 100) + '%' });
   }
   if (numbers && dps.bestHit > 0) rows.push({ label: 'Best hit', value: Math.round(dps.bestHit).toLocaleString('en-US') });
   if (swung && dps.crits > 0) rows.push({ label: 'Criticals', value: String(dps.crits) });
-  if (swung && dps.durationMs > 0) rows.push({ label: 'Time', value: formatFightDuration(dps.durationMs) });
+  if ((swung || dealt) && dps.durationMs > 0) rows.push({ label: 'Time', value: formatFightDuration(dps.durationMs) });
   if (numbers && dps.dps !== null && dps.dps !== undefined) {
     rows.push({ label: 'DPS', value: (Math.round(Number(dps.dps) * 10) / 10).toLocaleString('en-US') });
   }

@@ -600,3 +600,19 @@ test('public condition and tactical state survive normalization without private 
   assert.equal(view.preferredPosition, 'melee');
   assert.deepEqual(view.movement, { action: 'fallback', target: 'a guard', progress: 2, required: 5 });
 });
+
+test('V2 omission counters retain redaction, advance sequence, and ignore repeated batches', () => {
+  let model = reduceCombatState(createCombatVisualState(), activeState({ version: 2 }));
+  const packet = { version: 2, epoch: 'connection-a', encounter_id: 'encounter-a',
+    first_seq: 11, last_seq: 12, events: [], overflow: { omitted: 2,
+      omitted_by_kind: { attack: 0, skill: 1, spell: 0, heal: 1 } } };
+  model = reduceCombatEvents(model, packet);
+  assert.equal(model.lastSeq, 12);
+  assert.equal(model.overflow.omittedByKind.heal, 1);
+  assert.equal(Object.hasOwn(model.overflow, 'damage'), false);
+  assert.equal(Object.hasOwn(model.overflow, 'healing'), false);
+  assert.equal(reduceCombatEvents(model, packet), model);
+  const recovered = reduceCombatState(model, activeState({ version: 2, resync: 1, seq: 12 }));
+  assert.equal(recovered.lastSeq, 12);
+  assert.equal(recovered.presentationReset, model.presentationReset + 1);
+});

@@ -64,6 +64,49 @@ function combatEvent(seq, overrides = {}) {
   };
 }
 
+test("Combat V2 validates mixed abilities, hidden numbers, and overflow by kind", async (t) => {
+  const contracts = await loadContracts(t);
+  const frame = {
+    version: 2,
+    epoch: "connection-7",
+    encounter_id: "encounter-12",
+    first_seq: 18,
+    last_seq: 21,
+    events: [
+      combatEvent(18, { damage: 13, pre_mitigation_damage: 29 }),
+      combatEvent(19, { kind: "skill", ability_id: "hamstring", ability_name: "Hamstring", result: "no-effect", damage: undefined }),
+      combatEvent(20, { kind: "spell", ability_id: "ember", ability_name: "Ember", result: "critical", damage: 31 }),
+      combatEvent(21, { kind: "heal", perspective: "self", actor_id: "self", target_id: "self",
+        ability_id: "renew", ability_name: "Renew", result: "healed", damage: undefined, absorbed: undefined, healing: 999999 }),
+    ],
+    overflow: { omitted: 0, omitted_by_kind: { attack: 0, skill: 0, spell: 0, heal: 0 }, damage: 0, healing: 0 },
+  };
+  delete frame.events[1].damage;
+  delete frame.events[3].damage;
+  delete frame.events[3].absorbed;
+  const normalized = contracts.normalizeDarkwindCombatEvents(frame);
+  assert.equal(normalized.version, 2);
+  assert.equal(Object.hasOwn(normalized.events[1], "damage"), false, "hidden damage stays absent");
+  assert.equal(normalized.events[3].healing, 999999);
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame,
+    overflow: { ...frame.overflow, omitted: 1 },
+  }), null, "overflow kind counts must sum to omitted");
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame,
+    events: [frame.events[1], frame.events[0], frame.events[2], frame.events[3]],
+  }), null, "events must be ordered and contiguous after overflow");
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame,
+    events: frame.events.slice(1), first_seq: 18,
+    overflow: { omitted: 1, omitted_by_kind: { attack: 1, skill: 0, spell: 0, heal: 0 } },
+  })?.events[0].seq, 19, "overflow accounts for the leading sequence span");
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame, events: [
+    combatEvent(18, { kind: "heal", perspective: "self", actor_id: "self", target_id: "other",
+      ability_id: "renew", ability_name: "Renew", result: "healed", damage: undefined, absorbed: undefined }),
+  ], first_seq: 18, last_seq: 18 }), null, "self heals require matching actor and target");
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame, events: [
+    combatEvent(18, { kind: "spell", ability_id: "/guilds/mage/fireball", ability_name: "Fireball" }),
+  ], first_seq: 18, last_seq: 18 }), null, "ability IDs are labels, not paths");
+});
+
 function tutorialState(overrides = {}) {
   return {
     epoch: "acer:1722109500",
@@ -237,11 +280,12 @@ test("Step 11 Combat and Tutorial contracts bound and clean every direction", as
       epoch: "connection-7",
       encounter_id: "encounter-12",
       first_seq: 1,
-      last_seq: 12,
-      events: [...Array.from({ length: 12 }, (_, index) => combatEvent(index + 1)), null],
+      last_seq: 13,
+      events: [...Array.from({ length: 12 }, (_, index) => combatEvent(index + 2)), null],
       overflow: { omitted: 1, hits: 1, damage: 2 },
     });
     assert.equal(events.events.length, 12);
+    assert.equal(contracts.normalizeDarkwindCombatState(combatState({ version: 1 })).version, undefined);
   });
 
   await t.test("rejects malformed, non-finite, and oversized retained Combat fields", () => {

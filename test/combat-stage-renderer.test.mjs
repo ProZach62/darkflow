@@ -951,3 +951,41 @@ test('authoritative idle occupants keep duplicate names and clear without fades 
   assert.doesNotMatch(deepHtml(body), /a guard|Acer|data-scene-command/);
   renderer.dispose();
 });
+
+test('V2 healing labels, number placement, and same-encounter resync clear delayed presentation', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  let model = reduceCombatEvents(combatModel({ version: 2 }), {
+    version: 2, epoch: 'epoch-1', encounter_id: 'encounter-1', first_seq: 5, last_seq: 5,
+    events: [{ seq: 5, kind: 'heal', perspective: 'self', actor_id: 'self', target_id: 'self',
+      ability_id: 'street-samurai.nanomend', ability_name: 'Nanomend',
+      result: 'healed', healing: 27, summary: 'You restore 27 health.' }],
+  });
+  model = takeNextCombatEvent(model).state;
+  renderer.render({ model: { ...model, reducedMotion: true }, vitals: { hp: 77, maxhp: 100 } });
+  assert.match(deepHtml(body), /Nanomend.*Healed.*27 healing/);
+  assert.doesNotMatch(deepHtml(body), /undefined/i);
+  const canvas = findCanvas(body);
+  canvas.drawLog.length = 0;
+  runFrame(1400);
+  assert.ok(canvas.drawLog.some(([name, args]) => name === 'fillText' && args[0] === '+27'));
+  assert.ok(!canvas.drawLog.some(([name, args]) => name === 'fillText' && args[0] === 'HEALED'),
+    'healing number must not overlap a result badge');
+  renderer.stage._soundTimers.add(setTimeout(() => assert.fail('stale sound fired'), 1000));
+  model = reduceCombatState(model, { version: 2, resync: 1, epoch: 'epoch-1',
+    encounter_id: 'encounter-1', seq: 5, visual_enabled: 1, effective: 1, active: 1,
+    current_actor_id: 'self', current_target_id: 'target-1',
+    actors: [{ id: 'self', name: 'Acer', role: 'self' }, { id: 'target-1', name: 'drake', role: 'target' }] });
+  renderer.render({ model });
+  assert.equal(renderer.stage._actions.length, 0);
+  assert.equal(renderer.stage._soundTimers.size, 0);
+  model = reduceCombatEvents(model, { epoch: 'epoch-1', encounter_id: 'encounter-1',
+    first_seq: 6, last_seq: 6, events: [{ seq: 6, kind: 'spell', perspective: 'outgoing',
+      actor_id: 'self', target_id: 'target-1', ability_id: 'mage.fireball', ability_name: 'Fireball',
+      result: 'no-effect', summary: 'Fireball has no effect.' }] });
+  model = takeNextCombatEvent(model).state;
+  renderer.render({ model });
+  assert.match(deepHtml(body), /Fireball.*No effect/);
+  assert.doesNotMatch(deepHtml(body), /undefined/i);
+  renderer.dispose();
+});

@@ -11,8 +11,10 @@ workspace layout.
 
 ## What It Measures
 
-The meter counts **outgoing** swings only, so it reports what the player deals
-rather than what the group deals or what the player takes. Events arriving
+The meter counts **outgoing** attack, skill, and spell damage, so it reports
+what the player deals rather than what the group deals or what the player takes.
+Swings, hit rate, and critical rate count attacks only; healing never adds damage
+or starts the fight clock. Events arriving
 with `perspective` of `incoming` or `observed` still advance the sequence
 cursor, so a replayed batch cannot be counted twice, but they never reach a
 tally.
@@ -33,7 +35,7 @@ tally.
 Timing is where a damage meter is easiest to get wrong, so the rules are
 explicit:
 
-- **The fight clock starts at the first outgoing swing**, not when the
+- **The fight clock starts at the first outgoing attack, skill, or spell**, not when the
   encounter id appears. A target acquired long before the first blow does not
   dilute the rate.
 - **A fight runs until the frame that reports its outcome.** Ending it at the
@@ -50,7 +52,7 @@ explicit:
 
 ## Degraded Modes
 
-The meter is deliberately independent of the visual combat pane. `Darkwind.Combat 1`
+The meter is deliberately independent of the visual combat pane. `Darkwind.Combat 2`
 is advertised at handshake and the meter subscribes directly, so it keeps
 working while the animated pane is closed, collapsed, or disabled. Note that
 `combat-visual-core` drops events unless the saved `combatbrief visual`
@@ -63,10 +65,15 @@ Two cases are surfaced rather than guessed at:
   landed hit that carried no number, dashes out the damage figures, and says
   to turn them on. Swing and hit counts stay accurate and stay on screen. The
   check is scoped to the current fight, so turning the toggle off mid-session
-  is reported on the very next encounter.
-- **No State frame.** If events arrive for an encounter the meter has not seen
+  is reported on the very next encounter. Missing ability damage keeps the
+  fight's damage figures unknown even if another event carries a number.
+  An explicit zero remains a known number. Ability-only fights show damage,
+  best hit, time, and DPS without weapon accuracy or critical counts.
+- **No State frame (V1 only).** If events arrive for an encounter the meter has not seen
   a State frame for, it adopts the encounter from the event batch. The target
-  name is unavailable in that case, but the numbers are not.
+  name is unavailable in that case, but the numbers are not. V2 requires an
+  active matching State and announced actors before accepting damage. A
+  same-epoch resync advances the sequence watermark without clearing totals.
 
 A new connection epoch clears every tally, since ids from an earlier
 connection carry no meaning.

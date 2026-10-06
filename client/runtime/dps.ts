@@ -1,5 +1,11 @@
 import { deepFreeze } from "../configuration/snapshot";
 import type { SessionGmcpBus } from "../gmcp/bus";
+import type { DarkwindCombatState } from "../gmcp/contracts/combat";
+import {
+  normalizeDarkwindCombatEvent,
+  normalizeDarkwindCombatEvents,
+  normalizeDarkwindCombatState,
+} from "../gmcp/contracts/combat";
 import type { TransportReconnectStatusPayload } from "../transport/types";
 // @ts-expect-error Retained DPS reducers are JavaScript without a declaration file.
 import * as dpsCore from "../../public/js/dps-meter-core.mjs";
@@ -94,6 +100,7 @@ export function createSessionDps(
   let ticker: Disposer | null = null;
   let connected = false;
   let disposed = false;
+  let combatState: DarkwindCombatState | null = null;
 
   const stopTicker = (): void => {
     ticker?.();
@@ -126,19 +133,41 @@ export function createSessionDps(
 
   const stateHandler = (input: unknown): void => {
     if (disposed) return;
-    apply(core.reduceDpsState(model, input, now()));
+    const state = normalizeDarkwindCombatState(input);
+    if (state) {
+      combatState = state;
+      apply(core.reduceDpsState(model, state, now()));
+    }
   };
+  const knownV2Actors = (
+    epoch: string,
+    encounterId: string,
+    events: readonly { actor_id: string; target_id: string }[],
+  ): boolean =>
+    !!combatState &&
+    combatState.version === 2 &&
+    combatState.active &&
+    combatState.epoch === epoch &&
+    combatState.encounter_id === encounterId &&
+    events.every(
+      (event) =>
+        combatState!.actors.some((actor) => actor.id === event.actor_id) &&
+        combatState!.actors.some((actor) => actor.id === event.target_id),
+    );
   const eventsHandler = (input: unknown): void => {
     if (disposed) return;
-    apply(core.reduceDpsEvents(model, input, now()));
+    const events = normalizeDarkwindCombatEvents(input);
+    if (events?.version === 2 && !knownV2Actors(events.epoch, events.encounter_id, events.events))
+      return;
+    if (events) apply(core.reduceDpsEvents(model, events, now()));
   };
   // Some servers emit one event per frame instead of a batch; the meter
   // accepts the singular spelling the same way the combat runtime does.
   const eventHandler = (input: unknown): void => {
     if (disposed) return;
-    const event =
-      input !== null && typeof input === "object" ? (input as Record<string, unknown>) : null;
+    const event = normalizeDarkwindCombatEvent(input);
     if (!event) return;
+    if (event.version === 2 && !knownV2Actors(event.epoch, event.encounter_id, [event])) return;
     apply(
       core.reduceDpsEvents(
         model,
@@ -148,6 +177,11 @@ export function createSessionDps(
           first_seq: event.seq,
           last_seq: event.seq,
           events: [event],
+          overflow:
+            event.version === 2
+              ? { omitted: 0, omitted_by_kind: { attack: 0, skill: 0, spell: 0, heal: 0 } }
+              : { omitted: 0, hits: 0, damage: 0 },
+          ...(event.version === 2 ? { version: 2 } : {}),
         },
         now(),
       ),
@@ -171,6 +205,7 @@ export function createSessionDps(
       }
       if (!connected) return;
       connected = false;
+      combatState = null;
       // Close the live fight but keep the session totals on screen. A
       // reconnect arrives with a new epoch, which clears them.
       apply(core.finalizeEncounter(model, now()));
