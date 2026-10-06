@@ -828,9 +828,14 @@
     };
     window.addEventListener("storage", onStorage);
     const unsubscribeWorld = activeSession.world.subscribe((next) => {
+      const walkStarted = next.speedwalking && !snapshot.speedwalking;
       snapshot = next;
       if (!next.speedwalking) walkTargetId = null;
-      render();
+      // A speedwalk brings the view back to the player, on the player's own
+      // floor, so it follows each step; panning during the walk is left be.
+      const pan = currentPan();
+      if (walkStarted && live && (pan.x || pan.y || levelOffset !== 0)) recenter();
+      else render();
     });
 
     // The sky moves on between frames; repaint only when the tint changes.

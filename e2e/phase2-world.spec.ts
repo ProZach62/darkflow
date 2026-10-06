@@ -924,6 +924,15 @@ test("the map shows a room's card on hover, faces the way you step, labels landm
     .toEqual([7.5, 5]);
   await expect(map.locator(".map-panel-status")).not.toHaveText("Speedwalking");
 
+  // Starting a speedwalk brings the view back to the player.
+  await map.getByRole("button", { name: "Speedwalk to Atrium" }).click();
+  await expect(map.locator(".map-panel-status")).toHaveText("Speedwalking");
+  await expect
+    .poll(() =>
+      mapBody.evaluate((body) => [body.dataset.mapPanX ?? null, body.dataset.mapPanY ?? null]),
+    )
+    .toEqual([null, null]);
+
   // Zoomed in to 200%, the tiles are rich: the room beside the player is
   // named on its tile (the player's own has the marker over it).
   await map.getByRole("button", { name: "Re-center map" }).click();
