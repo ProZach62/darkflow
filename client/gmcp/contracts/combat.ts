@@ -3,10 +3,38 @@ export const DARKWIND_COMBAT_EVENT_LIMIT = 12;
 
 export type DarkwindCombatWireBoolean = boolean | 0 | 1;
 
+export type DarkwindCombatSize = "tiny" | "small" | "medium" | "large" | "huge";
+export type DarkwindCombatWeaponType =
+  "focus" | "missile" | "polearm" | "cleaving" | "crushing" | "piercing" | "slashing";
+export type DarkwindCombatWeaponStyle = "slash" | "thrust" | "smash";
+
+export interface DarkwindCombatAppearance {
+  race?: string;
+  family?: string;
+  gender?: string;
+  size?: DarkwindCombatSize;
+  form?: string;
+}
+
+export interface DarkwindCombatEquipment {
+  main_hand?: string;
+  off_hand?: string;
+  shield?: string;
+  helmet?: string;
+  armor?: string;
+  weapon_type?: DarkwindCombatWeaponType;
+  off_hand_type?: DarkwindCombatWeaponType;
+  weapon_style?: DarkwindCombatWeaponStyle;
+  off_hand_style?: DarkwindCombatWeaponStyle;
+  two_handed?: boolean;
+}
+
 export interface DarkwindCombatActor {
   id: string;
   name: string;
   role: string;
+  appearance?: DarkwindCombatAppearance;
+  equipment?: DarkwindCombatEquipment;
 }
 
 export interface DarkwindCombatState {
@@ -120,7 +148,62 @@ function normalizeActor(input: unknown): DarkwindCombatActor | null {
   const id = text(value.id, 96);
   const name = text(value.name, 120);
   const role = text(value.role ?? "participant", 32);
-  return id && name && role ? { id, name, role: role.toLowerCase() } : null;
+  if (!id || !name || !role) return null;
+  const actor: DarkwindCombatActor = { id, name, role: role.toLowerCase() };
+  if (own(value, "appearance")) {
+    actor.appearance = normalizeAppearance(value.appearance) ?? {};
+  }
+  if (own(value, "equipment")) {
+    actor.equipment = normalizeEquipment(value.equipment) ?? {};
+  }
+  return actor;
+}
+
+function normalizeAppearance(input: unknown): DarkwindCombatAppearance | null {
+  const value = record(input);
+  if (!value) return null;
+  const result: DarkwindCombatAppearance = {};
+  for (const field of ["race", "family", "gender", "form"] as const) {
+    if (!own(value, field)) continue;
+    const normalized = text(value[field], 80, true);
+    if (normalized === null) continue;
+    result[field] = normalized;
+  }
+  if (own(value, "size")) {
+    const size = text(value.size, 80, true)?.toLowerCase();
+    if (size && ["tiny", "small", "medium", "large", "huge"].includes(size))
+      result.size = size as DarkwindCombatSize;
+  }
+  return result;
+}
+
+function normalizeEquipment(input: unknown): DarkwindCombatEquipment | null {
+  const value = record(input);
+  if (!value) return null;
+  const result: DarkwindCombatEquipment = {};
+  for (const field of ["main_hand", "off_hand", "shield", "helmet", "armor"] as const) {
+    if (!own(value, field)) continue;
+    const normalized = text(value[field], 80, true);
+    if (normalized === null) continue;
+    result[field] = normalized;
+  }
+  const enums = {
+    weapon_type: ["focus", "missile", "polearm", "cleaving", "crushing", "piercing", "slashing"],
+    off_hand_type: ["focus", "missile", "polearm", "cleaving", "crushing", "piercing", "slashing"],
+    weapon_style: ["slash", "thrust", "smash"],
+    off_hand_style: ["slash", "thrust", "smash"],
+  } as const;
+  for (const field of Object.keys(enums) as (keyof typeof enums)[]) {
+    if (!own(value, field)) continue;
+    const normalized = text(value[field], 24)?.toLowerCase();
+    if (!normalized || !(enums[field] as readonly string[]).includes(normalized)) continue;
+    result[field] = normalized as never;
+  }
+  if (own(value, "two_handed")) {
+    const normalized = protocolBoolean(value.two_handed);
+    if (normalized !== null) result.two_handed = normalized;
+  }
+  return result;
 }
 
 /** Returns a clean, bounded Combat State or null for malformed retained fields. */

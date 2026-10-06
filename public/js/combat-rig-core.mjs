@@ -143,7 +143,9 @@ function weaponFromEquipment(equipment, guildWeapon) {
 }
 
 export function resolveFigure(combatant = {}, side = 'player') {
-  const isBeast = side === 'target' && !!combatant.isNpc;
+  const declaredForm = slug(combatant.form);
+  const isBeast = ['quadruped', 'beast', 'serpent'].includes(declaredForm)
+    || (!declaredForm && !combatant.appearanceKnown && side === 'target' && !!combatant.isNpc);
   const guild = slug(combatant.guild);
   const race = slug(combatant.race);
   const equipment = isBeast ? null : (combatant.equipment || null);
@@ -162,7 +164,8 @@ export function resolveFigure(combatant = {}, side = 'player') {
     armor: !!(equipment && equipment.bodyArmor),
     twoHanded: !!(equipment && equipment.twoHanded),
     caster: !isBeast && CASTER_GUILDS.has(guild),
-    scale: isBeast ? 1.08 : (SCALE_BY_RACE[race] || 1),
+    scale: ({ tiny: 0.72, small: 0.86, medium: 1, large: 1.14, huge: 1.3 })[slug(combatant.size)]
+      || (isBeast ? 1.08 : (SCALE_BY_RACE[race] || 1)),
     facing: side === 'player' ? 1 : -1,
   };
 }

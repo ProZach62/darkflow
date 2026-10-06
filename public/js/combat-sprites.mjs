@@ -96,7 +96,7 @@ export function spriteKeysFor(combatant, figure, side) {
   const own = side === 'player' && combatant && !combatant.observed;
   if (own) {
     const name = spriteSlug(combatant.name);
-    if (name) keys.push('characters/' + name);
+    if (name && !combatant.appearanceKnown) keys.push('characters/' + name);
     const gender = spriteSlug(combatant.gender);
     const race = spriteSlug(combatant.race);
     if (gender && race) {
@@ -105,7 +105,7 @@ export function spriteKeysFor(combatant, figure, side) {
       if (family && family !== race) keys.push(gender + '-' + family);
     }
   }
-  if (side === 'target' && combatant && combatant.isNpc) {
+  if (side === 'target' && combatant && combatant.isNpc && !combatant.appearanceKnown) {
     const enemy = enemySpriteKey(combatant.name);
     if (enemy) keys.push(enemy);
   }

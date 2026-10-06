@@ -1331,7 +1331,7 @@ export function createCombatStage(doc, options = {}) {
       // the fighter's picture is in the header, beside the name.
       const drawsHead = !sprite || sprite.sheet.portrait !== false;
       if (drawsHead) this._drawHead(c, head, material, isActor, flashMix);
-      if (drawsHead && geo.helmet) this._drawHelmet(c, head, geo.facing);
+      if (geo.helmet) this._drawHelmet(c, head, geo.facing);
       if (!sprite) this._drawArm(c, geo, geo.arms.right, material, 1);
       if (!weaponsInArt && figure.weapon !== 'bow') {
         if (smear) this._drawSmear(c, figure, joints, phase, token, groundLine, unit, material, smear);

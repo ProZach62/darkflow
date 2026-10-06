@@ -78,14 +78,83 @@ function normalizeActors(value) {
     const name = safeText(raw.name, 120);
     if (!id || !name || seen.has(id)) continue;
     seen.add(id);
-    actors.push({
+    const actor = {
       id,
       name,
       role: safeText(raw.role, 32).toLowerCase() || 'participant',
-    });
+    };
+    if (Object.prototype.hasOwnProperty.call(raw, 'appearance')) actor.appearance = normalizeAppearance(raw.appearance);
+    if (Object.prototype.hasOwnProperty.call(raw, 'equipment')) actor.equipment = normalizePublicEquipment(raw.equipment);
+    actors.push(actor);
     if (actors.length >= 16) break;
   }
   return actors;
+}
+
+const PUBLIC_WEAPON_KIND = Object.freeze({ focus: 'staff', missile: 'bow', polearm: 'polearm', cleaving: 'axe', crushing: 'blunt', piercing: 'rapier', slashing: 'blade' });
+const PUBLIC_WEAPON_STYLE = Object.freeze({ slash: 'sword', thrust: 'spear', smash: 'hammer' });
+
+function normalizeAppearance(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const appearance = {};
+  for (const field of ['race', 'family', 'gender', 'form']) {
+    if (Object.prototype.hasOwnProperty.call(value, field)) appearance[field] = safeText(value[field], 80);
+  }
+  const size = safeText(value.size, 80).toLowerCase();
+  if (['tiny', 'small', 'medium', 'large', 'huge'].includes(size)) appearance.size = size;
+  return appearance;
+}
+
+function normalizePublicEquipment(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const equipment = {};
+  for (const field of ['main_hand', 'off_hand', 'shield', 'helmet', 'armor']) {
+    if (Object.prototype.hasOwnProperty.call(value, field)) equipment[field] = safeText(value[field], 80);
+  }
+  for (const field of ['weapon_type', 'off_hand_type']) {
+    const type = safeText(value[field], 24).toLowerCase();
+    if (PUBLIC_WEAPON_KIND[type]) equipment[field] = type;
+  }
+  for (const field of ['weapon_style', 'off_hand_style']) {
+    const style = safeText(value[field], 24).toLowerCase();
+    if (PUBLIC_WEAPON_STYLE[style]) equipment[field] = style;
+  }
+  if (value.two_handed === true || value.two_handed === 1) equipment.two_handed = true;
+  else if (value.two_handed === false || value.two_handed === 0) equipment.two_handed = false;
+  return equipment;
+}
+
+function publicEquipmentProfile(value) {
+  const entry = (label, type, style) => label === undefined ? null : (label ? {
+    name: label,
+    kind: PUBLIC_WEAPON_KIND[type] || '',
+    style: PUBLIC_WEAPON_STYLE[style] || '',
+  } : null);
+  return {
+    mainHand: entry(value.main_hand, value.weapon_type, value.weapon_style),
+    offHand: entry(value.off_hand, value.off_hand_type, value.off_hand_style),
+    shield: !!value.shield,
+    helmet: !!value.helmet,
+    bodyArmor: !!value.armor,
+    twoHanded: !!value.two_handed,
+  };
+}
+
+function publicActorHints(actor) {
+  if (!actor || !Object.prototype.hasOwnProperty.call(actor, 'appearance')) return null;
+  const appearance = actor.appearance || {};
+  const race = appearance.race || appearance.family || '';
+  const identity = [appearance.gender || '', race].filter(Boolean).join(' ');
+  return {
+    race,
+    family: appearance.family || '',
+    gender: appearance.gender || '',
+    size: appearance.size || '',
+    form: appearance.form || '',
+    appearanceKnown: true,
+    descriptor: [identity, appearance.form || ''].filter(Boolean).join(' \u00b7 '),
+    fallbackImage: '',
+  };
 }
 
 export function createCombatVisualState(options = {}) {
@@ -391,6 +460,13 @@ export function buildCombatView(current, sources = {}) {
       && actor.role !== 'self'
       && actor.role !== 'target'
   );
+  const playerPublicAppearance = publicActorHints(currentActor);
+  const targetPublicAppearance = publicActorHints(targetActor);
+  const playerPublicEquipment = currentActor && Object.prototype.hasOwnProperty.call(currentActor, 'equipment')
+    ? publicEquipmentProfile(currentActor.equipment || {}) : null;
+  const targetPublicEquipment = targetActor && Object.prototype.hasOwnProperty.call(targetActor, 'equipment')
+    ? publicEquipmentProfile(targetActor.equipment || {}) : null;
+  const privatePlayerDescriptor = observerView ? emptyDescriptor() : playerDescriptor(status);
 
   return {
     visualEnabled: model.visualEnabled,
@@ -410,24 +486,29 @@ export function buildCombatView(current, sources = {}) {
       id: playerId,
       name: (currentActor && currentActor.name)
         || (observerView ? 'Combatant' : safeText(avatar.name, 120) || 'You'),
-      image: observerView ? '' : safeText(avatar.url, 2048),
+      image: observerView || playerPublicAppearance ? '' : safeText(avatar.url, 2048),
       health: observerView
         ? unavailableHealthSnapshot('unavailable')
         : healthSnapshot(vitals.hp, vitals.maxhp),
       // Char.Status describes the recipient only. An observed fight never
       // borrows it for somebody else's token.
-      ...(observerView ? emptyDescriptor() : playerDescriptor(status)),
+      ...privatePlayerDescriptor,
+      ...(playerPublicAppearance || {}),
+      ...(playerPublicAppearance ? { guild: '' } : {}),
       // Wielded and worn items from Char.Items, recipient-only for the
       // same reason as the descriptor above.
-      equipment: observerView ? null : equipmentProfile(inventory),
+      equipment: playerPublicEquipment || (observerView ? null : equipmentProfile(inventory)),
     },
     target: {
       id: targetId,
-      name: (!observerView && enemyName)
+      name: ((targetPublicAppearance || targetPublicEquipment) && targetActor && targetActor.name)
+        || (!observerView && enemyName)
         || (targetActor && targetActor.name)
         || 'Current target',
-      image: observerView ? '' : safeText(enemy.enemy_image, 2048),
-      condition: observerView ? '' : safeText(enemy.enemy_hp_string, 160),
+      image: observerView || targetPublicAppearance ? '' : safeText(enemy.enemy_image, 2048),
+      condition: observerView || targetPublicAppearance ? '' : safeText(enemy.enemy_hp_string, 160),
+      ...(targetPublicAppearance || {}),
+      ...(targetPublicEquipment ? { equipment: targetPublicEquipment } : {}),
       isNpc: !observerView && isNpcEnemy(enemy),
       health: !observerView && enemyName
         ? healthSnapshot(enemy.enemy_curhp, enemy.enemy_maxhp)

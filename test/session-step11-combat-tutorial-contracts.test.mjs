@@ -156,6 +156,57 @@ test("Step 11 Combat and Tutorial contracts bound and clean every direction", as
     assert.equal(contracts.DARKWIND_COMBAT_RESYNC, undefined);
   });
 
+  await t.test("carries only bounded public actor snapshots through validation", () => {
+    const state = contracts.normalizeDarkwindCombatState(combatState({
+      actors: [{
+        id: "self",
+        name: "Roster Name",
+        role: "self",
+        appearance: {
+          race: "Scro\u0007",
+          family: "Orc",
+          gender: "male",
+          size: "LARGE",
+          form: "humanoid",
+          portrait_url: "https://private.invalid/me.png",
+          hp: 99,
+        },
+        equipment: {
+          main_hand: "coarse weapon",
+          off_hand: "narrow weapon",
+          weapon_type: "cleaving",
+          off_hand_type: "piercing",
+          weapon_style: "slash",
+          off_hand_style: "thrust",
+          two_handed: 0,
+          inventory: [{ private: true }],
+        },
+        private_path: "/players/secret",
+      }],
+    }));
+    assert.deepEqual(state.actors[0], {
+      id: "self",
+      name: "Roster Name",
+      role: "self",
+      appearance: { race: "Scro", family: "Orc", gender: "male", size: "large", form: "humanoid" },
+      equipment: {
+        main_hand: "coarse weapon",
+        off_hand: "narrow weapon",
+        weapon_type: "cleaving",
+        off_hand_type: "piercing",
+        weapon_style: "slash",
+        off_hand_style: "thrust",
+        two_handed: false,
+      },
+    });
+    assert.deepEqual(contracts.normalizeDarkwindCombatState(combatState({
+      actors: [{ id: "self", name: "A", role: "self", appearance: { race: "x".repeat(81) } }],
+    })).actors[0].appearance, {});
+    assert.deepEqual(contracts.normalizeDarkwindCombatState(combatState({
+      actors: [{ id: "self", name: "A", role: "self", equipment: { weapon_type: "secret-sword" } }],
+    })).actors[0].equipment, {});
+  });
+
   await t.test("caps Combat rows before ignoring malformed excess", () => {
     const state = contracts.normalizeDarkwindCombatState(
       combatState({ actors: [...Array.from({ length: 16 }, (_, index) => actor(index)), null] }),

@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createServer, isRunnableDevEnvironment } from "vite";
+import { buildCombatView } from "../public/js/combat-visual-core.mjs";
+import { resolveFigure } from "../public/js/combat-rig-core.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -142,6 +144,47 @@ test("combat snapshots carry the recipient's Char.Status and inventory for the s
   harness.reconnect("disconnected");
   assert.equal(harness.combat.getSnapshot().status, null, "a dropped connection clears the descriptor inputs");
   assert.equal(harness.combat.getSnapshot().inventory.length, 0);
+});
+
+test("public snapshots survive the session pipeline and same-sequence clearing", async (t) => {
+  const modules = await loadModules(t);
+  const harness = createHarness(modules);
+  t.after(() => harness.scope.dispose());
+  harness.reconnect("connected");
+  harness.gmcp.dispatch("Char.Status", { race: "Dragon", class: "Mage" });
+  harness.gmcp.dispatch("Char.Items.List", {
+    location: "inv", items: [{ id: "r1", name: "a staff (main weapon)", attrib: "l" }],
+  });
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ actors: [
+    { id: "self", name: "Public Acer", role: "self",
+      appearance: { race: "Pixie", size: "huge", form: "humanoid" },
+      equipment: { main_hand: "coarse edge", weapon_type: "cleaving", off_hand: "narrow point", off_hand_type: "piercing" } },
+    { id: "target", name: "Public Target", role: "target", appearance: {}, equipment: {} },
+  ] }));
+  const view = () => {
+    const snapshot = harness.combat.getSnapshot();
+    return buildCombatView(snapshot.model, snapshot);
+  };
+  assert.equal(view().player.race, "Pixie");
+  assert.equal(resolveFigure(view().player).weapon, "axe");
+  assert.equal(resolveFigure(view().player).offKind, "rapier");
+  assert.equal(resolveFigure(view().player).scale, 1.3);
+
+  // Metadata does not advance the combat event sequence. Invalid optional
+  // hints clear old hints without blocking an authoritative encounter end.
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ actors: [
+    { id: "self", name: "Public Acer", role: "self", appearance: null, equipment: [] },
+  ] }));
+  assert.equal(view().player.race, "");
+  assert.equal(resolveFigure(view().player).weapon, "claws");
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ active: 0, actors: [
+    { id: "self", name: "Public Acer", role: "self",
+      appearance: { race: "x".repeat(81), size: "giant" },
+      equipment: { main_hand: 42, weapon_type: "future-category", two_handed: "maybe" } },
+  ] }));
+  assert.equal(harness.combat.getSnapshot().model.active, false);
+  assert.deepEqual(harness.combat.getSnapshot().model.actors[0].equipment, {});
+  assert.equal(resolveFigure(view().player).weapon, "claws");
 });
 
 function framesFor(sent, packageName) {

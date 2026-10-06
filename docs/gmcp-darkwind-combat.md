@@ -84,6 +84,73 @@ State is a recoverable snapshot, not an animation command:
 | `outcome`           | Empty while active; final values may include `victory`, `defeat`, `fled`, `target-lost`, or `disconnected`.                                                      |
 | `summary`           | Short accessible lifecycle summary.                                                                                                                              |
 
+Each actor may additionally carry these recipient-safe, additive objects:
+
+```json
+{
+  "id": "actor-2",
+  "name": "an ash drake",
+  "role": "target",
+  "appearance": {
+    "race": "drake",
+    "family": "dragonkin",
+    "gender": "unknown",
+    "size": "large",
+    "form": "quadruped"
+  },
+  "equipment": {
+    "main_hand": "a coarse cleaving weapon",
+    "off_hand": "",
+    "shield": "",
+    "helmet": "",
+    "armor": "scaled armor",
+    "weapon_type": "cleaving",
+    "off_hand_type": "piercing",
+    "weapon_style": "slash",
+    "off_hand_style": "thrust",
+    "two_handed": false
+  }
+}
+```
+
+`appearance` permits only `race`, `family`, `gender`, `size`, and `form`.
+Each is text of at most 80 characters; `size`, when present, is one of `tiny`,
+`small`, `medium`, `large`, or `huge`. `form` is the character-authoritative
+transformation `body_plan`, not an NPC guess. The client recognizes humanoid,
+quadruped/beast, and serpent presentation families and uses a safe generic
+figure for other values. V1 does not carry portrait or sprite URLs.
+
+`equipment` permits 80-character labels for `main_hand`, `off_hand`, `shield`,
+`helmet`, and `armor`. An empty label authoritatively means that slot has no
+visible equipment. `weapon_type` and `off_hand_type` are coarse server-derived
+categories: `focus`, `missile`, `polearm`, `cleaving`, `crushing`, `piercing`,
+or `slashing`. `weapon_style` and `off_hand_style` are `slash`, `thrust`, or
+`smash`. `two_handed` is an optional boolean (wire values `0` and `1` are also
+accepted). These fields do not identify an exact weapon.
+
+Invalid optional hint fields are discarded, and an invalid optional object
+becomes `{}`. They must not reject an otherwise valid lifecycle State or retain
+earlier hints. Core actor identity and sequence validation remains strict.
+
+Object presence is significant. If an object is absent, a legacy client may
+use the existing recipient-private `Char.Status`, `Char.Enemy`, or `Char.Items`
+fallback for the recipient's own fight. An explicit `{}` says that category is
+authoritatively unavailable and clears earlier hints; the client must not
+reconstruct it from names, guild defaults, inventory keywords, NPC status, or
+other private snapshots. Every State replaces the prior actor roster, so later
+omission removes earlier rich metadata rather than retaining it. Actor roster
+names outrank potentially stale `Char.Enemy` names when public metadata is
+present. Legacy own-fight snapshots retain the existing `Char.Enemy` name
+fallback. NPC classification still comes from `Char.Enemy` for the recipient's
+own fight; it must not override an authoritative public form or clearing.
+
+The objects contain public presentation data for that actor only. This makes
+them safe for passive observed fights, where each staged actor uses its own
+metadata. An observer must never fill gaps with the recipient's descriptors,
+equipment, HP, avatar, enemy art, or enemy HP. Unknown/redacted hints receive a
+generic figure; appearance presence alone, and NPC identity alone when public
+appearance is present, do not imply beast form.
+
 In observed group combat, the server may update `current_actor_id` as another
 player acts against the same right-side focus without changing
 `encounter_id`. This preserves pane position, history, and manual-close state
@@ -218,13 +285,14 @@ and result badges are drawn on the canvas; names, health bars, condition text,
 the current exchange, threats, history, and the live region stay in the DOM so
 the accessibility contract above is unchanged.
 
-The figures are drawn from a pose rig rather than image assets. The player's
-wielded and worn items from `Char.Items` shape the figure: the main-hand
+The figures are drawn from a pose rig rather than image assets. Public actor
+appearance and equipment from State shape the figure when present. On legacy
+packets, the player's wielded and worn items from `Char.Items` shape it: the main-hand
 item's name picks the weapon (blade, knife, axe, blunt, polearm, staff, bow,
 or bare hands when nothing is wielded), an off-hand item is drawn in the
 left hand, a shield rides the left forearm, head armor draws a helmet, and
 body armor thickens the torso. Weapon kind is a keyword heuristic over the
-item name because the protocol carries no weapon type; an unrecognized name,
+item name; an unrecognized name,
 or no inventory yet, falls back to the guild's weapon. Race scales the body,
 and NPC targets use a hunched beast form. Each event blends the actor
 through windup and strike poses and the victim through recoil, dodge, or guard

@@ -458,6 +458,36 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
   fetchManifest = null;
 });
 
+test('public helmets overlay painted heads and clearing removes the overlay', async (t) => {
+  fetchManifest = {
+    version: 1, kind: 'humanoid', image: '/assets/sprites/humanoid.png',
+    frameWidth: 256, frameHeight: 256, unit: 64,
+    anchor: { x: 128, y: 232 }, facing: 'right', portrait: false,
+    frames: { idle: { x: 0, y: 0, anchors: { head: { x: 128, y: 60, r: 20 } } } },
+  };
+  t.after(() => { fetchManifest = null; });
+  const body = bodyElement();
+  createdImages.length = 0;
+  const renderer = mountRenderer(body);
+  const snapshot = (equipment) => ({ model: combatModel({ actors: [
+    { id: 'self', name: 'Public fighter', role: 'self', appearance: {}, equipment },
+    { id: 'target-1', name: 'Target', role: 'target', appearance: {}, equipment: {} },
+  ] }) });
+  renderer.render(snapshot({ helmet: 'iron helm' }));
+  const stage = renderer.stage;
+  runFrame(5200);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  createdImages.find(img => img.src.startsWith('/assets/sprites/humanoid.png?v=')).finishLoading();
+  let helmets = 0;
+  stage._drawHelmet = () => { helmets++; };
+  runFrame(5300);
+  assert.equal(helmets, 1, 'painted head does not suppress the equipped helmet');
+  renderer.render(snapshot({}));
+  helmets = 0;
+  runFrame(5400);
+  assert.equal(helmets, 0, 'cleared snapshot removes the helmet');
+});
+
 test('a pixelated sheet is drawn with image smoothing off', async () => {
   fetchManifest = {
     version: 1,
