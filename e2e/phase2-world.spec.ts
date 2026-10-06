@@ -414,55 +414,29 @@ test("map and room image reset across reconnect and remount after session dispos
   await expect(page.locator("[data-world-instance]")).toHaveCount(0);
 });
 
-test("standalone isometric map renders beside the flat map with terrain, services, and occupants", async ({
+test("isometric room renders one terrain scene with services, exits, and occupants", async ({
   page,
 }) => {
   const endpoint = await connect(page);
-  const flatMap = page.locator('.map-panel[data-panel-id="map"]');
-  if ((await flatMap.count()) === 0) await togglePanel(page, "Map");
-  await togglePanel(page, "Isometric Map");
-  const isoMap = page.locator('.map-panel[data-panel-id="isoMap"]');
+  await togglePanel(page, "Isometric Room");
+  const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
 
-  const atrium = {
-    ...currentRoom(101, "Market Atrium", 0, { east: 102, south: 103 }),
-    environment: "inside, city",
-    details: ["shop", "bank", "pub"],
-    doors: { east: 2 },
-  };
-  endpoint.sendGmcp("Darkwind.MapData2.Current", atrium);
-  endpoint.sendGmcp("Darkwind.MapData2.Area", {
-    area: "Fixture Town",
-    rooms: [
-      atrium,
-      {
-        ...currentRoom(102, "Eastern Forest", 1, { west: 101, east: 105 }),
-        environment: "forest",
-      },
-      {
-        ...currentRoom(103, "South Road", 0, { north: 101, east: 104 }),
-        x: 0,
-        y: 1,
-        environment: "road, plains",
-      },
-      {
-        ...currentRoom(104, "River Crossing", 1, { west: 103 }),
-        x: 1,
-        y: 1,
-        environment: "river",
-      },
-      {
-        ...currentRoom(105, "East Road", 2, { west: 102, east: 106 }),
-        environment: "road",
-      },
-      { ...currentRoom(106, "Far East", 3, { west: 105 }), environment: "plains" },
-    ],
-  });
   endpoint.sendGmcp("Room.Info", {
     num: 101,
     name: "Market Atrium",
     area: "Fixture Town",
     environment: "inside, city",
+    details: ["shop", "bank", "pub"],
+    looks: [
+      {
+        id: "marble-fountain",
+        name: "a marble fountain",
+        nouns: ["fountain", "water"],
+        sprite: "fountain",
+      },
+    ],
     exits: { east: 102, south: 103 },
+    exit_states: { east: "closed" },
   });
   endpoint.sendGmcp("Darkwind.Room.Occupants", {
     version: 1,
@@ -479,38 +453,33 @@ test("standalone isometric map renders beside the flat map with terrain, service
     removed: [],
   });
 
-  await expect(flatMap).toBeVisible();
-  await expect(isoMap.locator("canvas")).toBeVisible();
-  const current = isoMap.getByRole("button", { name: "Speedwalk to Market Atrium" });
-  await expect(current).toBeVisible();
-  await expect(current).toHaveClass(/map-tile-player/);
-  await expect(isoMap.locator(".map-iso-frame")).toHaveAttribute("data-map-occupants", "3");
-  await expect(isoMap.locator(".map-iso-frame")).toHaveAttribute("data-map-sprites", "6");
-  await expect(isoMap.locator(".map-iso-frame")).toHaveAttribute("data-map-terrain-sprites", "6");
-  await expect(isoMap.getByRole("button", { name: "Speedwalk to East Road" })).toHaveAttribute(
-    "data-terrain-orientation",
-    "east-west",
+  await expect(isoRoom).toBeVisible();
+  await expect(isoRoom).toHaveAttribute("data-room-terrain", "city");
+  await expect(isoRoom).toHaveAttribute("data-room-occupants", "3");
+  await expect(isoRoom).toHaveAttribute("data-room-buildings", "3");
+  await expect(isoRoom).toHaveAttribute("data-room-targets", "1");
+  await expect(isoRoom.getByRole("heading", { name: "Market Atrium" })).toBeVisible();
+  await expect(isoRoom.locator('.room-floor[src$="/inside.webp"]')).toBeVisible();
+  await expect(isoRoom.getByRole("img", { name: /Nacho/ })).toBeVisible();
+  await expect(isoRoom.getByRole("img", { name: /Alice/ })).toBeVisible();
+  await expect(
+    isoRoom.getByRole("img", { name: /frost giant.*level 182.*hostile/i }),
+  ).toBeVisible();
+  await expect(isoRoom.getByRole("button", { name: "Go east" })).toHaveClass(/blocked/);
+  await expect(isoRoom.getByRole("button", { name: "Go south" })).toBeVisible();
+  await expect(isoRoom.getByRole("button", { name: "Look at a marble fountain" })).toBeVisible();
+  await expect(isoRoom.locator('.room-target img[src$="/fountain.webp"]')).toBeVisible();
+  await expect(isoRoom.getByRole("list", { name: "Room occupants" })).toContainText(
+    "a frost giant",
   );
-  await expect(isoMap.getByRole("button", { name: "Speedwalk to Eastern Forest" })).toBeVisible();
-  await current.focus();
-  const tooltip = isoMap.getByRole("tooltip");
-  await expect(tooltip).toBeVisible();
-  await expect(tooltip).toContainText("Shop · Bank · Pub");
-  await expect(tooltip).toContainText("Nacho");
-  await expect(tooltip).toContainText("a frost giant");
-  await expect(tooltip).toContainText("L182");
+  await isoRoom
+    .getByRole("list", { name: "Things to look at" })
+    .getByRole("button", { name: "a marble fountain" })
+    .click();
+  await expect.poll(() => endpoint.commands).toContain("look fountain");
+  await expect(isoRoom).toHaveAttribute("data-player-target", "marble-fountain");
+  await expect(isoRoom.locator(".occupant.self")).toHaveClass(/walking/);
 
-  const frame = isoMap.locator(".map-iso-frame");
-  await expect(frame).toHaveAttribute("data-map-living-layers", "1");
-  const firstPhase = Number(await frame.getAttribute("data-map-animation-phase"));
-  await expect
-    .poll(async () => Number(await frame.getAttribute("data-map-animation-phase")))
-    .not.toBe(firstPhase);
-
-  endpoint.sendGmcp("Darkwind.MapData2.Current", {
-    ...currentRoom(102, "Eastern Forest", 1, { west: 101 }),
-    environment: "forest",
-  });
   endpoint.sendGmcp("Room.Info", {
     num: 102,
     name: "Eastern Forest",
@@ -531,22 +500,21 @@ test("standalone isometric map renders beside the flat map with terrain, service
     ],
     removed: [],
   });
-  await expect
-    .poll(async () => {
-      const progress = Number(await frame.getAttribute("data-map-movement-progress"));
-      return progress > 0 && progress < 1;
-    })
-    .toBe(true);
-  await expect(frame).toHaveAttribute("data-map-moving-sprites", "2");
-  await expect
-    .poll(() =>
-      isoMap.locator(".map-iso-rooms").evaluate((element) => element.getAttribute("style")),
-    )
-    .toBe("");
+
+  await expect(isoRoom).toHaveAttribute("data-room-terrain", "forest");
+  await expect(isoRoom).toHaveAttribute("data-room-occupants", "2");
+  await expect(isoRoom.getByRole("heading", { name: "Eastern Forest" })).toBeVisible();
+  await expect(isoRoom.locator('.room-floor[src$="/forest.webp"]')).toBeVisible();
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(frame).not.toHaveAttribute("data-map-animation-phase");
-  await expect(frame).toHaveAttribute("data-map-animating", "false");
+  await expect
+    .poll(() =>
+      isoRoom
+        .locator(".occupant")
+        .first()
+        .evaluate((node) => getComputedStyle(node).animationName),
+    )
+    .toBe("none");
 });
 
 test("the map marks you, previews a route on hover, draws service icons, and has a legend", async ({

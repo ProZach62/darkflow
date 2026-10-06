@@ -1,3 +1,11 @@
+export interface RoomLook {
+  id: string;
+  name: string;
+  nouns: string[];
+  kind?: string;
+  sprite?: string;
+}
+
 /** Room.Info payload (docs/gmcp-room.md:18-41). */
 export interface RoomInfo {
   num?: string | number;
@@ -15,6 +23,7 @@ export interface RoomInfo {
   exits?: Record<string, string | number> | "";
   exit_states?: Record<string, string>;
   details?: Record<string, unknown> | string[] | "";
+  looks?: RoomLook[] | "";
   [key: string]: unknown;
 }
 

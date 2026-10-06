@@ -34,6 +34,7 @@
   import DpsPanel from "./DpsPanel.svelte";
   import FishingPanel from "./FishingPanel.svelte";
   import IdePanel from "./IdePanel.svelte";
+  import IsoRoomPanel from "./IsoRoomPanel.svelte";
   import MapPanel from "./MapPanel.svelte";
   import RoomImagePanel from "./RoomImagePanel.svelte";
   import RoomPanel from "./RoomPanel.svelte";
@@ -132,8 +133,8 @@
     {
       id: "isoMap",
       kind: "isoMap",
-      title: "Isometric Map",
-      state: { mapZoom: 1 },
+      title: "Isometric Room",
+      state: {},
       placement: {
         kind: "floating",
         bounds: { left: 80, top: 60, width: 720, height: 560 },
@@ -1155,8 +1156,7 @@
       isoMap: {
         canClose: () => true,
         collapsible: true,
-        component: MapPanel,
-        componentProps: { projection: "iso" },
+        component: IsoRoomPanel,
         floatable: true,
         session,
       },
@@ -1489,11 +1489,6 @@
         ...(railFor("map")
           ? { mapZoom: normalizeMapZoom(railFor("map")?.getPanelState("map")?.mapZoom) }
           : {}),
-        ...(railFor("isoMap")
-          ? {
-              isoMapZoom: normalizeMapZoom(railFor("isoMap")?.getPanelState("isoMap")?.mapZoom),
-            }
-          : {}),
         railVisibility: { left: leftRailVisible, right: rightRailVisible },
         scrollviews: { left: leftRail?.ids() ?? [], right: rightRail?.ids() ?? [] },
       },
@@ -1553,11 +1548,7 @@
             [...informationPanels, ...worldPanels].some((panel) => panel.id === id)
           ) {
             const state =
-              id === "map"
-                ? { mapZoom: normalizeMapZoom(next.layout.mapZoom) }
-                : id === "isoMap"
-                  ? { mapZoom: normalizeMapZoom(next.layout.isoMapZoom) }
-                  : undefined;
+              id === "map" ? { mapZoom: normalizeMapZoom(next.layout.mapZoom) } : undefined;
             rail.addOrUpdatePanel(railPanelSpec(id as RailPanelId, state));
           }
         }
@@ -1923,7 +1914,7 @@
         title: panel.title,
         state: { ...owner.getPanelState(panel.id), mapZoom: normalizeMapZoom(detail.mapZoom) },
       });
-      if (panel.id === "map" || panel.id === "isoMap") requestSave?.();
+      if (panel.id === "map") requestSave?.();
     };
     const zoneForWidth = (width: number): typeof responsiveZone =>
       width <= 700 ? "mobile" : width < 940 ? "compact" : "desktop";

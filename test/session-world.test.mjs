@@ -199,7 +199,7 @@ test("room image tokens follow merged Room.Info identity and playlist Open alone
   const { bus, scope, world } = createWorld(modules);
   const errorSpy = t.mock.method(console, "error", () => {});
 
-  bus.dispatch("Room.Info", { num: 101, name: "Atrium", exits: {} });
+  bus.dispatch("Room.Info", { num: 101, name: "Atrium", details: ["shop"], exits: {} });
   bus.dispatch("Room.Info", { area: "Keep", environment: "Inside" });
   bus.dispatch("Room.Players", [{ name: "Alice", fullname: "Alice Example" }]);
   bus.dispatch("Room.AddPlayer", { name: "Bob" });
@@ -256,6 +256,7 @@ test("room image tokens follow merged Room.Info identity and playlist Open alone
   const generation = world.getSnapshot().roomGeneration;
   bus.dispatch("Room.Info", { num: "202", name: "Elsewhere", exits: {} });
   assert.equal(world.getSnapshot().roomGeneration, generation + 1);
+  assert.equal(world.getSnapshot().room?.details, undefined);
   assert.equal(world.getSnapshot().roomImage, null);
   assert.deepEqual(world.getSnapshot().players, []);
   scope.dispose();
@@ -348,7 +349,7 @@ test("world sends exact browse, subscriptions, media, and named playlist actions
 
   world.setVisiblePanels(["isoMap"]);
   const isoSubscription = JSON.parse(sent.at(-1).slice("Darkwind.Client.Subscriptions ".length));
-  assert.equal(isoSubscription.panels.map, true);
+  assert.equal(isoSubscription.panels.map, false);
   assert.equal(isoSubscription.panels.room, true);
   assert.equal("isoMap" in isoSubscription.panels, false);
 

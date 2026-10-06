@@ -4,7 +4,6 @@
   import type { Session } from "../runtime/session.ts";
   import type { SessionWorldSnapshot, WorldMapSource } from "../runtime/world.ts";
   import type { PanelState } from "./workspace.ts";
-  import { createIsoMapRenderer, type MapOccupant } from "./map-iso-renderer.ts";
   import { loadClientSettings } from "../app/client-settings.ts";
   // @ts-expect-error Retained renderer factory is JavaScript without declarations.
   import { createMapRenderer, mapDetailIconSvg } from "../../public/js/map-renderer-core.js";
@@ -53,6 +52,15 @@
     color: string;
     alpha: number;
     light: boolean;
+  }
+  interface MapOccupant {
+    id: string;
+    name: string;
+    kind: "self" | "player" | "npc" | "pet";
+    hostile?: boolean;
+    elite?: boolean;
+    boss?: boolean;
+    level?: number;
   }
   interface MapPin {
     kind: string;
@@ -115,36 +123,22 @@
     left: number;
     top: number;
   }
-  interface MapRenderer {
-    render(body: HTMLElement, source: WorldMapSource, extras: Record<string, unknown>): void;
-    getView(): MapView | null;
-    dispose(): void;
-  }
-
   let {
     panelId,
     state: panelState,
     session,
-    projection = "flat",
-  }: {
-    panelId: string;
-    state: Readable<PanelState>;
-    session?: Session;
-    projection?: "flat" | "iso";
-  } = $props();
+  }: { panelId: string; state: Readable<PanelState>; session?: Session } = $props();
 
   const resolvedSession = untrack(() => session);
   if (!resolvedSession) throw new Error("Map panels require a session");
   const activeSession: Session = resolvedSession;
   const resolvedPanelId = untrack(() => panelId);
-  const resolvedProjection = untrack(() => projection);
-  if (resolvedPanelId !== "map" && resolvedPanelId !== "isoMap" && resolvedPanelId !== "areaMap") {
+  if (resolvedPanelId !== "map" && resolvedPanelId !== "areaMap") {
     throw new Error(`Unsupported map panel '${resolvedPanelId}'`);
   }
 
-  const live = resolvedPanelId === "map" || resolvedPanelId === "isoMap";
-  const renderer: MapRenderer =
-    resolvedProjection === "iso" ? createIsoMapRenderer() : (createMapRenderer() as MapRenderer);
+  const live = resolvedPanelId === "map";
+  const renderer = createMapRenderer();
   let panel: HTMLElement;
   let body: HTMLElement;
   let mapZoom = $state(1);
@@ -1332,46 +1326,6 @@
     z-index: 3;
     outline: 2px solid var(--df-accent-blue);
     outline-offset: 1px;
-  }
-
-  .map-body :global(.map-iso-frame),
-  .map-body :global(.map-iso-canvas),
-  .map-body :global(.map-iso-rooms) {
-    position: absolute;
-    inset: 0;
-  }
-
-  .map-body :global(.map-iso-canvas canvas) {
-    display: block;
-  }
-
-  .map-body :global(.map-iso-room) {
-    position: absolute;
-    box-sizing: border-box;
-    border: 0;
-    background: transparent !important;
-    box-shadow: none;
-    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-    cursor: pointer;
-  }
-
-  .map-body :global(.map-iso-room.map-tile-route-target),
-  .map-body :global(.map-iso-room.map-tile-found) {
-    background: rgba(255, 221, 112, 0.2);
-    outline: 3px solid #ffe38a;
-    outline-offset: -5px;
-  }
-
-  .map-body :global(.map-iso-room .map-route-dot) {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0.4rem;
-    height: 0.4rem;
-    border-radius: 50%;
-    background: #8de8ff;
-    box-shadow: 0 0 5px #0a8fb4;
-    transform: translate(-50%, -50%);
   }
 
   .map-title-card {

@@ -117,7 +117,6 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
     layout: {
       collapsed: { left: ["avatar"], right: [] },
       dockview: dockviewA.layout,
-      isoMapZoom: 1.1,
       mapZoom: 0.9,
       railVisibility: { left: false, right: true },
       scrollviews: { left: ["avatar"], right: ["group"] },
@@ -283,23 +282,6 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
       const dockview = structuredClone(compositeA);
       if (mapZoom === undefined) delete dockview.layout.mapZoom;
       else dockview.layout.mapZoom = mapZoom;
-      graph.characterProfiles[characterAId].workspace = {
-        version: 2,
-        payload: { dockview, legacy: originalGraph.characterProfiles[characterAId].workspace },
-      };
-      const loaded = persistence.loadCharacterWorkspace(createGraphStorage(graph), characterAId);
-      assert.equal(loaded.success, true);
-      assert.equal(loaded.recovered, false);
-      assert.deepEqual(loaded.snapshot, dockview);
-    }
-  });
-
-  await t.test("optional isometric rail zoom remains forward-compatible", () => {
-    for (const isoMapZoom of [undefined, null, "invalid", 1.1]) {
-      const graph = structuredClone(originalGraph);
-      const dockview = structuredClone(compositeA);
-      if (isoMapZoom === undefined) delete dockview.layout.isoMapZoom;
-      else dockview.layout.isoMapZoom = isoMapZoom;
       graph.characterProfiles[characterAId].workspace = {
         version: 2,
         payload: { dockview, legacy: originalGraph.characterProfiles[characterAId].workspace },

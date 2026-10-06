@@ -450,8 +450,9 @@ export function createSessionWorld(
 
   listen<RoomInfo>("Room.Info", validateRoomInfo, (data) => {
     const previousRoomId = room ? roomIdFrom(room) : null;
-    const nextRoom = { ...(room ?? {}), ...data };
-    const nextRoomId = roomIdFrom(nextRoom);
+    const mergedRoom = { ...(room ?? {}), ...data };
+    const nextRoomId = roomIdFrom(mergedRoom);
+    const roomChanged = previousRoomId !== null && nextRoomId !== previousRoomId;
     if (nextRoomId !== previousRoomId) {
       roomGeneration += 1;
       roomImage = null;
@@ -463,6 +464,7 @@ export function createSessionWorld(
       occupantsRevision = 0;
       occupantsRoomId = null;
     }
+    const nextRoom = roomChanged ? data : mergedRoom;
     room = deepFreeze(nextRoom);
     selector.processGenericRoomInfo(data);
     if (selector.getLiveMapSource() === learnedMap && nextRoomId) {
@@ -684,11 +686,12 @@ export function createSessionWorld(
     setVisiblePanels(ids) {
       if (disposed) return;
       const visible = new Set(ids);
-      const mapVisible = visible.has("map") || visible.has("isoMap") || visible.has("areaMap");
+      const mapVisible = visible.has("map") || visible.has("areaMap");
       const panels = {
         map: mapVisible,
         areaMap: visible.has("areaMap"),
-        room: mapVisible || visible.has("room") || visible.has("roomImage"),
+        room:
+          mapVisible || visible.has("room") || visible.has("isoMap") || visible.has("roomImage"),
         roomImage: visible.has("roomImage"),
         roomPlaylist: visible.has("roomPlaylist"),
       };

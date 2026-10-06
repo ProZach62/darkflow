@@ -6,12 +6,12 @@ and synchronized room features such as the shared jukebox.
 
 ## Messages
 
-| Message | Direction | Client behavior |
-| --- | --- | --- |
-| `Room.Info` | Server -> Client | Merge current-room metadata and update map state |
-| `Room.Players` | Server -> Client | Replace the current room player list |
-| `Room.AddPlayer` | Server -> Client | Append one player to the room list |
-| `Room.RemovePlayer` | Server -> Client | Remove one player by name |
+| Message             | Direction        | Client behavior                                  |
+| ------------------- | ---------------- | ------------------------------------------------ |
+| `Room.Info`         | Server -> Client | Merge current-room metadata and update map state |
+| `Room.Players`      | Server -> Client | Replace the current room player list             |
+| `Room.AddPlayer`    | Server -> Client | Append one player to the room list               |
+| `Room.RemovePlayer` | Server -> Client | Remove one player by name                        |
 
 ## Room.Info
 
@@ -22,6 +22,15 @@ and synchronized room features such as the shared jukebox.
   "area": "Darkwind",
   "environment": "outside, city",
   "coords": { "x": 0, "y": 0, "z": 0 },
+  "looks": [
+    {
+      "id": "marble-fountain",
+      "name": "a marble fountain",
+      "nouns": ["fountain", "water"],
+      "kind": "fountain",
+      "sprite": "fountain"
+    }
+  ],
   "exits": {
     "north": "450359962737050",
     "south": "closed"
@@ -29,21 +38,31 @@ and synchronized room features such as the shared jukebox.
 }
 ```
 
-| Field | Notes |
-| --- | --- |
-| `num` or `id` | Stable room identity; `num` is used to detect room changes |
-| `name` | Room panel title |
-| `area` or `zone` | Area identity for map grouping |
-| `environment`, `terrain`, or `env` | Terrain label; aliases are normalized |
-| `coords` | Optional `{x,y,z}` object; copied to `coord_x`, `coord_y`, `coord_z` |
-| `exits` | Direction -> destination id or non-numeric state label |
-| `exit_states` | Optional explicit direction -> unavailable-state label |
-| `details` | Optional room tags retained by mapping implementations |
+| Field                              | Notes                                                                      |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| `num` or `id`                      | Stable room identity; `num` is used to detect room changes                 |
+| `name`                             | Room panel title                                                           |
+| `area` or `zone`                   | Area identity for map grouping                                             |
+| `environment`, `terrain`, or `env` | Terrain label; aliases are normalized                                      |
+| `coords`                           | Optional `{x,y,z}` object; copied to `coord_x`, `coord_y`, `coord_z`       |
+| `exits`                            | Direction -> destination id or non-numeric state label                     |
+| `exit_states`                      | Optional explicit direction -> unavailable-state label                     |
+| `details`                          | Optional room tags retained by mapping implementations                     |
+| `looks`                            | Optional visibility-filtered catalogue of room scenery that accepts `look` |
 
 The Darkwind server uses an empty string as the LPC/JSON sentinel when
-`coords`, `exits`, or `details` has no value. `Room.Players` likewise sends an
+`coords`, `exits`, `details`, or `looks` has no value. `Room.Players` likewise sends an
 empty string when no other players are present. Clients accept those wire
 values as empty state without rewriting the received payload.
+
+Each `looks` entry has a stable room-local `id`, player-facing `name`, and one
+or more normalized command `nouns`. `kind` is an optional semantic category.
+`sprite` is an optional client artwork hint; Darkflow recognizes its built-in
+prop names and otherwise falls back to matching familiar nouns. Entries must
+already reflect what the player can perceive. The Isometric Room panel renders
+the catalogue, sends `look <first noun>` when an entry is selected, and walks
+the player's sprite over to the matching room prop. For older servers without
+`looks`, the panel uses `details` as a basic catalogue.
 
 When an `exits` value is a non-numeric string, Darkflow also treats it as an
 exit state. The room panel displays that direction as unavailable with the
@@ -59,9 +78,7 @@ where MapData2 cannot provide an authoritative current-room payload.
 `Room.Players` carries the complete array:
 
 ```json
-[
-  { "name": "nacho", "fullname": "Nacho the Bold" }
-]
+[{ "name": "nacho", "fullname": "Nacho the Bold" }]
 ```
 
 `Room.AddPlayer` carries one player object. `Room.RemovePlayer` accepts either
@@ -70,7 +87,8 @@ a player-name string or an object with `name`. The room panel displays
 
 ## Update Semantics
 
-`Room.Info` is merged into the previous room object so partial updates retain
-known fields. A changed `num` clears the current room-image panel until a new
-`Darkwind.Room.Image` arrives. The player list is maintained separately by the
-three player messages above.
+`Room.Info` updates for the same room are merged so partial updates retain known
+fields. A changed room identity replaces the previous metadata so optional
+fields from the old room cannot leak into the new one. A changed `num` also
+clears the current room-image panel until a new `Darkwind.Room.Image` arrives.
+The player list is maintained separately by the three player messages above.

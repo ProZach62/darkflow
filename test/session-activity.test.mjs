@@ -61,10 +61,10 @@ function createHarness(modules, clock) {
 
 test("commands are classified into looks and bare moves", async (t) => {
   const { classifyCommand, facingFor, inferDirection } = await loadModules(t);
-  assert.deepEqual(classifyCommand("look"), { kind: "look" });
-  assert.deepEqual(classifyCommand("  L  "), { kind: "look" });
-  assert.deepEqual(classifyCommand("look at the drake"), { kind: "look" });
-  assert.deepEqual(classifyCommand("glance"), { kind: "look" });
+  assert.deepEqual(classifyCommand("look"), { kind: "look", target: "" });
+  assert.deepEqual(classifyCommand("  L  "), { kind: "look", target: "" });
+  assert.deepEqual(classifyCommand("look at the drake"), { kind: "look", target: "drake" });
+  assert.deepEqual(classifyCommand("glance at an old tree"), { kind: "look", target: "old tree" });
   assert.deepEqual(classifyCommand("n"), { kind: "move", direction: "n" });
   assert.deepEqual(classifyCommand("Northeast"), { kind: "move", direction: "ne" });
   assert.deepEqual(classifyCommand("up"), { kind: "move", direction: "u" });
@@ -93,10 +93,11 @@ test("a look fires on the command and a room change walks in the direction the p
   harness.room(1, { e: 2, s: 5 });
   assert.deepEqual(harness.seen, [], "arriving in the first room is not a walk");
 
-  harness.command("look");
+  harness.command("look at the fountain");
   assert.equal(harness.seen.length, 1);
   assert.equal(harness.seen[0].kind, "look");
   assert.equal(harness.seen[0].direction, "");
+  assert.equal(harness.seen[0].target, "fountain");
   assert.equal(harness.seen[0].facing, 1);
   assert.equal(harness.seen[0].at, 10_000);
 

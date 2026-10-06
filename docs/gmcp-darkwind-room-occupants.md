@@ -1,8 +1,9 @@
 # Darkwind.Room.Occupants GMCP Protocol
 
 `Darkwind.Room.Occupants 1` is an opt-in, visibility-filtered view of living
-things in the recipient's current room. Darkflow uses it for the isometric map
-and the current-room card.
+things in the recipient's current room. Darkflow uses it for the Isometric Room
+panel and the current-room card. The room panel is intentionally independent of
+MapData2: it renders one current-room scene rather than a navigable world map.
 
 ```json
 {

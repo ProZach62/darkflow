@@ -21,6 +21,8 @@ export interface SceneActivity {
   readonly kind: SceneActivityKind;
   /** Normalised direction of a walk ("n", "sw", "u", ...), or "" when unknown; always "" for a look. */
   readonly direction: string;
+  /** Normalised noun phrase of a targeted look, or "" for untargeted looks and walks. */
+  readonly target: string;
   /** Which way the figure faces afterwards: 1 toward stage right, -1 toward stage left. */
   readonly facing: 1 | -1;
   /** Runtime clock reading when the activity was recorded. */
@@ -42,7 +44,7 @@ export interface SessionActivityOptions {
   now?: () => number;
 }
 
-export type CommandIntent = { kind: "look" } | { kind: "move"; direction: string };
+export type CommandIntent = { kind: "look"; target: string } | { kind: "move"; direction: string };
 
 const DIRECTION_ALIASES: Readonly<Record<string, string>> = {
   n: "n",
@@ -80,8 +82,13 @@ const MAX_PENDING_MOVES = 8;
 export function classifyCommand(text: string): CommandIntent | null {
   const trimmed = text.trim().toLowerCase();
   if (!trimmed) return null;
-  const verb = trimmed.split(/\s+/, 1)[0] ?? "";
-  if (LOOK_VERBS.has(verb)) return { kind: "look" };
+  const [verb = "", ...words] = trimmed.split(/\s+/);
+  if (LOOK_VERBS.has(verb)) {
+    while (words[0] === "at" || words[0] === "the" || words[0] === "a" || words[0] === "an") {
+      words.shift();
+    }
+    return { kind: "look", target: words.join(" ") };
+  }
   const direction = DIRECTION_ALIASES[verb];
   if (direction !== undefined && verb === trimmed) return { kind: "move", direction };
   return null;
@@ -131,12 +138,12 @@ export function createSessionActivity(
   let awaitingArrival = true;
   let disposed = false;
 
-  const publish = (kind: SceneActivityKind, direction: string): void => {
+  const publish = (kind: SceneActivityKind, direction: string, target = ""): void => {
     if (disposed) return;
     const seq = snapshot.seq + 1;
     snapshot = deepFreeze({
       seq,
-      latest: { seq, kind, direction, facing: facingFor(direction), at: now() },
+      latest: { seq, kind, direction, target, facing: facingFor(direction), at: now() },
     });
     for (const listener of [...listeners]) listener(snapshot);
   };
@@ -152,7 +159,7 @@ export function createSessionActivity(
       const intent = classifyCommand(typeof payload.text === "string" ? payload.text : "");
       if (!intent) return;
       if (intent.kind === "look") {
-        publish("look", "");
+        publish("look", "", intent.target);
         return;
       }
       const at = now();
