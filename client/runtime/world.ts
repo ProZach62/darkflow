@@ -159,6 +159,8 @@ export interface SessionWorldSnapshot {
   readonly occupantsDark: boolean;
   readonly occupantsMore: number;
   readonly occupantsReady: boolean;
+  readonly occupantsAuthoritative: boolean;
+  readonly occupantsUnavailable: boolean;
   readonly roomGeneration: number;
   readonly roomImage: SessionRoomImageSnapshot | null;
   readonly playlist: SessionPlaylistSnapshot;
@@ -282,8 +284,13 @@ export function createSessionWorld(
   let occupantsDark = false;
   let occupantsMore = 0;
   let occupantsReady = false;
+  let occupantsAuthoritative = false;
+  let occupantsUnavailable = false;
+  let occupantSignature = "";
   let occupantsRevision = 0;
   let occupantsRoomId: string | null = null;
+  let occupantSnapshotRequested = false;
+  let roomSubscribed = false;
   let roomImage: SessionRoomImageSnapshot | null = null;
   let lastSentPanels = "";
   let playlist = deepFreeze(initialPlaylist());
@@ -414,6 +421,8 @@ export function createSessionWorld(
       occupantsDark,
       occupantsMore,
       occupantsReady,
+      occupantsAuthoritative,
+      occupantsUnavailable,
       roomGeneration,
       roomImage,
       playlist,
@@ -429,6 +438,26 @@ export function createSessionWorld(
     for (const listener of [...listeners]) {
       if (listeners.has(listener)) listener(snapshot);
     }
+  }
+
+  function clearOccupantRoster(retainRevision = false): void {
+    occupants = [];
+    occupantsDark = false;
+    occupantsMore = 0;
+    occupantsReady = false;
+    occupantsUnavailable = false;
+    if (!retainRevision) {
+      occupantsRevision = 0;
+      occupantsRoomId = null;
+      occupantSignature = "";
+      occupantSnapshotRequested = false;
+    }
+  }
+
+  function requestOccupantSnapshot(): void {
+    if (occupantSnapshotRequested || !connected || !roomSubscribed) return;
+    if (gmcp.sendSubscriptions({ full: true, panels: { room: true } }))
+      occupantSnapshotRequested = true;
   }
 
   snapshot = makeSnapshot();
@@ -457,15 +486,15 @@ export function createSessionWorld(
       roomGeneration += 1;
       roomImage = null;
       players = [];
-      occupants = [];
-      occupantsDark = false;
-      occupantsMore = 0;
-      occupantsReady = false;
-      occupantsRevision = 0;
-      occupantsRoomId = null;
+      clearOccupantRoster();
     }
     const nextRoom = roomChanged ? data : mergedRoom;
     room = deepFreeze(nextRoom);
+    if (nextRoom.scene?.lighting === "dark") {
+      occupants = [];
+      occupantsDark = true;
+      occupantsMore = 0;
+    }
     selector.processGenericRoomInfo(data);
     if (selector.getLiveMapSource() === learnedMap && nextRoomId) {
       speedwalk.notifyRoomChange(nextRoomId);
@@ -489,39 +518,70 @@ export function createSessionWorld(
     "Darkwind.Room.Occupants",
     validateDarkwindRoomOccupants,
     (data) => {
+      if (
+        !Number.isSafeInteger(data.revision) ||
+        data.revision < 1 ||
+        !Number.isSafeInteger(data.more) ||
+        data.more < 0
+      )
+        return;
       const payloadRoomId = String(data.room);
       const currentRoomId = room ? roomIdFrom(room) : source.getCurrentRoomId();
       if (currentRoomId && payloadRoomId !== currentRoomId) return;
       const snapshotMode = data.mode === "snapshot";
-      if (
-        !snapshotMode &&
-        (occupantsRoomId !== payloadRoomId || data.base_revision !== occupantsRevision)
-      ) {
+      if (snapshotMode && occupantsRoomId === payloadRoomId && data.revision < occupantsRevision) {
         return;
       }
+      if (!snapshotMode) {
+        if (occupantsRoomId === payloadRoomId && data.revision <= occupantsRevision) return;
+        if (
+          !occupantsReady ||
+          occupantsRoomId !== payloadRoomId ||
+          data.revision <= occupantsRevision ||
+          data.base_revision !== occupantsRevision
+        ) {
+          clearOccupantRoster(true);
+          requestOccupantSnapshot();
+          publish();
+          return;
+        }
+      }
+      const dark = data.dark === true || data.dark === 1 || room?.scene?.lighting === "dark";
+      const unavailable = data.unavailable === true || data.unavailable === 1;
       const byId = new Map(
         (snapshotMode ? [] : occupants).map((occupant) => [occupant.id, occupant] as const),
       );
       for (const id of data.removed) byId.delete(id);
       for (const occupant of data.upsert.slice(0, 24)) byId.set(occupant.id, occupant);
-      occupants = deepFreeze([...byId.values()].slice(0, 24));
-      occupantsDark = data.dark === true || data.dark === 1;
-      occupantsMore = Math.max(0, data.more);
+      const nextOccupants = dark || unavailable ? [] : [...byId.values()].slice(0, 24);
+      const more = dark || unavailable ? 0 : Math.max(0, data.more);
+      const signature = JSON.stringify([nextOccupants, dark, unavailable, more]);
+      // Forced unchanged server snapshots can restore a locally cleared view.
+      // Equal revisions may never replace it with different content.
+      if (
+        snapshotMode &&
+        occupantsRoomId === payloadRoomId &&
+        data.revision === occupantsRevision &&
+        (occupantsReady || signature !== occupantSignature)
+      )
+        return;
+      occupantsDark = dark;
+      occupantsUnavailable = unavailable;
+      occupants = deepFreeze(nextOccupants);
+      occupantsMore = more;
       occupantsReady = true;
+      occupantsAuthoritative = true;
+      occupantSignature = signature;
       occupantsRevision = data.revision;
       occupantsRoomId = payloadRoomId;
+      occupantSnapshotRequested = false;
       publish();
     },
   );
 
   listen<MapData2Current>("Darkwind.MapData2.Current", validateMapData2Current, (data) => {
     if (occupantsRoomId !== null && occupantsRoomId !== String(data.id)) {
-      occupants = [];
-      occupantsDark = false;
-      occupantsMore = 0;
-      occupantsReady = false;
-      occupantsRevision = 0;
-      occupantsRoomId = null;
+      clearOccupantRoster();
     }
     mapData.processCurrent(data);
     selector.markMapData2Active();
@@ -595,12 +655,8 @@ export function createSessionWorld(
         void selector.resetLiveMapModeForConnection();
         room = null;
         players = [];
-        occupants = [];
-        occupantsDark = false;
-        occupantsMore = 0;
-        occupantsReady = false;
-        occupantsRevision = 0;
-        occupantsRoomId = null;
+        clearOccupantRoster();
+        occupantsAuthoritative = false;
         roomGeneration += 1;
         roomImage = null;
       }
@@ -614,12 +670,8 @@ export function createSessionWorld(
       void selector.resetLiveMapModeForConnection();
       room = null;
       players = [];
-      occupants = [];
-      occupantsDark = false;
-      occupantsMore = 0;
-      occupantsReady = false;
-      occupantsRevision = 0;
-      occupantsRoomId = null;
+      clearOccupantRoster();
+      occupantsAuthoritative = false;
       roomGeneration += 1;
       roomImage = null;
       publish();
@@ -695,10 +747,18 @@ export function createSessionWorld(
         roomImage: visible.has("roomImage"),
         roomPlaylist: visible.has("roomPlaylist"),
       };
+      const nextRoomSubscribed = panels.room;
+      const droppedRoomRoster = roomSubscribed && !nextRoomSubscribed;
+      if (droppedRoomRoster) clearOccupantRoster(true);
+      roomSubscribed = nextRoomSubscribed;
       // Same set as last time on this connection: nothing to tell the server.
       const key = JSON.stringify(panels);
-      if (key === lastSentPanels) return;
+      if (key === lastSentPanels) {
+        if (droppedRoomRoster) publish();
+        return;
+      }
       if (gmcp.sendSubscriptions({ panels })) lastSentPanels = key;
+      if (droppedRoomRoster) publish();
     },
     browseArea(catalog) {
       if (disposed || !connected) return false;

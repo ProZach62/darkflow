@@ -510,7 +510,7 @@ export function bystanderLayout(layout, count, avoid = []) {
     }
     spots.length = Math.min(spots.length, wanted);
   }
-  return { scale, radius, groundY, spots, overflow };
+  return { scale, radius, groundY, spots, overflow: overflow + wanted - spots.length };
 }
 
 // How a bystander looks partway through arriving (or leaving): fading in
@@ -906,4 +906,3 @@ export function fightSummaryRows(recap, dps) {
   if (recap && recap.bestGuardStreak >= STREAK_MIN) rows.push({ label: 'Untouched', value: '\u00d7' + recap.bestGuardStreak });
   return rows;
 }
-

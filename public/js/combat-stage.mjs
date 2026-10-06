@@ -54,6 +54,7 @@ import {
   placeWeaponSprite,
   weaponSpriteFor,
 } from './combat-weapon-sprites.mjs';
+import { publicActorHints, publicEquipmentProfile } from './combat-visual-core.mjs';
 
 const MAX_CONCURRENT_ACTIONS = 3;
 // Body unit for the procedural figures, as a fraction of the stage radius.
@@ -320,6 +321,7 @@ export function createCombatStage(doc, options = {}) {
       if (alert.cue) this._cueSound(alert.cue);
       const scene = sources.scene && typeof sources.scene === 'object' ? sources.scene : {};
       this._sceneIdle = scene.idle !== undefined ? !!scene.idle : !view.active;
+      this._sceneHidden = this._sceneIdle && (scene.dark || scene.unavailable);
       if (!this._sceneIdle) this._sceneActions = [];
       this._backdrop = resolveStageBackdrop(sources.room, sources.roomImage);
       this._ambience = sceneAmbience(sources.ambience, this._backdrop.terrain);
@@ -329,9 +331,10 @@ export function createCombatStage(doc, options = {}) {
       this._playerFallback = fallbackList(sources.playerFallback);
       this._targetFallback = fallbackList(sources.targetFallback);
       // Allies first: a party member is not also shown as a bystander.
-      this._setAllies(sources.allies);
-      this._setBystanders(sources.players);
-      this._auras = sources.auras && typeof sources.auras === 'object' ? sources.auras : null;
+      if (this._sceneHidden || Array.isArray(sources.occupants)) this._allies = [];
+      else this._setAllies(sources.allies);
+      this._setBystanders(sources.occupants, sources.players, sources.occupantsMore, this._sceneHidden);
+      this._auras = !this._sceneHidden && sources.auras && typeof sources.auras === 'object' ? sources.auras : null;
       this._ensureImage(view.player.image, this._playerFallback);
       this._ensureImage(view.target.image, this._targetFallback);
       this._pruneImages([
@@ -670,6 +673,12 @@ export function createCombatStage(doc, options = {}) {
         c.translate(-cx, -cy);
       }
       this._drawBackdrop(c, layout);
+      if (this._sceneHidden) {
+        c.fillStyle = 'rgba(3, 7, 11, 0.8)';
+        c.fillRect(0, 0, w, h);
+        c.restore();
+        return;
+      }
       const tokens = this._tokenPositions(layout, samples, t, scene);
       this._drawGround(c, layout, tokens);
       this._drawBystanders(c, layout, t);
@@ -1079,22 +1088,38 @@ export function createCombatStage(doc, options = {}) {
       c.restore();
     },
 
-    _setBystanders(players) {
+    _setBystanders(occupants, players, serverMore = 0, dark = false) {
+      if (dark) {
+        // Visibility loss is authoritative: do not fade old names through darkness.
+        this._bystanders = [];
+        this._bystanderMore = 0;
+        return;
+      }
       const seen = new Set();
       const next = [];
-      for (const player of Array.isArray(players) ? players : []) {
+      const authoritative = Array.isArray(occupants);
+      const roster = authoritative ? occupants.filter((item) => item && item.kind !== 'self') : players;
+      let received = 0;
+      for (const player of Array.isArray(roster) ? roster : []) {
         const name = player && typeof player.name === 'string' ? player.name.trim() : '';
-        if (!name || seen.has(name)) continue;
-        if (this._allies.some((ally) => ally.want && ally.key === name.toLowerCase())) continue;
-        seen.add(name);
+        const key = authoritative ? String(player.id || '') : name;
+        if (!name || !key || seen.has(key)) continue;
+        received += 1;
+        if (next.length >= 8) continue;
+        if (!authoritative && this._allies.some((ally) => ally.want && ally.key === name.toLowerCase())) continue;
+        seen.add(key);
         const label = player.fullname && typeof player.fullname === 'string' && player.fullname.trim()
           ? player.fullname.trim()
           : name;
-        const existing = this._bystanders.find((entry) => entry.name === name);
-        next.push(existing ? { ...existing, label, want: 1 } : { name, label, presence: 0, want: 1 });
+        const condition = player.public_state && typeof player.public_state.condition === 'string'
+          ? player.public_state.condition.trim() : '';
+        const existing = this._bystanders.find((entry) => entry.key === key);
+        const fresh = { key, name, label, condition, occupant: player, presence: 0, want: 1 };
+        next.push(existing ? { ...existing, ...fresh, presence: existing.presence } : fresh);
       }
-      for (const entry of this._bystanders) {
-        if (!seen.has(entry.name) && entry.presence > 0) next.push({ ...entry, want: 0 });
+      this._bystanderMore = Math.max(0, Number(serverMore) || 0) + Math.max(0, received - 8);
+      if (!authoritative) for (const entry of this._bystanders) {
+        if (!seen.has(entry.key) && entry.presence > 0) next.push({ ...entry, want: 0 });
       }
       this._bystanders = next;
     },
@@ -1126,7 +1151,7 @@ export function createCombatStage(doc, options = {}) {
 
     _drawBystanders(c, layout, t) {
       const visible = this._bystanders.filter((entry) => entry.presence > 0);
-      if (!visible.length) return;
+      if (!visible.length && !this._bystanderMore) return;
       // The party has first call on the ground behind the player.
       const allies = this._allies.filter((entry) => entry.presence > 0);
       const taken = allies.length ? allyLayout(layout, allies.length).spots.map((spot) => spot.x) : [];
@@ -1138,14 +1163,15 @@ export function createCombatStage(doc, options = {}) {
         if (!(look.alpha > 0.002)) return;
         this._drawBystander(c, entry, spot, band, unit, look, t, index, layout.player.x);
       });
-      if (band.overflow > 0) {
+      const overflow = this._sceneIdle ? band.overflow + (this._bystanderMore || 0) : 0;
+      if (overflow > 0) {
         c.save();
         c.globalAlpha = 0.75;
         c.fillStyle = rgba(this._palette.text, 0.7);
         c.font = '600 ' + Math.round(band.radius * 0.5) + 'px "Segoe UI", system-ui, sans-serif';
         c.textAlign = 'right';
         c.textBaseline = 'alphabetic';
-        c.fillText('+' + band.overflow, layout.width - band.radius * 0.6, band.groundY + band.radius * 0.5);
+        c.fillText('+' + overflow, layout.width - 12, 24);
         c.restore();
       }
     },
@@ -1154,15 +1180,16 @@ export function createCombatStage(doc, options = {}) {
     // player, with a name under its feet. No portrait is known for other
     // players, so the head is the initial-lettered silhouette.
     _drawBystander(c, entry, spot, band, unit, look, t, index, playerX, options = {}) {
-      const base = resolveFigure({ name: entry.label }, 'player');
+      const publicEquipment = entry.occupant && entry.occupant.equipment;
+      const equipment = publicEquipment ? publicEquipmentProfile(publicEquipment) : null;
+      const base = resolveFigure({
+        name: entry.label,
+        ...(publicActorHints(entry.occupant) || {}),
+        equipment,
+      }, entry.occupant && entry.occupant.kind === 'npc' ? 'target' : 'player');
       const figure = {
         ...base,
-        weapon: 'none',
-        offKind: '',
-        shield: false,
-        helmet: false,
-        armor: false,
-        twoHanded: false,
+        ...(publicEquipment ? {} : { weapon: 'none', offKind: '', shield: false, helmet: false, armor: false, twoHanded: false }),
         caster: false,
         facing: options.facing || (spot.x <= playerX ? 1 : -1),
       };
@@ -1195,11 +1222,29 @@ export function createCombatStage(doc, options = {}) {
       this._drawNeck(c, geo, material);
       this._drawSilhouette(c, { x: geo.head.x, y: geo.head.y }, geo.head.r, { name: entry.label }, material.ring);
       this._drawArm(c, geo, geo.arms.right, material, 1);
+      if (geo.helmet) this._drawHelmet(c, geo.head, geo.facing);
+      if (figure.weapon === 'bow') this._drawBow(c, geo, geo.weapon);
+      else {
+        this._drawOffHand(c, geo, material);
+        if (figure.weapon !== 'none') this._drawHeldWeapon(c, geo, geo.weapon.kind,
+          geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, material.ring,
+          geo.twoHanded ? 1.2 : 1, 1, geo.weapon.style);
+      }
       c.fillStyle = rgba(this._palette.text, 0.78);
       c.font = '600 ' + Math.max(9, Math.round(band.radius * 0.4)) + 'px "Segoe UI", system-ui, sans-serif';
       c.textAlign = 'center';
       c.textBaseline = 'alphabetic';
-      c.fillText(options.caption || entry.name, spot.x, groundLine + band.radius * 0.55);
+      const maxLabelWidth = Math.max(24, this._width * 0.32);
+      const labelX = (text) => {
+        const half = Math.min(maxLabelWidth, c.measureText(text).width) / 2;
+        return Math.max(half + 8, Math.min(this._width - half - 8, spot.x));
+      };
+      const caption = options.caption || entry.name;
+      c.fillText(caption, labelX(caption), groundLine + band.radius * 0.55, maxLabelWidth);
+      if (entry.condition) {
+        c.font = Math.max(9, Math.round(band.radius * 0.35)) + 'px "Segoe UI", system-ui, sans-serif';
+        c.fillText(entry.condition, labelX(entry.condition), groundLine + band.radius * 1.1, maxLabelWidth);
+      }
       if (typeof options.hpPct === 'number') {
         // A small health bar over an ally's head.
         const barW = band.radius * 1.5;

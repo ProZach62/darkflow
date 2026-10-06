@@ -156,6 +156,21 @@ player acts against the same right-side focus without changing
 `encounter_id`. This preserves pane position, history, and manual-close state
 instead of presenting every group swing as a new encounter.
 
+Actors may carry `public_state`: optional `condition`, `elite`, `boss`, and up to
+14 public `effects` labels. These are already observable monster-text hints,
+not exact HP or private registered buffs. Empty objects clear earlier public
+state. Optional `occupant_id` bridges an actor to an accepted current-room
+occupant ID; never join actors by name or retain the bridge after visibility
+loss. The validator and retained visual model discard unrelated public-state
+keys, including private HP fields.
+
+State also retains the existing tactical `position` and `preferred_position`
+(`melee` or `ranged`) and bounded `movement` fields: `action`, `target`,
+nonnegative integer `progress`, and `required`. These remain tactical labels;
+they are not stage coordinates. The Scene displays the recipient's position
+and movement progress while combat is presented. When idle, it returns to the
+recipient's room identity rather than leaving an observed combatant as self.
+
 When `current_actor_id` is `self`, `Char.Vitals` remains authoritative for
 player HP, `Char.Enemy` remains authoritative for the current target's HP,
 condition, and art, and `Darkwind.Char.Avatar` remains authoritative for

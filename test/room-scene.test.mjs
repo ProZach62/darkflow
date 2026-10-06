@@ -96,12 +96,24 @@ test('room scene catalogue prefers structured looks and maps familiar nouns to p
 });
 
 test('room scene catalogue falls back to legacy details', () => {
-  assert.deepEqual(roomSceneTargets('', ['shop', 'old tree']), [
+  assert.deepEqual(roomSceneTargets(undefined, ['shop', 'old tree']), [
     { id: 'detail:shop', name: 'shop', nouns: ['shop'] },
     { id: 'detail:old-tree', name: 'old tree', nouns: ['old-tree'] },
   ]);
   assert.equal(roomScenePropSprite({ name: 'old oak tree', nouns: ['oak'] }), 'tree');
   assert.equal(roomScenePropSprite({ name: 'mysterious portal', nouns: ['portal'] }), null);
+  assert.deepEqual(roomSceneTargets([], ['shop']), []);
+  assert.deepEqual(roomSceneTargets('', ['shop']), []);
+});
+
+test('room scene commands preserve parser nouns and reject command chaining', () => {
+  const [target] = roomSceneTargets([
+    { id: 'etched-door', name: 'an etched door', nouns: ['etched door #2'] },
+  ]);
+  assert.equal(roomSceneTargetCommand(target, 'look'), 'look etched door #2');
+  assert.deepEqual(roomSceneTargets([
+    { id: 'bad', name: 'bad', nouns: ['door;quit', 'door\nkill guard'] },
+  ]), []);
 });
 
 test('expanded props, equipment, exits, ambience, anchors, and combat are normalized', () => {
@@ -112,6 +124,8 @@ test('expanded props, equipment, exits, ambience, anchors, and combat are normal
   assert.equal(roomSceneExitKind('up'), 'stairs');
   assert.equal(roomSceneExitKind('east', { kind: 'portal' }), 'portal');
   assert.equal(roomSceneExitKind('west', { kind: 'spaceship' }), 'path');
+  assert.equal(roomSceneAtmosphere({ time: 'twilight' }).time, 'dusk');
+  assert.equal(roomSceneAtmosphere({ lighting: 'dark' }).lighting, 'dark');
   assert.deepEqual(roomSceneAtmosphere({ time: 'night', weather: 'rain', lighting: 'magic' }), {
     time: 'night',
     weather: 'rain',

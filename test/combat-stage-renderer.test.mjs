@@ -909,3 +909,45 @@ test('streak chips show during a fight and a summary card follows the outcome', 
   assert.match(html, /<dt>Best streak<\/dt><dd>\u00d73<\/dd>/);
   assert.doesNotMatch(html, /combat-streak-chip/, 'the live chips are gone once it is over');
 });
+
+test('authoritative idle occupants keep duplicate names and clear without fades or private fallbacks', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  const data = {
+    model: combatModel({ active: 0 }),
+    vitals: { hp: 77, maxhp: 100 },
+    status: { name: 'Acer', race: 'human' },
+    room: { name: 'Landing', looks: [{ id: 'stakes', name: 'Survey stakes', nouns: ['survey stakes'] }],
+      exits: { north: 102 }, exit_states: { north: 'locked' } },
+    occupants: [{ id: 'one', name: 'a guard', kind: 'npc', appearance: {}, equipment: {},
+      public_state: { condition: 'badly wounded' } }, { id: 'two', name: 'a guard', kind: 'npc' }],
+    allies: [{ name: 'a guard', leader: false, hpPct: 99 }],
+    auras: { buffs: 5, debuffs: 2 },
+  };
+  renderer.render(data);
+  assert.deepEqual(renderer.stage._bystanders.map((actor) => actor.key), ['one', 'two']);
+  assert.deepEqual(renderer.stage._allies, [], 'party names must not deduplicate or reveal private HP on public actors');
+  assert.match(deepHtml(body), /data-scene-command="look survey stakes"/);
+  assert.match(deepHtml(body), /Go north \(locked\)/);
+  const canvas = findCanvas(body);
+  renderer.render({ ...data, occupantsMore: 2 });
+  canvas.drawLog.length = 0;
+  runFrame(1000);
+  assert.ok(canvas.drawLog.some(([name, args]) => name === 'fillText' && args[0] === '+2'));
+  renderer.render({ ...data, model: combatModel(), occupantsMore: 2 });
+  canvas.drawLog.length = 0;
+  runFrame(1100);
+  assert.ok(!canvas.drawLog.some(([name, args]) => name === 'fillText' && args[0] === '+2'),
+    'idle occupant overflow must not overlap the combat HUD');
+  renderer.render({ ...data, occupants: [data.occupants[1]] });
+  assert.deepEqual(renderer.stage._bystanders.map((actor) => actor.key), ['two']);
+  renderer.render({ ...data, occupantsDark: true, occupantsMore: 19 });
+  assert.deepEqual(renderer.stage._bystanders, []);
+  assert.equal(renderer.stage._bystanderMore, 0);
+  assert.equal(renderer.stage._auras, null);
+  assert.doesNotMatch(deepHtml(body), /a guard|Acer|data-scene-command/);
+  renderer.render({ ...data, occupantsUnavailable: true });
+  assert.match(deepHtml(body), /room view is unavailable/);
+  assert.doesNotMatch(deepHtml(body), /a guard|Acer|data-scene-command/);
+  renderer.dispose();
+});

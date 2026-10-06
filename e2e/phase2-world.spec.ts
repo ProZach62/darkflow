@@ -416,7 +416,7 @@ test("map and room image reset across reconnect and remount after session dispos
 
 test("isometric room renders one terrain scene with services, exits, and occupants", async ({
   page,
-}) => {
+}, testInfo) => {
   const endpoint = await connect(page);
   await togglePanel(page, "Isometric Room");
   const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
@@ -537,8 +537,11 @@ test("isometric room renders one terrain scene with services, exits, and occupan
         hostile: 1,
         fighting: 1,
         engaged_with: "self",
-        weapon: "great axe",
-        size: "huge",
+        weapon: "long sword",
+        size: "small",
+        appearance: { size: "huge" },
+        equipment: { main_hand: "great axe" },
+        public_state: { condition: "badly wounded" },
         level: 182,
       },
     ],
@@ -561,6 +564,9 @@ test("isometric room renders one terrain scene with services, exits, and occupan
   await expect(
     isoRoom.getByRole("img", { name: /frost giant.*level 182.*hostile/i }),
   ).toBeVisible();
+  await expect(isoRoom.getByRole("img", { name: /frost giant.*badly wounded/i })).toHaveClass(
+    /size-huge/,
+  );
   await expect(isoRoom.getByRole("button", { name: "Go east" })).toHaveClass(/blocked/);
   await expect(isoRoom.getByRole("button", { name: "Go south" })).toBeVisible();
   await expect(isoRoom.getByRole("button", { name: "Go north" })).toHaveClass(/exit-portal/);
@@ -578,6 +584,10 @@ test("isometric room renders one terrain scene with services, exits, and occupan
   await expect(isoRoom.getByRole("list", { name: "Room occupants" })).toContainText(
     "a frost giant",
   );
+  if (process.env.SCENE_SCREENSHOTS)
+    await isoRoom.screenshot({
+      path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-isometric-${testInfo.project.name}.png`,
+    });
   await isoRoom
     .getByRole("list", { name: "Things to look at" })
     .getByRole("button", { name: "a marble fountain (active)", exact: true })
@@ -591,6 +601,34 @@ test("isometric room renders one terrain scene with services, exits, and occupan
   await isoRoom.getByRole("button", { name: "Get a dropped leather satchel" }).click();
   await expect.poll(() => endpoint.commands).toContain("get satchel");
   await expect(isoRoom).toHaveAttribute("data-player-target", "abandoned-loot");
+
+  const clearedRoster = {
+    version: 1,
+    room: 101,
+    mode: "snapshot",
+    revision: 2,
+    dark: 1,
+    more: 0,
+    upsert: [],
+    removed: [],
+  };
+  endpoint.sendGmcp("Darkwind.Room.Occupants", clearedRoster);
+  await expect(isoRoom).toContainText("too dark");
+  await expect(isoRoom.locator(".occupant, .room-target, .room-building, .room-exit")).toHaveCount(
+    0,
+  );
+  if (process.env.SCENE_SCREENSHOTS)
+    await isoRoom.screenshot({
+      path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-isometric-dark-${testInfo.project.name}.png`,
+    });
+  endpoint.sendGmcp("Darkwind.Room.Occupants", {
+    ...clearedRoster,
+    revision: 3,
+    dark: 0,
+    unavailable: 1,
+  });
+  await expect(isoRoom).toContainText("room view is unavailable");
+  await expect(isoRoom.locator(".occupant, .room-target, .room-building")).toHaveCount(0);
 
   endpoint.sendGmcp("Room.Info", {
     num: 102,

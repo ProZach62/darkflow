@@ -1420,3 +1420,84 @@
   font-variant-numeric: tabular-nums;
 }
 
+[data-panel-id="enemy"] .combat-scene-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 0 8px 8px;
+}
+
+[data-panel-id="enemy"] .combat-scene-controls button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--df-muted, #8b949e);
+  border-radius: 4px;
+  background: var(--df-bg, #0d1117);
+  color: var(--df-text, #e6edf3);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-panel-id="enemy"] .combat-scene-controls img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+[data-panel-id="enemy"] .combat-scene-controls button:focus-visible {
+  outline: 2px solid var(--df-accent, #42d6c9);
+  outline-offset: 2px;
+}
+
+[data-panel-id="enemy"] [data-room-lighting="dim"] .combat-stage {
+  filter: brightness(0.7);
+}
+
+[data-panel-id="enemy"] .combat-visual-canvas {
+  height: 100%;
+  margin: 0;
+}
+
+[data-panel-id="enemy"] .combat-scene-idle .combat-hud {
+  flex: 0 1 auto;
+  max-height: 42%;
+  overflow: auto;
+}
+
+[data-panel-id="enemy"] .combat-scene-idle .combat-sync-state {
+  padding: 8px 12px;
+  color: var(--df-text, #e6edf3);
+  font-size: calc(12px * var(--pane-font-scale, 1));
+}
+
+[data-panel-id="enemy"] .combat-position-state {
+  padding: 6px 12px;
+  color: var(--df-text, #e6edf3);
+  font-size: calc(12px * var(--pane-font-scale, 1));
+}
+
+[data-panel-id="enemy"] .combat-visual-canvas .combat-target-condition {
+  position: static;
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  font-size: calc(11px * var(--pane-font-scale, 1));
+}
+
+[data-panel-id="enemy"] .combat-token-hud .combat-health {
+  width: 100%;
+}
+
+[data-panel-id="enemy"] .combat-visual-canvas .combat-health-values {
+  gap: 8px;
+}
+
+[data-panel-id="enemy"] .combat-visual-canvas .combat-hud-name span:not(.combat-hud-portrait) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

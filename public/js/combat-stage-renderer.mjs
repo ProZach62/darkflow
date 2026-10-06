@@ -45,6 +45,7 @@ import {
 } from './combat-visual-renderer.mjs';
 import { escHtml, formatInt } from './core-information-panel-renderers.mjs';
 import { NPC_FALLBACK_IMAGE, PLAYER_FALLBACK_IMAGE } from './image-fallbacks.js';
+import { roomSceneTargets, roomSceneTargetCommand, roomScenePropSprite, roomSceneExitPosition, roomSceneAtmosphere } from './room-scene-core.mjs';
 
 function eventClasses(view, event, idle) {
   // Perspective is the recipient-safe source of truth. Keep the actor IDs for
@@ -125,9 +126,13 @@ function tokenHudHtml(side, combatant, sideClass, boss) {
     html += '<div class="combat-hud-descriptor">' + escHtml(combatant.descriptor) + '</div>';
   }
   html += healthHtml(side, combatant.name, combatant.health);
-  if (side === 'target' && combatant.condition) {
-    html += '<div class="combat-target-condition">' + escHtml(combatant.condition) + '</div>';
+  const state = combatant.publicState || {};
+  const condition = combatant.condition || state.condition;
+  if (condition) {
+    html += '<div class="combat-target-condition">' + escHtml(condition) + '</div>';
   }
+  const hints = [state.boss ? 'Boss' : (state.elite ? 'Elite' : ''), ...(Array.isArray(state.effects) ? state.effects.slice(0, 14) : [])].filter(Boolean);
+  if (hints.length) html += '<div class="combat-hud-descriptor">' + escHtml(hints.join(' · ')) + '</div>';
   if (side === 'target') html += bossToggleHtml(combatant, boss);
   return html + '</div>';
 }
@@ -163,7 +168,38 @@ function hudHtml(view, event, label, announcement, scene, recap, dps) {
   if (scene.idle) {
     html += '<div class="combat-scene-room"><span class="combat-section-label">Scene</span>' +
       '<span class="combat-scene-room-name">' + escHtml(scene.roomName || 'Darkwind') + '</span></div>';
+    if (scene.dark) {
+      html += '<div class="combat-sync-state">The room is too dark to identify its occupants.</div>';
+    } else if (scene.unavailable) {
+      html += '<div class="combat-sync-state">The room view is unavailable.</div>';
+    } else if (scene.occupants.length) {
+      html += '<ul class="sr-only" aria-label="Room occupants">';
+      for (const occupant of scene.occupants) {
+        const condition = occupant.public_state && occupant.public_state.condition;
+        html += '<li>' + escHtml(occupant.name + (condition ? ', ' + condition : '')) + '</li>';
+      }
+      if (scene.more) html += '<li>' + scene.more + ' more occupants</li>';
+      html += '</ul>';
+    }
+    if (!scene.dark && !scene.unavailable) {
+      html += '<div class="combat-scene-controls" aria-label="Room scenery and exits">';
+      for (const target of scene.targets) {
+        const sprite = roomScenePropSprite(target);
+        html += '<button type="button" data-scene-command="' + escHtml(roomSceneTargetCommand(target)) + '">' +
+          (sprite ? '<img src="/assets/iso/props/' + sprite + '.webp" alt="">' : '') +
+          'Look at ' + escHtml(target.name) + '</button>';
+      }
+      for (const exit of scene.exits) html += '<button type="button" data-scene-command="' +
+        escHtml(exit.direction) + '">Go ' + escHtml(exit.label) +
+        (exit.state ? ' (' + escHtml(exit.state) + ')' : '') + '</button>';
+      html += '</div>';
+    }
+    if (scene.dark || scene.unavailable) return html;
   } else {
+    if (view.position) html += '<div class="combat-position-state">Position: ' + escHtml(view.position) +
+      (view.preferredPosition ? ' · preferred ' + escHtml(view.preferredPosition) : '') +
+      (view.movement.action && view.movement.action !== 'none' ? ' · ' + escHtml(view.movement.action) +
+        ' ' + formatInt(view.movement.progress || 0) + '/' + formatInt(view.movement.required || 0) : '') + '</div>';
     html += '<div class="combat-current-event combat-current-' +
       escHtml(event ? event.result : 'waiting') + '"><span class="combat-event-glyph" aria-hidden="true"></span>' +
       '<span class="combat-event-copy"><strong>' + escHtml(label) + '</strong>';
@@ -224,9 +260,18 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
   // Damage taken and streaks for the current encounter, from its events.
   let recap = createFightRecap();
   let recapKey = '';
+  let sceneCommands = new Set();
 
   // One delegated listener: the header is rebuilt on every publish.
   const onClick = (event) => {
+    const control = event.target && typeof event.target.closest === 'function'
+      ? event.target.closest('[data-scene-command]') : null;
+    const command = control && control.getAttribute('data-scene-command');
+    if (command && sceneCommands.has(command) && typeof options.onSceneCommand === 'function') {
+      event.preventDefault();
+      options.onSceneCommand(command);
+      return;
+    }
     const target = event.target && typeof event.target.closest === 'function'
       ? event.target.closest('[data-action="toggle-boss"]')
       : null;
@@ -305,7 +350,13 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
       fallback = null;
     }
 
-    const view = buildCombatView(data.model, {
+    const idle = !data.model.active || !data.model.visualEnabled || data.present === false;
+    const self = Array.isArray(data.occupants) ? data.occupants.find((actor) => actor.kind === 'self') : null;
+    const model = idle ? { ...data.model, currentActorId: 'self', currentTargetId: '',
+      actors: self ? [{ ...self, id: 'self', role: 'self' }]
+        : data.model.actors.filter((actor) => actor.role === 'self'),
+    } : data.model;
+    const view = buildCombatView(model, {
       enemy: data.enemy,
       vitals: data.vitals,
       avatar: data.avatar,
@@ -314,22 +365,40 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
     });
     const event = view.event;
     const scene = {
-      idle: !view.active || !view.visualEnabled || data.present === false,
+      idle,
       roomName: data.room && typeof data.room.name === 'string' ? data.room.name.trim() : '',
+      dark: !!data.occupantsDark,
+      unavailable: !!data.occupantsUnavailable,
+      occupants: Array.isArray(data.occupants) ? data.occupants.filter((item) => item.kind !== 'self').slice(0, 8) : [],
+      more: Math.max(0, Number(data.occupantsMore) || 0) +
+        Math.max(0, (Array.isArray(data.occupants) ? data.occupants.filter((item) => item.kind !== 'self').length : 0) - 8),
+      targets: roomSceneTargets(data.room && data.room.looks, data.room && data.room.details),
+      exits: Object.keys(data.room && data.room.exits || {}).slice(0, 32)
+        .filter((direction) => /^[a-z]+$/.test(direction) && roomSceneExitPosition(direction))
+        .map((direction) => ({ direction,
+          label: data.room.exit_details && data.room.exit_details[direction] && data.room.exit_details[direction].label || direction,
+          state: data.room.exit_states && data.room.exit_states[direction] || '',
+        })),
     };
+    sceneCommands = scene.idle && !scene.dark && !scene.unavailable
+      ? new Set([...scene.targets.map((target) => roomSceneTargetCommand(target)), ...scene.exits.map((exit) => exit.direction)]) : new Set();
     const classes = eventClasses(view, event, scene.idle);
     const label = eventLabel(event);
     const announcement = nextAnnouncement(view, event, label);
 
     host.root.className = classes.rootClass + ' combat-visual-canvas';
     host.root.setAttribute('data-encounter-id', view.encounterId || '');
+    const atmosphere = roomSceneAtmosphere(data.room && data.room.scene || {});
+    host.root.setAttribute('data-room-time', atmosphere.time);
+    host.root.setAttribute('data-room-lighting', atmosphere.lighting);
     // Rebuilding the header would drop keyboard focus from the star.
     const active = doc && doc.activeElement;
     const starFocused = !!(active && typeof active.matches === 'function'
       && active.matches('[data-action="toggle-boss"]') && host.overlay.contains(active));
+    const focusedCommand = active && host.hud.contains(active) && active.getAttribute('data-scene-command');
     const boss = view.target.isNpc ? data.boss : null;
     host.overlay.innerHTML =
-      tokenHudHtml('player', view.player, classes.playerClass) +
+      (scene.idle && (scene.dark || scene.unavailable) ? '' : tokenHudHtml('player', view.player, classes.playerClass)) +
       (scene.idle ? '' : tokenHudHtml('target', view.target, classes.targetClass, boss));
     if (starFocused) {
       const star = host.overlay.querySelector('[data-action="toggle-boss"]');
@@ -350,12 +419,20 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
       view.history.concat(event ? [event] : []).filter((entry) => Number(entry.seq) <= shownSeq),
     );
     host.hud.innerHTML = hudHtml(view, event, label, announcement, scene, recap, data.dps || null);
+    if (focusedCommand) {
+      const control = Array.from(host.hud.querySelectorAll('[data-scene-command]'))
+        .find((button) => button.getAttribute('data-scene-command') === focusedCommand);
+      if (control) control.focus();
+    }
     host.stage.update(view, {
       scene,
       room: data.room || null,
       roomImage: data.roomImage || null,
       // Other players in the room stand behind the figures on the idle scene.
       players: Array.isArray(data.players) ? data.players : [],
+      occupants: Array.isArray(data.occupants) ? data.occupants : null,
+      occupantsMore: data.occupantsMore,
+      occupantsDark: !!data.occupantsDark,
       // Sky stage and moonlight for the day and night tint, or nothing.
       ambience: data.ambience || null,
       // Party members who are here, and the player's buff and debuff counts.

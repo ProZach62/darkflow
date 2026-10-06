@@ -52,6 +52,7 @@
     faction?: string;
     cue?: string;
     engaged_with?: string;
+    condition?: string;
   }
 
   interface SceneExit {
@@ -104,11 +105,20 @@
   );
   const terrain = $derived(String(roomSceneTerrain(environment)));
   const texture = $derived(String(roomSceneTexture(environment)));
-  const details = $derived.by(() => roomSceneDetails(room?.details).map(String));
+  const details = $derived.by(() =>
+    snapshot.occupantsDark || snapshot.occupantsUnavailable
+      ? []
+      : roomSceneDetails(room?.details).map(String),
+  );
   const buildings = $derived.by(() => sceneBuildings(details));
-  const targets = $derived.by(() => sceneTargets(room));
+  const targets = $derived.by(() =>
+    snapshot.occupantsDark || snapshot.occupantsUnavailable ? [] : sceneTargets(room),
+  );
   const occupants = $derived.by(() => sceneOccupants(snapshot));
-  const exits = $derived.by(() => sceneExits(room));
+  const occupantsOverflow = $derived(
+    snapshot.occupantsMore + Math.max(0, snapshot.occupants.length - occupants.length),
+  );
+  const exits = $derived.by(() => (snapshot.occupantsDark ? [] : sceneExits(room)));
   const atmosphere = $derived(
     roomSceneAtmosphere(room?.scene) as {
       time: string;
@@ -203,7 +213,7 @@
 
   function sceneOccupants(value: SessionWorldSnapshot): SceneOccupant[] {
     if (value.occupantsDark) return [];
-    if (value.occupantsReady) {
+    if (value.occupantsAuthoritative) {
       return value.occupants.slice(0, 8).map(normalizeOccupant).sort(occupantOrder);
     }
     const status = activeSession.information.getSnapshot().status as {
@@ -234,30 +244,41 @@
   }
 
   function normalizeOccupant(occupant: DarkwindRoomOccupant): SceneOccupant {
+    const appearance = occupant.appearance ?? {};
+    const equipment = occupant.equipment ?? {};
     return {
       id: occupant.id,
       name: occupant.name,
       kind: occupant.kind,
-      ...(occupant.race ? { race: occupant.race } : {}),
-      ...(occupant.family ? { family: occupant.family } : {}),
-      ...(occupant.gender ? { gender: occupant.gender } : {}),
-      ...(occupant.size ? { size: occupant.size } : {}),
+      ...(appearance.race || occupant.race ? { race: appearance.race || occupant.race } : {}),
+      ...(appearance.family || occupant.family
+        ? { family: appearance.family || occupant.family }
+        : {}),
+      ...(appearance.gender || occupant.gender
+        ? { gender: appearance.gender || occupant.gender }
+        : {}),
+      ...(appearance.size || occupant.size ? { size: appearance.size || occupant.size } : {}),
       hostile: occupant.hostile === true || occupant.hostile === 1,
-      elite: occupant.elite === true || occupant.elite === 1,
-      boss: occupant.boss === true || occupant.boss === 1,
+      elite: occupant.elite === true || occupant.elite === 1 || !!occupant.public_state?.elite,
+      boss: occupant.boss === true || occupant.boss === 1 || !!occupant.public_state?.boss,
       fighting: occupant.fighting === true || occupant.fighting === 1,
       ...(typeof occupant.level === "number" ? { level: occupant.level } : {}),
       ...(occupant.role ? { role: occupant.role } : {}),
       ...(occupant.activity ? { activity: sceneToken(occupant.activity) } : {}),
       ...(occupant.anchor_id ? { anchor_id: occupant.anchor_id } : {}),
-      ...(occupant.weapon ? { weapon: occupant.weapon } : {}),
-      weaponSprite: roomSceneWeaponSprite(occupant.weapon) as string | null,
-      shield: occupant.shield === true || occupant.shield === 1,
-      ...(occupant.helmet ? { helmet: occupant.helmet } : {}),
-      ...(occupant.armor ? { armor: occupant.armor } : {}),
+      ...(equipment.main_hand || occupant.weapon
+        ? { weapon: equipment.main_hand || occupant.weapon }
+        : {}),
+      weaponSprite: roomSceneWeaponSprite(equipment.main_hand || occupant.weapon) as string | null,
+      shield: Boolean(equipment.shield) || occupant.shield === true || occupant.shield === 1,
+      ...(equipment.helmet || occupant.helmet
+        ? { helmet: equipment.helmet || occupant.helmet }
+        : {}),
+      ...(equipment.armor || occupant.armor ? { armor: equipment.armor || occupant.armor } : {}),
       ...(occupant.faction ? { faction: occupant.faction } : {}),
       ...(occupant.cue ? { cue: sceneToken(occupant.cue) } : {}),
       ...(occupant.engaged_with ? { engaged_with: occupant.engaged_with } : {}),
+      ...(occupant.public_state?.condition ? { condition: occupant.public_state.condition } : {}),
     };
   }
 
@@ -307,6 +328,7 @@
     if (occupant.role) parts.push(occupant.role);
     if (occupant.activity) parts.push(occupant.activity);
     if (occupant.weapon) parts.push(`wielding ${occupant.weapon}`);
+    if (occupant.condition) parts.push(occupant.condition);
     return parts.join(", ");
   }
 
@@ -456,6 +478,8 @@
 
         {#if snapshot.occupantsDark}
           <div class="dark-room-message">It is too dark to make anyone out.</div>
+        {:else if snapshot.occupantsUnavailable}
+          <div class="dark-room-message">The room view is unavailable.</div>
         {:else}
           {#each occupants as occupant, index (occupant.id)}
             {@const home = roomSceneOccupantPosition(index, occupant, targets) as ScenePosition}
@@ -563,7 +587,7 @@
               {#each occupants as occupant (occupant.id)}
                 <li class:warning={occupant.hostile}>{occupant.name}</li>
               {/each}
-              {#if snapshot.occupantsMore}<li>+{snapshot.occupantsMore} more</li>{/if}
+              {#if occupantsOverflow}<li>+{occupantsOverflow} more</li>{/if}
             </ul>
           {:else}<span>None visible</span>{/if}
         </div>

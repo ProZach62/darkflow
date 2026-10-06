@@ -468,6 +468,9 @@ test('bystanders take ground the party is not standing on', () => {
   assert.ok(party.every((x) => Math.abs(x - beside.spots[0].x) >= beside.radius * 1.3), 'clear of the party');
   assert.equal(alone.spots.length, 1);
   assert.deepEqual(bystanderLayout(rest, 3, []).spots, bystanderLayout(rest, 3).spots, 'nothing to avoid changes nothing');
+  const blocked = bystanderLayout(rest, 3, Array.from({ length: 91 }, (_, i) => i * 10));
+  assert.equal(blocked.spots.length, 0);
+  assert.equal(blocked.overflow, 3, 'layout omissions count even below the roster cap');
 });
 
 test('a boss is matched by name without its article, case, or spacing', () => {

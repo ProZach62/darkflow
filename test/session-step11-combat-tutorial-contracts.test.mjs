@@ -95,6 +95,20 @@ function tutorialState(overrides = {}) {
 test("Step 11 Combat and Tutorial contracts bound and clean every direction", async (t) => {
   const contracts = await loadContracts(t);
 
+  await t.test("retains only public actor state and bounded tactical movement", () => {
+    const state = contracts.normalizeDarkwindCombatState(combatState({
+      position: "ranged", preferred_position: "melee",
+      movement: { action: "fallback", target: "a guard", progress: 2, required: 5, object: "/private" },
+      actors: [{ id: "target", name: "a guard", role: "target", occupant_id: "room-3",
+        public_state: { condition: "badly wounded", elite: 1, boss: 0, effects: ["bleeding"], hp: 32 } }],
+    }));
+    assert.deepEqual(state.actors[0], { id: "target", name: "a guard", role: "target", occupant_id: "room-3",
+      public_state: { condition: "badly wounded", elite: true, boss: false, effects: ["bleeding"] } });
+    assert.equal(state.position, "ranged");
+    assert.equal(state.preferred_position, "melee");
+    assert.deepEqual(state.movement, { action: "fallback", target: "a guard", progress: 2, required: 5 });
+  });
+
   await t.test("normalizes live Combat State, Events, and singular Event shapes", () => {
     const state = contracts.normalizeDarkwindCombatState(combatState());
     assert.deepEqual(state, {

@@ -85,6 +85,8 @@ function normalizeActors(value) {
     };
     if (Object.prototype.hasOwnProperty.call(raw, 'appearance')) actor.appearance = normalizeAppearance(raw.appearance);
     if (Object.prototype.hasOwnProperty.call(raw, 'equipment')) actor.equipment = normalizePublicEquipment(raw.equipment);
+    if (Object.prototype.hasOwnProperty.call(raw, 'public_state')) actor.public_state = normalizePublicState(raw.public_state);
+    if (typeof raw.occupant_id === 'string' && raw.occupant_id) actor.occupant_id = safeText(raw.occupant_id, 96);
     actors.push(actor);
     if (actors.length >= 16) break;
   }
@@ -124,7 +126,7 @@ function normalizePublicEquipment(value) {
   return equipment;
 }
 
-function publicEquipmentProfile(value) {
+export function publicEquipmentProfile(value) {
   const entry = (label, type, style) => label === undefined ? null : (label ? {
     name: label,
     kind: PUBLIC_WEAPON_KIND[type] || '',
@@ -140,7 +142,7 @@ function publicEquipmentProfile(value) {
   };
 }
 
-function publicActorHints(actor) {
+export function publicActorHints(actor) {
   if (!actor || !Object.prototype.hasOwnProperty.call(actor, 'appearance')) return null;
   const appearance = actor.appearance || {};
   const race = appearance.race || appearance.family || '';
@@ -157,6 +159,30 @@ function publicActorHints(actor) {
   };
 }
 
+function normalizePublicState(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const result = {};
+  if (typeof value.condition === 'string') result.condition = safeText(value.condition, 80);
+  for (const field of ['elite', 'boss']) {
+    if ([true, false, 0, 1].includes(value[field])) result[field] = protocolBoolean(value[field]);
+  }
+  if (Array.isArray(value.effects)) result.effects = value.effects.slice(0, 14)
+    .filter((effect) => typeof effect === 'string').map((effect) => safeText(effect, 32)).filter(Boolean);
+  return result;
+}
+
+function normalizeMovement(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const result = {};
+  for (const field of ['action', 'target']) {
+    if (typeof value[field] === 'string') result[field] = safeText(value[field], 80);
+  }
+  for (const field of ['progress', 'required']) {
+    if (Number.isSafeInteger(value[field]) && value[field] >= 0) result[field] = value[field];
+  }
+  return result;
+}
+
 export function createCombatVisualState(options = {}) {
   return {
     epoch: '',
@@ -169,6 +195,9 @@ export function createCombatVisualState(options = {}) {
     currentActorId: '',
     currentTargetId: '',
     actors: [],
+    position: '',
+    preferredPosition: '',
+    movement: {},
     outcome: '',
     summary: '',
     history: [],
@@ -198,6 +227,9 @@ export function normalizeCombatState(payload) {
     currentActorId: safeText(payload.current_actor_id, 96),
     currentTargetId: safeText(payload.current_target_id, 96),
     actors: normalizeActors(payload.actors),
+    position: ['melee', 'ranged'].includes(payload.position) ? payload.position : '',
+    preferredPosition: ['melee', 'ranged'].includes(payload.preferred_position) ? payload.preferred_position : '',
+    movement: normalizeMovement(payload.movement),
     outcome: safeText(payload.outcome, 48).toLowerCase(),
     summary: safeText(payload.summary, 320),
   };
@@ -231,6 +263,9 @@ export function reduceCombatState(current, payload, receivedAt = Date.now()) {
     currentActorId: normalized.currentActorId,
     currentTargetId: normalized.currentTargetId,
     actors: normalized.actors,
+    position: normalized.position,
+    preferredPosition: normalized.preferredPosition,
+    movement: normalized.movement,
     outcome: normalized.outcome,
     summary: normalized.summary,
     history: resetTransient ? [] : previous.history,
@@ -482,8 +517,13 @@ export function buildCombatView(current, sources = {}) {
     event: model.currentEvent,
     history: model.history.slice(-model.limits.history),
     overflow: { ...model.overflow },
+    position: model.position || '',
+    preferredPosition: model.preferredPosition || '',
+    movement: { ...model.movement },
     player: {
       id: playerId,
+      occupantId: currentActor && currentActor.occupant_id || '',
+      publicState: currentActor && currentActor.public_state || {},
       name: (currentActor && currentActor.name)
         || (observerView ? 'Combatant' : safeText(avatar.name, 120) || 'You'),
       image: observerView || playerPublicAppearance ? '' : safeText(avatar.url, 2048),
@@ -501,12 +541,15 @@ export function buildCombatView(current, sources = {}) {
     },
     target: {
       id: targetId,
+      occupantId: targetActor && targetActor.occupant_id || '',
+      publicState: targetActor && targetActor.public_state || {},
       name: ((targetPublicAppearance || targetPublicEquipment) && targetActor && targetActor.name)
         || (!observerView && enemyName)
         || (targetActor && targetActor.name)
         || 'Current target',
       image: observerView || targetPublicAppearance ? '' : safeText(enemy.enemy_image, 2048),
-      condition: observerView || targetPublicAppearance ? '' : safeText(enemy.enemy_hp_string, 160),
+      condition: targetActor && targetActor.public_state && targetActor.public_state.condition
+        || (observerView || targetPublicAppearance ? '' : safeText(enemy.enemy_hp_string, 160)),
       ...(targetPublicAppearance || {}),
       ...(targetPublicEquipment ? { equipment: targetPublicEquipment } : {}),
       isNpc: !observerView && isNpcEnemy(enemy),

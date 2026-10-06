@@ -575,3 +575,28 @@ test('passive combat uses each roster actor snapshot without recipient-private h
   assert.equal(resolveFigure(view.target, 'target').kind, 'beast');
   assert.equal(view.target.health.known, false);
 });
+
+test('public condition and tactical state survive normalization without private actor fields', () => {
+  const model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'watch-1', current_target_id: 'watch-2',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'watch-1', name: 'a guard', role: 'participant', occupant_id: 'room-9',
+        public_state: { condition: 'slightly wounded', effects: ['bleeding'], hp: 19, buffs: ['secret'] } },
+      { id: 'watch-2', name: 'a guard', role: 'target', occupant_id: 'room-10',
+        public_state: { condition: 'badly wounded', elite: 1, boss: 0 } },
+    ],
+    position: 'ranged', preferred_position: 'melee',
+    movement: { action: 'fallback', target: 'a guard', progress: 2, required: 5, secret: 'ignored' },
+  }));
+  const view = buildCombatView(model, { vitals: { hp: 999, maxhp: 1000 } });
+  assert.equal(view.player.occupantId, 'room-9');
+  assert.equal(view.target.occupantId, 'room-10');
+  assert.equal(view.target.condition, 'badly wounded');
+  assert.equal(view.target.publicState.elite, true);
+  assert.equal(view.player.health.known, false);
+  assert.deepEqual(view.player.publicState, { condition: 'slightly wounded', effects: ['bleeding'] });
+  assert.equal(view.position, 'ranged');
+  assert.equal(view.preferredPosition, 'melee');
+  assert.deepEqual(view.movement, { action: 'fallback', target: 'a guard', progress: 2, required: 5 });
+});

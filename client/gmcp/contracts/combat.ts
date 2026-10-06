@@ -29,12 +29,28 @@ export interface DarkwindCombatEquipment {
   two_handed?: boolean;
 }
 
+export interface DarkwindCombatPublicState {
+  condition?: string;
+  elite?: DarkwindCombatWireBoolean;
+  boss?: DarkwindCombatWireBoolean;
+  effects?: string[];
+}
+
+export interface DarkwindCombatMovement {
+  action?: string;
+  target?: string;
+  progress?: number;
+  required?: number;
+}
+
 export interface DarkwindCombatActor {
   id: string;
   name: string;
   role: string;
   appearance?: DarkwindCombatAppearance;
   equipment?: DarkwindCombatEquipment;
+  public_state?: DarkwindCombatPublicState;
+  occupant_id?: string;
 }
 
 export interface DarkwindCombatState {
@@ -49,6 +65,9 @@ export interface DarkwindCombatState {
   actors: DarkwindCombatActor[];
   outcome: string;
   summary: string;
+  position?: "melee" | "ranged";
+  preferred_position?: "melee" | "ranged";
+  movement?: DarkwindCombatMovement;
 }
 
 export type DarkwindCombatResult = "absorb" | "block" | "critical" | "dodge" | "hit" | "miss";
@@ -139,6 +158,9 @@ export function extractDarkwindCombatStateFields(input: unknown): NamedFields | 
     actors: Array.isArray(value.actors) ? value.actors.slice(0, DARKWIND_COMBAT_ACTOR_LIMIT) : [],
     outcome: value.outcome,
     summary: value.summary,
+    position: value.position,
+    preferred_position: value.preferred_position,
+    movement: value.movement,
   };
 }
 
@@ -156,7 +178,43 @@ function normalizeActor(input: unknown): DarkwindCombatActor | null {
   if (own(value, "equipment")) {
     actor.equipment = normalizeEquipment(value.equipment) ?? {};
   }
+  if (own(value, "public_state")) actor.public_state = normalizePublicState(value.public_state);
+  const occupantId = text(value.occupant_id, 96);
+  if (occupantId) actor.occupant_id = occupantId;
   return actor;
+}
+
+function normalizePublicState(input: unknown): DarkwindCombatPublicState {
+  const value = record(input);
+  if (!value) return {};
+  const result: DarkwindCombatPublicState = {};
+  const condition = text(value.condition, 80, true);
+  if (condition !== null) result.condition = condition;
+  for (const field of ["elite", "boss"] as const) {
+    const flag = protocolBoolean(value[field]);
+    if (flag !== null) result[field] = flag;
+  }
+  if (Array.isArray(value.effects))
+    result.effects = value.effects
+      .slice(0, 14)
+      .map((effect) => text(effect, 32))
+      .filter((effect): effect is string => effect !== null);
+  return result;
+}
+
+function normalizeMovement(input: unknown): DarkwindCombatMovement {
+  const value = record(input);
+  if (!value) return {};
+  const result: DarkwindCombatMovement = {};
+  for (const field of ["action", "target"] as const) {
+    const label = text(value[field], 80, true);
+    if (label !== null) result[field] = label;
+  }
+  for (const field of ["progress", "required"] as const) {
+    const count = integer(value[field]);
+    if (count !== null) result[field] = count;
+  }
+  return result;
 }
 
 function normalizeAppearance(input: unknown): DarkwindCombatAppearance | null {
@@ -253,6 +311,13 @@ export function normalizeDarkwindCombatState(input: unknown): DarkwindCombatStat
     actors,
     outcome: outcome.toLowerCase(),
     summary,
+    ...(["melee", "ranged"].includes(String(value.position))
+      ? { position: value.position as "melee" | "ranged" }
+      : {}),
+    ...(["melee", "ranged"].includes(String(value.preferred_position))
+      ? { preferred_position: value.preferred_position as "melee" | "ranged" }
+      : {}),
+    ...(value.movement !== undefined ? { movement: normalizeMovement(value.movement) } : {}),
   };
 }
 

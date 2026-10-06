@@ -119,6 +119,13 @@ function commandWord(value) {
   return /^[a-z][a-z0-9_-]{0,23}$/.test(command) ? command : '';
 }
 
+function commandNoun(value) {
+  const noun = String(value ?? '').trim();
+  // Preserve the server-authored parser phrase exactly, but never permit a
+  // noun to become a second command or contain terminal controls.
+  return noun && noun.length <= 120 && !/[;\r\n\x00-\x1f\x7f]/.test(noun) ? noun : '';
+}
+
 export function roomSceneTerrain(environment) {
   return getPrimaryTerrain(environment);
 }
@@ -149,12 +156,13 @@ function detailTarget(detail, index) {
 
 export function roomSceneTargets(looks, details) {
   const targets = [];
+  const looksSupplied = Array.isArray(looks) || looks === '';
   if (Array.isArray(looks)) {
     for (const look of looks) {
       if (!look || typeof look !== 'object') continue;
       const id = spriteWord(look.id);
       const name = String(look.name ?? '').trim();
-      const nouns = Array.isArray(look.nouns) ? look.nouns.map(spriteWord).filter(Boolean) : [];
+      const nouns = Array.isArray(look.nouns) ? look.nouns.map(commandNoun).filter(Boolean) : [];
       if (!id || !name || !nouns.length) continue;
       targets.push({
         id,
@@ -175,14 +183,14 @@ export function roomSceneTargets(looks, details) {
       });
     }
   }
-  if (!targets.length && Array.isArray(details)) {
+  if (!looksSupplied && !targets.length && Array.isArray(details)) {
     targets.push(...details.map(detailTarget));
-  } else if (!targets.length && details && typeof details === 'object') {
+  } else if (!looksSupplied && !targets.length && details && typeof details === 'object') {
     for (const [key, value] of Object.entries(details)) {
       if (value === false || value === 0 || value === null || value === '') continue;
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         const name = String(value.name ?? key).trim();
-        const nouns = Array.isArray(value.nouns) ? value.nouns.map(spriteWord).filter(Boolean) : [spriteWord(key)];
+        const nouns = Array.isArray(value.nouns) ? value.nouns.map(commandNoun).filter(Boolean) : [commandNoun(key)];
         targets.push({
           id: spriteWord(value.id ?? key),
           name,
@@ -254,7 +262,7 @@ export function roomSceneTargetMatches(target, query) {
 
 export function roomSceneTargetCommand(target, verb = 'look') {
   const action = commandWord(verb) || 'look';
-  const noun = (target.nouns || []).map(spriteWord).find(Boolean);
+  const noun = (target.nouns || []).map(commandNoun).find(Boolean);
   return noun ? `${action} ${noun}` : '';
 }
 
@@ -334,9 +342,9 @@ export function roomSceneAtmosphere(scene = {}) {
   const weather = spriteWord(scene.weather);
   const lighting = spriteWord(scene.lighting);
   return {
-    time: ['dawn', 'day', 'dusk', 'night'].includes(time) ? time : 'day',
+    time: time === 'twilight' ? 'dusk' : ['dawn', 'day', 'dusk', 'night'].includes(time) ? time : 'day',
     weather: ['ash', 'clear', 'fog', 'rain', 'sand', 'snow'].includes(weather) ? weather : 'clear',
-    lighting: ['bright', 'dim', 'fire', 'magic', 'normal'].includes(lighting) ? lighting : 'normal',
+    lighting: ['bright', 'dim', 'dark', 'fire', 'magic', 'normal'].includes(lighting) ? lighting : 'normal',
   };
 }
 

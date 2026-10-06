@@ -1,4 +1,9 @@
 import type { MapData2RoomId, MapData2WireBoolean } from "./darkwind-map-data-v2";
+import type {
+  DarkwindCombatAppearance,
+  DarkwindCombatEquipment,
+  DarkwindCombatPublicState,
+} from "./combat";
 
 export type DarkwindRoomOccupantKind = "self" | "player" | "npc" | "pet";
 
@@ -27,6 +32,9 @@ export interface DarkwindRoomOccupant {
   faction?: string;
   cue?: string;
   engaged_with?: string;
+  appearance?: DarkwindCombatAppearance;
+  equipment?: DarkwindCombatEquipment;
+  public_state?: DarkwindCombatPublicState;
 }
 
 /** Visibility-filtered living things in the viewer's current room. */
@@ -37,6 +45,7 @@ export interface DarkwindRoomOccupants {
   base_revision?: number;
   revision: number;
   dark: MapData2WireBoolean;
+  unavailable?: MapData2WireBoolean;
   more: number;
   upsert: DarkwindRoomOccupant[];
   removed: string[];

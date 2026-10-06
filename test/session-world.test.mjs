@@ -264,7 +264,9 @@ test("room image tokens follow merged Room.Info identity and playlist Open alone
 
 test("room occupants apply revisioned snapshots and deltas without leaking stale rooms", async (t) => {
   const modules = await loadModules(t);
-  const { bus, scope, world } = createWorld(modules);
+  const { bus, eventBus, sent, scope, world } = createWorld(modules);
+  eventBus.publish("transport:reconnect-status", { status: "connected", attempt: 0, transport: "wss" });
+  world.setVisiblePanels(["room"]);
 
   bus.dispatch("Room.Info", { num: 101, name: "Atrium", exits: {} });
   bus.dispatch("Darkwind.Room.Occupants", {
@@ -307,6 +309,43 @@ test("room occupants apply revisioned snapshots and deltas without leaking stale
   assert.equal(snapshot.occupantsMore, 2);
 
   bus.dispatch("Darkwind.Room.Occupants", {
+    version: 1, room: 101, mode: "snapshot", revision: 5, dark: 0, more: 0,
+    upsert: [{ id: "conflict", name: "stale conflict", kind: "npc" }], removed: [],
+  });
+  assert.deepEqual(world.getSnapshot().occupants.map(({ id }) => id), ["self", "giant"]);
+
+  bus.dispatch("Darkwind.Room.Occupants", {
+    version: 1, room: 101, mode: "delta", base_revision: 4, revision: 6, dark: 0, more: 0,
+    upsert: [{ id: "bad", name: "bad delta", kind: "npc" }], removed: [],
+  });
+  assert.equal(world.getSnapshot().occupantsReady, false);
+  assert.deepEqual(world.getSnapshot().occupants, []);
+  assert.equal(world.getSnapshot().occupantsAuthoritative, true);
+  const requests = () => sent.filter((frame) => frame.includes('"full":true'));
+  assert.equal(requests().length, 1);
+  assert.equal(JSON.parse(requests()[0].slice("Darkwind.Client.Subscriptions ".length)).panels.room, true);
+  bus.dispatch("Darkwind.Room.Occupants", {
+    version: 1, room: 101, mode: "delta", base_revision: 2, revision: 7, dark: 0, more: 0,
+    upsert: [], removed: [],
+  });
+  assert.equal(requests().length, 1, "repeated mismatches must not flood refresh requests");
+  bus.dispatch("Darkwind.Room.Occupants", {
+    version: 1, room: 101, mode: "snapshot", revision: 5, dark: 0, more: 2,
+    upsert: [{ id: "self", name: "Nacho", kind: "self" }, { id: "giant", name: "a frost giant", kind: "npc", hostile: 1 }], removed: [],
+  });
+  assert.equal(world.getSnapshot().occupantsReady, true, "identical forced snapshot restores locally cleared data");
+  world.setVisiblePanels([]);
+  assert.equal(world.getSnapshot().occupantsReady, false);
+  world.setVisiblePanels(["room"]);
+  bus.dispatch("Darkwind.Room.Occupants", {
+    version: 1, room: 101, mode: "snapshot", revision: 6, dark: 0, unavailable: 1, more: 99,
+    upsert: [{ id: "forbidden", name: "Must not display", kind: "npc" }], removed: [],
+  });
+  assert.equal(world.getSnapshot().occupantsUnavailable, true);
+  assert.equal(world.getSnapshot().occupantsMore, 0);
+  assert.deepEqual(world.getSnapshot().occupants, []);
+
+  bus.dispatch("Darkwind.Room.Occupants", {
     version: 1,
     room: 999,
     mode: "snapshot",
@@ -318,7 +357,7 @@ test("room occupants apply revisioned snapshots and deltas without leaking stale
   });
   assert.deepEqual(
     world.getSnapshot().occupants.map(({ id }) => id),
-    ["self", "giant"],
+    [],
   );
 
   bus.dispatch("Darkwind.MapData2.Current", current(102));
