@@ -17,6 +17,16 @@ export interface DarkwindRoomOccupant {
   hazy?: MapData2WireBoolean;
   owner?: string;
   level?: number;
+  role?: string;
+  activity?: string;
+  anchor_id?: string;
+  weapon?: string;
+  shield?: MapData2WireBoolean;
+  helmet?: string;
+  armor?: string;
+  faction?: string;
+  cue?: string;
+  engaged_with?: string;
 }
 
 /** Visibility-filtered living things in the viewer's current room. */

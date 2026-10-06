@@ -23,6 +23,12 @@ MapData2: it renders one current-room scene rather than a navigable world map.
       "gender": "male",
       "size": "huge",
       "hostile": 1,
+      "fighting": 1,
+      "weapon": "great axe",
+      "role": "guardian",
+      "activity": "guard",
+      "anchor_id": "north-gate",
+      "engaged_with": "self:nacho",
       "level": 182
     }
   ],
@@ -39,6 +45,24 @@ The server must build this message per viewer with the same visibility rules as
 `look`. A dark room sends `dark: 1` and no occupants. NPC level is optional and
 must follow the existing `npcdetail` permission. `hostile` means aggressive to,
 or fighting, the recipient.
+
+Optional scene fields enrich the room without changing occupant identity:
+
+| Field             | Meaning                                                                |
+| ----------------- | ---------------------------------------------------------------------- |
+| `role`            | Short player-visible role such as `guard`, `merchant`, or `blacksmith` |
+| `activity`        | Idle behavior such as `patrol`, `wander`, `work`, `sit`, or `sleep`    |
+| `anchor_id`       | A `Room.Info.looks[].id` near which the occupant should stand          |
+| `weapon`          | Weapon name used to choose a visible equipment overlay                 |
+| `shield`          | Boolean or `0`/`1` shield visibility                                   |
+| `helmet`, `armor` | Short visible equipment labels                                         |
+| `faction`         | Player-visible faction label                                           |
+| `cue`             | `quest` or `objective` marker                                          |
+| `engaged_with`    | Stable occupant ID of the current combat opponent                      |
+
+When `fighting` is set, Darkflow stages friendly and hostile occupants on
+opposing sides and animates a lightweight combat beat. These fields remain
+visibility-filtered and must not reveal hidden equipment, roles, or targets.
 
 Until a server advertises this package, Darkflow shows the recipient from
 `Char.Status` and other players from `Room.Players`; NPCs intentionally remain

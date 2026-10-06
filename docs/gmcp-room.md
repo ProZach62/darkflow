@@ -28,27 +28,35 @@ and synchronized room features such as the shared jukebox.
       "name": "a marble fountain",
       "nouns": ["fountain", "water"],
       "kind": "fountain",
-      "sprite": "fountain"
+      "sprite": "fountain",
+      "state": "active",
+      "verbs": ["drink"],
+      "cue": "quest",
+      "position": { "x": 24, "y": 58 }
     }
   ],
+  "scene": { "time": "dusk", "weather": "rain", "lighting": "fire" },
   "exits": {
     "north": "450359962737050",
     "south": "closed"
-  }
+  },
+  "exit_details": { "north": { "kind": "path" }, "south": { "kind": "gate" } }
 }
 ```
 
-| Field                              | Notes                                                                      |
-| ---------------------------------- | -------------------------------------------------------------------------- |
-| `num` or `id`                      | Stable room identity; `num` is used to detect room changes                 |
-| `name`                             | Room panel title                                                           |
-| `area` or `zone`                   | Area identity for map grouping                                             |
-| `environment`, `terrain`, or `env` | Terrain label; aliases are normalized                                      |
-| `coords`                           | Optional `{x,y,z}` object; copied to `coord_x`, `coord_y`, `coord_z`       |
-| `exits`                            | Direction -> destination id or non-numeric state label                     |
-| `exit_states`                      | Optional explicit direction -> unavailable-state label                     |
-| `details`                          | Optional room tags retained by mapping implementations                     |
-| `looks`                            | Optional visibility-filtered catalogue of room scenery that accepts `look` |
+| Field                              | Notes                                                                              |
+| ---------------------------------- | ---------------------------------------------------------------------------------- |
+| `num` or `id`                      | Stable room identity; `num` is used to detect room changes                         |
+| `name`                             | Room panel title                                                                   |
+| `area` or `zone`                   | Area identity for map grouping                                                     |
+| `environment`, `terrain`, or `env` | Terrain label; aliases are normalized                                              |
+| `coords`                           | Optional `{x,y,z}` object; copied to `coord_x`, `coord_y`, `coord_z`               |
+| `exits`                            | Direction -> destination id or non-numeric state label                             |
+| `exit_states`                      | Optional explicit direction -> unavailable-state label                             |
+| `exit_details`                     | Optional exit presentation (`path`, `door`, `gate`, `stairs`, `cave`, or `portal`) |
+| `details`                          | Optional room tags retained by mapping implementations                             |
+| `looks`                            | Optional visibility-filtered catalogue of room scenery that accepts `look`         |
+| `scene`                            | Optional time, weather, and lighting presentation                                  |
 
 The Darkwind server uses an empty string as the LPC/JSON sentinel when
 `coords`, `exits`, `details`, or `looks` has no value. `Room.Players` likewise sends an
@@ -56,13 +64,19 @@ empty string when no other players are present. Clients accept those wire
 values as empty state without rewriting the received payload.
 
 Each `looks` entry has a stable room-local `id`, player-facing `name`, and one
-or more normalized command `nouns`. `kind` is an optional semantic category.
-`sprite` is an optional client artwork hint; Darkflow recognizes its built-in
-prop names and otherwise falls back to matching familiar nouns. Entries must
-already reflect what the player can perceive. The Isometric Room panel renders
-the catalogue, sends `look <first noun>` when an entry is selected, and walks
-the player's sprite over to the matching room prop. For older servers without
-`looks`, the panel uses `details` as a basic catalogue.
+or more normalized command `nouns`. Optional fields add `kind`, `sprite`,
+`state`, `category`, a `cue` (`quest`, `objective`, `new`, `secret`, or `loot`),
+up to six safe command `verbs`, and a percentage `position` inside the room
+stage. Darkflow recognizes its built-in prop names and otherwise falls back to
+matching familiar nouns. Entries must already reflect what the player can
+perceive. Selecting an action sends `<verb> <first noun>` and walks the player
+sprite to the object. For older servers without `looks`, the panel uses
+`details` as a basic catalogue.
+
+`scene.time` accepts `dawn`, `day`, `dusk`, or `night`; `scene.weather` accepts
+`clear`, `rain`, `snow`, `fog`, `ash`, or `sand`; and `scene.lighting` accepts
+`normal`, `bright`, `dim`, `fire`, or `magic`. Unknown values safely use the
+day, clear, and normal defaults.
 
 When an `exits` value is a non-numeric string, Darkflow also treats it as an
 exit state. The room panel displays that direction as unavailable with the

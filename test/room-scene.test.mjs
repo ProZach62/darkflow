@@ -2,19 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  roomSceneAtmosphere,
   roomSceneBuildingPosition,
   roomSceneBuildingSprite,
   roomSceneDetails,
   roomSceneDoorSprite,
+  roomSceneExitKind,
   roomSceneExitPosition,
   roomSceneOccupantPosition,
   roomSceneOccupantSprite,
   roomScenePropSprite,
   roomSceneTargetMatches,
+  roomSceneTargetCommand,
   roomSceneTargetPosition,
   roomSceneTargets,
   roomSceneTerrain,
   roomSceneTexture,
+  roomSceneWeaponSprite,
 } from '../public/js/room-scene-core.mjs';
 
 test('room scenes choose a focused floor texture from compound terrain', () => {
@@ -44,7 +48,7 @@ test('room scene occupants select stable art and bounded positions', () => {
 });
 
 test('room scene exits expose positions and door art without inventing directions', () => {
-  assert.deepEqual(roomSceneExitPosition('north'), { x: 68, y: 29, label: 'N' });
+  assert.deepEqual(roomSceneExitPosition('north'), { x: 63, y: 29, label: 'North' });
   assert.equal(roomSceneExitPosition('portal'), null);
   assert.equal(roomSceneDoorSprite(3), 'door-locked');
   assert.equal(roomSceneDoorSprite('closed'), 'door-closed');
@@ -53,7 +57,19 @@ test('room scene exits expose positions and door art without inventing direction
 
 test('room scene catalogue prefers structured looks and maps familiar nouns to prop art', () => {
   const targets = roomSceneTargets(
-    [{ id: 'fountain-1', name: 'a marble fountain', nouns: ['fountain', 'water'], sprite: 'fountain' }],
+    [
+      {
+        id: 'fountain-1',
+        name: 'a marble fountain',
+        nouns: ['fountain', 'water'],
+        sprite: 'fountain',
+        state: 'dry',
+        category: 'scenery',
+        cue: 'quest',
+        verbs: ['look', 'drink', 'say hello'],
+        position: { x: 30, y: 70 },
+      },
+    ],
     ['shop'],
   );
   assert.deepEqual(targets, [
@@ -63,12 +79,20 @@ test('room scene catalogue prefers structured looks and maps familiar nouns to p
       nouns: ['fountain', 'water'],
       kind: '',
       sprite: 'fountain',
+      state: 'dry',
+      category: 'scenery',
+      cue: 'quest',
+      verbs: ['look', 'drink'],
+      position: { x: 30, y: 70 },
     },
   ]);
   assert.equal(roomScenePropSprite(targets[0]), 'fountain');
   assert.equal(roomSceneTargetMatches(targets[0], 'water'), true);
   assert.equal(roomSceneTargetMatches(targets[0], 'tree'), false);
   assert.deepEqual(roomSceneTargetPosition(8), roomSceneTargetPosition(0));
+  assert.deepEqual(roomSceneTargetPosition(8, targets[0]), { x: 30, y: 70 });
+  assert.equal(roomSceneTargetCommand(targets[0], 'drink'), 'drink fountain');
+  assert.equal(roomSceneTargetCommand(targets[0], 'say hello'), 'look fountain');
 });
 
 test('room scene catalogue falls back to legacy details', () => {
@@ -78,4 +102,33 @@ test('room scene catalogue falls back to legacy details', () => {
   ]);
   assert.equal(roomScenePropSprite({ name: 'old oak tree', nouns: ['oak'] }), 'tree');
   assert.equal(roomScenePropSprite({ name: 'mysterious portal', nouns: ['portal'] }), null);
+});
+
+test('expanded props, equipment, exits, ambience, anchors, and combat are normalized', () => {
+  assert.equal(roomScenePropSprite({ name: 'a dropped satchel', nouns: ['loot'] }), 'loot');
+  assert.equal(roomScenePropSprite({ name: 'fungus', nouns: ['mushroom'] }), 'mushrooms');
+  assert.equal(roomSceneWeaponSprite('a tempered great sword'), 'great-sword');
+  assert.equal(roomSceneWeaponSprite('oak bow'), null);
+  assert.equal(roomSceneExitKind('up'), 'stairs');
+  assert.equal(roomSceneExitKind('east', { kind: 'portal' }), 'portal');
+  assert.equal(roomSceneExitKind('west', { kind: 'spaceship' }), 'path');
+  assert.deepEqual(roomSceneAtmosphere({ time: 'night', weather: 'rain', lighting: 'magic' }), {
+    time: 'night',
+    weather: 'rain',
+    lighting: 'magic',
+  });
+  assert.deepEqual(roomSceneAtmosphere({ time: 'noon', weather: 'hail', lighting: 'x' }), {
+    time: 'day',
+    weather: 'clear',
+    lighting: 'normal',
+  });
+  const targets = [{ id: 'forge', x: 70, y: 50 }];
+  assert.deepEqual(roomSceneOccupantPosition(2, { kind: 'npc', anchor_id: 'forge' }, targets), {
+    x: 63,
+    y: 53,
+  });
+  assert.deepEqual(roomSceneOccupantPosition(1, { kind: 'npc', fighting: true, hostile: true }), {
+    x: 60,
+    y: 67,
+  });
 });

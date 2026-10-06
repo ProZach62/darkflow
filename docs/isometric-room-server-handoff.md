@@ -40,7 +40,11 @@ room's visible look definitions and valid parser nouns.
       "name": "a marble fountain",
       "nouns": ["fountain", "water"],
       "kind": "fountain",
-      "sprite": "fountain"
+      "sprite": "fountain",
+      "state": "active",
+      "verbs": ["drink"],
+      "cue": "quest",
+      "position": { "x": 24, "y": 58 }
     },
     {
       "id": "ancient-oak",
@@ -56,19 +60,29 @@ room's visible look definitions and valid parser nouns.
   },
   "exit_states": {
     "south": "locked"
-  }
+  },
+  "exit_details": {
+    "north": { "kind": "path" },
+    "south": { "kind": "gate" }
+  },
+  "scene": { "time": "dusk", "weather": "rain", "lighting": "fire" }
 }
 ```
 
 ### `looks` entry fields
 
-| Field    | Required | Meaning                                                                             |
-| -------- | -------- | ----------------------------------------------------------------------------------- |
-| `id`     | Yes      | Stable identifier within the room. It should remain stable between updates.         |
-| `name`   | Yes      | Player-facing display label, such as `a marble fountain`.                           |
-| `nouns`  | Yes      | One or more valid command targets. The client sends `look <first noun>`.            |
-| `kind`   | No       | Semantic category used to select suitable artwork.                                  |
-| `sprite` | No       | Explicit client artwork hint. Unknown values safely fall back to a generic hotspot. |
+| Field      | Required | Meaning                                                                             |
+| ---------- | -------- | ----------------------------------------------------------------------------------- |
+| `id`       | Yes      | Stable identifier within the room. It should remain stable between updates.         |
+| `name`     | Yes      | Player-facing display label, such as `a marble fountain`.                           |
+| `nouns`    | Yes      | One or more valid command targets.                                                  |
+| `kind`     | No       | Semantic category used to select suitable artwork.                                  |
+| `sprite`   | No       | Explicit client artwork hint. Unknown values safely fall back to a generic hotspot. |
+| `state`    | No       | Visible state such as `lit`, `locked`, `broken`, `empty`, or `active`.              |
+| `category` | No       | Presentation category such as `item`, `workplace`, or `scenery`.                    |
+| `cue`      | No       | `quest`, `objective`, `new`, `secret`, or `loot` marker.                            |
+| `verbs`    | No       | Up to six single-word parser verbs; `look` is always available.                     |
+| `position` | No       | `{x,y}` percentage position; accepted bounds are x 8-92 and y 24-82.                |
 
 The array may be `""` when there are no visible targets, matching existing LPC
 empty-value conventions. Entries should already be filtered for darkness,
@@ -78,12 +92,28 @@ The current client renders at most 12 room targets. It has dedicated prop art
 for these `sprite` values:
 
 - `altar`
+- `anvil`
 - `barrels`
+- `bed`
+- `bench`
 - `bookshelf`
+- `brazier`
+- `campfire`
+- `cart`
 - `chair`
+- `chains`
 - `chest`
+- `crates`
+- `dead-tree`
 - `fountain`
 - `gate`
+- `gravestone`
+- `loot`
+- `market-stall`
+- `mushrooms`
+- `reeds`
+- `rubble`
+- `rug`
 - `sign`
 - `statue`
 - `table`
@@ -104,6 +134,8 @@ Existing `Room.Info` fields continue to provide the rest of the scene:
 | `details`                          | Selects known service buildings and acts as a basic interaction fallback when `looks` is unavailable. |
 | `exits`                            | Creates directional exit controls.                                                                    |
 | `exit_states`                      | Selects open, closed, or locked door presentation.                                                    |
+| `exit_details`                     | Selects `path`, `door`, `gate`, `stairs`, `cave`, or `portal` art and an optional label.              |
+| `scene`                            | Selects time, weather, and lighting overlays.                                                         |
 
 Known building tags currently include `bank`, `guild`, `house`, `post`,
 `post-office`, `pub`, `ruins`, `shop`, `temple`, and `tower`.
@@ -141,6 +173,14 @@ new snapshot or revisioned deltas whenever visible occupants change.
       "hostile": 0,
       "fighting": 0,
       "elite": 1,
+      "role": "temple guard",
+      "activity": "guard",
+      "anchor_id": "north-gate",
+      "weapon": "long sword",
+      "shield": 1,
+      "armor": "plate",
+      "faction": "Temple Watch",
+      "cue": "quest",
       "level": 40
     }
   ],
@@ -150,22 +190,31 @@ new snapshot or revisioned deltas whenever visible occupants change.
 
 ### Occupant fields
 
-| Field      | Required | Meaning                                                                 |
-| ---------- | -------- | ----------------------------------------------------------------------- |
-| `id`       | Yes      | Stable occupant identifier used by snapshots and deltas.                |
-| `name`     | Yes      | Visible player-facing name.                                             |
-| `kind`     | Yes      | One of `self`, `player`, `npc`, or `pet`.                               |
-| `race`     | No       | Specific race used for sprite selection.                                |
-| `family`   | No       | Broader creature family used when no exact race artwork exists.         |
-| `gender`   | No       | Used when gender-specific character art exists.                         |
-| `size`     | No       | Creature scale classification.                                          |
-| `hostile`  | No       | Nonzero when aggressive toward or fighting the recipient.               |
-| `fighting` | No       | Nonzero while actively fighting.                                        |
-| `elite`    | No       | Marks an elite NPC.                                                     |
-| `boss`     | No       | Marks a boss NPC.                                                       |
-| `hazy`     | No       | Marks an occupant whose identity is only partially perceived.           |
-| `owner`    | No       | Visible owner name for a pet.                                           |
-| `level`    | No       | NPC level, only when the recipient has existing `npcdetail` permission. |
+| Field             | Required | Meaning                                                                 |
+| ----------------- | -------- | ----------------------------------------------------------------------- |
+| `id`              | Yes      | Stable occupant identifier used by snapshots and deltas.                |
+| `name`            | Yes      | Visible player-facing name.                                             |
+| `kind`            | Yes      | One of `self`, `player`, `npc`, or `pet`.                               |
+| `race`            | No       | Specific race used for sprite selection.                                |
+| `family`          | No       | Broader creature family used when no exact race artwork exists.         |
+| `gender`          | No       | Used when gender-specific character art exists.                         |
+| `size`            | No       | Creature scale classification.                                          |
+| `hostile`         | No       | Nonzero when aggressive toward or fighting the recipient.               |
+| `fighting`        | No       | Nonzero while actively fighting.                                        |
+| `elite`           | No       | Marks an elite NPC.                                                     |
+| `boss`            | No       | Marks a boss NPC.                                                       |
+| `hazy`            | No       | Marks an occupant whose identity is only partially perceived.           |
+| `owner`           | No       | Visible owner name for a pet.                                           |
+| `level`           | No       | NPC level, only when the recipient has existing `npcdetail` permission. |
+| `role`            | No       | Short player-visible role.                                              |
+| `activity`        | No       | `patrol`, `wander`, `work`, `sit`, `sleep`, or another safe idle hint.  |
+| `anchor_id`       | No       | Matching `looks[].id` used to place the occupant near an object.        |
+| `weapon`          | No       | Weapon name used for a visible equipment overlay.                       |
+| `shield`          | No       | Boolean or `0`/`1` shield visibility.                                   |
+| `helmet`, `armor` | No       | Short visible equipment labels.                                         |
+| `faction`         | No       | Player-visible faction label.                                           |
+| `cue`             | No       | `quest` or `objective` marker.                                          |
+| `engaged_with`    | No       | Stable ID of the occupant's current combat opponent.                    |
 
 Wire booleans may be JSON booleans or LPC-compatible `0` and `1` values.
 
@@ -227,10 +276,10 @@ rules as the textual `look` command.
 
 ## Client Behavior
 
-When the player selects a catalogue entry, Darkflow sends:
+When the player selects a catalogue action, Darkflow sends:
 
 ```text
-look <first noun>
+<verb> <first noun>
 ```
 
 The server remains responsible for parsing the command and returning the
@@ -239,8 +288,10 @@ sprite toward the matching item and returns it to its home position after a
 short pause. Typing the same targeted look command manually produces the same
 animation.
 
-The current client assigns scene positions automatically. The server does not
-need to send coordinates for this version.
+`look` is always available. Server-provided verbs are validated as single
+command words before display. Every action walks the player sprite to the
+matching object. The client assigns safe positions automatically when
+`position` is absent.
 
 ## Recommended Implementation Order
 
@@ -250,20 +301,17 @@ need to send coordinates for this version.
 3. Add visibility-filtered `Room.Info.looks` entries from room look/noun data.
 4. Send occupant deltas for enters, leaves, combat-state changes, and
    visibility changes.
-5. Add richer optional scene metadata in a later protocol revision only if the
-   client needs exact placement, equipment visuals, poses, or verbs beyond
-   `look`.
+5. Add optional object state, verbs, cues, placement, typed exits, ambience,
+   NPC activity, equipment, and combat target metadata as useful.
 
-## Possible Future Extensions
+## Possible Later Extensions
 
 These are not required by the current client, but would support a more dynamic
 room later:
 
-- Server-directed scene position or placement zone
-- Occupant sprite or equipment appearance hints
-- Object state such as open, closed, lit, broken, or occupied
-- Supported verbs such as `sit`, `open`, `read`, `drink`, or `search`
-- Movement and pose events for NPCs
+- Custom occupant sprite artwork beyond the current race/family selection
+- Detailed equipment layers beyond weapon and shield overlays
+- Timed movement paths and pose events for NPCs
 - Object add, update, and remove deltas independent of `Room.Info`
 
 Any such additions should be optional and versioned so the present payloads

@@ -14,12 +14,28 @@ const BUILDING_SPRITES = Object.freeze({
 
 const PROP_SPRITES = new Set([
   'altar',
+  'anvil',
   'barrels',
+  'bed',
+  'bench',
   'bookshelf',
+  'brazier',
+  'campfire',
+  'cart',
   'chair',
+  'chains',
   'chest',
+  'crates',
+  'dead-tree',
   'fountain',
   'gate',
+  'gravestone',
+  'loot',
+  'market-stall',
+  'mushrooms',
+  'reeds',
+  'rubble',
+  'rug',
   'sign',
   'statue',
   'table',
@@ -82,20 +98,25 @@ const TARGET_POSITIONS = Object.freeze([
 ]);
 
 const EXIT_POSITIONS = Object.freeze({
-  north: { x: 68, y: 29, label: 'N' },
+  north: { x: 63, y: 29, label: 'North' },
   northeast: { x: 84, y: 39, label: 'NE' },
-  east: { x: 90, y: 70, label: 'E' },
+  east: { x: 86, y: 70, label: 'East' },
   southeast: { x: 71, y: 73, label: 'SE' },
-  south: { x: 29, y: 73, label: 'S' },
+  south: { x: 29, y: 73, label: 'South' },
   southwest: { x: 10, y: 60, label: 'SW' },
-  west: { x: 16, y: 39, label: 'W' },
+  west: { x: 16, y: 39, label: 'West' },
   northwest: { x: 32, y: 29, label: 'NW' },
-  up: { x: 87, y: 28, label: 'U' },
-  down: { x: 13, y: 72, label: 'D' },
+  up: { x: 80, y: 29, label: 'Up' },
+  down: { x: 13, y: 72, label: 'Down' },
 });
 
 function spriteWord(value) {
   return String(value ?? '').trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+function commandWord(value) {
+  const command = String(value ?? '').trim().toLocaleLowerCase();
+  return /^[a-z][a-z0-9_-]{0,23}$/.test(command) ? command : '';
 }
 
 export function roomSceneTerrain(environment) {
@@ -141,6 +162,16 @@ export function roomSceneTargets(looks, details) {
         nouns: [...new Set(nouns)],
         kind: spriteWord(look.kind),
         sprite: spriteWord(look.sprite),
+        state: spriteWord(look.state),
+        category: spriteWord(look.category),
+        cue: spriteWord(look.cue),
+        verbs: Array.isArray(look.verbs)
+          ? [...new Set(look.verbs.map(commandWord).filter(Boolean))].slice(0, 6)
+          : [],
+        position:
+          look.position && typeof look.position === 'object'
+            ? { x: Number(look.position.x), y: Number(look.position.y) }
+            : null,
       });
     }
   }
@@ -158,6 +189,16 @@ export function roomSceneTargets(looks, details) {
           nouns: [...new Set(nouns)],
           kind: spriteWord(value.kind),
           sprite: spriteWord(value.sprite),
+          state: spriteWord(value.state),
+          category: spriteWord(value.category),
+          cue: spriteWord(value.cue),
+          verbs: Array.isArray(value.verbs)
+            ? [...new Set(value.verbs.map(commandWord).filter(Boolean))].slice(0, 6)
+            : [],
+          position:
+            value.position && typeof value.position === 'object'
+              ? { x: Number(value.position.x), y: Number(value.position.y) }
+              : null,
         });
       } else {
         targets.push(detailTarget(key, targets.length));
@@ -173,7 +214,23 @@ export function roomScenePropSprite(target = {}) {
   if (PROP_SPRITES.has(explicit)) return explicit;
   const words = [target.kind, target.name, ...(target.nouns || [])].map(spriteWord).join('-');
   const matches = [
+    ['market-stall', ['market-stall', 'stall', 'vendor']],
+    ['dead-tree', ['dead-tree', 'dead-oak', 'snag']],
     ['bookshelf', ['bookshelf', 'bookcase', 'shelf', 'books']],
+    ['gravestone', ['gravestone', 'headstone', 'grave', 'tombstone']],
+    ['mushrooms', ['mushroom', 'mushrooms', 'fungus']],
+    ['campfire', ['campfire', 'camp-fire', 'firepit']],
+    ['brazier', ['brazier', 'fire-basket']],
+    ['reeds', ['reeds', 'cattails']],
+    ['chains', ['chains', 'shackles']],
+    ['rubble', ['rubble', 'debris']],
+    ['crates', ['crate', 'crates']],
+    ['anvil', ['anvil', 'forge']],
+    ['bench', ['bench', 'pew']],
+    ['cart', ['cart', 'wagon']],
+    ['bed', ['bed', 'cot']],
+    ['rug', ['rug', 'carpet']],
+    ['loot', ['loot', 'coins', 'satchel', 'treasure']],
     ['fountain', ['fountain']],
     ['barrels', ['barrel', 'cask']],
     ['statue', ['statue', 'sculpture', 'idol']],
@@ -193,6 +250,12 @@ export function roomSceneTargetMatches(target, query) {
   const needle = spriteWord(query);
   if (!needle) return false;
   return [target.id, target.name, ...(target.nouns || [])].map(spriteWord).some((value) => value === needle);
+}
+
+export function roomSceneTargetCommand(target, verb = 'look') {
+  const action = commandWord(verb) || 'look';
+  const noun = (target.nouns || []).map(spriteWord).find(Boolean);
+  return noun ? `${action} ${noun}` : '';
 }
 
 export function roomSceneBuildingSprite(detail) {
@@ -219,7 +282,16 @@ export function roomSceneOccupantSprite(occupant = {}) {
   return 'humanoid';
 }
 
-export function roomSceneOccupantPosition(index) {
+export function roomSceneOccupantPosition(index, occupant = {}, targets = []) {
+  const anchor = spriteWord(occupant.anchor_id);
+  const target = anchor ? targets.find((candidate) => spriteWord(candidate.id) === anchor) : null;
+  if (target && Number.isFinite(target.x) && Number.isFinite(target.y)) {
+    const side = target.x > 68 ? -1 : target.x < 32 ? 1 : occupant.kind === 'npc' ? 1 : -1;
+    return { x: Math.max(10, Math.min(90, target.x + side * 7)), y: Math.max(24, Math.min(80, target.y + 3)) };
+  }
+  if (occupant.fighting) {
+    return occupant.hostile ? { x: 56 + (index % 2) * 4, y: 63 + (index % 3) * 4 } : { x: 41 - (index % 2) * 6, y: 63 + (index % 3) * 4 };
+  }
   return OCCUPANT_POSITIONS[index % OCCUPANT_POSITIONS.length];
 }
 
@@ -227,8 +299,45 @@ export function roomSceneBuildingPosition(index) {
   return BUILDING_POSITIONS[index % BUILDING_POSITIONS.length];
 }
 
-export function roomSceneTargetPosition(index) {
+export function roomSceneTargetPosition(index, target = {}) {
+  const x = Number(target.position?.x);
+  const y = Number(target.position?.y);
+  if (Number.isFinite(x) && Number.isFinite(y) && x >= 8 && x <= 92 && y >= 24 && y <= 82) {
+    return { x, y };
+  }
   return TARGET_POSITIONS[index % TARGET_POSITIONS.length];
+}
+
+export function roomSceneWeaponSprite(weapon) {
+  const key = spriteWord(weapon);
+  if (!key) return null;
+  if (key.includes('great-axe') || key.includes('greataxe')) return 'great-axe';
+  if (key.includes('great-sword') || key.includes('greatsword')) return 'great-sword';
+  if (key.includes('spear') || key.includes('polearm') || key.includes('staff')) return 'spear';
+  if (key.includes('maul')) return 'maul';
+  if (key.includes('hammer') || key.includes('mace')) return 'hammer';
+  if (key.includes('axe')) return 'axe';
+  if (key.includes('sword') || key.includes('blade') || key.includes('dagger')) return 'sword';
+  return null;
+}
+
+export function roomSceneExitKind(direction, detail = {}) {
+  const explicit = spriteWord(detail.kind);
+  if (['cave', 'door', 'gate', 'path', 'portal', 'stairs'].includes(explicit)) return explicit;
+  const key = spriteWord(direction);
+  if (key === 'up' || key === 'down') return 'stairs';
+  return 'path';
+}
+
+export function roomSceneAtmosphere(scene = {}) {
+  const time = spriteWord(scene.time);
+  const weather = spriteWord(scene.weather);
+  const lighting = spriteWord(scene.lighting);
+  return {
+    time: ['dawn', 'day', 'dusk', 'night'].includes(time) ? time : 'day',
+    weather: ['ash', 'clear', 'fog', 'rain', 'sand', 'snow'].includes(weather) ? weather : 'clear',
+    lighting: ['bright', 'dim', 'fire', 'magic', 'normal'].includes(lighting) ? lighting : 'normal',
+  };
 }
 
 export function roomSceneExitPosition(direction) {

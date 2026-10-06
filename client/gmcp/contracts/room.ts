@@ -4,6 +4,22 @@ export interface RoomLook {
   nouns: string[];
   kind?: string;
   sprite?: string;
+  state?: string;
+  category?: string;
+  cue?: string;
+  verbs?: string[];
+  position?: { x: number; y: number };
+}
+
+export interface RoomExitDetail {
+  kind?: string;
+  label?: string;
+}
+
+export interface RoomScene {
+  time?: string;
+  weather?: string;
+  lighting?: string;
 }
 
 /** Room.Info payload (docs/gmcp-room.md:18-41). */
@@ -22,8 +38,10 @@ export interface RoomInfo {
   coord_z?: number;
   exits?: Record<string, string | number> | "";
   exit_states?: Record<string, string>;
+  exit_details?: Record<string, RoomExitDetail>;
   details?: Record<string, unknown> | string[] | "";
   looks?: RoomLook[] | "";
+  scene?: RoomScene;
   [key: string]: unknown;
 }
 

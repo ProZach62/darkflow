@@ -427,16 +427,70 @@ test("isometric room renders one terrain scene with services, exits, and occupan
     area: "Fixture Town",
     environment: "inside, city",
     details: ["shop", "bank", "pub"],
+    scene: { time: "dusk", weather: "rain", lighting: "fire" },
     looks: [
       {
         id: "marble-fountain",
         name: "a marble fountain",
         nouns: ["fountain", "water"],
         sprite: "fountain",
+        state: "active",
+        verbs: ["drink"],
+        position: { x: 22, y: 58 },
+      },
+      {
+        id: "market-stall",
+        name: "a canvas market stall",
+        nouns: ["stall", "market"],
+        sprite: "market-stall",
+        verbs: ["browse"],
+        position: { x: 73, y: 52 },
+      },
+      {
+        id: "forge-anvil",
+        name: "a scarred blacksmith anvil",
+        nouns: ["anvil", "forge"],
+        sprite: "anvil",
+        category: "workplace",
+        position: { x: 79, y: 68 },
+      },
+      {
+        id: "old-grave",
+        name: "an old memorial stone",
+        nouns: ["memorial", "stone"],
+        sprite: "gravestone",
+        cue: "quest",
+        verbs: ["read", "search"],
+        position: { x: 14, y: 74 },
+      },
+      {
+        id: "abandoned-loot",
+        name: "a dropped leather satchel",
+        nouns: ["satchel", "loot"],
+        sprite: "loot",
+        category: "item",
+        cue: "loot",
+        verbs: ["get", "search"],
+        position: { x: 48, y: 76 },
+      },
+      {
+        id: "watch-fire",
+        name: "a watch fire",
+        nouns: ["fire", "campfire"],
+        sprite: "campfire",
+        state: "lit",
+        verbs: ["warm"],
+        position: { x: 32, y: 72 },
       },
     ],
-    exits: { east: 102, south: 103 },
+    exits: { east: 102, south: 103, north: 104, up: 105 },
     exit_states: { east: "closed" },
+    exit_details: {
+      east: { kind: "door" },
+      south: { kind: "path", label: "Road" },
+      north: { kind: "portal", label: "Rift" },
+      up: { kind: "stairs" },
+    },
   });
   endpoint.sendGmcp("Darkwind.Room.Occupants", {
     version: 1,
@@ -446,18 +500,60 @@ test("isometric room renders one terrain scene with services, exits, and occupan
     dark: 0,
     more: 0,
     upsert: [
-      { id: "self", name: "Nacho", kind: "self", race: "human" },
-      { id: "alice", name: "Alice", kind: "player", race: "elf" },
-      { id: "giant", name: "a frost giant", kind: "npc", hostile: 1, level: 182 },
+      {
+        id: "self",
+        name: "Nacho",
+        kind: "self",
+        race: "human",
+        weapon: "long sword",
+        shield: 1,
+        armor: "plate",
+        fighting: 1,
+        engaged_with: "giant",
+      },
+      {
+        id: "alice",
+        name: "Alice",
+        kind: "player",
+        race: "elf",
+        role: "scout",
+        activity: "patrol",
+        cue: "quest",
+      },
+      {
+        id: "smith",
+        name: "a soot-streaked smith",
+        kind: "npc",
+        race: "dwarf",
+        role: "blacksmith",
+        activity: "work",
+        anchor_id: "forge-anvil",
+        weapon: "hammer",
+      },
+      {
+        id: "giant",
+        name: "a frost giant",
+        kind: "npc",
+        hostile: 1,
+        fighting: 1,
+        engaged_with: "self",
+        weapon: "great axe",
+        size: "huge",
+        level: 182,
+      },
     ],
     removed: [],
   });
 
   await expect(isoRoom).toBeVisible();
   await expect(isoRoom).toHaveAttribute("data-room-terrain", "city");
-  await expect(isoRoom).toHaveAttribute("data-room-occupants", "3");
+  await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
   await expect(isoRoom).toHaveAttribute("data-room-buildings", "3");
-  await expect(isoRoom).toHaveAttribute("data-room-targets", "1");
+  await expect(isoRoom).toHaveAttribute("data-room-targets", "6");
+  await expect(isoRoom).toHaveAttribute("data-room-weather", "rain");
+  await expect(isoRoom).toHaveAttribute("data-room-time", "dusk");
+  await expect(isoRoom).toHaveAttribute("data-room-lighting", "fire");
+  await expect(isoRoom).toHaveAttribute("data-room-combat", "true");
   await expect(isoRoom.getByRole("heading", { name: "Market Atrium" })).toBeVisible();
   await expect(isoRoom.locator('.room-floor[src$="/inside.webp"]')).toBeVisible();
   await expect(isoRoom.getByRole("img", { name: /Nacho/ })).toBeVisible();
@@ -467,18 +563,34 @@ test("isometric room renders one terrain scene with services, exits, and occupan
   ).toBeVisible();
   await expect(isoRoom.getByRole("button", { name: "Go east" })).toHaveClass(/blocked/);
   await expect(isoRoom.getByRole("button", { name: "Go south" })).toBeVisible();
+  await expect(isoRoom.getByRole("button", { name: "Go north" })).toHaveClass(/exit-portal/);
+  await expect(isoRoom.getByRole("button", { name: "Go up" })).toHaveClass(/exit-stairs/);
   await expect(isoRoom.getByRole("button", { name: "Look at a marble fountain" })).toBeVisible();
   await expect(isoRoom.locator('.room-target img[src$="/fountain.webp"]')).toBeVisible();
+  await expect(isoRoom.locator('.room-target img[src$="/market-stall.webp"]')).toBeVisible();
+  await expect(isoRoom.locator('.room-target img[src$="/loot.webp"]')).toBeVisible();
+  await expect(isoRoom.locator(".weather-rain i")).toHaveCount(12);
+  await expect(isoRoom.locator(".combat-clash")).toBeVisible();
+  await expect(isoRoom.locator('.occupant.activity-work[aria-label*="blacksmith"]')).toBeVisible();
+  await expect(isoRoom.locator('.occupant img[src$="/great-axe.png"]')).toBeVisible();
+  await expect(isoRoom.locator('.occupant img[src$="/shield.png"]')).toBeVisible();
+  await expect(isoRoom.locator('[data-cue="quest"]')).toHaveCount(2);
   await expect(isoRoom.getByRole("list", { name: "Room occupants" })).toContainText(
     "a frost giant",
   );
   await isoRoom
     .getByRole("list", { name: "Things to look at" })
-    .getByRole("button", { name: "a marble fountain" })
+    .getByRole("button", { name: "a marble fountain (active)", exact: true })
     .click();
   await expect.poll(() => endpoint.commands).toContain("look fountain");
   await expect(isoRoom).toHaveAttribute("data-player-target", "marble-fountain");
   await expect(isoRoom.locator(".occupant.self")).toHaveClass(/walking/);
+  await expect(isoRoom.getByRole("group", { name: "Actions for a marble fountain" })).toContainText(
+    "Drink",
+  );
+  await isoRoom.getByRole("button", { name: "Get a dropped leather satchel" }).click();
+  await expect.poll(() => endpoint.commands).toContain("get satchel");
+  await expect(isoRoom).toHaveAttribute("data-player-target", "abandoned-loot");
 
   endpoint.sendGmcp("Room.Info", {
     num: 102,
