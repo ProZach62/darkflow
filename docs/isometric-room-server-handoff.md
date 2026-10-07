@@ -1,10 +1,23 @@
 # Isometric Room Server Handoff
 
+## Delivery status (2026-10-07)
+
+Darkwind now implements recipient-filtered `Room.Info` and negotiated
+`Darkwind.Room.Occupants 1` snapshots and revisioned deltas on `PZ-bonanza`. This
+document distinguishes that contract from optional fields accepted by Darkflow.
+Local follow-up adds scenery capability parity to both room inherits,
+conditional discovery in the Qazaash vegetable plot, and exact scenery/anchor
+ID matching in Darkflow, plus bounded event-driven refresh. Companion client
+changes are included on `combat-canvas`; this branch delivery is not a
+deployment. Live two-observer, transport, reconnect, character switch, and
+daemon-reload acceptance remains pending; fixture checks are not production
+verification.
+
 ## Goal
 
 Darkflow now has a single-room isometric scene. To populate it with visible
 players, NPCs, pets, buildings, scenery, and interactable objects, the game
-server should send two authoritative, visibility-filtered GMCP payloads:
+server sends two authoritative, visibility-filtered GMCP payloads:
 
 1. `Room.Info` describes the room, terrain, exits, buildings, and objects the
    player can examine.
@@ -24,12 +37,20 @@ or occupants by receiving data that the player cannot perceive.
 
 ## Room Scenery and Interactable Objects
 
-Add an optional `looks` array to `Room.Info`. It should be derived from the
-room's visible look definitions and valid parser nouns.
+Darkwind sends `looks` from explicit `add_scene_look()` registrations alongside
+existing `add_look()` aliases in `inherits/room.c` and `inherits/newroom.c`.
+It does not enumerate descriptions or evaluate legacy look closures. Content
+owns labels, IDs, artwork hints, and optional viewer-aware discovery hooks.
+Only registered, currently valid, unshadowed parser nouns are advertised.
+
+The following example illustrates the wider client-supported schema. `verbs`,
+`position`, authored exit kinds, and weather are not promised by the current
+server delivery. It emits existing service tags, visible door states/kinds,
+public time/light, and bounded authored scenery; loose loot is not serialized.
 
 ```json
 {
-  "num": "101",
+  "num": 101,
   "name": "Temple Courtyard",
   "area": "Darkwind",
   "environment": "city",
@@ -73,7 +94,7 @@ room's visible look definitions and valid parser nouns.
 
 | Field      | Required | Meaning                                                                             |
 | ---------- | -------- | ----------------------------------------------------------------------------------- |
-| `id`       | Yes      | Stable identifier within the room. It should remain stable between updates.         |
+| `id`       | Yes      | Exact, stable room-local identifier; punctuation and case are significant.          |
 | `name`     | Yes      | Player-facing display label, such as `a marble fountain`.                           |
 | `nouns`    | Yes      | One or more valid command targets.                                                  |
 | `kind`     | No       | Semantic category used to select suitable artwork.                                  |
@@ -84,9 +105,18 @@ room's visible look definitions and valid parser nouns.
 | `verbs`    | No       | Up to six single-word parser verbs; `look` is always available.                     |
 | `position` | No       | `{x,y}` percentage position; accepted bounds are x 8-92 and y 24-82.                |
 
-The array may be `""` when there are no visible targets, matching existing LPC
-empty-value conventions. Entries should already be filtered for darkness,
-concealment, discovery state, and player-specific perception.
+New servers send `[]` when there are no visible targets. Darkflow also accepts
+legacy `""` as explicitly empty. Only a missing `looks` field permits a legacy
+`details` interaction fallback; service tags are not guaranteed parser nouns.
+Entries are filtered for darkness, blindness, discovery, and recipient
+perception. IDs are not slugified: `survey.stake` and `survey-stake` remain
+different objects, and an `anchor_id` must match an advertised ID exactly.
+
+The shared registration limit is 32 entries, eight nouns per entry, and 12
+emitted targets. Shadow checks scan at most 64 carried objects and 64 total
+room entries, including the viewer. Oversized scans fail closed. Removing an
+alias stops advertising it. Discovery hook failure omits the target without
+evaluating its textual description.
 
 The current client renders at most 12 room targets. It has dedicated prop art
 for these `sprite` values:
@@ -142,8 +172,14 @@ Known building tags currently include `bank`, `guild`, `house`, `post`,
 
 ## Visible Players, NPCs, and Pets
 
-Send `Darkwind.Room.Occupants 1` after the player enters a room. Send either a
-new snapshot or revisioned deltas whenever visible occupants change.
+Darkwind sends `Darkwind.Room.Occupants 1` after room entry/subscription and
+reconciles changed recipient-visible state through coalesced event hooks and
+the existing shared ticker. First baselines and recovery use complete snapshots;
+same-room changes use revisioned deltas where insertion order is preserved.
+IDs are opaque, connection-local, and per-recipient; they must not encode true
+names or paths.
+The optional appearance/equipment fields below illustrate client support,
+not a guarantee that each actor supplies every field.
 
 ```json
 {
@@ -155,7 +191,7 @@ new snapshot or revisioned deltas whenever visible occupants change.
   "more": 0,
   "upsert": [
     {
-      "id": "self:nacho",
+      "id": "o1",
       "name": "Nacho",
       "kind": "self",
       "race": "human",
@@ -163,7 +199,7 @@ new snapshot or revisioned deltas whenever visible occupants change.
       "size": "medium"
     },
     {
-      "id": "guard-1874",
+      "id": "o2",
       "name": "a scarred temple guard",
       "kind": "npc",
       "race": "human",
@@ -175,7 +211,7 @@ new snapshot or revisioned deltas whenever visible occupants change.
       "elite": 1,
       "role": "temple guard",
       "activity": "guard",
-      "anchor_id": "north-gate",
+      "anchor_id": "marble-fountain",
       "weapon": "long sword",
       "shield": 1,
       "armor": "plate",
@@ -224,16 +260,39 @@ Wire booleans may be JSON booleans or LPC-compatible `0` and `1` values.
 - `mode: "delta"` updates an existing set and must include `base_revision`
   equal to the client's current revision.
 - `upsert` adds occupants or replaces occupants with matching IDs.
+- Replacement is complete, not a field merge: omitted optional fields are
+  removed. Delta records must include every field intended to remain.
 - `removed` contains stable occupant IDs to remove.
-- `room` must match the current `Room.Info` room identity.
-- `revision` must increase as the authoritative set changes.
+- `room` must match the canonical string form of numeric `Room.Info.num`.
+  An unavailable identity clears to zero; never invent a path-based ID.
+- Positive `revision` increases after accepted changed state. Failed sends
+  do not commit state/revisions. Identical forced snapshots can reuse the
+  revision; lower revisions and conflicting equal revisions are rejected.
 - `dark: 1` means no occupants should be exposed.
+- `unavailable: 1` explicitly clears an incomplete/failed bounded scan, with
+  empty `upsert` and zero `more`. Do not guess an overflow count.
 - `more` reports how many visible occupants were omitted by the server cap.
 
-The protocol accepts up to 24 occupants. The current room scene displays the
-first eight sprites and summarizes overflow separately.
+The server sends at most 24 occupants, self first. The room scene displays the
+first eight sprites; overflow equals received but undisplayed actors plus
+`more` (24 received + five omitted - eight drawn = 21). Hidden actors never
+contribute to this count. Connection-local IDs/revisions survive daemon reload;
+unsubscribe clears rosters but retains the revision counter. Reconnect and
+character change reset session state.
 
-Example delta:
+The client consumes server deltas. A same-room delta needs a ready snapshot,
+the current `base_revision`, and a strictly newer revision. On a mismatch it
+clears the stale set and requests one existing panel subscription refresh with
+`full: true`, not a new resync package. A complete snapshot restores the set.
+
+The server sends a full snapshot for explicit refresh, room instance/identity
+changes, dark/unavailable clearing and recovery, or when a reappearing earlier
+ID would change canonical order under insertion-preserving client upserts.
+Delta `more` is the current total omitted count, not an increment. A send failure
+retains the accepted baseline/revision for retry. Complete replacement records
+can remove optional fields such as a previously permitted NPC level.
+
+Example delta, deliberately retaining the guard's optional fields:
 
 ```json
 {
@@ -246,16 +305,28 @@ Example delta:
   "more": 0,
   "upsert": [
     {
-      "id": "guard-1874",
+      "id": "o2",
       "name": "a scarred temple guard",
       "kind": "npc",
       "race": "human",
+      "family": "human",
       "gender": "male",
+      "size": "medium",
       "hostile": 1,
-      "fighting": 1
+      "fighting": 1,
+      "elite": 1,
+      "role": "temple guard",
+      "activity": "guard",
+      "anchor_id": "marble-fountain",
+      "weapon": "long sword",
+      "shield": 1,
+      "armor": "plate",
+      "faction": "Temple Watch",
+      "cue": "quest",
+      "level": 40
     }
   ],
-  "removed": ["rat-992"]
+  "removed": ["o3"]
 }
 ```
 
@@ -264,9 +335,12 @@ Example delta:
 Both payloads must be built separately for each recipient and use the same
 rules as the textual `look` command.
 
-- Do not expose invisible, hidden, concealed, or undiscovered entities.
-- In darkness, send `looks: ""` and an occupant payload with `dark: 1` and an
-  empty `upsert` list unless the player can perceive through that darkness.
+- Apply existing `environment_visible`, `visible_to`, and blindness rules;
+  retain legitimate see-invisible perception. Hazy perception must not disclose
+  concealed identity/appearance. Discovery is evaluated for each viewer.
+- When the viewer cannot perceive the room, clear `looks`, `details`, `exits`,
+  `exit_states`, and `exit_details`; send `dark: 1`, empty `upsert`, zero `more`,
+  and clear legacy player rosters. Optional metadata must not restore names.
 - Do not expose NPC level without the existing `npcdetail` permission.
 - Do not use object file paths, clone names, or other internal identifiers as
   player-facing names.
@@ -293,16 +367,52 @@ command words before display. Every action walks the player sprite to the
 matching object. The client assigns safe positions automatically when
 `position` is absent.
 
-## Recommended Implementation Order
+## Pilot and acceptance boundary
 
-1. Advertise and send `Darkwind.Room.Occupants 1` snapshots on room entry.
-2. Include visible players, NPCs, and pets with stable IDs and appearance
-   fields.
-3. Add visibility-filtered `Room.Info.looks` entries from room look/noun data.
-4. Send occupant deltas for enters, leaves, combat-state changes, and
-   visibility changes.
-5. Add optional object state, verbs, cues, placement, typed exits, ambience,
-   NPC activity, equipment, and combat target metadata as useful.
+Blue Maw Landing supplies static scenery, aliases, and a multiword noun.
+Qazaash's vegetable plot supplies unconditional plot/soil metadata and a woods
+target gated by the existing `louie_secret_trail` knowledge flag. Knowing the
+trail does not disclose or unlock its hidden north exit. No new quest
+prerequisite or world-wide content migration is introduced.
+
+Retained metadata/protocol LPC regressions cover both room inherits,
+viewer-specific discovery and recovery, bounded shadowing, closed/locked/custom
+and hidden doors, explicit clearing, failed-send retry, IDs/revisions, and caps.
+Client tests cover exact IDs/anchors, multiword commands, empty catalogues,
+overflow and snapshot/delta recovery. Desktop/narrow Chromium fixtures also
+verify mixed removals/replacements/additions, removal of level/shield/fighting
+metadata, and capped-roster promotion/overflow. Live observers, telnet/WebSocket
+equivalence, character switch, reconnect and daemon reload still require
+acceptance testing.
+
+### Coalesced refresh contract
+
+The existing event bus carries transient `world.room_changed` invalidations
+from movement/destruction, combat and perception setters; `world.sky_changed`
+marks all subscribed viewers dirty. Shared producers contain no client policy.
+Transient publications dispatch and count without displacing gameplay history
+or announcing every move to the wizard event channel.
+
+TELOPT schedules one one-second flush, coalesces at most 256 dirty rooms, and
+visits at most 16 registered players per callback with an evaluation reserve.
+Notifications received during a batch remain queued for the next sweep. Each
+eligible interactive viewer is rebuilt using its current environment, GMCP
+subscription and perception; the event's actor is never a cached projection.
+The existing ticker repairs missed notifications, dirty-room overflow and
+event-bus reload subscriptions. Teardown removes subscriptions and callouts.
+
+The retained refresh regression exercises real native move/destruct hooks,
+combat, blindness and light/visibility setters, malformed payload rejection,
+idempotent subscriptions, transient history behavior, the 256/257 dirty-room
+boundary, 16/16/4 batching, teardown and subscription repair. Its synthetic
+viewers are noninteractive: it verifies skipping them, not delivery through
+live sockets. The combined LPC batch passes 21 loads; four desktop/narrow
+Chromium fixture checks and 86 client regression tests pass. Lint, formatting,
+Svelte checking and the production build pass. Full TypeScript checking retains
+the unrelated committed map-test `HTMLElement | SVGElement.hidden` error.
+
+New art, server coordinates, new verbs, loose-loot serialization, global
+targeting and map/save migrations remain out of scope.
 
 ## Possible Later Extensions
 

@@ -667,6 +667,176 @@ test("isometric room renders one terrain scene with services, exits, and occupan
     .toBe("none");
 });
 
+test.describe("isometric room server-contract follow-up", () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test("preserves scenery identities, discovery clearing, locks, overflow, and recovery", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    endpoint.sendGmcp("Room.Info", {
+      num: 101,
+      name: "Survey clearing",
+      area: "Fixture Town",
+      environment: "forest",
+      details: [],
+      looks: [
+        {
+          id: "survey.stake",
+          name: "Survey stake",
+          nouns: ["survey stake"],
+          sprite: "sign",
+          position: { x: 20, y: 60 },
+        },
+        {
+          id: "survey-stake",
+          name: "Red stake",
+          nouns: ["red stake"],
+          sprite: "sign",
+          position: { x: 75, y: 50 },
+        },
+      ],
+      exits: { east: "closed" },
+      exit_states: { east: "locked" },
+    });
+    const roster = {
+      version: 1,
+      room: "101",
+      mode: "snapshot",
+      revision: 40,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "self", name: "Nacho", kind: "self", race: "human" },
+        {
+          id: "surveyor",
+          name: "Surveyor",
+          kind: "npc",
+          race: "human",
+          anchor_id: "survey.stake",
+          level: 40,
+          shield: 1,
+          fighting: 1,
+        },
+        { id: "warden", name: "Warden", kind: "npc", race: "elf", anchor_id: "survey-stake" },
+      ],
+      removed: [],
+    };
+    endpoint.sendGmcp("Darkwind.Room.Occupants", roster);
+    await expect(isoRoom).toHaveAttribute("data-room-targets", "2");
+    await expect(isoRoom.locator('.room-exit img[src$="/door-locked.webp"]')).toBeVisible();
+    await expect(isoRoom.getByRole("img", { name: "Warden", exact: true })).toHaveCSS("--x", "68%");
+    await expect(isoRoom.getByRole("img", { name: /^Surveyor/ })).toHaveCSS("--x", "27%");
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/isometric-followup-${testInfo.project.name}.png`,
+      });
+
+    const catalogue = isoRoom.getByRole("list", { name: "Things to look at" });
+    await catalogue.getByRole("button", { name: "Survey stake", exact: true }).click();
+    await expect.poll(() => endpoint.commands).toContain("look survey stake");
+    await expect(isoRoom).toHaveAttribute("data-player-target", "survey.stake");
+    await catalogue.getByRole("button", { name: "Red stake", exact: true }).click();
+    await expect.poll(() => endpoint.commands).toContain("look red stake");
+    await expect(isoRoom).toHaveAttribute("data-player-target", "survey-stake");
+
+    const surveyor = isoRoom.getByRole("img", { name: /^Surveyor/ });
+    await expect(surveyor).toHaveAttribute("aria-label", /level 40/);
+    await expect(surveyor.locator(".shield")).toHaveCount(1);
+    await expect(surveyor).toHaveClass(/fighting/);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      mode: "delta",
+      base_revision: 40,
+      revision: 41,
+      upsert: [
+        { id: "surveyor", name: "Surveyor", kind: "npc", race: "human", anchor_id: "survey.stake" },
+        { id: "traveller", name: "Traveller", kind: "npc", race: "elf" },
+      ],
+      removed: ["warden"],
+    });
+    await expect(isoRoom.getByRole("img", { name: "Traveller", exact: true })).toBeVisible();
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "3");
+    await expect(isoRoom.getByRole("img", { name: "Warden", exact: true })).toHaveCount(0);
+    await expect(surveyor).not.toHaveAttribute("aria-label", /level 40/);
+    await expect(surveyor.locator(".shield")).toHaveCount(0);
+    await expect(surveyor).not.toHaveClass(/fighting/);
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/isometric-delta-${testInfo.project.name}.png`,
+      });
+
+    endpoint.sendGmcp("Room.Info", { num: 101, looks: [], details: ["shop"] });
+    await expect(isoRoom).toHaveAttribute("data-room-targets", "0");
+    await expect(isoRoom.locator(".room-target")).toHaveCount(0);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      revision: 42,
+      more: 5,
+      upsert: Array.from({ length: 24 }, (_, index) => ({
+        id: `actor-${index}`,
+        name: index === 0 ? "Nacho" : `Actor ${index}`,
+        kind: index === 0 ? "self" : "npc",
+        race: "human",
+      })),
+    });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "8");
+    await expect(isoRoom).toContainText("+21 more");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      mode: "delta",
+      base_revision: 42,
+      revision: 43,
+      more: 0,
+      upsert: [{ id: "promoted", name: "Actor promoted", kind: "npc", race: "human" }],
+      removed: ["actor-1"],
+    });
+    await expect(isoRoom).toContainText("+16 more");
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "8");
+    await expect(isoRoom.getByRole("img", { name: "Actor 1", exact: true })).toHaveCount(0);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      upsert: [{ id: "stale", name: "Stale actor", kind: "npc" }],
+    });
+    // A later frame is a processing barrier: checking the old count alone
+    // could pass before the stale packet reached the client.
+    endpoint.sendGmcp("Room.Info", { num: 101, name: "Survey clearing after stale packet" });
+    await expect(isoRoom).toContainText("Survey clearing after stale packet");
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "8");
+    await expect(isoRoom).not.toContainText("Stale actor");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      mode: "delta",
+      base_revision: 39,
+      revision: 44,
+      upsert: [{ id: "bad-base", name: "Wrong base actor", kind: "npc" }],
+    });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "0");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      revision: 45,
+      upsert: [roster.upsert[0]],
+    });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "1");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      revision: 46,
+      dark: 1,
+      upsert: [],
+    });
+    await expect(isoRoom).toContainText("too dark");
+    await expect(
+      isoRoom.locator(".occupant, .room-target, .room-building, .room-exit"),
+    ).toHaveCount(0);
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/isometric-followup-dark-${testInfo.project.name}.png`,
+      });
+  });
+});
+
 test("the map marks you, previews a route on hover, draws service icons, and has a legend", async ({
   page,
 }) => {

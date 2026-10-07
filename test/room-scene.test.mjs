@@ -116,6 +116,25 @@ test('room scene commands preserve parser nouns and reject command chaining', ()
   ]), []);
 });
 
+test('scenery IDs and anchors keep distinct authored punctuation', () => {
+  const targets = roomSceneTargets([
+    { id: 'survey.stake', name: 'Survey stake', nouns: ['survey stake'], position: { x: 20, y: 60 } },
+    { id: 'survey-stake', name: 'Red stake', nouns: ['red stake'], position: { x: 75, y: 50 } },
+  ]).map((target, index) => ({ ...target, ...roomSceneTargetPosition(index, target) }));
+  assert.deepEqual(targets.map((target) => target.id), ['survey.stake', 'survey-stake']);
+  assert.equal(roomSceneTargetCommand(targets[0]), 'look survey stake');
+  assert.equal(roomSceneTargetMatches(targets[0], 'survey.stake'), true);
+  assert.equal(roomSceneTargetMatches(targets[0], 'survey-stake'), false);
+  assert.equal(roomSceneTargetMatches(targets[0], '  SURVEY STAKE  '), true);
+  assert.equal(roomSceneTargetMatches(targets[1], 'survey-stake'), true);
+  assert.deepEqual(roomSceneOccupantPosition(2, { kind: 'npc', anchor_id: 'survey.stake' }, targets),
+    { x: 27, y: 63 });
+  assert.deepEqual(roomSceneOccupantPosition(2, { kind: 'npc', anchor_id: 'survey-stake' }, targets),
+    { x: 68, y: 53 });
+  assert.deepEqual(roomSceneOccupantPosition(2, { kind: 'npc', anchor_id: 'survey:stake' }, targets),
+    { x: 61, y: 58 }, 'an unannounced anchor must not alias a different target');
+});
+
 test('expanded props, equipment, exits, ambience, anchors, and combat are normalized', () => {
   assert.equal(roomScenePropSprite({ name: 'a dropped satchel', nouns: ['loot'] }), 'loot');
   assert.equal(roomScenePropSprite({ name: 'fungus', nouns: ['mushroom'] }), 'mushrooms');

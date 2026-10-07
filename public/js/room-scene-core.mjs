@@ -160,7 +160,7 @@ export function roomSceneTargets(looks, details) {
   if (Array.isArray(looks)) {
     for (const look of looks) {
       if (!look || typeof look !== 'object') continue;
-      const id = spriteWord(look.id);
+      const id = String(look.id ?? '').trim();
       const name = String(look.name ?? '').trim();
       const nouns = Array.isArray(look.nouns) ? look.nouns.map(commandNoun).filter(Boolean) : [];
       if (!id || !name || !nouns.length) continue;
@@ -192,7 +192,7 @@ export function roomSceneTargets(looks, details) {
         const name = String(value.name ?? key).trim();
         const nouns = Array.isArray(value.nouns) ? value.nouns.map(commandNoun).filter(Boolean) : [commandNoun(key)];
         targets.push({
-          id: spriteWord(value.id ?? key),
+          id: String(value.id ?? key).trim(),
           name,
           nouns: [...new Set(nouns)],
           kind: spriteWord(value.kind),
@@ -255,9 +255,10 @@ export function roomScenePropSprite(target = {}) {
 }
 
 export function roomSceneTargetMatches(target, query) {
-  const needle = spriteWord(query);
+  const needle = String(query ?? '').trim().toLocaleLowerCase();
   if (!needle) return false;
-  return [target.id, target.name, ...(target.nouns || [])].map(spriteWord).some((value) => value === needle);
+  return target.id === query || [target.name, ...(target.nouns || [])]
+    .some((value) => String(value ?? '').trim().toLocaleLowerCase() === needle);
 }
 
 export function roomSceneTargetCommand(target, verb = 'look') {
@@ -291,8 +292,8 @@ export function roomSceneOccupantSprite(occupant = {}) {
 }
 
 export function roomSceneOccupantPosition(index, occupant = {}, targets = []) {
-  const anchor = spriteWord(occupant.anchor_id);
-  const target = anchor ? targets.find((candidate) => spriteWord(candidate.id) === anchor) : null;
+  const anchor = String(occupant.anchor_id ?? '').trim();
+  const target = anchor ? targets.find((candidate) => candidate.id === anchor) : null;
   if (target && Number.isFinite(target.x) && Number.isFinite(target.y)) {
     const side = target.x > 68 ? -1 : target.x < 32 ? 1 : occupant.kind === 'npc' ? 1 : -1;
     return { x: Math.max(10, Math.min(90, target.x + side * 7)), y: Math.max(24, Math.min(80, target.y + 3)) };
