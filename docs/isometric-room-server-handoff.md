@@ -367,6 +367,28 @@ command words before display. Every action walks the player sprite to the
 matching object. The client assigns safe positions automatically when
 `position` is absent.
 
+### Combat in the room
+
+The room panel consumes the session's existing `Darkwind.Combat` presentation
+stream without changing the Scene panel's readiness or text-fallback contract.
+It places visible combatants in stable opposing ranks and plays each current
+attack once: melee advances and returns, ranged weapon hints produce a
+projectile, and outcomes produce recoil, dodge, mitigation glows, or impact
+labels. Reduced motion preserves static outcomes and suppresses movement.
+The optional Combat focus toggle dims scenery and bystanders, not the floor
+or combatants. Formation placement is cosmetic, not tactical authority.
+
+Use the same opaque IDs in the combat roster and room occupants where
+possible. `self` resolves to the visible self occupant; otherwise the client
+uses an exact ID or an unambiguous, exact display-name match. Unknown or
+ambiguous actors are not invented or animated. Room changes, visibility
+changes, disconnects, and encounter completion clear transient effects.
+
+This initial version uses visible weapon labels to infer ranged presentation;
+typed weapon and ability events remain future server extensions. It does not
+invent spell, heal, death, or formation mechanics from attack prose. Combat
+animations require the existing visual combat event stream to be delivered.
+
 ## Pilot and acceptance boundary
 
 Blue Maw Landing supplies static scenery, aliases, and a multiword noun.

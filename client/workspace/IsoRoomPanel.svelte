@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
   import type { DarkwindRoomOccupant } from "../gmcp/contracts/world.ts";
   import type { RoomInfo } from "../gmcp/contracts/room.ts";
   import type { SceneActivity } from "../runtime/activity.ts";
+  import type { SessionCombatEvent, SessionCombatModel } from "../runtime/combat.ts";
   import type { Session } from "../runtime/session.ts";
   import type { SessionWorldSnapshot } from "../runtime/world.ts";
   // @ts-expect-error Retained room-scene helpers are JavaScript without declarations.
@@ -126,7 +128,137 @@
       lighting: string;
     },
   );
-  const combatActive = $derived(occupants.some((occupant) => occupant.fighting));
+  let combat = $state<SessionCombatModel>(activeSession.combat.getSnapshot().model);
+  let combatRoomGeneration = $state(untrack(() => snapshot.roomGeneration));
+  let focusCombat = $state(false);
+  let beat = $state<{
+    seq: number;
+    actor: string;
+    target: string;
+    result: string;
+    damage?: number;
+    ranged: boolean;
+    summary: string;
+  } | null>(null);
+  const formation = new SvelteMap<string, { side: number; slot: number }>();
+  const combatActive = $derived(formation.size > 0);
+  let beatTimer: ReturnType<typeof setTimeout> | undefined;
+  let seenBeat = "";
+  let encounterKey = "";
+
+  function resolveActor(id: string): SceneOccupant | undefined {
+    if (id === "self") return occupants.find((occupant) => occupant.kind === "self");
+    const exact = occupants.find((occupant) => occupant.id === id);
+    if (exact) return exact;
+    const name = combat.actors.find((actor) => actor.id === id)?.name.toLowerCase();
+    const matches = name
+      ? occupants.filter((occupant) => occupant.name.toLowerCase() === name)
+      : [];
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  function combatPosition(occupant: SceneOccupant, index: number): ScenePosition {
+    if (occupant.anchor_id && !combat.active) {
+      return roomSceneOccupantPosition(index, { ...occupant, fighting: false }, targets);
+    }
+    const place = formation.get(occupant.id);
+    if (!place) {
+      if (combatActive) {
+        return { x: 18 + (index % 4) * 18, y: 44 + Math.floor(index / 4) * 8 };
+      }
+      return roomSceneOccupantPosition(index, { ...occupant, fighting: false }, targets);
+    }
+    return {
+      x: place.side === 0 ? 34 - (place.slot % 2) * 11 : 66 + (place.slot % 2) * 11,
+      y: 72 + Math.floor(place.slot / 2) * 5 - (place.slot % 2) * 8,
+    };
+  }
+
+  function playCombatEvent(event: SessionCombatEvent): void {
+    if (event.kind !== "attack") return;
+    const actor = resolveActor(event.actorId);
+    const target = resolveActor(event.targetId);
+    if (!actor || !target || actor.id === target.id || snapshot.occupantsDark) return;
+    clearTimeout(beatTimer);
+    beat = {
+      seq: event.seq,
+      actor: actor.id,
+      target: target.id,
+      result: event.result,
+      ...(event.damage !== undefined ? { damage: event.damage } : {}),
+      ranged: /bow|crossbow|staff|wand/i.test(actor.weapon ?? ""),
+      summary: event.summary,
+    };
+    beatTimer = setTimeout(() => (beat = null), 850);
+  }
+
+  onMount(() => {
+    const initial = activeSession.combat.getSnapshot().model;
+    seenBeat = `${initial.epoch}:${initial.encounterId}:${initial.currentEvent?.seq ?? 0}`;
+    const unsubscribe = activeSession.combat.subscribe((next) => {
+      if (
+        next.model.epoch !== combat.epoch ||
+        next.model.encounterId !== combat.encounterId ||
+        next.model.stateSeq !== combat.stateSeq
+      ) {
+        combatRoomGeneration = snapshot.roomGeneration;
+      }
+      combat = next.model;
+      const event = next.model.currentEvent;
+      const key = `${next.model.epoch}:${next.model.encounterId}:${event?.seq ?? 0}`;
+      if (!next.connected || !next.model.active) {
+        clearTimeout(beatTimer);
+        beat = null;
+      } else if (event && key !== seenBeat && combatRoomGeneration === snapshot.roomGeneration) {
+        playCombatEvent(event);
+      }
+      seenBeat = key;
+    });
+    return () => {
+      unsubscribe();
+      clearTimeout(beatTimer);
+    };
+  });
+
+  $effect(() => {
+    const key = `${snapshot.roomGeneration}:${combat.epoch}:${combat.encounterId}`;
+    const here = combat.active && combatRoomGeneration === snapshot.roomGeneration;
+    const primary = here ? resolveActor(combat.currentActorId) : undefined;
+    const target = here ? resolveActor(combat.currentTargetId) : undefined;
+    const currentOccupants = occupants;
+    untrack(() => {
+      if (key !== encounterKey) {
+        formation.clear();
+        encounterKey = key;
+      }
+      for (const id of formation.keys()) {
+        if (!currentOccupants.some((occupant) => occupant.id === id)) formation.delete(id);
+      }
+      for (const occupant of currentOccupants) {
+        const fighting =
+          occupant.fighting || occupant.id === primary?.id || occupant.id === target?.id;
+        if (!fighting) {
+          formation.delete(occupant.id);
+          continue;
+        }
+        if (formation.has(occupant.id)) continue;
+        const side =
+          occupant.id === target?.id
+            ? 1
+            : occupant.id === primary?.id
+              ? 0
+              : occupant.hostile
+                ? 1
+                : 0;
+        const taken = new Set(
+          [...formation.values()].filter((place) => place.side === side).map((place) => place.slot),
+        );
+        let slot = 0;
+        while (taken.has(slot)) slot++;
+        formation.set(occupant.id, { side, slot });
+      }
+    });
+  });
   let playerTarget = $state<(ScenePosition & { id: string }) | null>(null);
   let selectedTargetId = $state("");
   const selectedTarget = $derived(targets.find((target) => target.id === selectedTargetId) ?? null);
@@ -144,9 +276,23 @@
   $effect(() => {
     snapshot.roomGeneration;
     playerTarget = null;
+    beat = null;
+    clearTimeout(beatTimer);
     selectedTargetId = "";
     clearTimeout(returnTimer);
     return () => clearTimeout(returnTimer);
+  });
+
+  $effect(() => {
+    if (
+      beat &&
+      (snapshot.occupantsDark ||
+        !occupants.some((occupant) => occupant.id === beat?.actor) ||
+        !occupants.some((occupant) => occupant.id === beat?.target))
+    ) {
+      beat = null;
+      clearTimeout(beatTimer);
+    }
   });
 
   function sceneBuildings(values: string[]): SceneBuilding[] {
@@ -368,6 +514,7 @@
         <p>{room.area || "Unknown area"}</p>
       </div>
       <div class="scene-labels">
+        <label><input type="checkbox" bind:checked={focusCombat} /> Combat focus</label>
         <span class="terrain-label">{detailLabel(terrain)}</span>
         {#if atmosphere.weather !== "clear"}
           <span class="terrain-label">{detailLabel(atmosphere.weather)}</span>
@@ -382,6 +529,7 @@
       <div
         class={`room-stage time-${atmosphere.time} lighting-${atmosphere.lighting}`}
         class:in-combat={combatActive}
+        class:combat-focus={focusCombat && combatActive}
         aria-label={`Isometric view of ${room.name}`}
       >
         <div class="stage-haze"></div>
@@ -395,7 +543,31 @@
         <div class={`weather-layer weather-${atmosphere.weather}`} aria-hidden="true">
           {#each Array(12) as _, index (index)}<i style={`--particle:${index}`}></i>{/each}
         </div>
-        {#if combatActive}<div class="combat-clash" aria-hidden="true"><span>VS</span></div>{/if}
+        {#if beat && !snapshot.occupantsDark && occupants.some((occupant) => occupant.id === beat?.actor) && occupants.some((occupant) => occupant.id === beat?.target)}
+          {#key beat.seq}
+            {@const targetIndex = occupants.findIndex((occupant) => occupant.id === beat?.target)}
+            {@const actorIndex = occupants.findIndex((occupant) => occupant.id === beat?.actor)}
+            {@const targetPosition = combatPosition(occupants[targetIndex]!, targetIndex)}
+            {@const actorPosition = combatPosition(occupants[actorIndex]!, actorIndex)}
+            <div
+              class={`combat-impact result-${beat.result}`}
+              style={`left:${targetPosition.x}%;top:${targetPosition.y - 15}%`}
+              aria-hidden="true"
+            >
+              {beat.result === "hit" || beat.result === "critical"
+                ? (beat.damage ?? "Hit")
+                : detailLabel(beat.result)}
+              {#if beat.result === "critical"}<small>Critical</small>{/if}
+            </div>
+            {#if beat.ranged}
+              <div
+                class="combat-projectile"
+                style={`--from-x:${actorPosition.x}%;--from-y:${actorPosition.y - 12}%;--to-x:${targetPosition.x}%;--to-y:${targetPosition.y - 12}%`}
+                aria-hidden="true"
+              ></div>
+            {/if}
+          {/key}
+        {/if}
 
         {#each buildings as building (building.detail)}
           <div
@@ -482,61 +654,77 @@
           <div class="dark-room-message">The room view is unavailable.</div>
         {:else}
           {#each occupants as occupant, index (occupant.id)}
-            {@const home = roomSceneOccupantPosition(index, occupant, targets) as ScenePosition}
+            {@const home = combatPosition(occupant, index)}
             {@const position = occupant.kind === "self" && playerTarget ? playerTarget : home}
-            <div
-              class={`occupant activity-${occupant.activity || "idle"} size-${sceneToken(occupant.size || "medium")}`}
-              class:self={occupant.kind === "self"}
-              class:walking={occupant.kind === "self" && playerTarget}
-              class:hostile={occupant.hostile}
-              class:fighting={occupant.fighting}
-              class:anchored={occupant.anchor_id}
-              style={`--x:${position.x}%;--y:${position.y}%;--delay:${index * -0.31}s;--depth:${100 + index};--label-shift:${index % 2 ? -10 : 10}px`}
-              title={occupantLabel(occupant)}
-              aria-label={occupantLabel(occupant)}
-              data-engaged-with={occupant.engaged_with ?? ""}
-              data-cue={occupant.cue ?? ""}
-              role="img"
-            >
-              <img
-                class="figure"
-                src={`/assets/iso/characters/${roomSceneOccupantSprite(occupant)}.webp`}
-                alt=""
-                draggable="false"
-              />
-              {#if occupant.weaponSprite}
+            {@const opponentIndex = occupants.findIndex(
+              (candidate) => candidate.id === beat?.target,
+            )}
+            {@const opponentPosition =
+              opponentIndex >= 0 ? combatPosition(occupants[opponentIndex]!, opponentIndex) : home}
+            {#key beat?.actor === occupant.id || beat?.target === occupant.id ? beat.seq : 0}
+              <div
+                class={`occupant activity-${occupant.activity || "idle"} size-${sceneToken(occupant.size || "medium")}`}
+                class:self={occupant.kind === "self"}
+                class:walking={occupant.kind === "self" && playerTarget}
+                class:hostile={occupant.hostile}
+                class:fighting={occupant.fighting}
+                class:anchored={occupant.anchor_id}
+                class:attacking={beat?.actor === occupant.id && !beat.ranged}
+                class:reacting={beat?.target === occupant.id}
+                class:ranked={formation.has(occupant.id)}
+                data-result={beat?.target === occupant.id ? beat.result : ""}
+                data-occupant-id={occupant.id}
+                data-combat-side={formation.get(occupant.id)?.side ?? ""}
+                style={`--x:${position.x}%;--y:${position.y}%;--strike-x:${(opponentPosition.x - home.x) * 0.5}%;--strike-y:${(opponentPosition.y - home.y) * 0.5}%;--delay:${index * -0.31}s;--depth:${100 + Math.round(position.y)};--label-shift:${index % 2 ? -10 : 10}px`}
+                title={occupantLabel(occupant)}
+                aria-label={occupantLabel(occupant)}
+                data-engaged-with={occupant.engaged_with ?? ""}
+                data-cue={occupant.cue ?? ""}
+                role="img"
+              >
                 <img
-                  class="equipment weapon"
-                  src={`/assets/sprites/weapons/${occupant.weaponSprite}.png`}
+                  class="figure"
+                  src={`/assets/iso/characters/${roomSceneOccupantSprite(occupant)}.webp`}
                   alt=""
                   draggable="false"
                 />
-              {/if}
-              {#if occupant.shield}
-                <img
-                  class="equipment shield"
-                  src="/assets/sprites/weapons/shield.png"
-                  alt=""
-                  draggable="false"
-                />
-              {/if}
-              <span>
-                {occupant.name}{occupant.cue ? ` - ${detailLabel(occupant.cue)}` : ""}
-              </span>
-              {#if occupant.role || occupant.activity || occupant.helmet || occupant.armor}
-                <em>
-                  {[occupant.role, occupant.activity, occupant.helmet, occupant.armor]
-                    .filter(Boolean)
-                    .join(" / ")}
-                </em>
-              {/if}
-            </div>
+                {#if occupant.weaponSprite}
+                  <img
+                    class="equipment weapon"
+                    src={`/assets/sprites/weapons/${occupant.weaponSprite}.png`}
+                    alt=""
+                    draggable="false"
+                  />
+                {/if}
+                {#if occupant.shield}
+                  <img
+                    class="equipment shield"
+                    src="/assets/sprites/weapons/shield.png"
+                    alt=""
+                    draggable="false"
+                  />
+                {/if}
+                <span>
+                  {occupant.name}{occupant.cue ? ` - ${detailLabel(occupant.cue)}` : ""}
+                </span>
+                {#if occupant.role || occupant.activity || occupant.helmet || occupant.armor}
+                  <em>
+                    {[occupant.role, occupant.activity, occupant.helmet, occupant.armor]
+                      .filter(Boolean)
+                      .join(" / ")}
+                  </em>
+                {/if}
+              </div>
+            {/key}
           {/each}
         {/if}
       </div>
     {/key}
 
     <footer>
+      <p class="combat-summary" role="status">
+        {beat?.summary || (combatActive ? "Combat in progress" : "")}
+      </p>
       <div class="room-facts">
         {#if targets.length}
           <div class="fact-group">
@@ -796,30 +984,6 @@
     background: linear-gradient(100deg, transparent, rgb(211 220 219 / 18%), transparent);
     filter: blur(10px);
     animation: fog-drift 7s ease-in-out infinite;
-  }
-
-  .combat-clash {
-    position: absolute;
-    z-index: 125;
-    top: 60%;
-    left: 50%;
-    width: 56px;
-    height: 56px;
-    border: 2px solid rgb(255 184 83 / 68%);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    animation: combat-clash 1.1s ease-out infinite;
-    pointer-events: none;
-  }
-
-  .combat-clash span {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    color: #ffd38a;
-    font: 800 9px/1 sans-serif;
-    text-shadow: 0 1px 4px #000;
-    transform: translate(-50%, -50%);
   }
 
   :global(.terrain-river) .living-surface,
@@ -1106,8 +1270,151 @@
     filter: drop-shadow(0 0 7px rgb(225 76 59 / 50%));
   }
 
-  .occupant.fighting {
-    animation: combat-lunge 0.9s ease-in-out infinite;
+  .occupant.ranked {
+    animation: none;
+  }
+
+  .occupant.ranked em {
+    display: none;
+  }
+
+  .occupant[data-combat-side="1"] .figure {
+    transform: scaleX(-1);
+  }
+
+  .in-combat .occupant:not(.ranked) span,
+  .in-combat .occupant:not(.ranked) em,
+  .in-combat .room-target small {
+    display: none;
+  }
+
+  .combat-focus .occupant:not(.ranked) {
+    opacity: 0.5;
+  }
+
+  .occupant.reacting[data-result="hit"]::before,
+  .occupant.reacting[data-result="critical"]::before {
+    position: absolute;
+    z-index: 5;
+    top: 45%;
+    left: 10%;
+    width: 80%;
+    height: 4px;
+    background: #fff1cf;
+    box-shadow: 0 0 10px #ffd078;
+    transform: rotate(-35deg);
+    content: "";
+  }
+
+  .occupant.attacking {
+    animation: room-strike 850ms ease-in-out;
+  }
+
+  .occupant.reacting {
+    animation: room-recoil 850ms ease-out;
+  }
+
+  .occupant.reacting[data-result="dodge"] {
+    animation-name: room-dodge;
+  }
+
+  .occupant.reacting[data-result="miss"] {
+    animation: none;
+  }
+
+  .occupant.reacting[data-result="absorb"] .figure {
+    filter: drop-shadow(0 0 12px #a8beff);
+  }
+
+  .combat-impact {
+    position: absolute;
+    z-index: 250;
+    color: #fff0c0;
+    font-size: 22px;
+    font-weight: 700;
+    text-shadow: 0 2px 3px #000;
+    transform: translateX(-50%);
+    pointer-events: none;
+    animation: impact-rise 850ms ease-out;
+  }
+
+  .combat-impact small {
+    display: block;
+    font-size: 12px;
+  }
+
+  .combat-impact.result-critical {
+    color: #ffbd62;
+    font-size: 28px;
+  }
+
+  .combat-projectile {
+    position: absolute;
+    z-index: 240;
+    width: 14px;
+    height: 5px;
+    background: #ffd883;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #ffc257;
+    pointer-events: none;
+    animation: room-projectile 400ms 150ms both linear;
+  }
+
+  .combat-focus .building,
+  .combat-focus .room-target {
+    opacity: 0.35;
+  }
+
+  .combat-summary {
+    margin: 0;
+    color: #f1ce95;
+    font-size: 12px;
+  }
+
+  @keyframes room-strike {
+    35%,
+    50% {
+      left: calc(var(--x) + var(--strike-x));
+      top: calc(var(--y) + var(--strike-y));
+    }
+  }
+
+  @keyframes room-recoil {
+    45% {
+      transform: translate(-44%, -88%) rotate(5deg);
+    }
+  }
+
+  @keyframes room-dodge {
+    40%,
+    60% {
+      transform: translate(-70%, -88%);
+    }
+  }
+
+  @keyframes impact-rise {
+    from {
+      opacity: 0;
+      margin-top: 6px;
+    }
+    35% {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+      margin-top: -22px;
+    }
+  }
+
+  @keyframes room-projectile {
+    from {
+      left: var(--from-x);
+      top: var(--from-y);
+    }
+    to {
+      left: var(--to-x);
+      top: var(--to-y);
+    }
   }
 
   .occupant.activity-patrol,
@@ -1123,6 +1430,12 @@
   .occupant.activity-sleep {
     width: clamp(40px, 8%, 64px);
     transform: translate(-50%, -72%) scaleY(0.82);
+  }
+
+  .occupant.ranked.activity-patrol,
+  .occupant.ranked.activity-wander,
+  .occupant.ranked.activity-work {
+    animation: none;
   }
 
   .occupant.size-huge,
@@ -1349,27 +1662,6 @@
     }
   }
 
-  @keyframes combat-clash {
-    from {
-      opacity: 0.8;
-      transform: translate(-50%, -50%) scale(0.2);
-    }
-    to {
-      opacity: 0;
-      transform: translate(-50%, -50%) scale(1.2);
-    }
-  }
-
-  @keyframes combat-lunge {
-    0%,
-    100% {
-      margin-left: 0;
-    }
-    50% {
-      margin-left: 5px;
-    }
-  }
-
   @keyframes npc-patrol {
     0%,
     100% {
@@ -1445,16 +1737,24 @@
   @media (prefers-reduced-motion: reduce) {
     .room-stage,
     .occupant,
+    .occupant.attacking,
+    .occupant.reacting,
+    .occupant.reacting[data-result="dodge"],
     .living-surface,
     .weather-layer i,
     .weather-layer,
-    .combat-clash,
+    .combat-impact,
+    .combat-projectile,
     .room-exit.exit-portal > i {
       animation: none;
     }
 
     .occupant {
       transition: none;
+    }
+
+    .combat-projectile {
+      display: none;
     }
   }
 </style>

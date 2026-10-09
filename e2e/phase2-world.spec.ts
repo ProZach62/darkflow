@@ -414,257 +414,402 @@ test("map and room image reset across reconnect and remount after session dispos
   await expect(page.locator("[data-world-instance]")).toHaveCount(0);
 });
 
-test("isometric room renders one terrain scene with services, exits, and occupants", async ({
-  page,
-}, testInfo) => {
-  const endpoint = await connect(page);
-  await togglePanel(page, "Isometric Room");
-  const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+test.describe("room combat", () => {
+  test.use({ deviceScaleFactor: 2 });
+  test("isometric room renders one terrain scene with services, exits, and occupants", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
 
-  endpoint.sendGmcp("Room.Info", {
-    num: 101,
-    name: "Market Atrium",
-    area: "Fixture Town",
-    environment: "inside, city",
-    details: ["shop", "bank", "pub"],
-    scene: { time: "dusk", weather: "rain", lighting: "fire" },
-    looks: [
-      {
-        id: "marble-fountain",
-        name: "a marble fountain",
-        nouns: ["fountain", "water"],
-        sprite: "fountain",
-        state: "active",
-        verbs: ["drink"],
-        position: { x: 22, y: 58 },
+    endpoint.sendGmcp("Room.Info", {
+      num: 101,
+      name: "Market Atrium",
+      area: "Fixture Town",
+      environment: "inside, city",
+      details: ["shop", "bank", "pub"],
+      scene: { time: "dusk", weather: "rain", lighting: "fire" },
+      looks: [
+        {
+          id: "marble-fountain",
+          name: "a marble fountain",
+          nouns: ["fountain", "water"],
+          sprite: "fountain",
+          state: "active",
+          verbs: ["drink"],
+          position: { x: 22, y: 58 },
+        },
+        {
+          id: "market-stall",
+          name: "a canvas market stall",
+          nouns: ["stall", "market"],
+          sprite: "market-stall",
+          verbs: ["browse"],
+          position: { x: 73, y: 52 },
+        },
+        {
+          id: "forge-anvil",
+          name: "a scarred blacksmith anvil",
+          nouns: ["anvil", "forge"],
+          sprite: "anvil",
+          category: "workplace",
+          position: { x: 79, y: 68 },
+        },
+        {
+          id: "old-grave",
+          name: "an old memorial stone",
+          nouns: ["memorial", "stone"],
+          sprite: "gravestone",
+          cue: "quest",
+          verbs: ["read", "search"],
+          position: { x: 14, y: 74 },
+        },
+        {
+          id: "abandoned-loot",
+          name: "a dropped leather satchel",
+          nouns: ["satchel", "loot"],
+          sprite: "loot",
+          category: "item",
+          cue: "loot",
+          verbs: ["get", "search"],
+          position: { x: 48, y: 76 },
+        },
+        {
+          id: "watch-fire",
+          name: "a watch fire",
+          nouns: ["fire", "campfire"],
+          sprite: "campfire",
+          state: "lit",
+          verbs: ["warm"],
+          position: { x: 32, y: 72 },
+        },
+      ],
+      exits: { east: 102, south: 103, north: 104, up: 105 },
+      exit_states: { east: "closed" },
+      exit_details: {
+        east: { kind: "door" },
+        south: { kind: "path", label: "Road" },
+        north: { kind: "portal", label: "Rift" },
+        up: { kind: "stairs" },
       },
-      {
-        id: "market-stall",
-        name: "a canvas market stall",
-        nouns: ["stall", "market"],
-        sprite: "market-stall",
-        verbs: ["browse"],
-        position: { x: 73, y: 52 },
-      },
-      {
-        id: "forge-anvil",
-        name: "a scarred blacksmith anvil",
-        nouns: ["anvil", "forge"],
-        sprite: "anvil",
-        category: "workplace",
-        position: { x: 79, y: 68 },
-      },
-      {
-        id: "old-grave",
-        name: "an old memorial stone",
-        nouns: ["memorial", "stone"],
-        sprite: "gravestone",
-        cue: "quest",
-        verbs: ["read", "search"],
-        position: { x: 14, y: 74 },
-      },
-      {
-        id: "abandoned-loot",
-        name: "a dropped leather satchel",
-        nouns: ["satchel", "loot"],
-        sprite: "loot",
-        category: "item",
-        cue: "loot",
-        verbs: ["get", "search"],
-        position: { x: 48, y: 76 },
-      },
-      {
-        id: "watch-fire",
-        name: "a watch fire",
-        nouns: ["fire", "campfire"],
-        sprite: "campfire",
-        state: "lit",
-        verbs: ["warm"],
-        position: { x: 32, y: 72 },
-      },
-    ],
-    exits: { east: 102, south: 103, north: 104, up: 105 },
-    exit_states: { east: "closed" },
-    exit_details: {
-      east: { kind: "door" },
-      south: { kind: "path", label: "Road" },
-      north: { kind: "portal", label: "Rift" },
-      up: { kind: "stairs" },
-    },
-  });
-  endpoint.sendGmcp("Darkwind.Room.Occupants", {
-    version: 1,
-    room: 101,
-    mode: "snapshot",
-    revision: 1,
-    dark: 0,
-    more: 0,
-    upsert: [
-      {
-        id: "self",
-        name: "Nacho",
-        kind: "self",
-        race: "human",
-        weapon: "long sword",
-        shield: 1,
-        armor: "plate",
-        fighting: 1,
-        engaged_with: "giant",
-      },
-      {
-        id: "alice",
-        name: "Alice",
-        kind: "player",
-        race: "elf",
-        role: "scout",
-        activity: "patrol",
-        cue: "quest",
-      },
-      {
-        id: "smith",
-        name: "a soot-streaked smith",
-        kind: "npc",
-        race: "dwarf",
-        role: "blacksmith",
-        activity: "work",
-        anchor_id: "forge-anvil",
-        weapon: "hammer",
-      },
-      {
-        id: "giant",
-        name: "a frost giant",
-        kind: "npc",
-        hostile: 1,
-        fighting: 1,
-        engaged_with: "self",
-        weapon: "long sword",
-        size: "small",
-        appearance: { size: "huge" },
-        equipment: { main_hand: "great axe" },
-        public_state: { condition: "badly wounded" },
-        level: 182,
-      },
-    ],
-    removed: [],
-  });
-
-  await expect(isoRoom).toBeVisible();
-  await expect(isoRoom).toHaveAttribute("data-room-terrain", "city");
-  await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
-  await expect(isoRoom).toHaveAttribute("data-room-buildings", "3");
-  await expect(isoRoom).toHaveAttribute("data-room-targets", "6");
-  await expect(isoRoom).toHaveAttribute("data-room-weather", "rain");
-  await expect(isoRoom).toHaveAttribute("data-room-time", "dusk");
-  await expect(isoRoom).toHaveAttribute("data-room-lighting", "fire");
-  await expect(isoRoom).toHaveAttribute("data-room-combat", "true");
-  await expect(isoRoom.getByRole("heading", { name: "Market Atrium" })).toBeVisible();
-  await expect(isoRoom.locator('.room-floor[src$="/inside.webp"]')).toBeVisible();
-  await expect(isoRoom.getByRole("img", { name: /Nacho/ })).toBeVisible();
-  await expect(isoRoom.getByRole("img", { name: /Alice/ })).toBeVisible();
-  await expect(
-    isoRoom.getByRole("img", { name: /frost giant.*level 182.*hostile/i }),
-  ).toBeVisible();
-  await expect(isoRoom.getByRole("img", { name: /frost giant.*badly wounded/i })).toHaveClass(
-    /size-huge/,
-  );
-  await expect(isoRoom.getByRole("button", { name: "Go east" })).toHaveClass(/blocked/);
-  await expect(isoRoom.getByRole("button", { name: "Go south" })).toBeVisible();
-  await expect(isoRoom.getByRole("button", { name: "Go north" })).toHaveClass(/exit-portal/);
-  await expect(isoRoom.getByRole("button", { name: "Go up" })).toHaveClass(/exit-stairs/);
-  await expect(isoRoom.getByRole("button", { name: "Look at a marble fountain" })).toBeVisible();
-  await expect(isoRoom.locator('.room-target img[src$="/fountain.webp"]')).toBeVisible();
-  await expect(isoRoom.locator('.room-target img[src$="/market-stall.webp"]')).toBeVisible();
-  await expect(isoRoom.locator('.room-target img[src$="/loot.webp"]')).toBeVisible();
-  await expect(isoRoom.locator(".weather-rain i")).toHaveCount(12);
-  await expect(isoRoom.locator(".combat-clash")).toBeVisible();
-  await expect(isoRoom.locator('.occupant.activity-work[aria-label*="blacksmith"]')).toBeVisible();
-  await expect(isoRoom.locator('.occupant img[src$="/great-axe.png"]')).toBeVisible();
-  await expect(isoRoom.locator('.occupant img[src$="/shield.png"]')).toBeVisible();
-  await expect(isoRoom.locator('[data-cue="quest"]')).toHaveCount(2);
-  await expect(isoRoom.getByRole("list", { name: "Room occupants" })).toContainText(
-    "a frost giant",
-  );
-  if (process.env.SCENE_SCREENSHOTS)
-    await isoRoom.screenshot({
-      path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-isometric-${testInfo.project.name}.png`,
     });
-  await isoRoom
-    .getByRole("list", { name: "Things to look at" })
-    .getByRole("button", { name: "a marble fountain (active)", exact: true })
-    .click();
-  await expect.poll(() => endpoint.commands).toContain("look fountain");
-  await expect(isoRoom).toHaveAttribute("data-player-target", "marble-fountain");
-  await expect(isoRoom.locator(".occupant.self")).toHaveClass(/walking/);
-  await expect(isoRoom.getByRole("group", { name: "Actions for a marble fountain" })).toContainText(
-    "Drink",
-  );
-  await isoRoom.getByRole("button", { name: "Get a dropped leather satchel" }).click();
-  await expect.poll(() => endpoint.commands).toContain("get satchel");
-  await expect(isoRoom).toHaveAttribute("data-player-target", "abandoned-loot");
-
-  const clearedRoster = {
-    version: 1,
-    room: 101,
-    mode: "snapshot",
-    revision: 2,
-    dark: 1,
-    more: 0,
-    upsert: [],
-    removed: [],
-  };
-  endpoint.sendGmcp("Darkwind.Room.Occupants", clearedRoster);
-  await expect(isoRoom).toContainText("too dark");
-  await expect(isoRoom.locator(".occupant, .room-target, .room-building, .room-exit")).toHaveCount(
-    0,
-  );
-  if (process.env.SCENE_SCREENSHOTS)
-    await isoRoom.screenshot({
-      path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-isometric-dark-${testInfo.project.name}.png`,
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        {
+          id: "self",
+          name: "Nacho",
+          kind: "self",
+          race: "human",
+          weapon: "long sword",
+          shield: 1,
+          armor: "plate",
+          fighting: 1,
+          engaged_with: "giant",
+        },
+        {
+          id: "alice",
+          name: "Alice",
+          kind: "player",
+          race: "elf",
+          role: "scout",
+          activity: "patrol",
+          cue: "quest",
+        },
+        {
+          id: "smith",
+          name: "a soot-streaked smith",
+          kind: "npc",
+          race: "dwarf",
+          role: "blacksmith",
+          activity: "work",
+          anchor_id: "forge-anvil",
+          weapon: "hammer",
+        },
+        {
+          id: "giant",
+          name: "a frost giant",
+          kind: "npc",
+          hostile: 1,
+          fighting: 1,
+          engaged_with: "self",
+          weapon: "long sword",
+          size: "small",
+          appearance: { size: "huge" },
+          equipment: { main_hand: "great axe" },
+          public_state: { condition: "badly wounded" },
+          level: 182,
+        },
+      ],
+      removed: [],
     });
-  endpoint.sendGmcp("Darkwind.Room.Occupants", {
-    ...clearedRoster,
-    revision: 3,
-    dark: 0,
-    unavailable: 1,
-  });
-  await expect(isoRoom).toContainText("room view is unavailable");
-  await expect(isoRoom.locator(".occupant, .room-target, .room-building")).toHaveCount(0);
 
-  endpoint.sendGmcp("Room.Info", {
-    num: 102,
-    name: "Eastern Forest",
-    area: "Fixture Town",
-    environment: "forest",
-    exits: { west: 101 },
-  });
-  endpoint.sendGmcp("Darkwind.Room.Occupants", {
-    version: 1,
-    room: 102,
-    mode: "snapshot",
-    revision: 1,
-    dark: 0,
-    more: 0,
-    upsert: [
-      { id: "self", name: "Nacho", kind: "self", race: "human" },
-      { id: "alice", name: "Alice", kind: "player", race: "elf" },
-    ],
-    removed: [],
-  });
+    await expect(isoRoom).toBeVisible();
+    await expect(isoRoom).toHaveAttribute("data-room-terrain", "city");
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
+    await expect(isoRoom).toHaveAttribute("data-room-buildings", "3");
+    await expect(isoRoom).toHaveAttribute("data-room-targets", "6");
+    await expect(isoRoom).toHaveAttribute("data-room-weather", "rain");
+    await expect(isoRoom).toHaveAttribute("data-room-time", "dusk");
+    await expect(isoRoom).toHaveAttribute("data-room-lighting", "fire");
+    await expect(isoRoom).toHaveAttribute("data-room-combat", "true");
+    await expect(isoRoom.getByRole("heading", { name: "Market Atrium" })).toBeVisible();
+    await expect(isoRoom.locator('.room-floor[src$="/inside.webp"]')).toBeVisible();
+    await expect(isoRoom.getByRole("img", { name: /Nacho/ })).toBeVisible();
+    await expect(isoRoom.getByRole("img", { name: /Alice/ })).toBeVisible();
+    await expect(
+      isoRoom.getByRole("img", { name: /frost giant.*level 182.*hostile/i }),
+    ).toBeVisible();
+    await expect(isoRoom.getByRole("img", { name: /frost giant.*badly wounded/i })).toHaveClass(
+      /size-huge/,
+    );
+    await expect(isoRoom.getByRole("button", { name: "Go east" })).toHaveClass(/blocked/);
+    await expect(isoRoom.getByRole("button", { name: "Go south" })).toBeVisible();
+    await expect(isoRoom.getByRole("button", { name: "Go north" })).toHaveClass(/exit-portal/);
+    await expect(isoRoom.getByRole("button", { name: "Go up" })).toHaveClass(/exit-stairs/);
+    await expect(isoRoom.getByRole("button", { name: "Look at a marble fountain" })).toBeVisible();
+    await expect(isoRoom.locator('.room-target img[src$="/fountain.webp"]')).toBeVisible();
+    await expect(isoRoom.locator('.room-target img[src$="/market-stall.webp"]')).toBeVisible();
+    await expect(isoRoom.locator('.room-target img[src$="/loot.webp"]')).toBeVisible();
+    await expect(isoRoom.locator(".weather-rain i")).toHaveCount(12);
+    await expect(isoRoom.locator(".combat-clash")).toHaveCount(0);
+    const clockStart = new Date();
+    await page.clock.install({ time: clockStart });
+    await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+    endpoint.sendGmcp("Darkwind.Combat.State", {
+      epoch: "room-combat",
+      encounter_id: "market-fight",
+      seq: 0,
+      visual_enabled: true,
+      effective: true,
+      active: true,
+      current_actor_id: "self",
+      current_target_id: "actor-giant",
+      actors: [
+        { id: "self", name: "Nacho", role: "self" },
+        { id: "actor-giant", name: "a frost giant", role: "target" },
+        { id: "alice", name: "Alice", role: "combatant" },
+        { id: "unseen-actor", name: "Unseen combatant", role: "combatant" },
+      ],
+      outcome: "",
+      summary: "The frost giant attacks.",
+    });
+    const attack = (seq: number, actor: string, target: string, result: string, damage?: number) =>
+      endpoint.sendGmcp("Darkwind.Combat.Events", {
+        epoch: "room-combat",
+        encounter_id: "market-fight",
+        first_seq: seq,
+        last_seq: seq,
+        events: [
+          {
+            seq,
+            kind: "attack",
+            perspective: actor === "actor-giant" ? "incoming" : "outgoing",
+            actor_id: actor,
+            target_id: target,
+            result,
+            ...(damage === undefined ? {} : { damage }),
+            summary:
+              result === "critical"
+                ? "Nacho critically strikes the frost giant."
+                : "The fighters exchange blows.",
+          },
+        ],
+        overflow: { omitted: 0, hits: 0, damage: 0 },
+      });
+    attack(1, "self", "actor-giant", "critical", 42);
+    await expect(isoRoom.locator('[data-occupant-id="self"]')).toHaveClass(/attacking/);
+    await expect(isoRoom.locator('[data-occupant-id="giant"]')).toHaveClass(/reacting/);
+    await expect(isoRoom.locator(".combat-impact")).toContainText("42");
+    await expect(isoRoom.getByRole("status")).toContainText("critically");
+    const restingLeft = await isoRoom.locator('[data-occupant-id="self"]').evaluate((node) => {
+      const animation = node.getAnimations()[0]!;
+      animation.pause();
+      animation.currentTime = 0;
+      return parseFloat(getComputedStyle(node).left);
+    });
+    const strikeLeft = await isoRoom.locator('[data-occupant-id="self"]').evaluate((node) => {
+      node.getAnimations()[0]!.currentTime = 350;
+      return parseFloat(getComputedStyle(node).left);
+    });
+    expect(strikeLeft).toBeGreaterThan(restingLeft + 20);
+    await isoRoom.locator(".combat-impact").evaluate((node) => {
+      node.getAnimations()[0]!.pause();
+      node.getAnimations()[0]!.currentTime = 350;
+    });
+    await isoRoom.screenshot({
+      path: testInfo.outputPath("room-combat.png"),
+    });
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    // Replayed events must not produce another attack.
+    attack(1, "self", "actor-giant", "critical", 42);
+    await page.clock.fastForward(200);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    await isoRoom.getByLabel("Combat focus").check();
+    await expect(isoRoom.locator(".room-stage")).toHaveClass(/combat-focus/);
+    attack(2, "actor-giant", "self", "block", 0);
+    await expect(isoRoom.locator('[data-occupant-id="self"]')).toHaveAttribute(
+      "data-result",
+      "absorb",
+    );
+    await isoRoom.locator(".combat-impact").evaluate((node) => {
+      node.getAnimations()[0]!.pause();
+      node.getAnimations()[0]!.currentTime = 350;
+    });
+    await isoRoom.screenshot({ path: testInfo.outputPath("room-combat-focus.png") });
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "delta",
+      base_revision: 1,
+      revision: 2,
+      dark: 0,
+      more: 0,
+      upsert: [
+        {
+          id: "alice",
+          name: "Alice",
+          kind: "player",
+          race: "elf",
+          weapon: "long bow",
+          fighting: 1,
+          cue: "quest",
+        },
+      ],
+      removed: [],
+    });
+    attack(3, "alice", "actor-giant", "hit", 17);
+    await expect(isoRoom.locator(".combat-projectile")).toHaveCount(1);
+    await expect(isoRoom.locator('[data-occupant-id="alice"]')).not.toHaveClass(/attacking/);
+    await isoRoom.locator(".combat-projectile, .combat-impact").evaluateAll((nodes) => {
+      for (const node of nodes) {
+        node.getAnimations()[0]!.pause();
+        node.getAnimations()[0]!.currentTime = 350;
+      }
+    });
+    await isoRoom.screenshot({ path: testInfo.outputPath("room-combat-ranged.png") });
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    attack(4, "unseen-actor", "self", "hit", 99);
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    attack(5, "self", "actor-giant", "dodge");
+    await expect(isoRoom.locator(".combat-impact")).toContainText("Dodge");
+    await expect
+      .poll(() =>
+        isoRoom
+          .locator('[data-occupant-id="self"]')
+          .evaluate((node) => getComputedStyle(node).animationName),
+      )
+      .toBe("none");
+    await isoRoom.screenshot({ path: testInfo.outputPath("room-combat-reduced.png") });
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.clock.resume();
+    await isoRoom.getByLabel("Combat focus").uncheck();
+    await expect(
+      isoRoom.locator('.occupant.activity-work[aria-label*="blacksmith"]'),
+    ).toBeVisible();
+    await expect(isoRoom.locator('.occupant img[src$="/great-axe.png"]')).toBeVisible();
+    await expect(isoRoom.locator('.occupant img[src$="/shield.png"]')).toBeVisible();
+    await expect(isoRoom.locator('[data-cue="quest"]')).toHaveCount(2);
+    await expect(isoRoom.getByRole("list", { name: "Room occupants" })).toContainText(
+      "a frost giant",
+    );
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-isometric-${testInfo.project.name}.png`,
+      });
+    await isoRoom
+      .getByRole("list", { name: "Things to look at" })
+      .getByRole("button", { name: "a marble fountain (active)", exact: true })
+      .click();
+    await expect.poll(() => endpoint.commands).toContain("look fountain");
+    await expect(isoRoom).toHaveAttribute("data-player-target", "marble-fountain");
+    await expect(isoRoom.locator(".occupant.self")).toHaveClass(/walking/);
+    await expect(
+      isoRoom.getByRole("group", { name: "Actions for a marble fountain" }),
+    ).toContainText("Drink");
+    await isoRoom.getByRole("button", { name: "Get a dropped leather satchel" }).click();
+    await expect.poll(() => endpoint.commands).toContain("get satchel");
+    await expect(isoRoom).toHaveAttribute("data-player-target", "abandoned-loot");
 
-  await expect(isoRoom).toHaveAttribute("data-room-terrain", "forest");
-  await expect(isoRoom).toHaveAttribute("data-room-occupants", "2");
-  await expect(isoRoom.getByRole("heading", { name: "Eastern Forest" })).toBeVisible();
-  await expect(isoRoom.locator('.room-floor[src$="/forest.webp"]')).toBeVisible();
+    const clearedRoster = {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 3,
+      dark: 1,
+      more: 0,
+      upsert: [],
+      removed: [],
+    };
+    endpoint.sendGmcp("Darkwind.Room.Occupants", clearedRoster);
+    await expect(isoRoom).toContainText("too dark");
+    await expect(
+      isoRoom.locator(".occupant, .room-target, .room-building, .room-exit"),
+    ).toHaveCount(0);
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-isometric-dark-${testInfo.project.name}.png`,
+      });
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...clearedRoster,
+      revision: 4,
+      dark: 0,
+      unavailable: 1,
+    });
+    await expect(isoRoom).toContainText("room view is unavailable");
+    await expect(isoRoom.locator(".occupant, .room-target, .room-building")).toHaveCount(0);
 
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect
-    .poll(() =>
-      isoRoom
-        .locator(".occupant")
-        .first()
-        .evaluate((node) => getComputedStyle(node).animationName),
-    )
-    .toBe("none");
+    endpoint.sendGmcp("Room.Info", {
+      num: 102,
+      name: "Eastern Forest",
+      area: "Fixture Town",
+      environment: "forest",
+      exits: { west: 101 },
+    });
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 102,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "self", name: "Nacho", kind: "self", race: "human" },
+        { id: "alice", name: "Alice", kind: "player", race: "elf" },
+      ],
+      removed: [],
+    });
+
+    await expect(isoRoom).toHaveAttribute("data-room-terrain", "forest");
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "2");
+    await expect(isoRoom).toHaveAttribute("data-room-combat", "false");
+    await expect(isoRoom.getByRole("heading", { name: "Eastern Forest" })).toBeVisible();
+    await expect(isoRoom.locator('.room-floor[src$="/forest.webp"]')).toBeVisible();
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect
+      .poll(() =>
+        isoRoom
+          .locator(".occupant")
+          .first()
+          .evaluate((node) => getComputedStyle(node).animationName),
+      )
+      .toBe("none");
+  });
 });
 
 test.describe("isometric room server-contract follow-up", () => {
