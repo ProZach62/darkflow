@@ -147,14 +147,12 @@
   let encounterKey = "";
 
   function resolveActor(id: string): SceneOccupant | undefined {
+    const actor = combat.actors.find((candidate) => candidate.id === id);
+    if (actor?.occupant_id) {
+      return occupants.find((occupant) => occupant.id === actor.occupant_id);
+    }
     if (id === "self") return occupants.find((occupant) => occupant.kind === "self");
-    const exact = occupants.find((occupant) => occupant.id === id);
-    if (exact) return exact;
-    const name = combat.actors.find((actor) => actor.id === id)?.name.toLowerCase();
-    const matches = name
-      ? occupants.filter((occupant) => occupant.name.toLowerCase() === name)
-      : [];
-    return matches.length === 1 ? matches[0] : undefined;
+    return occupants.find((occupant) => occupant.id === id);
   }
 
   function combatPosition(occupant: SceneOccupant, index: number): ScenePosition {

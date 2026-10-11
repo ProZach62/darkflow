@@ -399,11 +399,22 @@ labels. Reduced motion preserves static outcomes and suppresses movement.
 The optional Combat focus toggle dims scenery and bystanders, not the floor
 or combatants. Formation placement is cosmetic, not tactical authority.
 
-Use the same opaque IDs in the combat roster and room occupants where
-possible. `self` resolves to the visible self occupant; otherwise the client
-uses an exact ID or an unambiguous, exact display-name match. Unknown or
-ambiguous actors are not invented or animated. Room changes, visibility
-changes, disconnects, and encounter completion clear transient effects.
+Combat actors resolve through `actors[].occupant_id` into the currently drawn
+room occupants. An explicit bridge takes precedence over a matching combat ID;
+if its occupant is absent, hidden, or outside the displayed cap, the actor
+remains unresolved. Without a bridge, legacy `self` resolves to the visible
+self occupant and other actors may use an exact room occupant ID. Display
+names are never used for combat matching, even when unique. Unknown actors are
+not invented or animated. Room changes, visibility changes, disconnects, and
+encounter completion clear transient effects.
+
+The local identity regression fails before this resolver change and passes
+afterward on desktop and 390px Chromium. Two identically named sentries and an
+intentional combat/room ID collision verify that only the bridged sentry is
+ranked and receives the impact. Missing bridges with matching names and
+unresolved explicit bridges with matching IDs produce no room attack effects;
+exact-ID compatibility still works. The fixtures exercise actual GMCP delivery
+and rendered output, not a live MUD encounter.
 
 This initial version uses visible weapon labels to infer ranged presentation;
 typed weapon and ability events remain future server extensions. It does not

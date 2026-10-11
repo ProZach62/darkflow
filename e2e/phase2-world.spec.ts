@@ -416,6 +416,121 @@ test("map and room image reset across reconnect and remount after session dispos
 
 test.describe("room combat", () => {
   test.use({ deviceScaleFactor: 2 });
+
+  test("isometric room binds combat actors by occupant IDs without name guessing", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const clockStart = new Date();
+    await page.clock.install({ time: clockStart });
+    await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+    endpoint.sendGmcp("Room.Info", {
+      num: 101,
+      name: "Sentry courtyard",
+      environment: "city",
+      exits: {},
+    });
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "viewer", name: "Observer", kind: "self", race: "human" },
+        { id: "combat-target", name: "a sentry", kind: "npc", race: "elf" },
+        { id: "room-target", name: "a sentry", kind: "npc", race: "dwarf" },
+        { id: "named-only", name: "Lookalike", kind: "npc", race: "human" },
+      ],
+      removed: [],
+    });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
+    const actors = [
+      { id: "self", name: "Observer", role: "self", occupant_id: "viewer" },
+      // The bridge must win over both the duplicate name and a colliding ID.
+      { id: "combat-target", name: "a sentry", role: "target", occupant_id: "room-target" },
+      { id: "unlinked", name: "Lookalike", role: "participant" },
+      { id: "named-only", name: "Lookalike", role: "participant", occupant_id: "not-visible" },
+      { id: "room-target", name: "Legacy sentry", role: "participant" },
+    ];
+    const cases = [
+      { target: "combat-target", resolved: "room-target" },
+      { target: "unlinked", resolved: null },
+      { target: "named-only", resolved: null },
+      { target: "room-target", resolved: "room-target" },
+    ];
+    for (const [index, scenario] of cases.entries()) {
+      endpoint.sendGmcp("Darkwind.Combat.State", {
+        epoch: "identity-fixture",
+        encounter_id: "sentry-fight",
+        seq: index,
+        visual_enabled: true,
+        effective: true,
+        active: true,
+        current_actor_id: "self",
+        current_target_id: scenario.target,
+        actors,
+        outcome: "",
+        summary: "An exchange in the courtyard.",
+      });
+      await expect(isoRoom.locator('[data-occupant-id="viewer"]')).toHaveAttribute(
+        "data-combat-side",
+        "0",
+      );
+      await expect(isoRoom.locator('[data-occupant-id="room-target"]')).toHaveAttribute(
+        "data-combat-side",
+        scenario.resolved ? "1" : "",
+      );
+      const summary = `Courtyard exchange ${index + 1}.`;
+      endpoint.sendGmcp("Darkwind.Combat.Events", {
+        epoch: "identity-fixture",
+        encounter_id: "sentry-fight",
+        first_seq: index + 1,
+        last_seq: index + 1,
+        events: [
+          {
+            seq: index + 1,
+            kind: "attack",
+            perspective: "outgoing",
+            actor_id: "self",
+            target_id: scenario.target,
+            result: "hit",
+            damage: 37,
+            summary,
+          },
+        ],
+        overflow: { omitted: 0, hits: 0, damage: 0 },
+      });
+      // Scene's event banner confirms delivery even when the room cannot bind it.
+      await expect(page.locator(".combat-event-copy")).toContainText(summary);
+      await expect(isoRoom.locator('[data-occupant-id="combat-target"]')).not.toHaveClass(
+        /reacting/,
+      );
+      await expect(isoRoom.locator('[data-occupant-id="named-only"]')).not.toHaveClass(/reacting/);
+      if (scenario.resolved) {
+        await expect(isoRoom.locator('[data-occupant-id="room-target"]')).toHaveClass(/reacting/);
+        await expect(isoRoom.locator('[data-occupant-id="viewer"]')).toHaveClass(/attacking/);
+        await expect(isoRoom.locator(".combat-impact")).toContainText("37");
+        if (index === 0 && process.env.SCENE_SCREENSHOTS)
+          await isoRoom.screenshot({
+            path: `${process.env.SCENE_SCREENSHOTS}/isometric-identity-bound-${testInfo.project.name}.png`,
+          });
+      } else {
+        await expect(isoRoom.locator(".attacking, .reacting, .combat-impact")).toHaveCount(0);
+        if (index === 2 && process.env.SCENE_SCREENSHOTS)
+          await isoRoom.screenshot({
+            path: `${process.env.SCENE_SCREENSHOTS}/isometric-identity-unresolved-${testInfo.project.name}.png`,
+          });
+      }
+      await page.clock.fastForward(1500);
+      await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    }
+  });
+
   test("isometric room renders one terrain scene with services, exits, and occupants", async ({
     page,
   }, testInfo) => {
@@ -593,7 +708,7 @@ test.describe("room combat", () => {
       current_target_id: "actor-giant",
       actors: [
         { id: "self", name: "Nacho", role: "self" },
-        { id: "actor-giant", name: "a frost giant", role: "target" },
+        { id: "actor-giant", name: "a frost giant", role: "target", occupant_id: "giant" },
         { id: "alice", name: "Alice", role: "combatant" },
         { id: "unseen-actor", name: "Unseen combatant", role: "combatant" },
       ],
