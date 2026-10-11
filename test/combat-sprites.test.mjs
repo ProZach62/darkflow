@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { resolveFigure } from '../public/js/combat-rig-core.mjs';
 
 const {
   anchorToStage,
@@ -171,6 +172,21 @@ test('sheet keys go from character to race to kind, and only for the recipient',
   assert.equal(isSheetKey('characters/'), false);
 });
 
+test('the recipient Wolf uses gender-neutral animal art without changing observed or Crinos sheets', () => {
+  for (const gender of ['male', 'female', undefined]) {
+    const wolf = { name: 'Acer', race: 'Wolf', gender };
+    const figure = resolveFigure(wolf);
+    assert.deepEqual(spriteKeysFor(wolf, figure, 'player'), ['wolf', 'beast']);
+    assert.deepEqual(spriteKeysFor({ ...wolf, appearanceKnown: true }, figure, 'player'), ['wolf', 'beast']);
+    assert.deepEqual(spriteKeysFor({ ...wolf, observed: true }, figure, 'player'), ['beast']);
+    assert.deepEqual(spriteKeysFor(wolf, figure, 'target'), ['beast']);
+  }
+  const humanoid = { race: 'wolf', gender: 'female', form: 'humanoid', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(humanoid, resolveFigure(humanoid), 'player'), ['female-wolf', 'humanoid']);
+  const crinos = { race: 'crinos', gender: 'male', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(crinos, resolveFigure(crinos), 'player'), ['male-crinos', 'male-ursavar', 'humanoid']);
+});
+
 test('every playable race resolves to a shipped sheet or a shared archetype', () => {
   const races = [
     'arctic-elf', 'barbarian', 'crannian-gnome', 'crinos', 'darkwinder', 'desert-dwarf',
@@ -180,9 +196,10 @@ test('every playable race resolves to a shipped sheet or a shared archetype', ()
     'stone-dwarf', 'swamp-troll', 'sylph', 'thraxian', 'uruk', 'wayfarian', 'wolf',
     'yugoloth', 'arthok', 'ursavar',
   ];
-  const shipped = new Set(['arthok', 'dwarf', 'elf', 'human', 'scro', 'ursavar']);
+  const shipped = new Set(['arthok', 'dwarf', 'elf', 'human', 'scro', 'ursavar', 'wolf']);
   for (const race of races) {
-    const keys = spriteKeysFor({ gender: 'female', race }, { kind: 'humanoid' }, 'player');
+    const combatant = { gender: 'female', race };
+    const keys = spriteKeysFor(combatant, resolveFigure(combatant), 'player');
     assert.ok(keys.some((key) => shipped.has(key.replace(/^female-/, ''))), race + ' has art coverage');
   }
 });

@@ -144,10 +144,11 @@ function weaponFromEquipment(equipment, guildWeapon) {
 
 export function resolveFigure(combatant = {}, side = 'player') {
   const declaredForm = slug(combatant.form);
-  const isBeast = ['quadruped', 'beast', 'serpent'].includes(declaredForm)
-    || (!declaredForm && !combatant.appearanceKnown && side === 'target' && !!combatant.isNpc);
-  const guild = slug(combatant.guild);
   const race = slug(combatant.race);
+  const isBeast = ['quadruped', 'beast', 'serpent'].includes(declaredForm)
+    || (!declaredForm && (race === 'wolf'
+      || (!combatant.appearanceKnown && side === 'target' && !!combatant.isNpc)));
+  const guild = slug(combatant.guild);
   const equipment = isBeast ? null : (combatant.equipment || null);
   const held = isBeast
     ? { weapon: 'claws', weaponStyle: '', offKind: '', offStyle: '' }

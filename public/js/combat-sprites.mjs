@@ -57,7 +57,6 @@ export const SPRITE_RACE_FAMILIES = Object.freeze({
   'swamp-troll': 'arthok',
   'sylph': 'elf',
   'thraxian': 'scro',
-  'wolf': 'ursavar',
   'yugoloth': 'arthok',
   'arctic-elf': 'elf',
   'high-elf': 'elf',
@@ -95,14 +94,20 @@ export function spriteKeysFor(combatant, figure, side) {
   const keys = [];
   const own = side === 'player' && combatant && !combatant.observed;
   if (own) {
-    const name = spriteSlug(combatant.name);
-    if (name && !combatant.appearanceKnown) keys.push('characters/' + name);
-    const gender = spriteSlug(combatant.gender);
     const race = spriteSlug(combatant.race);
-    if (gender && race) {
-      keys.push(gender + '-' + race);
-      const family = spriteRaceFamily(race);
-      if (family && family !== race) keys.push(gender + '-' + family);
+    if (race === 'wolf' && figure && figure.kind === 'beast') {
+      // Garou's animal form owns its complete silhouette, regardless of
+      // gender or a character sheet for the untransformed body.
+      keys.push('wolf');
+    } else {
+      const name = spriteSlug(combatant.name);
+      if (name && !combatant.appearanceKnown) keys.push('characters/' + name);
+      const gender = spriteSlug(combatant.gender);
+      if (gender && race) {
+        keys.push(gender + '-' + race);
+        const family = spriteRaceFamily(race);
+        if (family && family !== race) keys.push(gender + '-' + family);
+      }
     }
   }
   if (side === 'target' && combatant && combatant.isNpc && !combatant.appearanceKnown) {

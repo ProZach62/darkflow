@@ -17,13 +17,21 @@ to the next candidate, and finally to the rig.
 
 For the recipient's own fighter the stage tries, most specific first:
 
+Garou's quadruped Wolf form uses the shared `wolf` sheet before the body-kind
+fallback, regardless of gender. It does not reuse a character's humanoid
+sheet. A Wolf race with no explicit form uses beast geometry; an explicit
+form remains authoritative. This suppresses stale humanoid equipment during
+transformation. Crinos and Ursavar keep their existing humanoid sheets.
+
+For other forms:
+
 1. `characters/<name>` where the name is the character name lowercased with
    runs of non-alphanumerics replaced by `-` (`characters/grash-ironjaw`).
 2. `<gender>-<race>` from `Char.Status`, slugged the same way (`male-scro`).
 3. `<gender>-<family>` when the race belongs to a family in
    `SPRITE_RACE_FAMILIES`. Every playable race maps to shipped art. Human
    cultures and smallfolk share `human`; elven and fae races share `elf`;
-   dwarves and gnomes share `dwarf`; wolf-like races share `ursavar`; and
+   dwarves and gnomes share `dwarf`; Crinos and Ice Gnoll share `ursavar`; and
    the larger monstrous races share `scro` or `arthok`. A race-specific
    sheet still wins whenever one exists.
 4. The body kind, `humanoid` or `beast`.
@@ -34,6 +42,21 @@ use `beast`. Observed players only get the body kind. Every candidate is
 requested, so a more specific sheet that finishes loading later takes over
 on the next frame. A character, race, or enemy sheet must still declare
 `kind` as `humanoid` or `beast`.
+
+### Wolf artwork
+
+`wolf.png` is a transparent 1536 x 1536 sheet of a charcoal/silver quadruped
+wolf, using the existing painterly Ursavar art as a style reference. The
+gender-neutral `wolf.json` uses nine 512-pixel cells, 128 pixels per body unit,
+and ground anchor (200, 464). Row order is idle/windup/maul,
+whiff/recoil/dodge, and guard/cast/look. The cast pose is a howl; look is an
+alert standing pose. Unpainted poses, including walking, fall back to idle.
+
+The transparent generated figures were extracted as whole alpha-connected
+components rather than fixed grid crops, then normalized with one shared
+scale and grounded before assembly. This preserves paws, ears, and tails
+that cross a source cell boundary. The sheet owns its complete head, claws,
+and tail (`weaponsInArt: true`, `portrait: false`, `secondary: false`).
 
 ## Manifest
 

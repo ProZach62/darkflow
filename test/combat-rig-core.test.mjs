@@ -82,6 +82,33 @@ test('equipment outranks guild for the weapon and adds shield, helmet, and armor
   assert.equal(geo.weapon.style, 'great-axe');
 });
 
+test('Wolf race supplies animal geometry when form is omitted without overriding explicit forms', () => {
+  const equipment = {
+    mainHand: { kind: 'axe', style: 'great-axe' },
+    offHand: { kind: 'knife' },
+    shield: true,
+    helmet: true,
+    bodyArmor: true,
+    twoHanded: true,
+  };
+  for (const appearanceKnown of [false, true]) {
+    const wolf = resolveFigure({ race: 'Wolf', guild: 'Garou', equipment, appearanceKnown });
+    assert.equal(wolf.kind, 'beast');
+    assert.equal(wolf.weapon, 'claws');
+    assert.equal(wolf.offKind, '');
+    assert.equal(wolf.shield, false);
+    assert.equal(wolf.helmet, false);
+    assert.equal(wolf.armor, false);
+    assert.equal(wolf.twoHanded, false);
+  }
+  const explicit = resolveFigure({ race: 'wolf', form: 'humanoid', equipment });
+  assert.equal(explicit.kind, 'humanoid');
+  assert.equal(explicit.weapon, 'axe');
+  assert.equal(explicit.shield, true);
+  assert.equal(resolveFigure({ race: 'crinos' }).kind, 'humanoid');
+  assert.equal(resolveFigure({ race: 'ursavar' }).kind, 'humanoid');
+});
+
 test('pose phases anticipate, snap, hold, and settle along the action timeline', () => {
   const hit = { result: 'hit', landed: true };
   assert.deepEqual(posePhase('actor', hit, 0), { from: 'idle', to: 'windup', t: 0, ease: 'settle' });
