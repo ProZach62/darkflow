@@ -16,20 +16,14 @@
 
   const { createCombatStageRenderer } = combatRenderer;
   const {
-    BOSS_MUSIC_FADE_IN_MS,
-    BOSS_MUSIC_FADE_OUT_MS,
-    BOSS_TRACKS,
     MAX_BOSS_SIGHTINGS,
     bossKey,
     bossSightings,
     hasBossTag,
     matchesBossSighting,
     partyAllies,
-    pickBossTrack,
     summarizeAuras,
   } = combatStageCore;
-
-  const BOSS_MUSIC_ID = "scene-boss-music";
 
   let {
     panelId,
@@ -157,52 +151,6 @@
       const name = enemyName(snapshot);
       return hasBossTag(name) || matchesBossSighting(name, sightings);
     };
-    const isBoss = (snapshot: SessionCombatSnapshot | null): boolean =>
-      isTagged(snapshot) || bosses.has(bossKey(enemyName(snapshot)));
-    // The boss track loops while a presented fight is on against a starred
-    // enemy, and gives way to music the game plays itself.
-    let bossMusicPlaying = false;
-    // One track a fight: music the game interrupts comes back as the same
-    // piece, and the next fight takes a different one.
-    let bossTrack = "";
-    let bossTrackEncounter = "";
-    // Starting or stopping the loop makes the audio runtime publish, and the
-    // audio subscription below calls back in here before the flag is set.
-    let syncingBossMusic = false;
-    const syncBossMusic = (): void => {
-      if (syncingBossMusic) return;
-      const snapshot = lastSnapshot;
-      const want =
-        sceneSettings.sceneBossMusic &&
-        !!snapshot &&
-        snapshot.shouldPresent &&
-        snapshot.model.active &&
-        isBoss(snapshot) &&
-        // The server has no music category; its combat music is this loop.
-        !activeSession.audio.serverLoopActive("ambient", "combat-music");
-      syncingBossMusic = true;
-      try {
-        if (want && !bossMusicPlaying) {
-          const encounter = snapshot.model.encounterId;
-          if (!bossTrack || encounter !== bossTrackEncounter) {
-            bossTrack = pickBossTrack(BOSS_TRACKS, bossTrack) as string;
-            bossTrackEncounter = encounter;
-          }
-          bossMusicPlaying =
-            !!bossTrack &&
-            activeSession.audio.loopLocal("music", bossTrack, BOSS_MUSIC_ID, 0.6, {
-              fadeInMs: BOSS_MUSIC_FADE_IN_MS,
-            });
-        } else if (!want && bossMusicPlaying) {
-          bossMusicPlaying = false;
-          activeSession.audio.stopLocal("music", BOSS_MUSIC_ID, {
-            fadeOutMs: BOSS_MUSIC_FADE_OUT_MS,
-          });
-        }
-      } finally {
-        syncingBossMusic = false;
-      }
-    };
     const toggleBoss = (): void => {
       const key = bossKey(enemyName(lastSnapshot));
       if (!key) return;
@@ -280,7 +228,6 @@
             },
           }) !== false;
         syncReadiness();
-        syncBossMusic();
       } catch (error) {
         renderSucceeded = false;
         reportReady(false);
@@ -327,7 +274,6 @@
     const refreshSceneSettings = (): void => {
       sceneSettings = loadClientSettings(localStorage).settings;
       refreshAmbience();
-      syncBossMusic();
     };
     window.addEventListener("darkflow:client-settings-changed", refreshSceneSettings);
     // Read the boss tag off the game text. Subscribing replays the scrollback,
@@ -356,18 +302,12 @@
       }
       if (added && lastSnapshot) render(lastSnapshot);
     });
-    // The game starting or stopping its own music changes whether ours may play.
-    const unsubscribeAudio = activeSession.audio.subscribe(syncBossMusic);
     // The DPS meter closes out a fight on its own clock; pick its figures up
     // as soon as they settle rather than on the next tick.
     const unsubscribeDps = activeSession.dps.subscribe(refreshAmbience);
     return () => {
-      unsubscribeAudio();
       unsubscribeBossText();
       unsubscribeDps();
-      if (bossMusicPlaying) {
-        activeSession.audio.stopLocal("music", BOSS_MUSIC_ID, { fadeOutMs: 800 });
-      }
       unsubscribeSky();
       window.clearInterval(ambienceTicker);
       window.removeEventListener("darkflow:client-settings-changed", refreshSceneSettings);

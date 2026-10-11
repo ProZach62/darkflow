@@ -1,6 +1,9 @@
 import { normalizeMapZoom } from './map-zoom.js';
 import { normalizeMapPan, splitMapPan } from './map-pan.js';
-import { getPrimaryTerrain } from './terrain-semantics.mjs';
+import { extractTerrainTokens, getPrimaryTerrain } from './terrain-semantics.mjs';
+import { planTerrain } from './map-terrain-core.js';
+import { createTerrainPainter } from './map-terrain-paint.js';
+import { mapPinIconSvg, mapPinLabel } from './map-pins-core.js';
 
 const TILE_SIZE = 32;
 // Gap between room boxes. Rooms are drawn as separate boxes spaced apart, with
@@ -19,6 +22,21 @@ const COMPASS_DIRS = [
   ['southeast', 'se'], ['southwest', 'sw'],
 ];
 
+// Movement: the player marker steps to the new room quickly and the camera
+// glides after it, so the marker leads and the view settles on it. Both run
+// as CSS animations whose negative delay is the time already spent, so a
+// re-render mid-glide picks up where the last frame left off.
+const MARKER_STEP_MS = 180;
+const CAMERA_GLIDE_MS = 380;
+// Longer jumps (a teleport, a recall) cut rather than slide across the map.
+const MAX_GLIDE_CELLS = 2;
+// Zooming at a point eases in from the old scale around that point.
+const ZOOM_GLIDE_MS = 220;
+// Rooms that appear while the player explores an area clear out of the fog.
+const REVEAL_MS = 700;
+// More than this many at once is a load or a resync, not exploring.
+const MAX_REVEALS_AT_ONCE = 40;
+
 const REVERSE_DIR = {
   north: 'south', south: 'north', east: 'west', west: 'east',
   northeast: 'southwest', southwest: 'northeast',
@@ -29,11 +47,81 @@ const REVERSE_DIR = {
 // Remember the last room the player occupied that had a coordinate, per area.
 // When the player steps into a room the server has not positioned yet, we keep
 // the view parked on this spot instead of blanking the whole panel.
-function createRendererState() {
+function createRendererState(options = {}) {
   return {
     lastCenterByArea: new Map(),
     lastRenderDebug: null,
+    motion: null,
+    reveal: null,
+    painter: null,
+    lastTerrain: null,
+    lastZoom: 0,
+    zoomGlide: null,
+    lastView: null,
+    now: typeof options.now === 'function'
+      ? options.now
+      : () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
   };
+}
+
+function easeOutCubic(t) {
+  const clamped = Math.min(1, Math.max(0, t));
+  return 1 - Math.pow(1 - clamped, 3);
+}
+
+// Where the marker and camera are coming from, in cells relative to the
+// player's room: { area, z, x, y, at, cam, marker }. A move during a glide
+// starts from wherever the glide had got to.
+export function advanceMapMotion(previous, room, now, reducedMotion) {
+  if (!room) return null;
+  const next = {
+    area: room.area, z: room.z, x: room.x, y: room.y, at: now,
+    cam: { x: 0, y: 0 }, marker: { x: 0, y: 0 },
+  };
+  if (!previous || reducedMotion || previous.area !== room.area || previous.z !== room.z) {
+    return next;
+  }
+  if (previous.x === room.x && previous.y === room.y) return previous;
+  const elapsed = now - previous.at;
+  const camLeft = 1 - easeOutCubic(elapsed / CAMERA_GLIDE_MS);
+  const markerLeft = 1 - easeOutCubic(elapsed / MARKER_STEP_MS);
+  const dx = room.x - previous.x;
+  const dy = room.y - previous.y;
+  const cam = { x: dx + previous.cam.x * camLeft, y: dy + previous.cam.y * camLeft };
+  const marker = { x: dx + previous.marker.x * markerLeft, y: dy + previous.marker.y * markerLeft };
+  const reach = Math.max(Math.abs(cam.x), Math.abs(cam.y), Math.abs(marker.x), Math.abs(marker.y));
+  if (reach <= MAX_GLIDE_CELLS + 0.5) {
+    next.cam = cam;
+    next.marker = marker;
+  }
+  return next;
+}
+
+// Rooms new to the area since the player arrived, with when each appeared.
+// Entering an area, or a bulk load, sets the baseline without revealing.
+export function trackMapReveals(previous, area, areaRooms, now, reducedMotion) {
+  if (!previous || previous.area !== area) {
+    return { area, known: new Set(areaRooms.map((room) => room.id)), at: new Map() };
+  }
+  const fresh = areaRooms.filter((room) => !previous.known.has(room.id));
+  for (const room of fresh) previous.known.add(room.id);
+  if (!reducedMotion && fresh.length && fresh.length <= MAX_REVEALS_AT_ONCE) {
+    for (const room of fresh) previous.at.set(room.id, now);
+  }
+  for (const [id, at] of previous.at) {
+    if (now - at >= REVEAL_MS) previous.at.delete(id);
+  }
+  return previous;
+}
+
+function glideStyle(prefix, vector, scale, elapsed) {
+  return '--map-' + prefix + '-x:' + round2(vector.x * scale) + 'px;'
+    + '--map-' + prefix + '-y:' + round2(vector.y * scale) + 'px;'
+    + 'animation-delay:-' + Math.round(elapsed) + 'ms;';
+}
+
+function round2(value) {
+  return Math.round(value * 100) / 100;
 }
 
 // Pick a coordinate to center the grid on when the player's own room has no
@@ -143,20 +231,38 @@ function buildExitSpans(room, cz, source) {
   }
   spans += specialExitSpans(room);
   if (room.details && room.details.length) {
-    spans += '<span class="map-detail">' + detailGlyph(room.details[0])
-      + '</span>';
+    spans += detailBadge(room.details[0]);
   }
   return spans;
 }
 
 // Room feature badge (top edge): first detail only; the tooltip lists all.
-const DETAIL_GLYPHS = {
-  shop: '$', bank: 'B', guild: 'G', pub: 'P', post: 'M',
+// The common services get a drawn icon; anything else keeps its initial.
+const DETAIL_ICONS = {
+  shop: '<path d="M3 5h6l1 6H2z"/><path d="M4.5 5V4a1.5 1.5 0 0 1 3 0v1" fill="none" stroke="currentColor" stroke-width="1.2"/>',
+  bank: '<path d="M6 1l5 3H1z"/><path d="M2 5h1.5v4H2zM5.25 5h1.5v4h-1.5zM8.5 5H10v4H8.5zM1 9.8h10v1.4H1z"/>',
+  guild: '<path d="M6 1l4.5 1.5V6c0 2.6-2 4.3-4.5 5.2C3.5 10.3 1.5 8.6 1.5 6V2.5z"/>',
+  pub: '<path d="M2 3h6v7.5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5z"/><path d="M8 4.5h1.2a1.6 1.6 0 0 1 0 3.2H8" fill="none" stroke="currentColor" stroke-width="1.2"/>',
+  post: '<path d="M1 3h10v7H1z"/><path d="M1.4 3.4L6 7l4.6-3.6" fill="none" stroke="#2a1d0a" stroke-width="1.1"/>',
 };
 
-function detailGlyph(detail) {
-  if (DETAIL_GLYPHS[detail]) return DETAIL_GLYPHS[detail];
-  return String(detail).charAt(0).toUpperCase() || '?';
+export const MAP_DETAIL_ICON_KINDS = Object.freeze(Object.keys(DETAIL_ICONS));
+
+/** The inline icon for a room detail, or '' when it has none. */
+export function mapDetailIconSvg(detail) {
+  const paths = DETAIL_ICONS[detail];
+  return paths
+    ? '<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">' + paths + '</svg>'
+    : '';
+}
+
+function detailBadge(detail) {
+  const icon = mapDetailIconSvg(detail);
+  if (icon) {
+    return '<span class="map-detail map-detail-icon map-detail-' + detail + '">' + icon + '</span>';
+  }
+  return '<span class="map-detail">'
+    + escAttr(String(detail).charAt(0).toUpperCase() || '?') + '</span>';
 }
 
 function doorStateName(state) {
@@ -201,7 +307,18 @@ function getTerrainName(environment) {
   return getPrimaryTerrain(environment);
 }
 
-function renderMap(bodyEl, source, state) {
+// extras.ambience: { color, alpha, light } tints the map from the player's
+// marker, with a pool of light around it when light is set.
+// extras.pins: { roomId: { kind, note } } draws the player's pins.
+// extras.living: animate water, swamp mist, and (at night) town torchlight.
+// extras.zoomAnchor: { x, y } in pixels from the middle of the map, when the
+// zoom just changed at that point, eases the change in around it.
+// bodyEl.dataset.mapLevel shows a level that many floors above (or below)
+// the player's, with the player's own floor faint beneath it.
+function renderMap(bodyEl, source, state, extras = {}) {
+  const now = state.now();
+  state.lastView = null;
+  const reducedMotion = !!(bodyEl.dataset && bodyEl.dataset.mapMotion === 'reduce');
   // Browse mode renders an arbitrary catalog area (opened in the Area Map pane)
   // with no player marker; the live map is the default source.
   const browse = !!source.isBrowse;
@@ -248,6 +365,14 @@ function renderMap(bodyEl, source, state) {
     state.lastCenterByArea.set(centerRoom.area, centerRoom.id);
   }
 
+  // Parked or browsing, there is no marker to move; the next positioned room
+  // starts fresh rather than gliding in from wherever the player was.
+  state.motion = playerRoom
+    ? advanceMapMotion(state.motion, playerRoom, now, reducedMotion)
+    : null;
+  const motion = state.motion;
+  const motionElapsed = motion ? now - motion.at : Infinity;
+
   const bodyRect = bodyEl.getBoundingClientRect ? bodyEl.getBoundingClientRect() : null;
   const bodyWidth = (bodyRect && bodyRect.width) || bodyEl.clientWidth || 320;
   const bodyHeight = (bodyRect && bodyRect.height) || bodyEl.clientHeight || 240;
@@ -276,9 +401,33 @@ function renderMap(bodyEl, source, state) {
   const verticalPan = splitMapPan(panY, pitch);
   const cx = centerRoom.x - horizontalPan.cells;
   const cy = centerRoom.y - verticalPan.cells;
-  const cz = centerRoom.z;
+  const levelOffset = mapLevelOffset(bodyEl.dataset && bodyEl.dataset.mapLevel);
+  const homeZ = centerRoom.z;
+  const cz = homeZ + levelOffset;
 
   const areaRooms = source.getRoomsByArea(centerRoom.area);
+  const levels = [...new Set(areaRooms.map((room) => room.z).filter(Number.isInteger))].sort((a, b) => a - b);
+  state.lastView = {
+    area: centerRoom.area, levels, viewZ: cz, homeZ, levelOffset,
+    centerX: centerRoom.x, centerY: centerRoom.y, pitch,
+  };
+  // Viewing another floor, the player's own floor shows faintly beneath it.
+  const ghostKeys = new Set();
+  if (levelOffset !== 0) {
+    for (const room of areaRooms) {
+      if (room.z === homeZ && room.x !== null) ghostKeys.add(room.x + ',' + room.y);
+    }
+  }
+  const pins = extras.pins && typeof extras.pins === 'object' ? extras.pins : null;
+
+  if (state.lastZoom && zoom !== state.lastZoom && extras.zoomAnchor && !reducedMotion) {
+    state.zoomGlide = { from: state.lastZoom / zoom, at: now, anchor: extras.zoomAnchor };
+  }
+  state.lastZoom = zoom;
+  const zoomElapsed = state.zoomGlide ? now - state.zoomGlide.at : Infinity;
+  const zoomGliding = zoomElapsed < ZOOM_GLIDE_MS;
+  state.reveal = trackMapReveals(state.reveal, centerRoom.area, areaRooms, now, reducedMotion);
+  const revealedAt = state.reveal.at;
   const distances = buildConnectedDistances(centerRoom, Math.max(gridW, gridH) + 8, source);
   const buckets = new Map();
   const visibleBounds = {
@@ -303,9 +452,31 @@ function renderMap(bodyEl, source, state) {
   const viewportPixelHeight = (viewportH * TILE_SIZE)
     + (Math.max(0, viewportH - 1) * TILE_GAP);
   const overscanOffset = MAP_OVERSCAN_CELLS * (TILE_SIZE + TILE_GAP) * zoom;
-  let html = '<div class="map-grid-frame" style="width:' + (viewportPixelWidth * zoom)
+  // Painted terrain: the rooms' land is painted on a canvas under them as
+  // joined regions, and the room boxes become plates on it.
+  const painted = !!(bodyEl.dataset && bodyEl.dataset.mapStyle === 'painted');
+  const gridPixelWidth = (gridW * TILE_SIZE) + ((gridW - 1) * TILE_GAP);
+  const gridPixelHeight = (gridH * TILE_SIZE) + ((gridH - 1) * TILE_GAP);
+  const terrainCells = [];
+  const placed = new Map();
+
+  const cameraGliding = !!motion && motionElapsed < CAMERA_GLIDE_MS
+    && (motion.cam.x !== 0 || motion.cam.y !== 0);
+  let zoomStyle = '';
+  if (zoomGliding) {
+    const anchor = state.zoomGlide.anchor;
+    zoomStyle = '--map-zoom-from:' + round2(state.zoomGlide.from) + ';transform-origin:'
+      + round2((viewportPixelWidth * zoom) / 2 + (Number(anchor.x) || 0)) + 'px '
+      + round2((viewportPixelHeight * zoom) / 2 + (Number(anchor.y) || 0)) + 'px;'
+      + 'animation-delay:' + (cameraGliding ? '-' + Math.round(motionElapsed) + 'ms,' : '')
+      + '-' + Math.round(zoomElapsed) + 'ms;';
+  }
+  let html = '<div class="map-grid-frame' + (cameraGliding ? ' map-camera-glide' : '')
+    + (zoomGliding ? ' map-zoom-glide' : '')
+    + '" style="width:' + (viewportPixelWidth * zoom)
     + 'px;height:' + (viewportPixelHeight * zoom) + 'px;transform:translate('
-    + horizontalPan.offset + 'px,' + verticalPan.offset + 'px)"'
+    + horizontalPan.offset + 'px,' + verticalPan.offset + 'px);'
+    + (cameraGliding ? glideStyle('cam', motion.cam, pitch, motionElapsed) : '') + zoomStyle + '"'
     + ' data-map-pitch="' + pitch + '"'
     + ' data-map-pan-offset-x="' + horizontalPan.offset + '"'
     + ' data-map-pan-offset-y="' + verticalPan.offset + '">'
@@ -313,8 +484,17 @@ function renderMap(bodyEl, source, state) {
     + 'px;top:-' + overscanOffset + 'px;gap:' + TILE_GAP + 'px;'
     + 'grid-template-columns:repeat(' + gridW + ',' + TILE_SIZE + 'px);'
     + 'grid-template-rows:repeat(' + gridH + ',' + TILE_SIZE + 'px);'
-    + 'transform:scale(' + zoom + ')">';
+    + 'transform:scale(' + zoom + ')"'
+    + (painted ? ' data-map-style="painted"' : '') + '>'
+    + (painted
+      ? '<canvas class="map-terrain" aria-hidden="true" style="grid-column:1 / -1;grid-row:1 / -1;width:'
+        + gridPixelWidth + 'px;height:' + gridPixelHeight + 'px"></canvas>'
+      : '');
 
+  let markerCell = null;
+  const living = !!extras.living && !reducedMotion;
+  const torchlight = living && !!(extras.ambience && extras.ambience.light);
+  let livingHtml = '';
   for (let ry = 0; ry < gridH; ry++) {
     for (let rx = 0; rx < gridW; rx++) {
       const worldX = cx - radiusX + rx;
@@ -323,27 +503,57 @@ function renderMap(bodyEl, source, state) {
       const room = chooseRoomForTile(bucket, playerId, distances, connectedVisibleCount);
 
       if (!room) {
-        html += '<div class="map-tile"></div>';
-      } else if (room.id === playerId) {
-        const terrain = getTerrainName(room.environment);
-        const trustClass = room.layoutState ? ' map-layout-' + room.layoutState : '';
-        html += '<div class="map-tile map-tile-room map-tile-' + terrain
-          + ' map-tile-player' + trustClass + conflictClass(bucket)
-          + '" title="' + escAttr(tileTitle(room, bucket, source)) + '"'
-          + ' data-room-id="' + escAttr(room.id) + '"'
-          + conflictAttr(bucket) + '>'
-          + buildExitSpans(room, cz, source) + '</div>';
-      } else {
-        const terrain = getTerrainName(room.environment);
-        const lastPos = pending && room.id === centerRoom.id ? ' map-tile-lastpos' : '';
-        const trustClass = room.layoutState ? ' map-layout-' + room.layoutState : '';
-        html += '<div class="map-tile map-tile-room map-tile-' + terrain
-          + trustClass + conflictClass(bucket) + lastPos
-          + '" title="' + escAttr(tileTitle(room, bucket, source)) + '"'
-          + ' data-room-id="' + escAttr(room.id) + '"'
-          + conflictAttr(bucket) + '>'
-          + buildExitSpans(room, cz, source) + '</div>';
+        html += ghostKeys.has(worldX + ',' + worldY)
+          ? '<div class="map-tile map-tile-ghost"></div>'
+          : '<div class="map-tile' + fogClass(worldX, worldY, buckets, source) + '"></div>';
+        continue;
       }
+      const isPlayer = room.id === playerId;
+      if (isPlayer) markerCell = { column: rx + 1, row: ry + 1 };
+      const terrain = getTerrainName(room.environment);
+      if (living && room.observed !== false) {
+        livingHtml += livingTerrainHtml(terrain, rx + 1, ry + 1, worldX, worldY, torchlight);
+      }
+      if (painted) {
+        terrainCells.push({
+          col: rx, row: ry, terrain, unseen: room.observed === false, water: namedWater(room.environment),
+        });
+        placed.set(room.id, { col: rx, row: ry, room });
+      }
+      const trustClass = room.layoutState ? ' map-layout-' + room.layoutState : '';
+      const lastPos = !isPlayer && pending && room.id === centerRoom.id ? ' map-tile-lastpos' : '';
+      const unseen = room.observed === false ? ' map-tile-unseen' : '';
+      const revealAt = revealedAt.get(room.id);
+      const revealElapsed = revealAt === undefined ? Infinity : now - revealAt;
+      const revealing = revealElapsed < REVEAL_MS;
+      const pin = pins && pins[room.id] ? pins[room.id] : null;
+      html += '<div class="map-tile map-tile-room map-tile-' + terrain
+        + (isPlayer ? ' map-tile-player' : '') + trustClass + conflictClass(bucket)
+        + lastPos + unseen + (revealing ? ' map-tile-revealed' : '') + (pin ? ' map-tile-pinned' : '')
+        + '"' + (revealing ? ' style="animation-delay:-' + Math.round(revealElapsed) + 'ms"' : '')
+        + ' title="' + escAttr(tileTitle(room, bucket, source, pin)) + '"'
+        + ' data-room-id="' + escAttr(room.id) + '"'
+        + conflictAttr(bucket) + '>'
+        + buildExitSpans(room, cz, source)
+        + (pin ? '<span class="map-pin map-pin-' + escAttr(pin.kind) + '">' + mapPinIconSvg(pin.kind) + '</span>' : '')
+        + '</div>';
+    }
+  }
+
+  html += livingHtml;
+  if (markerCell) html += playerMarkerHtml(markerCell, motion, motionElapsed, extras.ambience);
+  // On another floor, a ghost of the marker shows where the player is, and
+  // which way: below this floor or above it.
+  if (levelOffset !== 0 && playerRoom) {
+    const column = playerRoom.x - (cx - radiusX) + 1;
+    const row = playerRoom.y - (cy - radiusY) + 1;
+    if (column >= 1 && column <= gridW && row >= 1 && row <= gridH) {
+      const below = levelOffset > 0;
+      html += '<div class="map-player-ghost" style="grid-column:' + column + ' / span 1;grid-row:'
+        + row + ' / span 1" title="You are ' + Math.abs(levelOffset)
+        + (Math.abs(levelOffset) === 1 ? ' level ' : ' levels ') + (below ? 'below' : 'above') + '">'
+        + '<span class="map-player-ghost-arrow" aria-hidden="true">' + (below ? '&#x25BC;' : '&#x25B2;')
+        + '</span></div>';
     }
   }
 
@@ -354,11 +564,12 @@ function renderMap(bodyEl, source, state) {
   const zRoom = playerRoom || centerRoom;
   const hasUp = zRoom.exits && zRoom.exits.up !== undefined;
   const hasDown = zRoom.exits && zRoom.exits.down !== undefined;
-  if (hasUp || hasDown || cz !== 0) {
-    html += '<div class="map-zlevel">';
-    if (hasUp) html += '<span class="map-zlevel-arrow">&#x25B2;</span> ';
+  if (hasUp || hasDown || cz !== 0 || levelOffset !== 0) {
+    html += '<div class="map-zlevel' + (levelOffset !== 0 ? ' map-zlevel-away' : '') + '">';
+    if (hasUp && levelOffset === 0) html += '<span class="map-zlevel-arrow">&#x25B2;</span> ';
     html += 'Z:' + cz;
-    if (hasDown) html += ' <span class="map-zlevel-arrow">&#x25BC;</span>';
+    if (levelOffset !== 0) html += ' <span class="map-zlevel-home">(you: ' + homeZ + ')</span>';
+    if (hasDown && levelOffset === 0) html += ' <span class="map-zlevel-arrow">&#x25BC;</span>';
     html += '</div>';
   }
 
@@ -402,6 +613,19 @@ function renderMap(bodyEl, source, state) {
 
   bodyEl.innerHTML = html;
 
+  if (painted) {
+    paintTerrainLayer(bodyEl, state, planTerrain(terrainCells, terrainLinks(placed)), {
+      worldX: cx - radiusX,
+      worldY: cy - radiusY,
+      width: gridPixelWidth,
+      height: gridPixelHeight,
+      zoom,
+      dpr: typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1,
+    });
+  } else {
+    state.lastTerrain = null;
+  }
+
   const resyncBtn = bodyEl.querySelector('.map-resync-btn');
   if (resyncBtn) {
     resyncBtn.addEventListener('click', () => {
@@ -434,6 +658,96 @@ function renderMap(bodyEl, source, state) {
     viewport: { width: viewportW, height: viewportH },
     grid: { width: gridW, height: gridH },
   };
+}
+
+// Exits between rooms drawn in neighbouring cells, for roads to follow.
+function terrainLinks(placed) {
+  const links = [];
+  for (const { col, row, room } of placed.values()) {
+    if (!room.exits) continue;
+    for (const [dir] of COMPASS_DIRS) {
+      const dest = placed.get(room.exits[dir]);
+      if (dest && Math.abs(dest.col - col) <= 1 && Math.abs(dest.row - row) <= 1) {
+        links.push({ from: { col, row }, to: { col: dest.col, row: dest.row } });
+      }
+    }
+  }
+  return links;
+}
+
+function paintTerrainLayer(bodyEl, state, plan, view) {
+  const canvas = typeof bodyEl.querySelector === 'function'
+    ? bodyEl.querySelector('canvas.map-terrain') : null;
+  if (!canvas || typeof canvas.getContext !== 'function') return;
+  if (!state.painter) {
+    // A texture arriving after the paint repaints whatever is showing now.
+    state.painter = createTerrainPainter({
+      onTexturesChanged() {
+        const last = state.lastTerrain;
+        if (last && last.canvas.isConnected) state.painter.paint(last.canvas, last.plan, last.view);
+      },
+    });
+  }
+  state.lastTerrain = { canvas, plan, view };
+  state.painter.paint(canvas, plan, view);
+}
+
+// The player's marker sits over the player's cell as its own layer, so it
+// can step between rooms while the camera follows. It also carries the time
+// of day: a tint over the whole map, with a pool of light around the player
+// at night.
+function playerMarkerHtml(cell, motion, elapsed, ambience) {
+  const stepping = !!motion && elapsed < MARKER_STEP_MS
+    && (motion.marker.x !== 0 || motion.marker.y !== 0);
+  const tinted = ambience && typeof ambience.color === 'string'
+    && /^#[0-9a-f]{3,8}$/i.test(ambience.color) && Number(ambience.alpha) > 0;
+  // An absolutely placed grid item with only a start line would stretch to
+  // the grid's far edge, so the marker spans exactly its one cell.
+  let style = 'grid-column:' + cell.column + ' / span 1;grid-row:' + cell.row + ' / span 1;';
+  if (stepping) {
+    style += glideStyle('marker', { x: -motion.marker.x, y: -motion.marker.y },
+      TILE_SIZE + TILE_GAP, elapsed);
+  }
+  if (tinted) {
+    style += '--map-tint:' + ambience.color + ';--map-tint-alpha:'
+      + round2(Math.min(0.9, Number(ambience.alpha))) + ';';
+  }
+  return '<div class="map-player-marker' + (stepping ? ' map-marker-step' : '')
+    + (tinted ? ' map-tinted' : '') + (tinted && ambience.light ? ' map-lit' : '')
+    + '" style="' + style + '" aria-hidden="true">'
+    + '<span class="map-player-ring"></span></div>';
+}
+
+// Empty cells next to explored rooms are the edge of the known world, drawn
+// as mist; a cell an unexplored exit leads into gets a brighter wisp.
+const FOG_NEIGHBOURS = [
+  [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
+];
+
+function fogClass(x, y, buckets, source) {
+  let near = false;
+  for (const [ox, oy] of FOG_NEIGHBOURS) {
+    const neighbours = buckets.get((x + ox) + ',' + (y + oy));
+    if (!neighbours || !neighbours.length) continue;
+    near = true;
+    if (leadsHere(neighbours, -ox, -oy, source)) return ' map-tile-fog map-tile-fog-lead';
+  }
+  return near ? ' map-tile-fog' : '';
+}
+
+function leadsHere(rooms, dx, dy, source) {
+  const offsets = source.DIR_OFFSETS || {};
+  for (const [dir] of COMPASS_DIRS) {
+    const offset = offsets[dir];
+    if (!offset || offset.dx !== dx || offset.dy !== dy) continue;
+    for (const room of rooms) {
+      const destId = room.exits && room.exits[dir];
+      if (!destId) continue;
+      const dest = source.getRoom(destId);
+      if (!dest || (dest.x === null && dest.area === room.area)) return true;
+    }
+  }
+  return false;
 }
 
 function escAttr(str) {
@@ -507,8 +821,52 @@ function conflictAttr(bucket) {
   return bucket.length > 1 ? ' data-stack="' + bucket.length + '"' : '';
 }
 
-function tileTitle(room, bucket, source) {
+const WATER_WORDS = ['sea', 'lake', 'river'];
+
+// The water a room's description names (a bridge's river, say), or null.
+function namedWater(environment) {
+  return extractTerrainTokens(environment).find((token) => WATER_WORDS.includes(token)) || null;
+}
+
+// A stable 0..1 value for a world cell, so each cell's animation starts at
+// its own point in the cycle and neighbours do not pulse in step.
+export function cellPhase(x, y, salt = 0) {
+  let h = Math.imul((x | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((y | 0) + salt * 0x27d4eb2d, 0xc2b2ae35);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+const LIVING_CYCLE_MS = { water: 7000, river: 3200, mist: 11000, torch: 1700 };
+
+// Living terrain: a soft animated layer over one room's cell. Water shimmers
+// (a river runs faster), swamp mist drifts, and at night town torchlight
+// flickers at a spot of its own in each cell.
+function livingTerrainHtml(terrain, column, row, x, y, torchlight) {
+  let kind = null;
+  if (terrain === 'river') kind = 'river';
+  else if (terrain === 'sea' || terrain === 'lake') kind = 'water';
+  else if (terrain === 'swamp') kind = 'mist';
+  else if (terrain === 'city' && torchlight) kind = 'torch';
+  if (!kind) return '';
+  const delay = Math.round(cellPhase(x, y) * LIVING_CYCLE_MS[kind]);
+  let style = 'grid-column:' + column + ' / span 1;grid-row:' + row + ' / span 1;animation-delay:-' + delay + 'ms;';
+  if (kind === 'torch') {
+    style += '--torch-x:' + Math.round(25 + cellPhase(x, y, 1) * 50) + '%;--torch-y:'
+      + Math.round(25 + cellPhase(x, y, 2) * 50) + '%;';
+  }
+  return '<div class="map-live map-live-' + kind + '" style="' + style + '" aria-hidden="true"></div>';
+}
+
+// The floor offset a map body asks to see, as a whole number of levels.
+export function mapLevelOffset(value) {
+  const offset = Math.trunc(Number(value));
+  return Number.isFinite(offset) ? Math.max(-50, Math.min(50, offset)) : 0;
+}
+
+function tileTitle(room, bucket, source, pin) {
   let title = room.name;
+  if (pin) title += '\nPinned: ' + mapPinLabel(pin.kind) + (pin.note ? ' - ' + pin.note : '');
   if (bucket.length > 1) {
     const names = bucket.slice(0, 6).map((entry) => entry.name || 'Unknown');
     const suffix = bucket.length > names.length ? '\n+' + (bucket.length - names.length) + ' more' : '';
@@ -567,18 +925,36 @@ function countVisibleBuckets(buckets, bounds) {
 }
 
 /** Creates a renderer whose remembered centers and debug snapshot are private. */
-export function createMapRenderer() {
-  const state = createRendererState();
+export function createMapRenderer(options = {}) {
+  const state = createRendererState(options);
   return {
-    render(bodyEl, source) {
-      return renderMap(bodyEl, source, state);
+    render(bodyEl, source, extras) {
+      return renderMap(bodyEl, source, state, extras);
     },
     getDebug() {
       return state.lastRenderDebug;
     },
+    /**
+     * What the last render showed, or null: { area, levels, viewZ, homeZ,
+     * levelOffset, centerX, centerY, pitch }. The pan is relative to the centre
+     * room at (centerX, centerY), and pitch is one cell in pixels.
+     */
+    getView() {
+      return state.lastView;
+    },
     dispose() {
       state.lastCenterByArea.clear();
       state.lastRenderDebug = null;
+      state.motion = null;
+      state.reveal = null;
+      state.zoomGlide = null;
+      state.lastView = null;
+      if (state.painter) state.painter.dispose();
+      state.painter = null;
+      state.lastTerrain = null;
+    },
+    terrainPaintMs() {
+      return state.painter ? state.painter.lastPaintMs() : 0;
     },
   };
 }

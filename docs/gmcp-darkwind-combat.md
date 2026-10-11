@@ -298,7 +298,7 @@ entry arrived and checks once a second. The idle scene settles to a still
 frame, so at rest the glow is steady; it breathes and flickers while a fight
 keeps the stage running.
 
-### Boss battle music
+### Bosses
 
 The game appends `(BOSS)` to the name of every boss, as in "Aurora, Captain
 of the Dawnbound (BOSS)", and that tag is what flags a boss fight; nothing
@@ -323,33 +323,17 @@ showing, a star under the enemy's health marks or unmarks it as a boss. Marks ar
 without the name's leading article, case, or spacing, so "A swamp troll" and
 "the Swamp Troll" are one enemy.
 
-While a presented fight is active against a tagged or marked enemy, the pane loops
-`music/boss-battle` through the session's audio runtime, so the Music volume
-and mute apply. It starts as soon as an enemy is starred mid-fight and stops
-when the fight ends, the target changes to an unmarked enemy, or the Scene
-closes. The server cannot send the `music` category; its own combat music is
-the `ambient/combat-music` loop, and while that loop runs the boss track
-stands down, resuming if the server stops it. Settings, Audio has a checkbox
-to turn it off.
+The boss battle music that these marks once started is parked on the fork's
+`boss-music-parked` branch until it is taken up again; for now a boss shows
+its gold badge, or its gold star when marked, and nothing more.
 
-The track is decoded rather than streamed so its loop point is
-sample-accurate, and it ships as Ogg Vorbis, which is gapless where MP3
-padding would leave an audible seam. Its source and licence are recorded in
-`public/assets/sounds/CREDITS.md`.
-
-The music fades in over 1.5 seconds and out over 2.5, or 0.8 when the Scene
-closes. Fades are an option on the audio runtime's local loops:
+The audio runtime's local loops can fade, which that music used and which
+any loop may:
 `loopLocal(category, sound, id, volume, { fadeInMs })` and
 `stopLocal(category, id, { fadeOutMs })`, each at most ten seconds. A loop
 that is fading out is already gone by ID, so the same ID can start again over
 its tail, and it fades from wherever it is if it was stopped part way up. A
 reset, a hidden page, or a disconnect cuts a tail at once.
-
-The tracks are the `BOSS_TRACKS` list in `combat-stage-core.mjs`, each a
-`music/<key>` entry in the sound map. A fight takes one track and keeps it if
-the game's music interrupts; the next fight takes any track but that one, so
-with two or more no two fights in a row sound the same. Adding a track is an
-Ogg file, a sound map entry, a key in the list, and a credit.
 
 ### Low health, criticals, streaks, and the summary
 

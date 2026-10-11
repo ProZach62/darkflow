@@ -312,7 +312,7 @@ test('a loop can fade in from silence and fade out before it stops', async () =>
   const { engine, manager } = createManager({ unlocked: true });
   manager.setCategoryVolume('music', 0.5);
 
-  manager.loop('music', 'boss-battle', 'boss', 0.6, { fadeInMs: 1500 });
+  manager.loop('music', 'darkwind-theme', 'boss', 0.6, { fadeInMs: 1500 });
   assert.equal(engine.plays[0].options.volume, 0, 'it starts silent');
   assert.deepEqual(
     engine.fades.map(({ from, to, durationMs, id }) => ({ from, to, durationMs, id })),
@@ -334,10 +334,10 @@ test('a loop can fade in from silence and fade out before it stops', async () =>
 
 test('the same loop ID can start again over a fading tail, and a reset cuts the tail', () => {
   const { engine, manager } = createManager({ unlocked: true });
-  manager.loop('music', 'boss-battle', 'boss', 0.6);
+  manager.loop('music', 'darkwind-theme', 'boss', 0.6);
   assert.equal(engine.plays[0].options.volume > 0, true, 'no fade asked, none given');
   manager.stop('music', 'boss', { fadeOutMs: 5000 });
-  manager.loop('music', 'boss-battle', 'boss', 0.6, { fadeInMs: 1000 });
+  manager.loop('music', 'darkwind-theme', 'boss', 0.6, { fadeInMs: 1000 });
   assert.equal(engine.stops.length, 0);
   assert.deepEqual(manager.getDebugSnapshot().loops, ['boss']);
 
@@ -347,10 +347,10 @@ test('the same loop ID can start again over a fading tail, and a reset cuts the 
 
 test('fade lengths are bounded and nonsense means no fade', () => {
   const { engine, manager } = createManager({ unlocked: true });
-  manager.loop('music', 'boss-battle', 'a', 1, { fadeInMs: 999999 });
+  manager.loop('music', 'darkwind-theme', 'a', 1, { fadeInMs: 999999 });
   assert.equal(engine.fades[0].durationMs, 10000);
-  manager.loop('music', 'boss-battle', 'b', 1, { fadeInMs: -5 });
-  manager.loop('music', 'boss-battle', 'c', 1, { fadeInMs: 'soon' });
+  manager.loop('music', 'darkwind-theme', 'b', 1, { fadeInMs: -5 });
+  manager.loop('music', 'darkwind-theme', 'c', 1, { fadeInMs: 'soon' });
   assert.equal(engine.fades.length, 1);
   manager.stop('music', 'b', { fadeOutMs: 0 });
   assert.equal(engine.stops.length, 1, 'no fade out means a cut');

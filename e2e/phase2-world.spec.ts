@@ -414,6 +414,127 @@ test("map and room image reset across reconnect and remount after session dispos
   await expect(page.locator("[data-world-instance]")).toHaveCount(0);
 });
 
+test("the map marks you, previews a route on hover, draws service icons, and has a legend", async ({
+  page,
+}) => {
+  test.skip(
+    (page.viewportSize()?.width ?? Infinity) <= 700,
+    "hovering to preview a route is a pointer interaction",
+  );
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(101, "Atrium", 0, { east: 102 }),
+    details: ["shop"],
+  });
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    currentRoom(102, "East Hall", 1, { west: 101, east: 103 }),
+  );
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(103, "Far Hall", 2, { west: 102 }));
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  const mapBody = map.locator(".map-body");
+  await expect(map.locator(".map-player-marker")).toHaveCount(1);
+  await expect(map.locator(".map-detail-shop svg")).toBeVisible();
+
+  await map.getByRole("button", { name: "Speedwalk to Atrium" }).hover();
+  await expect(mapBody).toHaveAttribute("data-map-route", "preview");
+  await expect(map.locator(".map-route-count")).toHaveText("2");
+  await expect(map.locator(".map-route-dot")).toHaveCount(1);
+  await page.mouse.move(1, 1);
+  await expect(mapBody).not.toHaveAttribute("data-map-route");
+  await expect(map.locator(".map-route-count")).toHaveCount(0);
+
+  await map.getByRole("button", { name: "Map legend" }).click();
+  const legend = map.getByRole("region", { name: "Map legend" });
+  await expect(legend).toContainText("Shop");
+  await expect(legend).toContainText("Edge of the explored map");
+  await page.keyboard.press("Escape");
+  await expect(legend).toHaveCount(0);
+});
+
+test("the map zooms at the pointer, shows other floors, keeps pins, and searches", async ({
+  page,
+}) => {
+  test.skip(
+    (page.viewportSize()?.width ?? Infinity) <= 700,
+    "wheel zoom and right-click pins are pointer interactions",
+  );
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(102, "East Hall", 1, { west: 101 }));
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(201, "Loft", 0, { down: 101 }),
+    z: 1,
+  });
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    currentRoom(101, "Atrium", 0, { east: 102, up: 201 }),
+  );
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  const mapBody = map.locator(".map-body");
+  const atrium = map.getByRole("button", { name: "Speedwalk to Atrium" });
+  await expect(atrium).toBeVisible();
+  await expect(
+    map.locator(".map-title-card"),
+    "no banner for the area the map opens in",
+  ).toHaveCount(0);
+
+  // Wheel zoom steps once, around the pointer.
+  const box = await atrium.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.wheel(0, -120);
+  await expect(map.locator(".map-zoom-level")).toHaveText("110%");
+
+  // The floor above, with the player ghosted below it.
+  await map.getByRole("button", { name: "Show the level above" }).click();
+  await expect(map.locator(".map-level-label")).toHaveText("+1 level");
+  await expect(map.getByRole("button", { name: "Speedwalk to Loft" })).toBeVisible();
+  await expect(atrium).toHaveCount(0);
+  await expect(map.locator(".map-player-ghost")).toHaveCount(1);
+  await map.getByRole("button", { name: "Re-center map" }).click();
+  await expect(map.locator(".map-level-label")).toHaveText("Your level");
+  await expect(atrium).toBeVisible();
+
+  // A pin by right-click, kept per character.
+  await map.getByRole("button", { name: "Speedwalk to East Hall" }).click({ button: "right" });
+  const editor = map.getByRole("dialog", { name: "Pin East Hall" });
+  await editor.getByRole("radio", { name: "Danger" }).click();
+  await editor.getByLabel("Pin note").fill("Loose floorboards");
+  await editor.getByLabel("Pin note").press("Enter");
+  await expect(editor).toHaveCount(0);
+  await expect(map.locator(".map-pin-danger")).toHaveCount(1);
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith("darkflow-map-pins:"))
+        .map((key) => JSON.parse(localStorage.getItem(key) ?? "{}").pins?.["102"]?.note),
+    ),
+  ).toEqual(["Loose floorboards"]);
+
+  // Search by pin note, and by name onto another floor.
+  await map.getByRole("button", { name: "Search the map" }).click();
+  const search = map.getByRole("searchbox", { name: "Search the map" });
+  await search.fill("floorboards");
+  await expect(map.locator(".map-search-name")).toHaveText(["East Hall"]);
+  await search.fill("loft");
+  await expect(map.locator(".map-search-meta")).toHaveText(["1 level up"]);
+  await search.press("Enter");
+  await expect(map.locator(".map-level-label")).toHaveText("+1 level");
+  await expect(map.locator(".map-tile-found")).toHaveCount(1);
+  await expect(mapBody).toBeVisible();
+
+  // Crossing into another area shows its name, then the banner fades away.
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(301, "Salt Road", 0),
+    area: "The Saltmarsh",
+  });
+  const card = map.locator(".map-title-card");
+  await expect(card).toContainText("Entering");
+  await expect(card).toContainText("Saltmarsh");
+  await expect(card).toHaveCount(0, { timeout: 6_000 });
+});
+
 test("map navigation and room imagery survive layout persistence without stale media", async ({
   page,
 }, testInfo) => {

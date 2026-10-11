@@ -778,22 +778,6 @@ export function matchesBossSighting(name, sightings) {
   return false;
 }
 
-// The boss tracks, as sound keys in the music category. Each boss fight
-// takes one, and never the one the last fight had, so with two or more
-// tracks no two fights in a row sound the same.
-export const BOSS_TRACKS = Object.freeze(['boss-battle']);
-export const BOSS_MUSIC_FADE_IN_MS = 1500;
-export const BOSS_MUSIC_FADE_OUT_MS = 2500;
-
-export function pickBossTrack(tracks, last, random = Math.random) {
-  const all = Array.isArray(tracks) ? tracks.filter(Boolean) : [];
-  if (!all.length) return '';
-  const fresh = all.length > 1 ? all.filter((track) => track !== last) : all;
-  const roll = Number(random());
-  const index = Math.floor((Number.isFinite(roll) ? Math.min(Math.max(roll, 0), 0.999999) : 0) * fresh.length);
-  return fresh[index];
-}
-
 // --- Low health ---------------------------------------------------------------
 // From 35% health down the scene closes in: a red vignette that beats like a
 // heart while a fight is on, and a figure that breathes hard. Full at 10%.

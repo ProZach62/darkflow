@@ -531,7 +531,7 @@ test("the server's own loops are tracked by category and sound until stopped or 
   bus.dispatch("Core.Supports.Add", ["Darkwind.Sound 1"]);
 
   assert.equal(audio.serverLoopActive("ambient"), false);
-  assert.equal(audio.loopLocal("music", "boss-battle", "scene-boss-music", 0.6), true);
+  assert.equal(audio.loopLocal("music", "darkwind-theme", "theme-loop", 0.6), true);
   assert.equal(audio.serverLoopActive("music"), false, "a local loop is not the server's");
 
   bus.dispatch("Darkwind.Sound", { type: "loop", category: "ambient", sound: "rain", id: "weather" });
@@ -562,17 +562,17 @@ test("local loops carry their fades to the manager, and a fade that makes no sen
   const { audio, eventBus, manager, scope } = createAudio(modules);
   connect(eventBus);
 
-  assert.equal(audio.loopLocal("music", "boss-battle", "scene-boss-music", 0.6, { fadeInMs: 1500 }), true);
-  assert.equal(audio.stopLocal("music", "scene-boss-music", { fadeOutMs: 2500 }), true);
+  assert.equal(audio.loopLocal("music", "darkwind-theme", "theme-loop", 0.6, { fadeInMs: 1500 }), true);
+  assert.equal(audio.stopLocal("music", "theme-loop", { fadeOutMs: 2500 }), true);
   assert.deepEqual(manager.fadeCalls, [
-    ["loop", "scene-boss-music", { fadeInMs: 1500 }],
-    ["stop", "scene-boss-music", { fadeOutMs: 2500 }],
+    ["loop", "theme-loop", { fadeInMs: 1500 }],
+    ["stop", "theme-loop", { fadeOutMs: 2500 }],
   ]);
 
   const before = manager.calls.length;
-  assert.equal(audio.loopLocal("music", "boss-battle", "scene-boss-music", 0.6, { fadeInMs: -1 }), false);
-  assert.equal(audio.loopLocal("music", "boss-battle", "scene-boss-music", 0.6, { fadeInMs: 60_000 }), false);
-  assert.equal(audio.stopLocal("music", "scene-boss-music", { fadeOutMs: Number.NaN }), false);
+  assert.equal(audio.loopLocal("music", "darkwind-theme", "theme-loop", 0.6, { fadeInMs: -1 }), false);
+  assert.equal(audio.loopLocal("music", "darkwind-theme", "theme-loop", 0.6, { fadeInMs: 60_000 }), false);
+  assert.equal(audio.stopLocal("music", "theme-loop", { fadeOutMs: Number.NaN }), false);
   assert.equal(manager.calls.length, before, "nothing reached the manager");
   scope.dispose();
 });

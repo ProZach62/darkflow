@@ -270,8 +270,6 @@ test("starring an enemy as a boss is remembered and leaves the interface respons
   const star = combat.getByRole("button", { name: "Mark an ash drake as a boss", exact: true });
   await expect(star).toHaveAttribute("aria-pressed", "false");
   await star.click();
-  // Starting the boss track makes the audio runtime publish, which once
-  // re-entered the pane's music sync and hung the page.
   const marked = combat.getByRole("button", { name: "Unmark an ash drake as a boss", exact: true });
   await expect(marked).toHaveAttribute("aria-pressed", "true");
   await expect(marked).toContainText("Boss");
@@ -391,6 +389,9 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   const combat = page.getByRole("region", { name: "Visual combat" });
   await expect(combat).toBeVisible();
   await expect(page.locator(".combat-panel")).toHaveCount(1);
+  await expect(
+    page.locator(".workspace-controls").getByRole("button", { name: "Enemy", exact: true }),
+  ).toHaveCount(0);
   await expect(combat).toContainText("Acer");
   await expect(combat).toContainText("an ash drake");
   await expect(combat.getByRole("progressbar", { name: "Acer health" })).toHaveAttribute(
@@ -491,25 +492,6 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
       )
       .toBe(true);
 
-    await page.getByRole("button", { name: "Scene", exact: true }).click();
-    await expect(combat).toBeVisible();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            (
-              window as unknown as {
-                __darkflowPhase1Runtime: {
-                  session: { combat: { getSnapshot(): { presentationReady: boolean } } };
-                };
-              }
-            ).__darkflowPhase1Runtime.session.combat.getSnapshot().presentationReady,
-        ),
-      )
-      .toBe(true);
-
-    await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
-    await expect(combat).toHaveCount(0);
     activeEncounter = "encounter-b";
     endpoint.sendGmcp(
       "Darkwind.Combat.State",

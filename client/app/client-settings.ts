@@ -99,10 +99,14 @@ export interface Phase2ClientSettings {
   terminalAvatarMeter: boolean;
   /** Play the client's combat sounds from the Scene as blows land. */
   sceneSounds: boolean;
-  /** Play the boss battle track while fighting an enemy the player has marked as a boss. */
-  sceneBossMusic: boolean;
   /** Tint the Scene by the game's time of day and moonlight. */
   sceneDayNight: boolean;
+  /** Tint the live map by the game's time of day, with light around the player at night. */
+  mapDayNight: boolean;
+  /** Paint the map's land as joined terrain instead of one square tile per room. */
+  mapPaintedTerrain: boolean;
+  /** Animate the map: shimmering water, drifting swamp mist, and torchlight in towns at night. */
+  mapLivingTerrain: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -140,8 +144,10 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   tabObservabilityEnabled: false,
   terminalAvatarMeter: true,
   sceneSounds: true,
-  sceneBossMusic: true,
   sceneDayNight: true,
+  mapDayNight: true,
+  mapPaintedTerrain: true,
+  mapLivingTerrain: true,
 };
 
 export type ClientSettingsResult =
@@ -240,8 +246,10 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     tabObservabilityEnabled: settings.tabObservabilityEnabled === true,
     terminalAvatarMeter: settings.terminalAvatarMeter !== false,
     sceneSounds: settings.sceneSounds !== false,
-    sceneBossMusic: settings.sceneBossMusic !== false,
     sceneDayNight: settings.sceneDayNight !== false,
+    mapDayNight: settings.mapDayNight !== false,
+    mapPaintedTerrain: settings.mapPaintedTerrain !== false,
+    mapLivingTerrain: settings.mapLivingTerrain !== false,
   };
 }
 
@@ -431,8 +439,10 @@ export function validateClientSettingsDocument(
     "tabObservabilityEnabled",
     "terminalAvatarMeter",
     "sceneSounds",
-    "sceneBossMusic",
     "sceneDayNight",
+    "mapDayNight",
+    "mapPaintedTerrain",
+    "mapLivingTerrain",
   ] as const;
   for (const key of booleanKeys) {
     if (key in value && typeof value[key] !== "boolean")

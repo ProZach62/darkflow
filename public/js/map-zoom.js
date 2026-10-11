@@ -23,6 +23,22 @@ export function stepMapZoom(value, direction) {
   return MAP_ZOOM_LEVELS[nextIndex];
 }
 
+/**
+ * The pan (in cells, as the map body's pan values) that keeps the world point
+ * under an anchor still when the zoom changes. anchor is in pixels from the
+ * middle of the map; pitch is the size of one cell in pixels at each zoom.
+ */
+export function anchoredZoomPan(pan, anchor, fromPitch, toPitch) {
+  const x = Number(pan && pan.x) || 0;
+  const y = Number(pan && pan.y) || 0;
+  if (!(fromPitch > 0) || !(toPitch > 0) || !anchor) return { x, y };
+  const shift = 1 / toPitch - 1 / fromPitch;
+  return {
+    x: x + (Number(anchor.x) || 0) * shift,
+    y: y + (Number(anchor.y) || 0) * shift,
+  };
+}
+
 export function formatMapZoom(value) {
   return Math.round(normalizeMapZoom(value) * 100) + '%';
 }

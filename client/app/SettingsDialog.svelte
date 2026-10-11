@@ -915,6 +915,21 @@
             label="Tint the Scene by time of day"
             help="Warm at dawn, violet at twilight, and blue at night, brighter under more moonlight. Rooms with no sky are left alone."
           />
+          <SettingsCheckbox
+            bind:checked={settings.mapDayNight}
+            label="Tint the map by time of day"
+            help="The same tint on the live map, with a pool of light around you at night. Rooms with no sky are left alone."
+          />
+          <SettingsCheckbox
+            bind:checked={settings.mapPaintedTerrain}
+            label="Paint the map's terrain"
+            help="Rooms of the same terrain join into painted land, water gets a shore, and roads run between rooms. Off, each room is its own square tile."
+          />
+          <SettingsCheckbox
+            bind:checked={settings.mapLivingTerrain}
+            label="Animate the map"
+            help="Water shimmers, swamp mist drifts, and towns show torchlight at night. Off, or with reduced motion, the map holds still."
+          />
           <label class="settings-row"
             ><span class="settings-copy"
               ><span class="settings-label">Theme</span>
@@ -1054,11 +1069,6 @@
             bind:checked={settings.sceneSounds}
             label="Play combat sounds from the Scene"
             help="Hits, misses, criticals, and the start and end of a fight, as the Scene shows them. They follow the Combat volume, and stay quiet if the game sends its own combat sounds."
-          />
-          <SettingsCheckbox
-            bind:checked={settings.sceneBossMusic}
-            label="Play boss battle music on the Scene"
-            help="Loops a battle track while you fight an enemy you have starred as a boss in the Scene. It follows the Music volume, and gives way to music the game plays itself."
           />
           <label class="settings-row"
             ><span class="settings-copy"

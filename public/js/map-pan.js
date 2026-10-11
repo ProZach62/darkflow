@@ -1,5 +1,24 @@
 const DRAG_THRESHOLD_PX = 4;
 const PAN_REBASE_PITCHES = 2;
+// A drag let go while moving coasts on and slows to a stop. Speeds are in
+// pixels per millisecond, measured over the last part of the drag.
+const COAST_SAMPLE_MS = 100;
+const COAST_MIN_SPEED = 0.25;
+const COAST_STOP_SPEED = 0.02;
+const COAST_FRICTION = 0.9;
+
+/** The release velocity of a drag from its recent { t, x, y } samples, or null. */
+export function releaseVelocity(samples, now) {
+  const recent = (samples || []).filter((s) => Number.isFinite(s.t) && now - s.t <= COAST_SAMPLE_MS);
+  if (recent.length < 2) return null;
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+  const dt = last.t - first.t;
+  if (!(dt > 0)) return null;
+  const vx = (last.x - first.x) / dt;
+  const vy = (last.y - first.y) / dt;
+  return Math.hypot(vx, vy) >= COAST_MIN_SPEED ? { vx, vy } : null;
+}
 const panDisposers = new WeakMap();
 
 export function normalizeMapPan(value) {
@@ -65,6 +84,8 @@ export function wireMapPan(bodyEl, options = {}) {
   };
   let suppressClick = false;
   let suppressClickTimer = null;
+  const samples = [];
+  let coast = null;
 
   const currentPan = (event) => ({
     x: drag.startPanX + ((event.clientX - drag.startClientX) / drag.pitch),
@@ -89,13 +110,72 @@ export function wireMapPan(bodyEl, options = {}) {
     }
   };
 
+  // Moves the view to where a pointer at (clientX, clientY) would have
+  // dragged it, rebasing the grid when it has travelled far enough.
+  const follow = (point) => {
+    const dx = point.clientX - drag.startClientX;
+    const dy = point.clientY - drag.startClientY;
+    const frame = readFrame(bodyEl);
+    if (frame) {
+      frame.el.style.transform = 'translate('
+        + (drag.startOffsetX + dx) + 'px,'
+        + (drag.startOffsetY + dy) + 'px)';
+    }
+    if (Math.abs(dx) >= drag.pitch * PAN_REBASE_PITCHES
+      || Math.abs(dy) >= drag.pitch * PAN_REBASE_PITCHES) {
+      rebase(point, currentPan(point));
+    }
+  };
+
+  const canCoast = () => typeof requestAnimationFrame === 'function'
+    && !(bodyEl.dataset && bodyEl.dataset.mapMotion === 'reduce');
+
+  const settle = (point) => {
+    const pan = currentPan(point);
+    writePan(bodyEl, pan.x, pan.y);
+    rerender();
+  };
+
+  const stopCoast = () => {
+    if (!coast) return;
+    if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(coast.frame);
+    const point = { clientX: coast.x, clientY: coast.y };
+    coast = null;
+    bodyEl.classList.remove('map-coasting');
+    settle(point);
+  };
+
+  const startCoast = (point, velocity) => {
+    coast = { x: point.clientX, y: point.clientY, vx: velocity.vx, vy: velocity.vy, last: null, frame: 0 };
+    bodyEl.classList.add('map-coasting');
+    const step = (time) => {
+      if (!coast) return;
+      const dt = coast.last === null ? 16 : Math.min(48, Math.max(0, time - coast.last));
+      coast.last = time;
+      coast.x += coast.vx * dt;
+      coast.y += coast.vy * dt;
+      const slow = Math.pow(COAST_FRICTION, dt / 16);
+      coast.vx *= slow;
+      coast.vy *= slow;
+      follow({ clientX: coast.x, clientY: coast.y });
+      if (Math.hypot(coast.vx, coast.vy) < COAST_STOP_SPEED) {
+        stopCoast();
+        return;
+      }
+      coast.frame = requestAnimationFrame(step);
+    };
+    coast.frame = requestAnimationFrame(step);
+  };
+
   const finish = (event, cancelled = false) => {
     if (!drag.active || event.pointerId !== drag.pointerId) return;
     drag.lastClientX = event.clientX;
     drag.lastClientY = event.clientY;
-    const pan = currentPan(event);
-    writePan(bodyEl, pan.x, pan.y);
-    rerender();
+    const velocity = !cancelled && drag.moved && canCoast()
+      ? releaseVelocity(samples, Number.isFinite(event.timeStamp) ? event.timeStamp : NaN)
+      : null;
+    if (velocity) startCoast(event, velocity);
+    else settle(event);
     drag.active = false;
     bodyEl.classList.remove('map-panning');
 
@@ -113,9 +193,12 @@ export function wireMapPan(bodyEl, options = {}) {
 
   const onPointerDown = (event) => {
     if (drag.active || event.isPrimary === false || event.button !== 0) return;
+    // Catching a coasting map stops it where it is.
+    stopCoast();
     if (!isPannableTarget(event.target)) return;
     const frame = readFrame(bodyEl);
     if (!frame) return;
+    samples.length = 0;
 
     drag.active = true;
     drag.pointerId = event.pointerId;
@@ -141,17 +224,11 @@ export function wireMapPan(bodyEl, options = {}) {
     const dx = event.clientX - drag.startClientX;
     const dy = event.clientY - drag.startClientY;
     if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) drag.moved = true;
-
-    const frame = readFrame(bodyEl);
-    if (frame) {
-      frame.el.style.transform = 'translate('
-        + (drag.startOffsetX + dx) + 'px,'
-        + (drag.startOffsetY + dy) + 'px)';
+    if (Number.isFinite(event.timeStamp)) {
+      samples.push({ t: event.timeStamp, x: event.clientX, y: event.clientY });
+      while (samples.length > 2 && event.timeStamp - samples[0].t > COAST_SAMPLE_MS) samples.shift();
     }
-    if (Math.abs(dx) >= drag.pitch * PAN_REBASE_PITCHES
-      || Math.abs(dy) >= drag.pitch * PAN_REBASE_PITCHES) {
-      rebase(event, currentPan(event));
-    }
+    follow(event);
     event.preventDefault();
   };
 
@@ -188,6 +265,8 @@ export function wireMapPan(bodyEl, options = {}) {
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    if (coast && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(coast.frame);
+    coast = null;
     for (const [type, handler, capture] of listeners) {
       if (bodyEl.removeEventListener) bodyEl.removeEventListener(type, handler, capture);
     }
