@@ -93,6 +93,8 @@ export class MudSession extends EventEmitter {
     this.consumedTextLen = 0;
     this.gmcpLog = [];
     this.consumedGmcpLen = 0;
+    this.preservedRawText = '';
+    this.preservedGmcp = [];
     this.gmcpState = {};
 
     this._decoder = new TextDecoder('utf-8');
@@ -250,11 +252,25 @@ export class MudSession extends EventEmitter {
     return { banner: this.banner, room: this.gmcpState['Room.Info'] || null, settledBy, loggedIn: true };
   }
 
-  _drain(settledBy) {
-    const raw = this.rawText.slice(this.consumedTextLen);
-    const gmcp = this.gmcpLog.slice(this.consumedGmcpLen).map((g) => ({ package: g.package, data: g.data }));
+  _preservePending() {
+    this.preservedRawText += this.rawText.slice(this.consumedTextLen);
+    this.preservedGmcp.push(...this.gmcpLog.slice(this.consumedGmcpLen));
     this.consumedTextLen = this.rawText.length;
     this.consumedGmcpLen = this.gmcpLog.length;
+  }
+
+  _drain(settledBy, { includePreserved = true } = {}) {
+    const preservedRaw = includePreserved ? this.preservedRawText : '';
+    const preservedGmcp = includePreserved ? this.preservedGmcp : [];
+    const raw = preservedRaw + this.rawText.slice(this.consumedTextLen);
+    const gmcp = [...preservedGmcp, ...this.gmcpLog.slice(this.consumedGmcpLen)]
+      .map((g) => ({ package: g.package, data: g.data }));
+    this.consumedTextLen = this.rawText.length;
+    this.consumedGmcpLen = this.gmcpLog.length;
+    if (includePreserved) {
+      this.preservedRawText = '';
+      this.preservedGmcp = [];
+    }
     return { text: stripAnsi(raw), raw, gmcp, settledBy };
   }
 
@@ -268,10 +284,24 @@ export class MudSession extends EventEmitter {
     return this._drain(settledBy);
   }
 
+  // Send runner bookkeeping without consuming output that was already pending.
+  async sendIsolated(command, { quietMs, timeoutMs } = {}) {
+    if (!this.connected) throw new Error('not connected');
+    this._preservePending();
+    this.write(command);
+    const settledBy = await awaitSettled(this, {
+      quietMs: quietMs ?? this.quietMs,
+      timeoutMs: timeoutMs ?? this.timeoutMs,
+    });
+    return this._drain(settledBy, { includePreserved: false });
+  }
+
   // Drain any unconsumed (typically async) output. If nothing is pending, wait
   // briefly for a push to arrive.
   async read({ waitMs = 600 } = {}) {
-    const hasPending = this.consumedTextLen < this.rawText.length
+    const hasPending = this.preservedRawText.length > 0
+      || this.preservedGmcp.length > 0
+      || this.consumedTextLen < this.rawText.length
       || this.consumedGmcpLen < this.gmcpLog.length;
     if (!hasPending) {
       await awaitSettled(this, { quietMs: 150, timeoutMs: waitMs }).catch(() => {});

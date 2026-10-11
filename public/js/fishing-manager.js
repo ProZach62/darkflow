@@ -7,6 +7,7 @@
 import { gmcp } from './gmcp.js';
 import { panelManager } from './panel-manager.js';
 import { soundManager } from './sound-manager.js';
+import { fishingAuto } from './fishing-auto.js';
 import { createFightSim, computeAccuracy, castPowerAt, PROGRESS_START } from './fishing-core.mjs';
 import { disposeControllerLifecycle, installControllerLifecycle } from './session-compat/controllers.js';
 
@@ -137,7 +138,9 @@ export const fishingManager = {
       scopedGmcp.on(PKG.ART, (data) => this._onArt(data));
       scopedGmcp.on(PKG.END, (data) => this._onEnd(data));
 
+      fishingAuto.attach(this);
       const closeHandler = () => {
+        fishingAuto.notifyManualInput();
         if (this.session) gmcp.send(PKG.CANCEL, { session: this.session.id });
         this._reset('idle');
         return true;
@@ -149,6 +152,7 @@ export const fishingManager = {
     }, () => {
       if (this._clearCastPointer) this._clearCastPointer();
       this._clearCastPointer = null;
+      fishingAuto.onDisconnect();
       this._reset('idle');
     });
   },
@@ -174,6 +178,10 @@ export const fishingManager = {
     panelManager.openPanel('fishing');
     panelManager._renderPanel('fishing');
     this._render();
+    // Notified last, once the panel exists. An automated cast enters the same
+    // charging loop a manual one does, and that loop paints the power meter -
+    // starting it before the panel is built would dereference a null element.
+    fishingAuto.onSessionOpen(this.phase, this.session);
   },
 
   _onBite(data) {
@@ -182,6 +190,7 @@ export const fishingManager = {
     this.phase = 'bite';
     this._biteTimer = data.windowMs || 2500;
     this._biteWindow = this._biteTimer;
+    fishingAuto.onBite(this._biteWindow);
     soundManager.play('fishing', 'splash');
     this._render();
     this._startLoop();
@@ -194,6 +203,9 @@ export const fishingManager = {
     this._tensionWarned = false;
     this.fightParams = data.params || {};
     this.sim = createFightSim(this.fightParams, data.seed || 1);
+    // Same params and seed the simulation just got, so the Auto-Angler models
+    // the fight that is actually running rather than the raw message.
+    fishingAuto.onFight(this.fightParams, data.seed || 1);
     this.fightMeta = data.fish || {};
     this._burst();
     soundManager.loop('fishing', 'reel', REEL_LOOP_ID, 0.6);
@@ -207,6 +219,7 @@ export const fishingManager = {
     this._stopLoop();
     soundManager.stopById(REEL_LOOP_ID);
     this.phase = 'caught';
+    fishingAuto.onServerVerdict('caught', data);
     this.lastCatch = data.fish || {};
     this.lastRewards = data.rewards || {};
     if (this.lastCatch.id && this.lastCatch.artUrl) {
@@ -224,6 +237,7 @@ export const fishingManager = {
     soundManager.stopById(REEL_LOOP_ID);
     this.phase = 'escaped';
     this.escapeReason = data.reason || 'slack';
+    fishingAuto.onServerVerdict(this.escapeReason, data);
     if (this.escapeReason === 'snap') {
       soundManager.play('fishing', 'snap');
       this._shake();
@@ -258,6 +272,9 @@ export const fishingManager = {
   // that survives a reconnect keeps its dead nonce and every input is
   // silently discarded server-side.
   handleDisconnect() {
+    // Notified before the early return: the Auto-Angler can be armed with no
+    // session open, and a dropped socket still matters to it.
+    fishingAuto.onDisconnect();
     if (!this.session && this.phase === 'idle') return;
     this._reset('idle');
     this.endMessage = 'Connection lost. Type "fish" to start a new session.';
@@ -271,6 +288,7 @@ export const fishingManager = {
     this.phase = phase;
     this.sim = null;
     this.held = false;
+    fishingAuto.onSessionReset(phase);
     if (phase === 'idle') this.session = null;
   },
 
@@ -328,6 +346,7 @@ export const fishingManager = {
 
     stage.innerHTML = `
       <button type="button" class="fishing-close" title="Stop fishing">&#x2715;</button>
+      <div class="fishing-auto-badge" aria-hidden="true">AUTO</div>
       <img class="fishing-scene" alt="" draggable="false">
       <div class="fishing-water"></div>
       <div class="fishing-bobber"><div class="fishing-bobber-top"></div></div>
@@ -376,8 +395,21 @@ export const fishingManager = {
     `;
     bodyEl.appendChild(stage);
 
+    // Auto-Angler controls live outside the stage (PRD 4.5, 6.1): a press on
+    // the stage is the player taking over, and the toggle must not count as
+    // one. The button is a real <button> with its state in aria-pressed.
+    const autoStrip = document.createElement('div');
+    autoStrip.className = 'fishing-auto-strip';
+    autoStrip.innerHTML =
+      '<button type="button" class="fishing-auto-toggle dw-button" aria-pressed="false">Auto: OFF</button>' +
+      '<span class="fishing-auto-summary"></span>';
+    bodyEl.appendChild(autoStrip);
+
     this.els = {
       stage,
+      autoBadge: stage.querySelector('.fishing-auto-badge'),
+      autoToggle: autoStrip.querySelector('.fishing-auto-toggle'),
+      autoSummary: autoStrip.querySelector('.fishing-auto-summary'),
       closeBtn: stage.querySelector('.fishing-close'),
       scene: stage.querySelector('.fishing-scene'),
       bobber: stage.querySelector('.fishing-bobber'),
@@ -424,6 +456,7 @@ export const fishingManager = {
     this._clearCastPointer = clearCastPointer;
     const castDown = (ev) => {
       if (this.phase !== 'ready') return;
+      fishingAuto.notifyManualInput();
       ev.preventDefault();
       ev.stopPropagation();
       castPointerId = ev.pointerId;
@@ -454,6 +487,11 @@ export const fishingManager = {
     this.els.powerWrap.addEventListener('pointerup', castUp);
     this.els.powerWrap.addEventListener('pointercancel', castUp);
 
+    this.els.autoToggle.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      fishingAuto.toggle();
+    });
+
     // Close: ends the session (the panel close handler sends Cancel).
     this.els.closeBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -464,6 +502,10 @@ export const fishingManager = {
     stage.addEventListener('pointerdown', (ev) => {
       if (ev.target === this.els.closeBtn ||
         ev.target.closest('.fishing-powerwrap')) return;
+      // A press anywhere on the stage is the player taking the fight over.
+      // The close button is excluded: that ends the session rather than
+      // claiming control, and reports its own reason.
+      fishingAuto.notifyManualInput();
       stage.focus();
       if (this.phase === 'bite') { ev.preventDefault(); this._sendHook(); return; }
       if (this.phase === 'fight') { ev.preventDefault(); this.held = true; }
@@ -478,6 +520,7 @@ export const fishingManager = {
       if (ev.code !== 'Space') return;
       ev.preventDefault();
       if (ev.repeat) return;
+      fishingAuto.notifyManualInput();
       if (this.phase === 'bite') this._sendHook();
       else if (this.phase === 'fight') this.held = true;
     });
@@ -495,6 +538,21 @@ export const fishingManager = {
 
     e.stage.dataset.phase = phase;
     e.stage.dataset.terrain = this.session ? this.session.terrain : '';
+
+    // Auto-Angler state (PRD 4.6): the stage border and badge say who is in
+    // control, the toggle reflects it, and the strip carries the run summary
+    // or, once stopped, the reason.
+    const auto = fishingAuto.panelState();
+    e.stage.dataset.auto = auto.enabled ? 'on' : 'off';
+    e.autoBadge.style.display = auto.enabled ? '' : 'none';
+    e.autoToggle.textContent = auto.enabled ? 'Auto: ON' : 'Auto: OFF';
+    e.autoToggle.setAttribute('aria-pressed', auto.enabled ? 'true' : 'false');
+    e.autoToggle.setAttribute('aria-label', auto.enabled
+      ? 'Auto-Angler is on. Press to stop it.'
+      : 'Auto-Angler is off. Press to start it.');
+    e.autoSummary.textContent = auto.enabled
+      ? auto.summary
+      : (auto.haltReason ? 'Auto-Angler stopped: ' + auto.haltReason : '');
 
     if (this.session && this.session.sceneArtUrl) {
       if (e.scene.src !== this.session.sceneArtUrl) e.scene.src = this.session.sceneArtUrl;
@@ -563,6 +621,18 @@ export const fishingManager = {
     } else {
       e.status.textContent = '';
     }
+
+    if (auto.enabled) {
+      // Counters replace the manual hints: the hints describe what the player
+      // should do, and right now they should do nothing.
+      e.status.textContent = auto.summary;
+    } else if (auto.haltReason && (phase === 'idle' || phase === 'nobait' ||
+      phase === 'caught' || phase === 'escaped')) {
+      // Between actions the message area carries the halt reason (PRD 4.42);
+      // once the player is casting or fighting the normal text takes over.
+      e.message.textContent = (e.message.textContent ? e.message.textContent + ' ' : '') +
+        'Auto-Angler stopped: ' + auto.haltReason;
+    }
   },
 
   _nextWaitingFlavor() {
@@ -619,10 +689,17 @@ export const fishingManager = {
           return;
         }
       } else if (this.phase === 'fight' && this.sim) {
-        const outcome = this.sim.step(dt, this.held);
+        // Auto-Angler delegation point. Guarded by isActive() so that with the
+        // addon off this costs one boolean test and nothing else - in
+        // particular it does not call getState(), which allocates per frame.
+        const held = fishingAuto.isActive()
+          ? fishingAuto.resolveHeld(this.held, this.sim.getState(), dt)
+          : this.held;
+        const outcome = this.sim.step(dt, held);
         this._paintFight();
         if (outcome) {
           this._sendResult(outcome);
+          fishingAuto.onFightEnd(outcome);
           this.phase = 'resolving';
           this._stopLoop();
           return;

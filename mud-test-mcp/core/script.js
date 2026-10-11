@@ -7,7 +7,8 @@
 //   { gmcp: "Room.Info", expect_equals: { name: "Temple Square" }, expect_contains: [...] }
 //   { read: true, expect_contains: [...] }     // drain async output
 //   { wait_ms: 500 }                            // pause
-// Common optional fields: label, quiet_ms, timeout_ms.
+// Common optional fields: label, quiet_ms, timeout_ms. A non-empty label and
+// its eventual result are announced to the in-game gossip channel.
 
 const MAX_OUTPUT = 1500;
 
@@ -19,6 +20,19 @@ function asArray(v) {
 function truncate(s) {
   if (typeof s !== 'string') s = String(s);
   return s.length > MAX_OUTPUT ? s.slice(0, MAX_OUTPUT) + `\n... [${s.length - MAX_OUTPUT} more chars]` : s;
+}
+
+function cleanGossipText(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function gossipCommand(prefix, value) {
+  const text = cleanGossipText(value);
+  return text ? `gossip ${prefix}${text}` : null;
 }
 
 // Text-based expectations shared by send/gmcp/read steps.
@@ -97,14 +111,33 @@ async function runStep(session, step, index) {
 
 export async function runScript(session, script, { stopOnFail = false } = {}) {
   const steps = Array.isArray(script) ? script : (script && script.steps) || [];
+  const haltOnFailure = stopOnFail || (!Array.isArray(script) &&
+    script && script.stop_on_fail === true);
   const results = [];
   let passed = true;
   for (let i = 0; i < steps.length; i++) {
-    const res = await runStep(session, steps[i], i);
+    const announcement = gossipCommand('Test: ', steps[i].label);
+    if (announcement) await session.sendIsolated(announcement);
+    let res;
+    try {
+      res = await runStep(session, steps[i], i);
+    } catch (err) {
+      if (announcement) {
+        const reason = err && err.message ? err.message : String(err);
+        await session.sendIsolated(gossipCommand('Test result: Failure - ', reason));
+      }
+      throw err;
+    }
+    if (announcement) {
+      const outcome = res.pass
+        ? gossipCommand('Test result: ', 'Success')
+        : gossipCommand('Test result: Failure - ', res.failures.join('; ') || 'unknown failure');
+      await session.sendIsolated(outcome);
+    }
     results.push(res);
     if (!res.pass) {
       passed = false;
-      if (stopOnFail) break;
+      if (haltOnFailure) break;
     }
   }
   return { passed, total: steps.length, run: results.length, failed: results.filter((r) => !r.pass).length, results };

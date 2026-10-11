@@ -12,11 +12,11 @@ Support declaration advertised by the client:
 
 `Darkwind.Client.Subscriptions` and `Darkwind.Client.NAWS` are advertised in the support set. The companion `Darkwind.Client.RefreshMedia` message is gated by other media-bearing packages (`Darkwind.Char.Avatar`, `Darkwind.Room.Image`).
 
-| Message                         | Direction        | Purpose                                                                       |
-| ------------------------------- | ---------------- | ----------------------------------------------------------------------------- |
-| `Darkwind.Client.Subscriptions` | Client -> Server | Declare which panels are visible and which feature streams are wanted         |
-| `Darkwind.Client.NAWS`          | Client -> Server | Report terminal width/height so the server can wrap output to the active pane |
-| `Darkwind.Client.RefreshMedia`  | Client -> Server | Ask the server to re-push current media (avatar and room image)               |
+| Message | Direction | Purpose |
+|---------|-----------|---------|
+| `Darkwind.Client.Subscriptions` | Client -> Server | Declare which panels are visible and which feature streams are wanted |
+| `Darkwind.Client.NAWS` | Client -> Server | Report terminal width/height so the server can wrap output to the active pane |
+| `Darkwind.Client.RefreshMedia` | Client -> Server | Ask the server to re-push current media (avatar and room image) |
 
 All three messages flow client -> server only; the server does not echo a structured acknowledgement. Subscriptions take effect by gating subsequent server-driven pushes; RefreshMedia takes effect by triggering pushes on packages such as `Darkwind.Char.Avatar` and `Darkwind.Room.Image`; NAWS updates the server's active wrap width for this session.
 
@@ -62,7 +62,6 @@ announcement bell.
   "features": {
     "announcementsBadge": true,
     "announcementsList": false,
-    "channelTerminalSuppression": false,
     "combatPane": false,
     "visualEffects": false,
     "enemyAutoOpen": true,
@@ -77,39 +76,39 @@ announcement bell.
 
 ### Fields
 
-| Field      | Type    | Required | Notes                                                                                                                                                                                    |
-| ---------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `reason`   | string  | Yes      | Free-form telemetry tag for why this update was sent. Common values: `login`, `reconnect`, `panel-open`, `panel-close`, `visibility-sync`, `character-login`, `modal-open`, `ctrl-k`     |
-| `full`     | boolean | No       | When `true`, the server should re-push the full canonical state for all subscribed surfaces; when `false`, the server may send only deltas relative to the previous subscription mapping |
-| `panels`   | object  | No       | Map of panel id -> visibility boolean. See "Panels" below for keys recognized by the current server                                                                                      |
-| `features` | object  | No       | Map of feature flag -> boolean. See "Features" below                                                                                                                                     |
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `reason` | string | Yes | Free-form telemetry tag for why this update was sent. Common values: `login`, `reconnect`, `panel-open`, `panel-close`, `visibility-sync`, `character-login`, `modal-open`, `ctrl-k` |
+| `full` | boolean | No | When `true`, the server should re-push the full canonical state for all subscribed surfaces; when `false`, the server may send only deltas relative to the previous subscription mapping |
+| `panels` | object | No | Map of panel id -> visibility boolean. See "Panels" below for keys recognized by the current server |
+| `features` | object | No | Map of feature flag -> boolean. See "Features" below |
 
 ### Panels
 
 The current server recognizes the following panel keys. Unknown keys are stored but have no effect on push gating.
 
-| Panel          | Notes                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `avatar`       | Drives `Darkwind.Char.Avatar` and is part of the media-subscription gate                                         |
-| `vitals`       | Driven by `Char.Vitals`. The client always sends `vitals: true`                                                  |
-| `guildVitals`  | Driven by `Darkwind.GuildVitals`                                                                                 |
-| `xpmon`        | Driven by `Darkwind.XPMon`                                                                                       |
-| `status`       | Driven by `Char.Status`. The client forces `status: true` whenever the buffs panel is open                       |
-| `buffs`        | Client layout key; opening it forces the server-recognized `status` subscription for `Char.Defences.*` hydration |
-| `worth`        | Driven by `Char.Worth`                                                                                           |
-| `stats`        | Driven by `Char.Stats` and `Char.RealStats`                                                                      |
-| `room`         | Drives `Room.Info` push gate (alongside `map` and `roomImage`)                                                   |
-| `group`        | Driven by `Group`                                                                                                |
-| `inventory`    | Driven by `Char.Items.*`                                                                                         |
-| `enemy`        | Driven by `Char.Enemy` and gated together with `enemyAutoOpen`                                                   |
-| `chat`         | Driven by standard `Comm.Channel.*` messages (`List`, `Players`, `Start`, `End`, and `Text`)                     |
-| `map`          | Drives `Room.Info` push gate                                                                                     |
-| `roomImage`    | Drives `Darkwind.Room.Image` and `Room.Info` push gates                                                          |
-| `omens`        | Drives `Darkwind.Divine`                                                                                         |
-| `sky`          | Drives `Darkwind.Sky`; the client animates between occasional syncs                                              |
-| `quests`       | Drives `Darkwind.Quests.*`                                                                                       |
-| `achievements` | Drives `Darkwind.Achievements.*`                                                                                 |
-| `cyberware`    | Drives `Darkwind.Cyberware.List` and its detail/image flow                                                       |
+| Panel | Notes |
+|-------|-------|
+| `avatar` | Drives `Darkwind.Char.Avatar` and is part of the media-subscription gate |
+| `vitals` | Driven by `Char.Vitals`. The client always sends `vitals: true` |
+| `guildVitals` | Driven by `Darkwind.GuildVitals` |
+| `xpmon` | Driven by `Darkwind.XPMon` |
+| `status` | Driven by `Char.Status`. The client forces `status: true` whenever the buffs panel is open |
+| `buffs` | Client layout key; opening it forces the server-recognized `status` subscription for `Char.Defences.*` hydration |
+| `worth` | Driven by `Char.Worth` |
+| `stats` | Driven by `Char.Stats` and `Char.RealStats` |
+| `room` | Drives `Room.Info` push gate (alongside `map` and `roomImage`) |
+| `group` | Driven by `Group` |
+| `inventory` | Driven by `Char.Items.*` |
+| `enemy` | Driven by `Char.Enemy` and gated together with `enemyAutoOpen` |
+| `chat` | Driven by standard `Comm.Channel.*` messages (`List`, `Players`, `Start`, `End`, and `Text`) |
+| `map` | Drives `Room.Info` push gate |
+| `roomImage` | Drives `Darkwind.Room.Image` and `Room.Info` push gates |
+| `omens` | Drives `Darkwind.Divine` |
+| `sky` | Drives `Darkwind.Sky`; the client animates between occasional syncs |
+| `quests` | Drives `Darkwind.Quests.*` |
+| `achievements` | Drives `Darkwind.Achievements.*` |
+| `cyberware` | Drives `Darkwind.Cyberware.List` and its detail/image flow |
 
 The client also sends visibility keys for local or self-opening panels such as
 `areaMap`, `connection`, `ide`, `fishing`, and `roomPlaylist`. The current
@@ -120,15 +119,26 @@ server stores unknown keys but does not use them as push gates.
 The Vitals panel consumes the standard HP/SP fields and Darkwind-specific
 progress fields from `Char.Vitals`.
 
-| Field                | Notes                                             |
-| -------------------- | ------------------------------------------------- |
-| `hp`, `maxhp`        | Current and maximum hit points                    |
-| `sp`, `maxsp`        | Current and maximum spell points                  |
-| `level_pct`          | Integer percent toward the next player level      |
-| `carry`, `maxcarry`  | Current carried weight and maximum carry capacity |
-| `encumberance`       | Server-side quadratic encumbrance value           |
-| `encumberance_pct`   | Linear carried-weight percent                     |
-| `encumberance_label` | Human-readable encumbrance state                  |
+| Field | Notes |
+|-------|-------|
+| `hp`, `maxhp` | Current and maximum hit points |
+| `sp`, `maxsp` | Current and maximum spell points |
+| `level_pct` | Integer percent toward the next player level |
+| `rested`, `rested_max` | Current and maximum rested-combat-XP bank |
+| `rested_pct` | Server-computed rested-bank percentage |
+| `rested_bonus_pct` | Additional combat XP percentage while the bank remains |
+| `rested_tier` | Stable last-rest tier key: `hearth` or `road` |
+| `rested_accrual_pct_per_hour` | Percentage of a level banked per offline hour at that tier |
+| `rested_seconds_to_cap` | Offline seconds required to fill the remaining bank at that tier |
+| `carry`, `maxcarry` | Current carried weight and maximum carry capacity |
+| `encumberance` | Server-side quadratic encumbrance value |
+| `encumberance_pct` | Linear carried-weight percent |
+| `encumberance_label` | Human-readable encumbrance state |
+
+When `rested` and a positive `rested_max` are present, the Vitals panel places
+a compact Rested XP reserve meter between level progress and carry load. Empty
+banks are shown as inactive rather than as a danger state. Older and non-Darkwind
+servers that omit the optional rested fields do not receive an empty meter.
 
 ### `Darkwind.GuildVitals`
 
@@ -144,8 +154,8 @@ such as default Mudlet profiles) keep the legacy `bars` payload. The client
 accepts both shapes. Mudlet script authors opt into the typed payload by
 advertising version `2`.
 
-| Field   | Notes                                       |
-| ------- | ------------------------------------------- |
+| Field | Notes |
+|-------|-------|
 | `items` | Array of typed guild indicators (version 2) |
 
 Every item carries `id` (stable row identity), `guild` (display name, used
@@ -155,15 +165,15 @@ non-meter kinds), and an optional `tip` (hover tooltip).
 
 Per-kind fields:
 
-| Kind            | Fields                               | Rendering                                                                                                                                   |
-| --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `meter`         | `cur`, `max`, `pct`                  | Left-anchored fill, green-when-full ramp                                                                                                    |
-| `meter_reverse` | `cur`, `max`, `pct`                  | Right-anchored fill, red-when-full ramp (heat, intoxication)                                                                                |
-| `boolean`       | `on` (0/1)                           | LED dot, lit color from `severity`                                                                                                          |
-| `flags`         | `flags` array of `{label, on, tip?}` | One row of ordered pips (e.g. firmware flags, blessings)                                                                                    |
-| `state`         | `value`, `display`                   | Badge pill showing `display` (falls back to `value`)                                                                                        |
-| `counter`       | `cur`, `max` (≤ 12)                  | Filled/empty pip row (stacks, charges)                                                                                                      |
-| `cooldown`      | `remaining` seconds, optional `max`  | Countdown text plus a depletion bar when `max` is present; the server re-sends absolute values every tick, the client does not tick locally |
+| Kind | Fields | Rendering |
+|------|--------|-----------|
+| `meter` | `cur`, `max`, `pct` | Left-anchored fill, green-when-full ramp |
+| `meter_reverse` | `cur`, `max`, `pct` | Right-anchored fill, red-when-full ramp (heat, intoxication) |
+| `boolean` | `on` (0/1) | LED dot, lit color from `severity` |
+| `flags` | `flags` array of `{label, on, tip?}` | One row of ordered pips (e.g. firmware flags, blessings) |
+| `state` | `value`, `display` | Badge pill showing `display` (falls back to `value`) |
+| `counter` | `cur`, `max` (≤ 12) | Filled/empty pip row (stacks, charges) |
+| `cooldown` | `remaining` seconds, optional `max` | Countdown text plus a depletion bar when `max` is present; the server re-sends absolute values every tick, the client does not tick locally |
 
 Rows update in place by `id` and stale rows (and their guild headers) are
 removed when the server sends a changed list. Headers only appear when items
@@ -171,8 +181,8 @@ span more than one guild.
 
 #### Legacy (version 1)
 
-| Field  | Notes                                 |
-| ------ | ------------------------------------- |
+| Field | Notes |
+|-------|-------|
 | `bars` | Array of guild-specific resource bars |
 
 Each `bars` entry is a mapping with `id`, `guild`, `label`, `cur`, `max`,
@@ -181,19 +191,19 @@ reverse meter). This is what version-1 clients receive today, unchanged.
 
 ### Features
 
-| Feature              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `announcementsBadge` | Subscribe to unread-count badge updates (`Darkwind.Announcements.State`/`Update`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `announcementsList`  | Request a `Darkwind.Announcements.List` snapshot. The web client sets this to `true` only when the user opens the announcements modal, and clears the flag locally after sending so subsequent subscription messages will not re-request the snapshot                                                                                                                                                                                                                                                                                               |
-| `combatPane`         | Strict visual-combat readiness. It is `true` only while the initialized Enemy/Combat pane is visible, expanded, and able to present `Darkwind.Combat` events. Unlike legacy panel gates, an absent subscription never implies readiness.                                                                                                                                                                                                                                                                                                            |
-| `tutorialPane`       | Strict new-player tutorial hover capability. It is `true` after the dedicated renderer mounts successfully, including while the card is minimized or no tutorial is active; it is `false` while disconnected, in Zork-only mode, or after a renderer failure. See [Darkwind.Tutorial](gmcp-darkwind-tutorial.md).                                                                                                                                                                                                                                   |
-| `visualEffects`      | Subscribe to optional `Darkwind.Visual.State` world ambience and `Darkwind.Visual.Events` combat/spell cues while the local Game visual effects master setting and at least one server-fed individual effect are enabled. The client filters planet ambience, terrain ambience, wayshard transitions, incoming damage, outgoing damage, and spell effects using local preferences. Low-health presentation is derived from `Char.Vitals` and does not require this subscription. It never changes terminal-text delivery or `combatPane` readiness. |
-| `enemyAutoOpen`      | Allow the server to auto-open an enemy panel when combat begins                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `windows`            | Client capability hint for `Darkwind.Window.*`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `ide`                | Client capability hint for `Darkwind.IDE.*`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `completion`         | Client capability hint for `Darkwind.Completion.*`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `giphy`              | Client capability hint for `Darkwind.Giphy.Show` overlays                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `broadcast`          | Client capability hint for `Darkwind.Broadcast.Show` overlays                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Feature | Notes |
+|---------|-------|
+| `announcementsBadge` | Subscribe to unread-count badge updates (`Darkwind.Announcements.State`/`Update`) |
+| `announcementsList` | Request a `Darkwind.Announcements.List` snapshot. The web client sets this to `true` only when the user opens the announcements modal, and clears the flag locally after sending so subsequent subscription messages will not re-request the snapshot |
+| `combatPane` | Strict visual-combat readiness. It is `true` only while the initialized Enemy/Combat pane is visible, expanded, and able to present `Darkwind.Combat` events. Unlike legacy panel gates, an absent subscription never implies readiness. |
+| `tutorialPane` | Strict new-player tutorial hover capability. It is `true` after the dedicated renderer mounts successfully, including while the card is minimized or no tutorial is active; it is `false` while disconnected, in Zork-only mode, or after a renderer failure. See [Darkwind.Tutorial](gmcp-darkwind-tutorial.md). |
+| `visualEffects` | Subscribe to optional `Darkwind.Visual.State` world ambience and `Darkwind.Visual.Events` combat/spell cues while the local Game visual effects master setting and at least one server-fed individual effect are enabled. The client filters planet ambience, terrain ambience, wayshard transitions, incoming damage, outgoing damage, and spell effects using local preferences. Low-health presentation is derived from `Char.Vitals` and does not require this subscription. It never changes terminal-text delivery or `combatPane` readiness. |
+| `enemyAutoOpen` | Allow the server to auto-open an enemy panel when combat begins |
+| `windows` | Client capability hint for `Darkwind.Window.*` |
+| `ide` | Client capability hint for `Darkwind.IDE.*` |
+| `completion` | Client capability hint for `Darkwind.Completion.*` |
+| `giphy` | Client capability hint for `Darkwind.Giphy.Show` overlays |
+| `broadcast` | Client capability hint for `Darkwind.Broadcast.Show` overlays |
 
 The `windows`, `ide`, `completion`, `giphy`, and `broadcast` feature flags are
 advertised as `true` by the current client by default; they exist so future
@@ -210,8 +220,7 @@ and sent a fresh explicit `combatPane: true` for the current connection. See
 - The client coalesces panel-visibility changes through a 150 ms debounce timer in `panelManager.syncGmcpSubscriptions` to avoid bursts of subscription messages.
 - The client always sends `vitals: true`. When the `buffs` panel is open, the client also forces `status: true`.
 - `Char.Status` is treated as sticky state: after the initial full status payload, subsequent delta payloads are merged into the cached status object instead of replacing it.
-- The client advertises standard `Comm.Channel 1` plus `Comm.Channel.Text 2`, stores `Comm.Channel.List` / `Comm.Channel.Players`, tracks `Comm.Channel.Start` / `Comm.Channel.End` scopes, renders `Comm.Channel.Text`, requests `Comm.Channel.Players` once character data confirms login, and exposes `Comm.Channel.Enable` through the GMCP helper. Version 2 accepts an optional bounded `ansi` field solely for the first effective foreground on the synthetic Chat channel label; plain `text` remains the notification and deduplication source.
-- `features.channelTerminalSuppression` mirrors the server-owned terminal-channel preference. `true`/`1` is the equivalent of `channels terminal off`; `false`/`0` keeps terminal output on. Full/login/reconnect frames receive the current value, while an explicit Settings action (`reason: "settings"`) updates it. Missing clients do not change the server setting and retain terminal text.
+- The client advertises standard `Comm.Channel 1`, stores `Comm.Channel.List` / `Comm.Channel.Players`, tracks `Comm.Channel.Start` / `Comm.Channel.End` scopes, renders `Comm.Channel.Text`, requests `Comm.Channel.Players` once character data confirms login, and exposes `Comm.Channel.Enable` through the GMCP helper.
 - Standard GMCP package names are matched case-insensitively. The client normalizes common cross-MUD aliases before panel rendering, including `mhp`/`mana`/`mmana` vitals, root `Comm.Channel {chan, player, msg}` messages, and `Room.Info.terrain`.
 - Darkwind-only features remain under `Darkwind.*`; standard packages should carry broadly useful data and compatibility aliases only.
 - Sent automatically on:
@@ -235,10 +244,6 @@ and sent a fresh explicit `combatPane: true` for the current connection. See
 Direction: `Client -> Server`
 
 Asks the server to re-push the player's current media payloads (avatar and room image). This is used after the client's WebSocket reconnects, after a `Ctrl+K` handshake reset, and any other moment where the client may have dropped media URLs from local state.
-
-See [Session recovery](gmcp-darkwind-session.md) for the related
-`Darkwind.Session.Recovered` server message used after reconnect and character
-switch flows.
 
 ### Schema
 
@@ -276,10 +281,10 @@ Reports the active terminal size using NAWS-style width/height semantics. Darkfl
 
 ### Fields
 
-| Field    | Type    | Required | Notes                                                                                                                                                                  |
-| -------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `width`  | integer | Yes      | Active terminal columns for wrapping room text, help, inventory, and similar output; measured automatically unless the player configured a fixed Darkflow screen width |
-| `height` | integer | Yes      | Active terminal rows; tracked for completeness and future pager behavior                                                                                               |
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `width` | integer | Yes | Active terminal columns for wrapping room text, help, inventory, and similar output; measured automatically unless the player configured a fixed Darkflow screen width |
+| `height` | integer | Yes | Active terminal rows; tracked for completeness and future pager behavior |
 
 ### Server Behavior
 
@@ -304,7 +309,7 @@ PackageName
 Examples:
 
 ```text
-Darkwind.Client.Subscriptions {"reason":"panel-open","full":false,"panels":{"vitals":true,"status":true,"buffs":false,"omens":true},"features":{"announcementsBadge":true,"channelTerminalSuppression":false,"enemyAutoOpen":true,"windows":true,"ide":true,"completion":true,"giphy":true}}
+Darkwind.Client.Subscriptions {"reason":"panel-open","full":false,"panels":{"vitals":true,"status":true,"buffs":false,"omens":true},"features":{"announcementsBadge":true,"enemyAutoOpen":true,"windows":true,"ide":true,"completion":true,"giphy":true}}
 ```
 
 ```text
