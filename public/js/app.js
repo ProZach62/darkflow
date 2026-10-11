@@ -18,7 +18,10 @@ import { linuxRescueManager } from './linux-rescue-manager.js';
 import { lagMonitor } from './lag-monitor.js';
 import { soundPanel } from './sound-panel.js';
 import { fishingManager } from './fishing-manager.js';
+import { fishingAuto } from './fishing-auto.js';
+import { isSocketOpen } from './socket-state.js';
 import { combatVisualManager } from './combat-visual-manager.js';
+import { dpsMeterManager } from './dps-meter-manager.js';
 import { visualEffectsManager } from './visual-effects-manager.js';
 import { tutorialManager } from './tutorial-manager.js';
 import { roomPlaylistManager } from './room-playlist-manager.js';
@@ -508,10 +511,25 @@ linuxRescueManager.init();
 lagMonitor.init();
 soundPanel.init();
 fishingManager.init();
+// The Auto-Angler reaches the socket and the settings store only through
+// these, so its tests can capture both without either existing.
+fishingAuto.configureRuntime({
+  sendCommand: (command) => sendAutomaticCommand(command, { echo: true }),
+  isConnected: () => isSocketOpen(state.ws),
+  loadSetting: (key) => settingsManager.get(key),
+  saveSetting: (key, value) => settingsManager.set(key, value),
+});
+fishingAuto.init();
 combatVisualManager.init();
+dpsMeterManager.init();
 visualEffectsManager.init();
 tutorialManager.init();
 roomPlaylistManager.init();
+
+window.dpsDebug = {
+  snapshot: () => dpsMeterManager.getSnapshot(),
+  reset: () => dpsMeterManager.resetSession(),
+};
 
 window.lagDebug = {
   snapshot: () => lagMonitor.getSnapshot(),

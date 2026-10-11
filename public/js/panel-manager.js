@@ -2276,6 +2276,13 @@ export const panelManager = {
     if (this._mobile.enabled) this._renderMobileSheet();
   },
 
+  // Wielding or removing gear mid-fight should show on the combat figure
+  // without waiting for the next combat publish.
+  _refreshCombatEquipment() {
+    if (!this.gmcpData.combatVisual || !this.gmcpData.combatVisual.visualEnabled) return;
+    this._renderPanel('enemy');
+  },
+
   setCombatVisualState(model) {
     const visualEnabled = !!(model && model.visualEnabled);
     if (visualEnabled) this.gmcpData.combatVisual = model;
@@ -2812,6 +2819,9 @@ export const panelManager = {
         enemy: this.gmcpData.enemy,
         vitals: this.gmcpData.vitals,
         avatar: this.gmcpData.avatar,
+        status: this.gmcpData.status,
+        inventory: this.gmcpData.inventory,
+        room: this.gmcpData.room,
       }
       : this.gmcpData[id];
     try {
@@ -3471,6 +3481,13 @@ export const panelManager = {
       this.openPanel('connection');
     });
 
+    // DPS Meter: fed by dps-meter-manager over the same document-event seam,
+    // so the meter never has to reach into the renderer.
+    document.addEventListener('dw:dps-update', (event) => {
+      this.gmcpData.dps = event.detail;
+      this._renderPanel('dps');
+    });
+
     gmcp.on('Char.Vitals', (data) => {
       this._syncSubscriptionsAfterCharacterData();
       const fullVitals = isFullVitalsPayload(data);
@@ -3664,6 +3681,7 @@ export const panelManager = {
       if (data && data.location === 'inv') {
         this.gmcpData.inventory = Array.isArray(data.items) ? data.items : [];
         this._renderPanel('inventory');
+        this._refreshCombatEquipment();
       }
     });
 
@@ -3672,6 +3690,7 @@ export const panelManager = {
         if (!this.gmcpData.inventory) this.gmcpData.inventory = [];
         this.gmcpData.inventory.push(data.item);
         this._renderPanel('inventory');
+        this._refreshCombatEquipment();
       }
     });
 
@@ -3679,6 +3698,7 @@ export const panelManager = {
       if (data && data.location === 'inv' && data.item && this.gmcpData.inventory) {
         this.gmcpData.inventory = this.gmcpData.inventory.filter(i => i.id !== data.item.id);
         this._renderPanel('inventory');
+        this._refreshCombatEquipment();
       }
     });
 
@@ -3687,6 +3707,7 @@ export const panelManager = {
         const idx = this.gmcpData.inventory.findIndex(i => i.id === data.item.id);
         if (idx >= 0) this.gmcpData.inventory[idx] = data.item;
         this._renderPanel('inventory');
+        this._refreshCombatEquipment();
       }
     });
 

@@ -6,12 +6,14 @@ import {
   renderVitalBar,
   vitalBarColor,
   heatVitalBarColor,
+  reserveVitalBarColor,
+  restedVitalsView,
   guildVitalItemHtml,
   skyRecomputeMoon,
 } from './core-information-panel-renderers.mjs';
 
 // Re-exported so existing renderer tests keep importing them from this module.
-export { escHtml, renderVitalBar, vitalBarColor, heatVitalBarColor, guildVitalItemHtml, skyRecomputeMoon };
+export { escHtml, renderVitalBar, vitalBarColor, heatVitalBarColor, reserveVitalBarColor, restedVitalsView, guildVitalItemHtml, skyRecomputeMoon };
 import { gmcp } from './gmcp.js';
 import { renderMap } from './map-renderer.js';
 import { wireMapPan } from './map-pan.js';
@@ -28,6 +30,7 @@ import {
   openImagePreviewPane,
 } from './image-preview.js';
 import { createCombatVisualRenderer } from './combat-visual-renderer.mjs';
+import { renderDpsPanel } from './dps-panel-renderer.mjs';
 import {
   NPC_FALLBACK_IMAGE,
   applyNpcImageFallback,
@@ -386,6 +389,12 @@ export const panelRenderers = {
 
   fishing(bodyEl) {
     fishingManager.render(bodyEl);
+  },
+
+  dps(bodyEl, data) {
+    renderDpsPanel(bodyEl, data, {
+      onReset: () => document.dispatchEvent(new CustomEvent('dw:dps-reset')),
+    });
   },
 
   roomImage(bodyEl, data) {

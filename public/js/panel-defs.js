@@ -51,6 +51,11 @@ export const PANEL_DEFS = {
                defaultLayer: 2,
                defaultSnapLeft: true, defaultSnapBottom: true,
                defaultVisible: false },
+  dps:       { title: 'DPS Meter', defaultDock: 'float', defaultOrder: 6,
+               defaultFloatW: 320, defaultFloatH: 500,
+               defaultLayer: 2,
+               defaultSnapRight: true, defaultSnapBottom: true,
+               defaultVisible: false },
 };
 
 export const PANEL_STORAGE_KEY = 'darkwind-panel-state';
