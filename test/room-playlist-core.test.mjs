@@ -42,6 +42,12 @@ test('normalizes disabled and malformed playlist state safely', () => {
   assert.equal(state.enabled, true);
   assert.deepEqual(state.queue, []);
   assert.equal(state.playback.current, null);
+  const denied = normalizePlaylistState({
+    enabled: 1,
+    permissions: { add: 0, moderate: 0 },
+  });
+  assert.equal(denied.permissions.add, false);
+  assert.equal(denied.permissions.moderate, false);
 });
 
 test('computes the shared playhead from server start time', () => {
@@ -56,6 +62,28 @@ test('paused playback does not advance and duration caps the playhead', () => {
   assert.equal(expectedPlaybackPosition(paused, 500), 30);
   const playing = playingState({ position: 199 });
   assert.equal(expectedPlaybackPosition(playing, 110), 200);
+});
+
+test('queue snapshots do not count elapsed playback twice', () => {
+  const initial = playingState({ position: 0 });
+  const updated = normalizePlaylistState({
+    ...initial,
+    revision: initial.revision + 1,
+    server_time: 130,
+    playback: { ...initial.playback, position: 30 },
+    queue: [{ id: 4, video_id: 'M7lc1UVf-VE', title: 'Next song' }],
+  });
+  assert.equal(expectedPlaybackPosition(updated, 130), 30);
+  assert.equal(expectedPlaybackPosition(updated, 135), 35);
+  assert.equal(expectedPlaybackPosition(updated, 135), expectedPlaybackPosition(initial, 135));
+  assert.equal(shouldCorrectDrift(30, expectedPlaybackPosition(updated, 130)), false);
+});
+
+test('scheduled playback waits for its future start time', () => {
+  const state = playingState({ position: 30, start_at: 110 });
+  assert.equal(expectedPlaybackPosition(state, 105), 30);
+  assert.equal(expectedPlaybackPosition(state, 110), 30);
+  assert.equal(expectedPlaybackPosition(state, 115), 35);
 });
 
 test('drift correction uses a strict threshold', () => {

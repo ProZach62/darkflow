@@ -1,0 +1,3824 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { TransportFixtureOwner } from "./fixtures/transport-fixtures";
+
+let fixtures: TransportFixtureOwner;
+
+test.beforeAll(async () => {
+  fixtures = await TransportFixtureOwner.start();
+});
+
+test.afterAll(async () => {
+  await fixtures.close();
+});
+
+async function connect(page: Page): Promise<void> {
+  const endpoint = fixtures.endpoints.ws;
+  await page.goto("/phase2/");
+  await page.getByLabel("Host").fill("127.0.0.1");
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
+  await page.getByLabel("Connection protocol").selectOption("ws");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+}
+
+async function installDirectDefinitions(page: Page): Promise<void> {
+  await page.goto("/phase2/");
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("darkflow-session-core-v1") !== null))
+    .toBe(true);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      configSetRefs: Record<string, string[]>;
+      localDefinitions: Record<string, unknown[]>;
+    };
+    character.localDefinitions.aliases = [
+      {
+        id: "alias-function",
+        enabled: true,
+        trigger: "fn",
+        description: "Function",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [
+          { type: "call_function", target: "greet", targetId: "function-greet", template: "" },
+        ],
+      },
+      {
+        id: "alias-shared-function",
+        enabled: true,
+        trigger: "sharedfn",
+        description: "Shared function",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [
+          {
+            type: "call_function",
+            target: "shared_greet",
+            targetId: "function-shared",
+            template: "",
+          },
+        ],
+      },
+    ];
+    character.localDefinitions.keyMappings = [
+      {
+        id: "key-local",
+        enabled: true,
+        code: "F2",
+        label: "F2",
+        legacyKey: "",
+        command: "score",
+      },
+    ];
+    character.localDefinitions.highlights = [
+      {
+        id: "highlight-local",
+        enabled: true,
+        patternSource: "glow",
+        description: "Glow",
+        group: "",
+        ignoreCase: false,
+        style: { fg: "red", bg: "black", bold: true },
+      },
+    ];
+    character.localDefinitions.functions = [
+      {
+        id: "function-greet",
+        enabled: true,
+        name: "greet",
+        description: "Greet",
+        group: "",
+        script: "send wave",
+      },
+    ];
+
+    const keySetId = crypto.randomUUID();
+    const highlightSetId = crypto.randomUUID();
+    const functionSetId = crypto.randomUUID();
+    character.configSetRefs.keyMappings = [keySetId];
+    character.configSetRefs.highlights = [highlightSetId];
+    character.configSetRefs.functions = [functionSetId];
+    graph.configurationSets[keySetId] = {
+      id: keySetId,
+      label: "Shared keys",
+      kind: "keyMappings",
+      revision: 1,
+      definitions: [
+        {
+          id: "key-shared",
+          enabled: true,
+          code: "F3",
+          label: "F3",
+          legacyKey: "",
+          command: "shared-before",
+        },
+      ],
+    };
+    graph.configurationSets[highlightSetId] = {
+      id: highlightSetId,
+      label: "Shared highlights",
+      kind: "highlights",
+      revision: 1,
+      definitions: [
+        {
+          id: "highlight-shared",
+          enabled: true,
+          patternSource: "shimmer",
+          description: "Shimmer",
+          group: "",
+          ignoreCase: false,
+          style: { fg: "green", bg: "black", bold: false },
+        },
+      ],
+    };
+    graph.configurationSets[functionSetId] = {
+      id: functionSetId,
+      label: "Shared functions",
+      kind: "functions",
+      revision: 1,
+      definitions: [
+        {
+          id: "function-shared",
+          enabled: true,
+          name: "shared_greet",
+          description: "Shared greet",
+          group: "",
+          script: "send shared-before",
+        },
+      ],
+    };
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({ theme: "darkflow-default", keyMapperEnabled: true }),
+    );
+  });
+  await page.reload();
+}
+
+async function installAutomationDefinitions(page: Page): Promise<void> {
+  await installDirectDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      configSetRefs: Record<string, string[]>;
+      localDefinitions: Record<string, unknown[]>;
+    };
+    character.localDefinitions.aliases.push(
+      {
+        id: "alias-local",
+        enabled: true,
+        trigger: "quick",
+        description: "Quick command",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [{ type: "send_command", template: "look" }],
+      },
+      {
+        id: "alias-all-steps",
+        enabled: false,
+        trigger: "allsteps",
+        description: "All step shapes",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [
+          { type: "send_command", template: "look" },
+          { type: "set_variable", name: "target", template: "orc" },
+          { type: "show_message", template: "hello" },
+          { type: "script", script: "send score" },
+          { type: "wait", seconds: 0.01 },
+          { type: "set_alias_enabled", mode: "toggle", target: "quick", targetId: "alias-local" },
+          {
+            type: "set_trigger_enabled",
+            mode: "enable",
+            target: "danger",
+            targetId: "trigger-local",
+          },
+          { type: "set_timer_enabled", mode: "disable", target: "pulse", targetId: "timer-local" },
+          { type: "control_timer", mode: "run", target: "pulse", targetId: "timer-local" },
+          { type: "play_sound", category: "notification", sound: "bell", volume: 0.5 },
+          { type: "run_alias", template: "quick" },
+          { type: "call_function", target: "greet", targetId: "function-greet", template: "" },
+        ],
+      },
+    );
+    character.localDefinitions.triggers = [
+      {
+        id: "trigger-local",
+        enabled: true,
+        pattern: "danger",
+        description: "Danger",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: true,
+        steps: [{ type: "send_command", template: "flee" }],
+      },
+    ];
+    character.localDefinitions.timers = [
+      {
+        id: "timer-local",
+        enabled: true,
+        name: "pulse",
+        description: "Pulse",
+        group: "",
+        durationMs: 60000,
+        recurring: false,
+        autoStart: false,
+        steps: [{ type: "send_command", template: "pulse-before" }],
+      },
+    ];
+
+    for (const [kind, label, definition] of [
+      [
+        "aliases",
+        "Shared aliases",
+        {
+          id: "alias-shared",
+          enabled: true,
+          trigger: "sharedalias",
+          description: "Shared alias",
+          group: "",
+          isRegex: false,
+          ignoreCase: true,
+          steps: [{ type: "send_command", template: "shared-alias-before" }],
+        },
+      ],
+      [
+        "triggers",
+        "Shared triggers",
+        {
+          id: "trigger-shared",
+          enabled: true,
+          pattern: "shared danger",
+          description: "Shared trigger",
+          group: "",
+          isRegex: false,
+          ignoreCase: false,
+          gag: false,
+          steps: [{ type: "send_command", template: "shared-trigger-before" }],
+        },
+      ],
+      [
+        "timers",
+        "Shared timers",
+        {
+          id: "timer-shared",
+          enabled: true,
+          name: "shared pulse",
+          description: "Shared timer",
+          group: "",
+          durationMs: 60000,
+          recurring: false,
+          autoStart: false,
+          steps: [{ type: "send_command", template: "shared-timer-before" }],
+        },
+      ],
+    ] as const) {
+      const setId = crypto.randomUUID();
+      character.configSetRefs[kind] = [setId];
+      graph.configurationSets[setId] = {
+        id: setId,
+        label,
+        kind,
+        revision: 1,
+        definitions: [definition],
+      };
+    }
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+}
+
+function settingsDialog(page: Page) {
+  return page.getByRole("dialog", { name: "Settings", exact: true });
+}
+
+async function settingsTab(dialog: ReturnType<typeof settingsDialog>, name: string): Promise<void> {
+  await dialog.getByRole("tab", { name, exact: true }).click();
+}
+
+test("Phase 2 automation list rows option 1c", async ({ page }, testInfo) => {
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { aliases: Array<Record<string, string>> };
+    };
+    character.localDefinitions.aliases.forEach((alias, index) =>
+      Object.assign(alias, { group: ["Alpha", "Bravo", "Charlie"][index % 3] }),
+    );
+    Object.assign(
+      character.localDefinitions.aliases.find((alias) => alias.trigger === "quick")!,
+      {
+        description:
+          "A deliberately long alias title that must truncate inside the compact list row",
+        trigger: "a-deliberately-long-alias-token-that-must-wrap-inside-the-compact-list-row",
+      },
+    );
+    Object.assign(
+      character.localDefinitions.aliases.find((alias) => alias.trigger === "allsteps")!,
+      {
+        description: "A long alias name that must not squeeze its short pattern onto two lines",
+        trigger: "gk",
+      },
+    );
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+
+  for (const [tab, label, title, token, meta] of [
+    ["Aliases", "Edit fn", "Function", "fn", "Alpha · Local"],
+    ["Triggers", "Edit Danger", "Danger", null, "send command · Local"],
+    ["Timers", "Edit pulse", "pulse", "1m", "Ungrouped · once · 1 step · Local"],
+    ["Functions", "Edit greet", "Greet", "greet", "Ungrouped · 1 action · Local"],
+    ["Highlights", "Edit glow", "Glow", "glow", "red b black · Local"],
+  ] as const) {
+    await settingsTab(dialog, tab);
+    const row = dialog.getByRole("button", { name: label, exact: true });
+    await expect(row.locator(".row-copy")).toBeVisible();
+    await expect(row.locator("strong")).toHaveText(title);
+    if (token === null) await expect(row.locator("code")).toHaveCount(0);
+    else await expect(row.locator("code")).toHaveText(token);
+    await expect(row.locator("small")).toContainText(meta);
+    await expect(row.locator("xpath=..").getByRole("switch", { name: /Enable/ })).toBeVisible();
+  }
+
+  await settingsTab(dialog, "Triggers");
+  await dialog.getByRole("button", { name: "Edit Danger", exact: true }).click();
+  await expect(
+    dialog.getByRole("region", { name: "Edit triggers" }).getByLabel("Pattern", { exact: true }),
+  ).toHaveValue("danger");
+
+  await settingsTab(dialog, "Aliases");
+  const alias = dialog.getByRole("button", { name: "Edit fn", exact: true });
+  await alias.click();
+  const aliasRow = alias.locator("xpath=..");
+  await expect(aliasRow.locator(".row-actions")).toBeVisible();
+  await expect(dialog.locator("#settings-panel-aliases .row-actions")).toHaveCount(1);
+  await expect(aliasRow.getByRole("button", { name: "Move up", exact: true })).toBeDisabled();
+  for (const action of ["Move up", "Move down", "Duplicate", "Delete fn"])
+    await expect(aliasRow.getByRole("button", { name: action, exact: true })).toBeVisible();
+  for (const [action, icon, tooltip] of [
+    ["Move up", ".lucide-arrow-up", "Move up"],
+    ["Move down", ".lucide-arrow-down", "Move down"],
+    ["Duplicate", ".lucide-copy", "Duplicate"],
+    ["Delete fn", ".lucide-trash", "Delete"],
+  ]) {
+    const button = aliasRow.getByRole("button", { name: action, exact: true });
+    await expect(button.locator(icon)).toBeVisible();
+    await expect(button).toHaveAttribute("title", tooltip);
+  }
+  const enabledVisuals = await aliasRow.evaluate((node) => ({
+    rowBackground: getComputedStyle(node).backgroundColor,
+    titleColor: getComputedStyle(node.querySelector("strong")!).color,
+    tokenBackground: getComputedStyle(node.querySelector("code")!).backgroundColor,
+    tokenColor: getComputedStyle(node.querySelector("code")!).color,
+  }));
+  const enabled = aliasRow.getByRole("switch", { name: "Enable fn" });
+  await enabled.uncheck();
+  await expect(aliasRow).toHaveClass(/active/);
+  await expect(
+    dialog.getByRole("region", { name: "Edit aliases" }).getByLabel("Pattern"),
+  ).toHaveValue("fn");
+  await expect(enabled).not.toBeChecked();
+  const disabledVisuals = await aliasRow.evaluate((node) => ({
+    rowBackground: getComputedStyle(node).backgroundColor,
+    titleColor: getComputedStyle(node.querySelector("strong")!).color,
+    tokenBackground: getComputedStyle(node.querySelector("code")!).backgroundColor,
+    tokenColor: getComputedStyle(node.querySelector("code")!).color,
+  }));
+  expect(disabledVisuals.rowBackground).toBe(enabledVisuals.rowBackground);
+  expect(disabledVisuals.titleColor).not.toBe(enabledVisuals.titleColor);
+  expect(disabledVisuals.tokenBackground).not.toBe(enabledVisuals.tokenBackground);
+  expect(disabledVisuals.tokenColor).not.toBe(enabledVisuals.tokenColor);
+
+  const filters = dialog.getByLabel("Alias groups");
+  const all = filters.getByRole("button", { name: "All", exact: true });
+  await expect(all).toHaveCSS("align-items", "center");
+  await expect(all).toHaveCSS("justify-content", "center");
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await all.click();
+  await expect(all).toHaveAttribute("aria-pressed", "false");
+  const alpha = filters.getByLabel("Alpha (2)");
+  await alpha.check();
+  await expect(alpha.locator("..")).toHaveCSS("outline-style", "none");
+  await all.click();
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await all.focus();
+  await page.keyboard.press("Tab");
+  await alpha.focus();
+  await expect(alpha).toBeFocused();
+  await expect(alpha.locator("..")).toHaveCSS("outline-style", "solid");
+
+  const longRow = dialog
+    .getByRole("button", {
+      name: "Edit a-deliberately-long-alias-token-that-must-wrap-inside-the-compact-list-row",
+    })
+    .locator("xpath=..");
+  const longTitle = longRow.locator("strong");
+  const longToken = longRow.locator("code");
+  expect(await longRow.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(
+    disabledVisuals.rowBackground,
+  );
+  await expect(longToken).toHaveCSS("font-family", /monospace/i);
+  await expect(longTitle).toHaveCSS("text-overflow", "ellipsis");
+  await expect(longTitle).toHaveAttribute(
+    "title",
+    "A deliberately long alias title that must truncate inside the compact list row",
+  );
+  expect(await longTitle.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+  await expect(longToken).toHaveCSS("text-overflow", "clip");
+  await expect(longToken).toHaveCSS("white-space", "normal");
+  await expect(longToken).toHaveText(
+    "a-deliberately-long-alias-token-that-must-wrap-inside-the-compact-list-row",
+  );
+  expect(await longToken.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  const shortToken = dialog.getByRole("button", { name: "Edit gk" }).locator("code");
+  expect(
+    await shortToken.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getClientRects().length;
+    }),
+  ).toBe(1);
+
+  const contrast = async () =>
+    longRow.evaluate((node) => {
+      const rgb = (value: string) =>
+        value
+          .match(/\d+(?:\.\d+)?/g)!
+          .slice(0, 3)
+          .map(Number);
+      const luminance = (color: number[]) =>
+        color
+          .map((value) => value / 255)
+          .map((value) => (value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+          .reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index]!, 0);
+      const foreground = luminance(rgb(getComputedStyle(node.querySelector("strong")!).color));
+      const background = luminance(rgb(getComputedStyle(node).backgroundColor));
+      return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    });
+  expect(await contrast()).toBeGreaterThanOrEqual(4.5);
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Theme", { exact: true }).selectOption("solarized-light");
+  await settingsTab(dialog, "Aliases");
+  expect(await contrast()).toBeGreaterThanOrEqual(4.5);
+
+  if (!testInfo.project.name.includes("mobile")) {
+    await dialog.evaluate((node) => (node.style.width = "560px"));
+    const pane = dialog.locator("#settings-panel-aliases .automation-list-pane");
+    const detail = dialog.locator("#settings-panel-aliases .automation-detail");
+    expect((await detail.boundingBox())!.y).toBeGreaterThan((await pane.boundingBox())!.y);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});
+
+test("Phase 2 settings use legacy labels and visible help copy", async ({ page }) => {
+  await installAutomationDefinitions(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const checkboxHelpIds = await dialog
+    .locator(".settings-checkbox-help")
+    .evaluateAll((items) => items.map((item) => item.id));
+  expect(new Set(checkboxHelpIds).size).toBe(checkboxHelpIds.length);
+
+  await expect(dialog.getByRole("heading", { name: "Current connection" })).toBeVisible();
+  await expect(dialog.getByLabel("Monitor connection health", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText("Reconnect automatically after unexpected connection loss.", { exact: true }),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Audio");
+  await expect(dialog.getByLabel("Master volume", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText("Controls the overall level for every audio category.", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.locator("#settings-panel-audio .sound-widget-category")).toHaveCount(12);
+  const combatAudio = dialog.getByRole("button", { name: "Combat", exact: true });
+  await expect(combatAudio).toHaveClass(/sound-widget-category-toggle/);
+  await expect(combatAudio).toHaveAttribute("aria-pressed", /true|false/);
+  await expect(combatAudio.locator(".lucide-swords")).toBeVisible();
+  await expect(combatAudio.locator(".sound-widget-category-percent")).toHaveText("50%");
+  await expect(dialog.getByRole("slider", { name: "Combat volume" })).toHaveValue("50");
+  await expect(dialog.getByText("Allow game-triggered combat sounds.")).toHaveCount(0);
+
+  await settingsTab(dialog, "Aliases");
+  await dialog.getByRole("button", { name: "Edit quick" }).click();
+  expect(
+    await dialog.locator("#settings-panel-aliases .row-actions button").evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const style = getComputedStyle(button);
+        return [style.minHeight, style.fontSize];
+      }),
+    ),
+  ).toEqual([
+    ["28px", "12px"],
+    ["28px", "12px"],
+    ["28px", "12px"],
+    ["28px", "12px"],
+  ]);
+  let editor = dialog.getByRole("region", { name: "Edit aliases" });
+  await expect(editor.getByLabel("Pattern", { exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Name (required)", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Disabled aliases stay saved but never match or expand."),
+  ).toBeVisible();
+  await expect(
+    editor.getByText(
+      "Treat the pattern as a JavaScript regular expression. Capture groups become %1-%9.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(editor.getByRole("group", { name: "Steps" })).toBeVisible();
+  const stepType = editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByLabel("Step type");
+  await expect(stepType).toContainText("Show local message");
+  await expect(stepType).toContainText("Run script");
+
+  await settingsTab(dialog, "Triggers");
+  await dialog.getByRole("button", { name: "Edit Danger" }).click();
+  editor = dialog.getByRole("region", { name: "Edit triggers" });
+  await expect(editor.getByLabel("Gag line", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Hide matched lines from the terminal after this trigger runs.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Timers");
+  await dialog.getByRole("button", { name: "Edit pulse" }).click();
+  editor = dialog.getByRole("region", { name: "Edit timers" });
+  await expect(editor.getByLabel("Duration seconds", { exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Recurring", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Run again after each successful firing.", { exact: true }),
+  ).toBeVisible();
+  await expect(editor.getByLabel("Auto-start", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Start this timer automatically when Darkflow connects.", { exact: true }),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Functions");
+  await dialog.getByRole("button", { name: "Edit greet" }).click();
+  editor = dialog.getByRole("region", { name: "Edit functions" });
+  await expect(editor.getByLabel("Function name", { exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Name", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Disabled functions stay saved but cannot be called."),
+  ).toBeVisible();
+  await editor.getByText("Function script syntax", { exact: true }).click();
+  await expect(
+    editor.getByText(/Functions receive arguments from the caller as %1-%9 and %0/),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Highlights");
+  await dialog.getByRole("button", { name: "Edit glow" }).click();
+  editor = dialog.getByRole("region", { name: "Edit highlights" });
+  await expect(editor.getByText("Pattern (regex)", { exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Name", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Match without caring about capitalization.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByText("Force matched text to render bold in addition to the selected colors.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Debug");
+  await expect(
+    dialog.getByText("Show received GMCP messages in the GMCP Debug panel."),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "About");
+  await expect(dialog.getByRole("heading", { name: /Darkflow/ })).toBeVisible();
+  await expect
+    .poll(() =>
+      dialog
+        .getByRole("img", { name: "Darkflow app icon", exact: true })
+        .evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  await expect(dialog.getByText("Web-based MUD client - built for")).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Client version" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "GMCP packages" })).toBeVisible();
+  await expect(
+    dialog.getByRole("link", { name: "See custom GMCP extensions", exact: true }),
+  ).toBeVisible();
+});
+
+test("Phase 2 variables restore legacy persistent and GMCP affordances", async ({ page }) => {
+  await page.goto("/phase2/");
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("darkflow-session-core-v1") !== null))
+    .toBe(true);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: Record<string, unknown[]>;
+    };
+    character.localDefinitions.aliases = [
+      {
+        id: "variables-alias",
+        enabled: true,
+        trigger: "gather",
+        description: "Gather supplies",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        steps: [
+          { type: "set_variable", name: "aliasVar", template: "pack" },
+          { type: "send_command", template: "put $aliasVar in bag" },
+        ],
+      },
+    ];
+    character.localDefinitions.triggers = [
+      {
+        id: "variables-trigger",
+        enabled: true,
+        pattern: "arrives",
+        description: "Arrival",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "set_variable", name: "triggerVar", template: "here" }],
+      },
+    ];
+    character.localDefinitions.timers = [
+      {
+        id: "variables-timer",
+        enabled: true,
+        name: "heartbeat",
+        description: "Heartbeat",
+        group: "",
+        durationMs: 1000,
+        recurring: true,
+        autoStart: false,
+        steps: [{ type: "set_variable", name: "timerVar", template: "now" }],
+      },
+    ];
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+  await connect(page);
+  const storedBeforeOpen = await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    return {
+      graph: localStorage.getItem("darkflow-session-core-v1"),
+      settings: localStorage.getItem("darkwind-client-settings"),
+      variables: runtime.getAutomationVariables(),
+    };
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  await settingsTab(dialog, "Variables");
+  const variablesPanel = dialog.locator("#settings-panel-variables");
+
+  await expect(dialog.getByText("Variables are saved for this character.")).toBeVisible();
+  await expect(
+    dialog.getByText(
+      "Persistent variables back aliases like $pack. Aliases can also write to them with Set variable steps.",
+    ),
+  ).toBeVisible();
+  expect(
+    await variablesPanel
+      .getByLabel("Name", { exact: true })
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value)),
+  ).toEqual(expect.arrayContaining(["aliasVar", "triggerVar", "timerVar"]));
+  await expect(variablesPanel.getByText("1 alias reference")).toBeVisible();
+  await variablesPanel.getByText("1 alias reference").click();
+  await dialog.getByRole("button", { name: "Gather supplies (gather)" }).click();
+  await expect(dialog.getByRole("tab", { name: "Aliases", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const aliasEditor = dialog.getByRole("region", { name: "Edit aliases" });
+  await expect(aliasEditor.getByLabel("Pattern", { exact: true })).toHaveValue("gather");
+  await aliasEditor.getByLabel("Pattern", { exact: true }).fill("dirty gather");
+  await settingsTab(dialog, "Variables");
+  await variablesPanel.getByRole("button", { name: "Gather supplies (gather)" }).click();
+  await expect(aliasEditor.getByLabel("Pattern", { exact: true })).toHaveValue("dirty gather");
+  await expect(
+    dialog.getByText("Save or Cancel the current edit before selecting another definition."),
+  ).toBeVisible();
+
+  const storedAfterBrowsing = await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    return {
+      graph: localStorage.getItem("darkflow-session-core-v1"),
+      settings: localStorage.getItem("darkwind-client-settings"),
+      variables: runtime.getAutomationVariables(),
+    };
+  });
+  expect(storedAfterBrowsing).toEqual(storedBeforeOpen);
+  await settingsTab(dialog, "Variables");
+  while (await variablesPanel.getByRole("button", { name: "Remove", exact: true }).count())
+    await variablesPanel.getByRole("button", { name: "Remove", exact: true }).first().click();
+  await expect(
+    variablesPanel.getByText(
+      "No variables yet. Add one here, or open Aliases and write a Set variable step.",
+    ),
+  ).toBeVisible();
+  await variablesPanel.getByRole("button", { name: "Add variable", exact: true }).click();
+  await expect(variablesPanel.getByLabel("Name", { exact: true })).toHaveValue("var1");
+  await expect(variablesPanel.getByLabel("Name", { exact: true })).toBeFocused();
+  await variablesPanel.getByRole("button", { name: "Add variable", exact: true }).click();
+  await variablesPanel.getByLabel("Name", { exact: true }).nth(1).fill("var1");
+  const stateBeforeBlockedApply = await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    return {
+      graph: localStorage.getItem("darkflow-session-core-v1"),
+      settings: localStorage.getItem("darkwind-client-settings"),
+      variables: runtime.getAutomationVariables(),
+    };
+  });
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(dialog.getByText("Variable names must be unique. Duplicate: var1.")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const runtime = (
+          window as unknown as {
+            __darkflowPhase1Runtime: {
+              session: {
+                terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+              };
+            };
+          }
+        ).__darkflowPhase1Runtime.session.terminal.automation;
+        return {
+          graph: localStorage.getItem("darkflow-session-core-v1"),
+          settings: localStorage.getItem("darkwind-client-settings"),
+          variables: runtime.getAutomationVariables(),
+        };
+      }),
+    )
+    .toEqual(stateBeforeBlockedApply);
+
+  await page.evaluate(() => {
+    const session = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            configuration: {
+              getSnapshot(): { localDefinitions: { aliases: unknown[] } };
+              replaceLocalDefinitions(
+                kind: "aliases",
+                definitions: unknown[],
+              ): { success: boolean };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session;
+    const snapshot = session.configuration.getSnapshot();
+    const result = session.configuration.replaceLocalDefinitions("aliases", [
+      ...snapshot.localDefinitions.aliases,
+      {
+        id: "variables-same-dialog",
+        enabled: true,
+        trigger: "same-dialog",
+        description: "Same dialog",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        steps: [{ type: "set_variable", name: "sameDialogVar", template: "new" }],
+      },
+    ]);
+    if (!result.success) throw new Error("Could not add same-dialog variable definition");
+  });
+  await settingsTab(dialog, "Connection");
+  await settingsTab(dialog, "Variables");
+  expect(
+    await variablesPanel
+      .getByLabel("Name", { exact: true })
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value)),
+  ).toContain("sameDialogVar");
+
+  await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { setGmcpVariable(name: string, value: unknown): void } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    for (let index = 0; index < 4005; index++) {
+      runtime.setGmcpVariable("Test", {
+        [`item${String(index).padStart(4, "0")}`]: `value-${index}`,
+      });
+    }
+    window.dispatchEvent(new Event("darkwind:gmcp-variables-changed"));
+  });
+  await expect(variablesPanel.locator(".gmcp-variable-row")).toHaveCount(200);
+  await expect(
+    variablesPanel.getByText(
+      "Live runtime variables from GMCP messages. They are available to automations, clear on reconnect, and are not saved.",
+    ),
+  ).toBeVisible();
+  await expect(variablesPanel.locator(".gmcp-variable-row input").first()).toHaveAttribute(
+    "readonly",
+    "",
+  );
+  await expect(variablesPanel.locator('p[role="status"]')).toContainText(
+    /Showing 1-200 of 4\d{3} matching 4\d{3}/,
+  );
+  const topPagination = variablesPanel.getByRole("group", { name: "Top GMCP pagination" });
+  const bottomPagination = variablesPanel.getByRole("group", { name: "Bottom GMCP pagination" });
+  await expect(topPagination.getByRole("button", { name: "Previous", exact: true })).toBeDisabled();
+  await expect(bottomPagination.getByText("Page 1 of 21")).toBeVisible();
+  for (let index = 0; index < 20; index++)
+    await topPagination.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(topPagination.getByText("Page 21 of 21")).toBeVisible();
+  await expect(bottomPagination.getByText("Page 21 of 21")).toBeVisible();
+  await expect(topPagination.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+  await variablesPanel.getByLabel("Search GMCP variables").fill("VaLuE-4004");
+  await expect(variablesPanel.getByLabel("GMCP Value gmcp_test_item4004")).toHaveValue(
+    "value-4004",
+  );
+  await variablesPanel.getByLabel("Search GMCP variables").fill("GMCP_TEST_ITEM4004");
+  await expect(variablesPanel.getByLabel("GMCP Name gmcp_test_item4004")).toHaveValue(
+    "gmcp_test_item4004",
+  );
+  await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { setGmcpVariable(name: string, value: unknown): void } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    runtime.setGmcpVariable("Live", { item: "active" });
+    window.dispatchEvent(new Event("darkwind:gmcp-variables-changed"));
+  });
+  await expect(variablesPanel.getByLabel("Search GMCP variables")).toHaveValue(
+    "GMCP_TEST_ITEM4004",
+  );
+  await expect(variablesPanel.getByLabel("GMCP Name gmcp_test_item4004")).toBeVisible();
+  await variablesPanel.getByLabel("Search GMCP variables").fill("item");
+  await topPagination.getByRole("button", { name: "Next", exact: true }).click();
+  await settingsTab(dialog, "Connection");
+  await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { setGmcpVariable(name: string, value: unknown): void } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    runtime.setGmcpVariable("Other", { visible: "on return" });
+    window.dispatchEvent(new Event("darkwind:gmcp-variables-changed"));
+  });
+  await settingsTab(dialog, "Variables");
+  await expect(variablesPanel.getByLabel("Search GMCP variables")).toHaveValue("item");
+  await variablesPanel.getByLabel("Search GMCP variables").fill("gmcp_other_visible");
+  await expect(variablesPanel.getByLabel("GMCP Name gmcp_other_visible")).toBeVisible();
+  await variablesPanel.getByLabel("Search GMCP variables").fill("missing-value");
+  await expect(variablesPanel.getByText("No GMCP variables match your search.")).toBeVisible();
+  await variablesPanel.getByLabel("Search GMCP variables").fill("");
+  await page.evaluate(() => {
+    const session = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: { disconnect(): void };
+        };
+      }
+    ).__darkflowPhase1Runtime.session;
+    session.disconnect();
+  });
+  await expect(variablesPanel.getByText("No GMCP variables have been received yet.")).toBeVisible();
+});
+
+async function settingsGroup(dialog: ReturnType<typeof settingsDialog>, tab: string, name: string) {
+  await settingsTab(dialog, tab);
+  return dialog.getByRole("group", { name });
+}
+
+async function confirmDefinitionDelete(page: Page, label: string): Promise<void> {
+  const confirmation = page.getByRole("dialog", { name: `Delete ${label}`, exact: true });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+}
+
+async function skipChangedSettingsBackup(dialog: ReturnType<typeof settingsDialog>): Promise<void> {
+  const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  if (await backup.count()) await backup.getByRole("button", { name: "Skip", exact: true }).click();
+}
+
+test("Phase 2 settings save current preferences without replacing deferred fields", async ({
+  page,
+}) => {
+  const loadedScripts: string[] = [];
+  page.on("request", (request) => loadedScripts.push(request.url()));
+  await page.goto("/phase2/");
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({
+        deferredSetting: { keep: true },
+        emojiPickerEnabled: "invalid",
+        keyMappings: [{ command: "look" }],
+        outputScrollbackPreset: "invalid",
+        scrollbackBehavior: "invalid",
+        scrollbackSplitRatio: null,
+        background: "retired",
+        sideRailOpacity: "invalid",
+        terminalBackgroundOpacity: "invalid",
+        terminalFontFamily: "invalid",
+        terminalFontSize: 7,
+        terminalWidthColumns: 39,
+        customThemes: {
+          saved: {
+            key: "saved",
+            label: "Saved",
+            type: "dark",
+            bg: "#000000",
+            fg: "#ffffff",
+            accent: "#123456",
+            ansi: Array(16).fill("#123456"),
+            ui: {},
+          },
+          invalid: { key: "invalid", ansi: [] },
+        },
+      }),
+    ),
+  );
+
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save & Close", exact: true })).toHaveClass(
+    /\bdw-button-primary\b/,
+  );
+  await settingsTab(dialog, "Appearance");
+  await expect(dialog.getByLabel("Side panel opacity")).toHaveValue("82");
+  await expect(dialog.getByLabel("Terminal background opacity")).toHaveValue("55");
+  await expect(dialog.getByLabel("Snap floating panes to grid")).not.toBeChecked();
+  await expect(
+    dialog.getByText("Align floating pane positions and resized pane dimensions to a 16px grid."),
+  ).toBeVisible();
+  await dialog.getByLabel("Snap floating panes to grid").check();
+  await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
+  await dialog.getByLabel("Side panel opacity").fill("67");
+  await dialog.getByLabel("Terminal background opacity").fill("43");
+  await settingsTab(dialog, "Controls");
+  await expect(dialog.getByLabel("Show emoji picker")).toBeChecked();
+  await dialog.getByLabel("Keep last command selected after send").uncheck();
+  await dialog.getByLabel("Use aliases for Tab completion").uncheck();
+  await dialog.getByLabel("Use command history for Tab completion").check();
+  await dialog.getByLabel("Show emoji picker").uncheck();
+  await settingsTab(dialog, "Terminal");
+  await expect(dialog.getByLabel("Terminal font family")).toHaveValue("");
+  await expect(dialog.getByLabel("Terminal font size")).toHaveValue("");
+  await expect(dialog.getByLabel("Scrollback mode")).toHaveValue("pause");
+  await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("normal");
+  await expect(dialog.getByLabel("Split history size")).toHaveValue("60");
+  await dialog.getByLabel("Scrollback mode").selectOption("split");
+  await dialog.getByLabel("Scrollback memory").selectOption("high");
+  await dialog.getByLabel("Terminal font family").selectOption({ label: "Courier" });
+  await dialog.getByLabel("Terminal font size").selectOption("18");
+  await settingsTab(dialog, "Variables");
+  await dialog.getByRole("button", { name: "Add variable" }).click();
+  await dialog.getByLabel("Name", { exact: true }).fill("target");
+  await dialog.getByLabel("Value", { exact: true }).fill("goblin");
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+
+  await expect(dialog).not.toBeVisible();
+  await expect(settingsButton).toBeFocused();
+  await expect
+    .poll(() =>
+      page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--df-bg")),
+    )
+    .not.toBe("");
+  const saved = await page.evaluate(() => ({
+    graph: JSON.parse(localStorage.getItem("darkflow-session-core-v1")!),
+    settings: JSON.parse(localStorage.getItem("darkwind-client-settings")!),
+    variables: (
+      window as typeof window & {
+        __darkflowPhase1Runtime?: {
+          session: {
+            terminal: {
+              automation: { getAutomationVariables(): Record<string, string> };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime?.session.terminal.automation.getAutomationVariables(),
+  }));
+  expect(saved.graph.defaults.themeKey).toBe("nord");
+  expect(saved.settings).toMatchObject({
+    aliasTabCompletionEnabled: false,
+    deferredSetting: { keep: true },
+    emojiPickerEnabled: false,
+    historyTabCompletionEnabled: true,
+    keyMappings: [{ command: "look" }],
+    repeatLastCommand: false,
+    scrollbackBehavior: "split",
+    outputScrollbackPreset: "high",
+    theme: "nord",
+    background: "none",
+    sideRailOpacity: 67,
+    terminalBackgroundOpacity: 43,
+    terminalFontFamily: '"Courier New", Courier, monospace',
+    terminalFontSize: 18,
+    terminalWidthColumns: null,
+    paneGridSnapEnabled: true,
+  });
+  const terminalOutput = page.getByLabel("Terminal output", { exact: true });
+  await expect(terminalOutput).toHaveCSS("font-family", /Courier New/);
+  await expect(terminalOutput).toHaveCSS("font-size", "18px");
+  expect(saved.settings.customThemes).toMatchObject({ saved: { key: "saved", label: "Saved" } });
+  expect(saved.settings.customThemes.invalid).toBeUndefined();
+  expect(saved.variables).toMatchObject({ target: "goblin" });
+  expect(loadedScripts.some((url) => url.endsWith("/js/app.js"))).toBe(false);
+
+  await page.reload();
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  await expect(dialog.getByLabel("Theme", { exact: true })).toHaveValue("nord");
+  await expect(dialog.getByLabel("Side panel opacity")).toHaveValue("67");
+  await expect(dialog.getByLabel("Terminal background opacity")).toHaveValue("43");
+  await expect(dialog.getByLabel("Snap floating panes to grid")).toBeChecked();
+  await settingsTab(dialog, "Terminal");
+  await expect(dialog.getByLabel("Terminal font family")).toHaveValue(
+    '"Courier New", Courier, monospace',
+  );
+  await expect(dialog.getByLabel("Terminal font size")).toHaveValue("18");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--df-side-rail-opacity"),
+      ),
+    )
+    .toBe("67%");
+  await expect
+    .poll(() =>
+      page.locator("#phase2-left-rail").evaluate((rail) => getComputedStyle(rail).backgroundColor),
+    )
+    .toContain("0.67");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-background-alpha",
+        ),
+      ),
+    )
+    .toBe("0.43");
+  await expect
+    .poll(() =>
+      page
+        .locator(".terminal-output-shell")
+        .evaluate((terminal) => getComputedStyle(terminal).backgroundColor),
+    )
+    .toContain("0.43");
+  await expect
+    .poll(() =>
+      page
+        .locator(".dv-groupview[data-terminal-active]")
+        .evaluate((group) => getComputedStyle(group).backgroundColor),
+    )
+    .toBe("rgba(0, 0, 0, 0)");
+  await expect(
+    dialog.getByLabel("Theme", { exact: true }).locator("option", { hasText: "Saved" }),
+  ).toHaveCount(1);
+  await settingsTab(dialog, "Controls");
+  await expect(dialog.getByLabel("Keep last command selected after send")).not.toBeChecked();
+  await expect(dialog.getByLabel("Use aliases for Tab completion")).not.toBeChecked();
+  await expect(dialog.getByLabel("Use command history for Tab completion")).toBeChecked();
+  await expect(dialog.getByLabel("Show emoji picker")).not.toBeChecked();
+  await settingsTab(dialog, "Terminal");
+  await expect(dialog.getByLabel("Scrollback mode")).toHaveValue("split");
+  await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("high");
+  await settingsTab(dialog, "Variables");
+  await expect(dialog.getByText("Variables are saved for this character.")).toBeVisible();
+  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("target");
+  await expect(dialog.getByLabel("Value", { exact: true })).toHaveValue("goblin");
+});
+
+test("Phase 2 settings remain usable on a mobile viewport", async ({ page }) => {
+  await page.goto("/phase2/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(dialog).toBeVisible();
+  const bounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused();
+});
+
+test("Phase 2 Controls persist global shortcuts and retain hidden key-mapping drafts", async ({
+  page,
+}) => {
+  await page.goto("/phase2/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  await settingsTab(dialog, "Controls");
+  await expect(dialog.getByRole("group", { name: "Global shortcuts" })).toBeVisible();
+  await expect(dialog.getByLabel("Open Settings (Ctrl/Cmd+,)", { exact: true })).toBeChecked();
+  await expect(
+    dialog.getByText(
+      "When the Darkflow window is active and no text field or dialog is open, send ordinary typing to the command input.",
+    ),
+  ).toBeVisible();
+  await expect(dialog.getByLabel("Scroll one page back (PageUp)", { exact: true })).toBeChecked();
+  await expect(dialog.getByText("Scroll terminal history back by one page.")).toBeVisible();
+  await expect(dialog.getByLabel("Enable custom key mappings", { exact: true })).not.toBeChecked();
+  await expect(dialog.getByRole("group", { name: "Key mappings" })).toBeHidden();
+
+  await dialog.getByLabel("Scroll one page back (PageUp)", { exact: true }).uncheck();
+  await dialog.getByLabel("Enable custom key mappings", { exact: true }).check();
+  const mappings = dialog.getByRole("group", { name: "Key mappings" });
+  await mappings.getByRole("button", { name: "Add mapping" }).click();
+  await mappings.getByLabel("Command for new mapping").fill("look");
+  await dialog.getByLabel("Enable custom key mappings", { exact: true }).uncheck();
+  await expect(mappings).toBeHidden();
+  await dialog.getByLabel("Enable custom key mappings", { exact: true }).check();
+  await expect(mappings.getByLabel("Command for new mapping")).toHaveValue("look");
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsTab(dialog, "Controls");
+  await expect(
+    dialog.getByLabel("Scroll one page back (PageUp)", { exact: true }),
+  ).not.toBeChecked();
+  await expect(dialog.getByLabel("Enable custom key mappings", { exact: true })).toBeChecked();
+  await expect(dialog.getByRole("group", { name: "Key mappings" })).toBeVisible();
+  await dialog.getByLabel("Scroll one page back (PageUp)", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsTab(dialog, "Controls");
+  await expect(
+    dialog.getByLabel("Scroll one page back (PageUp)", { exact: true }),
+  ).not.toBeChecked();
+});
+
+test("Phase 2 Settings opens when a command button has no description", async ({ page }) => {
+  await page.goto("/phase2/");
+  // The storage key appears before bootstrap assigns the runtime global, so
+  // wait for the global this test goes on to use.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          typeof (window as unknown as { __darkflowPhase1Runtime?: { session?: unknown } })
+            .__darkflowPhase1Runtime?.session === "object",
+      ),
+    )
+    .toBe(true);
+  // A command button stored before descriptions were tracked has no
+  // description field; the list row must not read it unguarded, or opening
+  // Settings throws and the dialog never mounts.
+  await page.evaluate(() => {
+    const session = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            configuration: {
+              getSnapshot(): { localDefinitions: { commandButtons: unknown[] } };
+              replaceLocalDefinitions(
+                kind: "commandButtons",
+                definitions: unknown[],
+              ): { success: boolean };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session;
+    const snapshot = session.configuration.getSnapshot();
+    const result = session.configuration.replaceLocalDefinitions("commandButtons", [
+      ...snapshot.localDefinitions.commandButtons,
+      { id: "cmd-no-desc", enabled: true, label: "Northwest", command: "nw", shortcut: "Numpad7" },
+    ]);
+    if (!result.success) throw new Error("Could not add the command button definition");
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  await expect(dialog).toBeVisible();
+  await settingsTab(dialog, "Controls");
+  await expect(dialog.getByText("Northwest", { exact: true })).toBeVisible();
+});
+
+test("Phase 2 appearance controls preview live, revert on Close, and persist on Apply", async ({
+  page,
+}) => {
+  await page.goto("/phase2/");
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({
+        background: "moonlit-forest",
+        sideRailOpacity: 67,
+        terminalBackgroundOpacity: 43,
+        terminalFontFamily: '"Courier New", Courier, monospace',
+        terminalFontSize: 18,
+      }),
+    ),
+  );
+  await page.reload();
+
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  const dialog = settingsDialog(page);
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Side panel opacity").fill("20");
+  await dialog.getByLabel("Terminal background opacity").fill("10");
+  await settingsTab(dialog, "Terminal");
+  await dialog.getByLabel("Terminal font family").selectOption({ label: "Serif" });
+  await dialog.getByLabel("Terminal font size").selectOption("24");
+  await expect
+    .poll(() =>
+      page.locator("#phase2-left-rail").evaluate((rail) => getComputedStyle(rail).backgroundColor),
+    )
+    .toContain("0.2");
+  await expect
+    .poll(() =>
+      page
+        .locator(".terminal-output-shell")
+        .evaluate((terminal) => getComputedStyle(terminal).backgroundColor),
+    )
+    .toContain("0.1");
+  const terminalOutput = page.getByLabel("Terminal output", { exact: true });
+  await expect(terminalOutput).toHaveCSS("font-family", /Georgia/);
+  await expect(terminalOutput).toHaveCSS("font-size", "24px");
+
+  const storedBeforeCancel = await page.evaluate(() =>
+    localStorage.getItem("darkwind-client-settings"),
+  );
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        sideRail: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-side-rail-opacity",
+        ),
+        terminal: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-background-alpha",
+        ),
+        terminalFontFamily: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-font-family",
+        ),
+        terminalFontSize: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-font-size",
+        ),
+      })),
+    )
+    .toEqual({
+      sideRail: "67%",
+      terminal: "0.43",
+      terminalFontFamily: '"Courier New", Courier, monospace',
+      terminalFontSize: "18px",
+    });
+  expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
+    storedBeforeCancel,
+  );
+
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Side panel opacity").fill("60");
+  await dialog.getByLabel("Terminal background opacity").fill("30");
+  await settingsTab(dialog, "Terminal");
+  await dialog.getByLabel("Terminal font family").selectOption({ label: "Verdana" });
+  await dialog.getByLabel("Terminal font size").selectOption("20");
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        sideRail: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-side-rail-opacity",
+        ),
+        terminal: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-background-alpha",
+        ),
+        settings: JSON.parse(localStorage.getItem("darkwind-client-settings")!),
+      })),
+    )
+    .toMatchObject({
+      sideRail: "60%",
+      terminal: "0.3",
+      settings: {
+        sideRailOpacity: 60,
+        terminalBackgroundOpacity: 30,
+        terminalFontFamily: "Verdana, Geneva, Tahoma, sans-serif",
+        terminalFontSize: 20,
+      },
+    });
+});
+
+test("Phase 2 Settings Apply stays open and Save & Close closes", async ({ page }) => {
+  await page.goto("/phase2/");
+  const dialog = settingsDialog(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsTab(dialog, "Variables");
+  await dialog.getByRole("button", { name: "Add variable", exact: true }).click();
+  await dialog.locator("#settings-panel-variables").getByLabel("Name", { exact: true }).fill("");
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(dialog.getByText("Variable names cannot be empty.", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await settingsTab(dialog, "Functions");
+  await dialog.getByRole("button", { name: "New function", exact: true }).click();
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Terminal background opacity").fill("41");
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("darkwind-client-settings")!).terminalBackgroundOpacity,
+      ),
+    )
+    .toBe(41);
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+});
+
+test("Phase 2 Settings saves pending trigger edits through its footer actions", async ({
+  page,
+}) => {
+  await installAutomationDefinitions(page);
+  const dialog = settingsDialog(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
+  await triggers.getByRole("button", { name: "Edit Danger" }).click();
+  const editor = triggers.getByRole("region", { name: "Edit triggers" });
+
+  await editor.getByLabel("Gag line").uncheck();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+        const character = Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { triggers: Array<{ id: string; gag: boolean }> };
+        };
+        return character.localDefinitions.triggers.find(({ id }) => id === "trigger-local")?.gag;
+      }),
+    )
+    .toBe(false);
+
+  await editor.getByLabel("Gag line").check();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect(dialog).not.toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+        const character = Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { triggers: Array<{ id: string; gag: boolean }> };
+        };
+        return character.localDefinitions.triggers.find(({ id }) => id === "trigger-local")?.gag;
+      }),
+    )
+    .toBe(true);
+});
+
+test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme imports without writes", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/phase2/");
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await settingsTab(dialog, "Appearance");
+  const background = dialog.getByRole("radio", { name: "Moonlit Forest" });
+  const backgroundChoice = dialog.locator('.background-choice:has(input[value="moonlit-forest"])');
+  await expect(background).toHaveCSS("opacity", "0");
+  await expect(backgroundChoice.locator("img")).toBeVisible();
+  const backgroundPreview = backgroundChoice.locator(".background-preview");
+  await backgroundPreview.click();
+  await expect(background).toBeChecked();
+  await expect(backgroundPreview).not.toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.background))
+    .toBe("moonlit-forest");
+  if (testInfo.project.name === "mobile-chromium") {
+    await expect(page.getByLabel("Terminal output", { exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByText("Avatar", { exact: true })).toBeVisible();
+    await expect(page.getByText("No guild vitals", { exact: true })).toBeVisible();
+  }
+  if (testInfo.project.name === "chromium")
+    await page.screenshot({ path: "test-results/phase2-appearance-background-active.png" });
+  await page.reload();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.background))
+    .toBe("moonlit-forest");
+
+  await page.evaluate(() =>
+    localStorage.setItem("darkwind-client-settings", JSON.stringify({ background: "retired" })),
+  );
+  await page.reload();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.background))
+    .toBe("none");
+
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  const input = dialog.getByLabel("Upload theme JSON");
+  const beforeInvalid = await page.evaluate(() => localStorage.getItem("darkwind-client-settings"));
+  await input.setInputFiles({
+    name: "bad.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('{"colors":{"editor.background":"#12345"}}'),
+  });
+  await expect(dialog.getByRole("status")).toContainText("Choose a valid");
+  expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
+    beforeInvalid,
+  );
+  await input.setInputFiles({
+    name: "large.json",
+    mimeType: "application/json",
+    buffer: Buffer.alloc(1024 * 1024 + 1),
+  });
+  await expect(dialog.getByRole("status")).toContainText("1 MiB");
+  expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
+    beforeInvalid,
+  );
+
+  await input.setInputFiles({
+    name: "fixture.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        name: "Fixture",
+        colors: { "editor.background": "#112233", "editor.foreground": "#ddeeff" },
+      }),
+    ),
+  });
+  await expect(dialog.getByRole("status")).toContainText("Theme imported.");
+  await page.reload();
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  await expect(dialog.getByLabel("Theme", { exact: true })).toHaveValue("fixture");
+});
+
+test("Phase 3 imports settings without replacing the active session or profile state", async ({
+  page,
+}, testInfo) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "darkflowDesktop", {
+      configurable: true,
+      value: {
+        checkForUpdates: () => undefined,
+        getInfo: () => Promise.resolve({ version: "9.8.7" }),
+        installUpdate: () => undefined,
+        onUpdateStatus: () => () => undefined,
+      },
+    });
+  });
+  await connect(page);
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
+  const preserved = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character = state.characterProfiles[state.defaults.defaultCharacterProfileId];
+    const server = state.serverProfiles[character.serverProfileId];
+    return {
+      characterIds: Object.keys(state.characterProfiles),
+      serverIds: Object.keys(state.serverProfiles),
+      history: character.commandHistory,
+      label: character.label,
+      serverHost: server.host,
+    };
+  });
+  if (testInfo.project.name !== "mobile-chromium") {
+    await page.getByRole("button", { name: "Toggle left sidebar" }).click();
+    await expect(page.locator("#phase2-left-rail")).toBeHidden();
+    await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  }
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({ deferredExportField: { keep: true } }),
+    ),
+  );
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
+  const dialog = settingsDialog(page);
+  const downloadPromise = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Export settings", exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^darkflow-settings-.*\.json$/);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream!) chunks.push(chunk);
+  const downloadedBundle = JSON.parse(Buffer.concat(chunks).toString());
+  expect(downloadedBundle.clientVersion).toBe("9.8.7");
+  expect(downloadedBundle.data.clientSettings.deferredExportField).toEqual({
+    keep: true,
+  });
+  const exported = await page.evaluate(() => {
+    const applicationState = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character =
+      applicationState.characterProfiles[applicationState.defaults.defaultCharacterProfileId];
+    const server = applicationState.serverProfiles[character.serverProfileId];
+    character.label = "Imported character";
+    character.commandHistory = ["imported-history"];
+    character.automationVariables = { imported: "yes" };
+    character.localDefinitions.aliases = [
+      {
+        id: "imported-alias",
+        enabled: true,
+        trigger: "zz",
+        description: "Imported alias",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [{ type: "send_command", template: "look" }],
+      },
+    ];
+    character.workspace.payload.importedPanelSizeMarker = { terminal: 731, map: 213 };
+    if (character.workspace.payload.dockview?.layout)
+      character.workspace.payload.dockview.layout.railVisibility = { left: false, right: true };
+    server.host = "imported.example.com";
+    return {
+      format: "darkwind-client-settings-export",
+      formatVersion: 2,
+      exportedAt: new Date().toISOString(),
+      clientVersion: "test",
+      data: {
+        applicationState,
+        clientSettings: { theme: applicationState.defaults.themeKey },
+        sound: { enabled: false, volume: 0.25, categoryEnabled: { combat: false } },
+      },
+    };
+  });
+  if (testInfo.project.name !== "mobile-chromium") {
+    await page.getByRole("button", { name: "Toggle left sidebar" }).click();
+    await expect(page.locator("#phase2-left-rail")).toBeVisible();
+    await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  }
+
+  await dialog.locator(".hidden-file-input").setInputFiles({
+    name: "settings.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(exported)),
+  });
+  const confirmation = dialog.getByRole("dialog", { name: "Import settings" });
+  await expect(confirmation).toContainText("replace your current settings");
+  await expect(confirmation.getByRole("button", { name: "Import", exact: true })).toBeFocused();
+  if (testInfo.project.name === "chromium")
+    await page.screenshot({ path: testInfo.outputPath("phase3-import-preview.png") });
+  await page.keyboard.press("Escape");
+  await expect(confirmation).not.toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Import settings", exact: true })).toBeFocused();
+  const beforeInvalid = await page.evaluate(() => localStorage.getItem("darkwind-client-settings"));
+  await dialog.locator(".hidden-file-input").setInputFiles({
+    name: "unsupported.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ ...exported, formatVersion: 99 })),
+  });
+  await expect(dialog.getByRole("status")).toContainText("not supported");
+  expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
+    beforeInvalid,
+  );
+
+  (exported.data.clientSettings as Record<string, unknown>).repeatLastCommand = false;
+  await dialog.locator(".hidden-file-input").setInputFiles({
+    name: "settings.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(exported)),
+  });
+  await page.evaluate(() => {
+    (window as typeof window & { __settingsImportSentinel?: boolean }).__settingsImportSentinel =
+      true;
+  });
+  const initialSessionId = await page.evaluate(
+    () =>
+      (window as typeof window & { __darkflowPhase1Session?: { sessionId: string } })
+        .__darkflowPhase1Session?.sessionId,
+  );
+  const importDownloads: string[] = [];
+  page.on("download", (item) => importDownloads.push(item.suggestedFilename()));
+  await dialog
+    .getByRole("dialog", { name: "Import settings" })
+    .getByRole("button", { name: "Import", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as typeof window & { __darkflowPhase1Session?: { sessionId: string } })
+          .__darkflowPhase1Session?.sessionId,
+    ),
+  ).toBe(initialSessionId);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+  await expect(page.locator("#phase2-left-rail")).toBeHidden();
+  expect(importDownloads).toEqual([]);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as typeof window & { __settingsImportSentinel?: boolean }).__settingsImportSentinel,
+    ),
+  ).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+        const character = state.characterProfiles[state.defaults.defaultCharacterProfileId];
+        const server = state.serverProfiles[character.serverProfileId];
+        return {
+          characterIds: Object.keys(state.characterProfiles),
+          serverIds: Object.keys(state.serverProfiles),
+          history: character.commandHistory,
+          label: character.label,
+          serverHost: server.host,
+          marker: character.workspace.payload.importedPanelSizeMarker,
+          variables: character.automationVariables,
+          alias: character.localDefinitions.aliases[0]?.trigger,
+          repeatLastCommand: JSON.parse(localStorage.getItem("darkwind-client-settings")!)
+            .repeatLastCommand,
+        };
+      }),
+    )
+    .toEqual({
+      ...preserved,
+      marker: { terminal: 731, map: 213 },
+      variables: { imported: "yes" },
+      alias: "zz",
+      repeatLastCommand: false,
+    });
+  const lookCount = fixtures.endpoints.ws.commands.filter((command) => command === "look").length;
+  const commandInput = page.getByRole("textbox", { name: "Command input", exact: true });
+  await commandInput.fill("zz");
+  await commandInput.press("Enter");
+  await expect
+    .poll(() => fixtures.endpoints.ws.commands.filter((command) => command === "look").length)
+    .toBe(lookCount + 1);
+
+  await settingsButton.click();
+  await settingsTab(dialog, "Audio");
+  await expect(dialog.getByLabel("Enable audio")).not.toBeChecked();
+  await expect(dialog.getByLabel("Master volume", { exact: true })).toHaveValue("25");
+  await expect(dialog.getByRole("button", { name: "Combat", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(dialog.getByRole("slider", { name: "Combat volume" })).toHaveValue("50");
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
+  await settingsTab(dialog, "Controls");
+  await dialog.getByLabel("Keep last command selected after send").check();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
+  await expect(backup.getByRole("button", { name: "Download backup", exact: true })).toBeFocused();
+  if (testInfo.project.name === "chromium")
+    await page.screenshot({ path: testInfo.outputPath("phase3-backup-prompt.png") });
+  await backup.getByRole("button", { name: "Never ask again", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-client-settings")!)))
+    .toMatchObject({
+      theme: "darkflow-default",
+      repeatLastCommand: false,
+      settingsBackupPromptEnabled: false,
+    });
+});
+
+test("Phase 2 auto-reconnect follows the saved setting and cancellation is immediate", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await connect(page);
+  endpoint.dropConnections();
+  await expect(page.getByTestId("connection-status")).toContainText("Retry scheduled");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await settingsTab(dialog, "Connection");
+  await dialog.getByLabel("Auto-reconnect").uncheck();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
+  await page.waitForTimeout(1_200);
+  await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
+  expect(
+    await page.evaluate(
+      () => JSON.parse(localStorage.getItem("darkwind-client-settings")!).autoReconnect,
+    ),
+  ).toBe(false);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+  endpoint.dropConnections();
+  await page.waitForTimeout(1_200);
+  await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsTab(page.getByRole("dialog", { name: "Settings" }), "Connection");
+  await expect(page.getByLabel("Auto-reconnect")).not.toBeChecked();
+});
+
+test("Phase 2 settings replaces legacy geometry with a tall right-anchored window", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop window only");
+  await page.goto("/phase2/");
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "darkwind-settings-window",
+      JSON.stringify({ x: 0, y: 0, w: 560, h: 380, tab: "audio" }),
+    ),
+  );
+  await page.reload();
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  const buttonBounds = await settingsButton.boundingBox();
+  await settingsButton.click();
+  const dialog = settingsDialog(page);
+  const dialogBounds = await dialog.boundingBox();
+  expect(buttonBounds).not.toBeNull();
+  expect(dialogBounds).not.toBeNull();
+  expect(
+    Math.abs(dialogBounds!.x + dialogBounds!.width - (buttonBounds!.x + buttonBounds!.width)),
+  ).toBeLessThanOrEqual(8);
+  expect(dialogBounds!.y).toBeGreaterThan(buttonBounds!.y + buttonBounds!.height);
+  expect(dialogBounds!.height).toBeGreaterThanOrEqual(560);
+  expect(
+    await dialog
+      .getByRole("navigation", { name: "Settings sections" })
+      .evaluate((nav) => nav.scrollHeight <= nav.clientHeight),
+  ).toBe(true);
+  await expect(dialog.getByRole("tab", { name: "Audio", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-window") ?? "{}")),
+    )
+    .toMatchObject({ version: 1 });
+});
+
+test("Phase 2 settings use non-blocking grouped tabs with keyboard search and saved tab state", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/phase2/");
+  const host = page.getByLabel("Host");
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
+  const dialog = settingsDialog(page);
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(settingsButton).toBeFocused();
+  await settingsButton.click();
+  if (["chromium", "mobile-chromium"].includes(testInfo.project.name)) {
+    await expect(dialog).toHaveScreenshot(
+      `phase2-settings-${testInfo.project.name === "mobile-chromium" ? "mobile" : "desktop"}.png`,
+      { maxDiffPixels: 1 },
+    );
+  }
+  if (testInfo.project.name === "mobile-chromium") {
+    await expect(dialog.getByRole("tablist")).toHaveAttribute("aria-orientation", "horizontal");
+  } else {
+    await expect(dialog.getByRole("heading", { name: "Client", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Automation", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Help", exact: true })).toBeVisible();
+  }
+  await dialog.getByRole("tab", { name: "Connection", exact: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(dialog.getByRole("tab", { name: "Appearance", exact: true })).toBeFocused();
+  await expect(dialog.getByLabel("Theme", { exact: true })).toBeVisible();
+  await host.fill("example.test");
+  await dialog.getByLabel("Search settings").fill("Add variable");
+  await expect(dialog.getByRole("tab", { name: "Appearance", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+  await expect(dialog.getByRole("button", { name: "Add variable" })).toBeVisible();
+  await dialog.getByLabel("Search settings").fill("");
+  await expect(dialog.getByLabel("Theme", { exact: true })).toBeVisible();
+  await settingsTab(dialog, "Aliases");
+  await dialog.getByRole("button", { name: "New alias" }).click();
+  const aliasEditor = dialog.getByRole("region", { name: "Edit aliases" });
+  await aliasEditor.getByLabel("Pattern", { exact: true }).fill("draft-alias");
+  await dialog.getByLabel("Search settings").fill("Connection");
+  await dialog.getByLabel("Search settings").fill("");
+  await settingsTab(dialog, "Aliases");
+  await expect(aliasEditor.getByLabel("Pattern", { exact: true })).toHaveValue("draft-alias");
+  await settingsTab(dialog, "Connection");
+  await dialog.getByLabel("Auto-reconnect").uncheck();
+  await settingsTab(dialog, "Variables");
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
+  await expect(backup).toBeVisible();
+  await backup.getByRole("button", { name: "Continue editing", exact: true }).click();
+  await expect(dialog.getByRole("tab", { name: "Variables", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await settingsTab(dialog, "Aliases");
+  await expect(aliasEditor.getByLabel("Pattern", { exact: true })).toHaveValue("draft-alias");
+  await settingsTab(dialog, "Connection");
+  await expect(dialog.getByLabel("Auto-reconnect")).not.toBeChecked();
+  await settingsTab(dialog, "Variables");
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await backup.getByRole("button", { name: "Skip", exact: true }).click();
+  await settingsButton.click();
+  await expect(dialog.getByRole("tab", { name: "Variables", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
+test("Phase 2 settings restores moved, resized geometry and the active tab after reload", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop geometry only");
+  await page.goto("/phase2/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  await dialog.evaluate((element) => {
+    const dialog = element as HTMLDialogElement;
+    dialog.style.width = "720px";
+    dialog.style.height = "580px";
+  });
+  const beforeMove = await dialog.boundingBox();
+  const handle = page.getByTestId("settings-drag-handle");
+  const handleBounds = await handle.boundingBox();
+  expect(beforeMove).not.toBeNull();
+  expect(handleBounds).not.toBeNull();
+  await page.mouse.move(handleBounds!.x + 120, handleBounds!.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(handleBounds!.x + 160, handleBounds!.y + 36);
+  await page.mouse.up();
+  await settingsTab(dialog, "Aliases");
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-window") ?? "{}")),
+    )
+    .toMatchObject({ w: 720, h: 580, tab: "aliases" });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => JSON.parse(localStorage.getItem("darkwind-settings-window") ?? "{}").x as number,
+      ),
+    )
+    .toBeGreaterThan(Math.round(beforeMove!.x));
+  const persisted = await page.evaluate(
+    () =>
+      JSON.parse(localStorage.getItem("darkwind-settings-window") ?? "{}") as Record<
+        string,
+        number | string
+      >,
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const restored = await dialog.boundingBox();
+  expect(restored).not.toBeNull();
+  expect(Math.round(restored!.x)).toBe(Math.round(persisted.x as number));
+  expect(Math.round(restored!.y)).toBe(Math.round(persisted.y as number));
+  expect(Math.round(restored!.width)).toBe(Math.round(persisted.w as number));
+  expect(Math.round(restored!.height)).toBe(Math.round(persisted.h as number));
+  await expect(dialog.getByRole("tab", { name: "Aliases", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
+test("Phase 2 settings recovers from corrupted stored settings", async ({ page }) => {
+  await page.goto("/phase2/");
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
+  await page.evaluate(() => localStorage.setItem("darkwind-client-settings", "not-json"));
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(dialog.getByRole("status")).toHaveText(
+    "Saved client settings are invalid. Fix or replace them before saving.",
+  );
+  await settingsTab(dialog, "Controls");
+  await expect(dialog.getByLabel("Keep last command selected after send")).toBeChecked();
+
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect(dialog).not.toBeVisible();
+
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("darkwind-client-settings")!),
+  );
+  expect(saved).toMatchObject({
+    repeatLastCommand: true,
+    aliasTabCompletionEnabled: true,
+    historyTabCompletionEnabled: false,
+  });
+});
+
+test("Phase 2 settings apply to terminal input immediately without reload", async ({ page }) => {
+  await connect(page);
+  const input = page.getByLabel("Command input", { exact: true });
+
+  await input.fill("look");
+  await input.press("Enter");
+  await expect.poll(() => fixtures.endpoints.ws.commands).toContain("look");
+  await expect(input).toHaveValue("look");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await settingsTab(dialog, "Controls");
+  await dialog.getByLabel("Keep last command selected after send").uncheck();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect(dialog).not.toBeVisible();
+
+  await input.fill("score");
+  await input.press("Enter");
+  await expect.poll(() => fixtures.endpoints.ws.commands).toContain("score");
+  await expect(input).toHaveValue("");
+});
+
+test("Phase 2 settings reset the workspace after confirmation", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop controls only");
+  await page.goto("/phase2/");
+  await expect(page.getByTestId("workspace-host")).toBeVisible();
+  await page
+    .locator('[data-panel-drag-handle][data-panel-id="status"]')
+    .dragTo(page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'));
+  await page.getByRole("button", { name: "Collapse Status", exact: true }).click();
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Avatar", exact: true }).uncheck();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await settingsTab(dialog, "Appearance");
+  const resetLayout = dialog.getByRole("button", { name: "Reset layout", exact: true });
+  page.once("dialog", async (confirmation) => {
+    expect(confirmation.message()).toBe("Reset saved pane and terminal layout for this browser?");
+    await confirmation.dismiss();
+  });
+  await resetLayout.click();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  page.once("dialog", async (confirmation) => {
+    expect(confirmation.message()).toBe("Reset saved pane and terminal layout for this browser?");
+    await confirmation.accept();
+  });
+  await resetLayout.click();
+
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace reset");
+  await expect(dialog.locator('form > p[role="status"]')).toHaveText("Layout reset.");
+  await expect(page.locator('.information-panel[data-panel-id="avatar"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Collapse Status", exact: true })).toBeVisible();
+  expect(
+    await page
+      .locator('[data-rail="left"] .df-rail-card')
+      .evaluateAll((cards) => cards.map((card) => (card as HTMLElement).dataset.panelId)),
+  ).toEqual([
+    "avatar",
+    "status",
+    "vitals",
+    "guildVitals",
+    "sky",
+    "omens",
+    "buffs",
+    "worth",
+    "xpmon",
+    "stats",
+  ]);
+  expect(
+    await page.evaluate(() => {
+      const runtime = (
+        window as unknown as { __darkflowPhase1Runtime: { characterProfileId: string } }
+      ).__darkflowPhase1Runtime;
+      const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1") ?? "{}");
+      return state.characterProfiles[runtime.characterProfileId].workspace.payload.dockview.version;
+    }),
+  ).toBe(2);
+});
+
+test("Phase 2 settings dialog closes when the session is disposed", async ({ page }) => {
+  await page.goto("/phase2/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(dialog).toBeVisible();
+
+  await page.evaluate(() => {
+    (
+      window as unknown as { __darkflowPhase1Runtime: { session: { dispose(): void } } }
+    ).__darkflowPhase1Runtime.session.dispose();
+  });
+  await expect(dialog).not.toBeVisible();
+});
+
+test("Phase 2 edits local direct definitions and updates live consumers", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installDirectDefinitions(page);
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+
+  const keys = await settingsGroup(dialog, "Controls", "Key mappings");
+  await keys.getByLabel("Command for F2").fill("inventory");
+  await keys.getByLabel("Command for F2").press("Tab");
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  await expect(keys.getByLabel("Key for new mapping")).toBeFocused();
+  await page.keyboard.press("F2");
+  await keys.getByLabel("Command for new mapping").fill("duplicate");
+  await keys.getByLabel("Command for new mapping").press("Tab");
+  await expect(keys.getByText("Key mappings must have unique identities.")).toBeVisible();
+  await keys
+    .getByLabel("Command for new mapping")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  await keys.getByLabel("Key for new mapping").press("F4");
+  await keys.getByLabel("Command for new mapping").fill("north");
+  await keys.getByLabel("Command for new mapping").press("Tab");
+  await keys.getByLabel("Enable F4").uncheck();
+  await keys
+    .getByLabel("Command for F4")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await confirmDefinitionDelete(page, "F4");
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  const keyInput = keys.getByLabel("Key for new mapping");
+  await keyInput.dispatchEvent("keydown", {
+    key: "%",
+    code: "Digit5",
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  await expect(keyInput).toContainText("%");
+  await expect(keyInput.locator("..").getByText("(Digit5)", { exact: true })).toBeVisible();
+  await keys.getByLabel("Command for new mapping").fill("percent-command");
+  await keys.getByLabel("Command for new mapping").press("Tab");
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  const intlBackslash = keys.getByLabel("Key for new mapping");
+  await intlBackslash.dispatchEvent("keydown", {
+    key: "Intl Backslash",
+    code: "IntlBackslash",
+    bubbles: true,
+    cancelable: true,
+  });
+  await expect(intlBackslash).toHaveText("IntlBackslash");
+  await expect(intlBackslash.getByText("(IntlBackslash)", { exact: true })).toHaveCount(0);
+  await keys
+    .getByLabel("Command for new mapping")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+
+  const highlights = await settingsGroup(dialog, "Highlights", "Highlights");
+  await highlights.getByRole("button", { name: "Edit glow" }).click();
+  let editor = highlights.getByRole("region", { name: "Edit highlights" });
+  await editor.getByLabel("Foreground").fill("blue");
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  await highlights.getByRole("button", { name: "New highlight" }).click();
+  editor = highlights.getByRole("region", { name: "Edit highlights" });
+  await editor.getByLabel("Pattern").fill("spark");
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  await highlights.getByRole("button", { name: "Edit spark" }).click();
+  editor = highlights.getByRole("region", { name: "Edit highlights" });
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  await highlights.getByRole("button", { name: "Delete spark" }).click();
+  await confirmDefinitionDelete(page, "spark");
+
+  const functions = await settingsGroup(dialog, "Functions", "Functions");
+  await functions.getByRole("button", { name: "Edit greet" }).click();
+  editor = functions.getByRole("region", { name: "Edit functions" });
+  await editor.getByLabel("Script", { exact: true }).fill("send salute");
+  await editor.getByRole("button", { name: "Save functions" }).click();
+  await functions.getByRole("button", { name: "New function" }).click();
+  editor = functions.getByRole("region", { name: "Edit functions" });
+  await editor.getByLabel("Function name", { exact: true }).fill("temporary");
+  await editor.getByLabel("Script", { exact: true }).fill("send temporary");
+  await editor.getByRole("button", { name: "Save functions" }).click();
+  await functions.getByRole("button", { name: "Edit temporary" }).click();
+  editor = functions.getByRole("region", { name: "Edit functions" });
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save functions" }).click();
+  await functions.getByRole("button", { name: "Delete temporary" }).click();
+  await confirmDefinitionDelete(page, "temporary");
+
+  const persisted = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const definitions = (
+      Object.values(graph.characterProfiles)[0] as {
+        localDefinitions: Record<string, Array<{ id: string; [key: string]: unknown }>>;
+      }
+    ).localDefinitions;
+    return definitions;
+  });
+  expect(persisted.keyMappings).toMatchObject([
+    { id: "key-local", code: "F2", command: "inventory", enabled: true },
+    { code: "Digit5", legacyKey: "%", command: "percent-command", enabled: true },
+  ]);
+  expect(persisted.highlights).toMatchObject([
+    { id: "highlight-local", patternSource: "glow", style: { fg: "blue" }, enabled: true },
+  ]);
+  expect(persisted.functions).toMatchObject([
+    { id: "function-greet", name: "greet", script: "send salute", enabled: true },
+  ]);
+
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  const input = page.getByLabel("Command input", { exact: true });
+  await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
+  await page.keyboard.press("F2");
+  await page.keyboard.press("5");
+  expect(endpoint.commands).not.toContain("percent-command");
+  await input.fill("");
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "%",
+        code: "Digit5",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    ),
+  );
+  await input.fill("fn");
+  await input.press("Enter");
+  await expect
+    .poll(() => endpoint.commands)
+    .toEqual(expect.arrayContaining(["inventory", "percent-command", "salute"]));
+  endpoint.sendText("glow\n");
+  await expect(
+    page.getByLabel("Terminal output", { exact: true }).locator(".ansi-fg-blue"),
+  ).toContainText("glow");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reloadedKeys = await settingsGroup(settingsDialog(page), "Controls", "Key mappings");
+  await expect(reloadedKeys.getByLabel("Command for F2")).toHaveValue("inventory");
+});
+
+test("Phase 2 confirms definition deletion and restores it when Settings is canceled", async ({
+  page,
+}) => {
+  await installDirectDefinitions(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const keys = await settingsGroup(dialog, "Controls", "Key mappings");
+
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  await expect(keys.getByLabel("Key for new mapping")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Edit key mappings", exact: true })).toHaveCount(0);
+  await keys
+    .getByLabel("Command for new mapping")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+
+  await keys
+    .getByLabel("Command for F2")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  const confirmation = page.getByRole("dialog", { name: "Delete F2", exact: true });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Keep it" }).click();
+  await expect(keys.getByLabel("Command for F2")).toBeVisible();
+
+  await keys
+    .getByLabel("Command for F2")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await confirmDefinitionDelete(page, "F2");
+  await expect(keys.getByLabel("Command for F2")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reopened = settingsDialog(page);
+  const restored = await settingsGroup(reopened, "Controls", "Key mappings");
+  await expect(restored.getByLabel("Command for F2")).toBeVisible();
+  const aliases = await settingsGroup(reopened, "Aliases", "Aliases");
+  await expect(aliases.getByLabel("Search Aliases")).toBeVisible();
+  await expect(aliases.getByRole("button", { name: "New alias" })).toBeVisible();
+  await expect(aliases.getByRole("region", { name: "Edit aliases" })).toBeVisible();
+  for (const action of ["Move up", "Move down", "Duplicate", "Delete fn"])
+    await expect(aliases.getByRole("button", { name: action, exact: true })).toBeVisible();
+});
+
+test("Phase 2 routes shared direct definitions through stale-safe publication", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installDirectDefinitions(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const keys = await settingsGroup(dialog, "Controls", "Key mappings");
+  await expect(keys.getByLabel("Command for F3")).toHaveValue("shared-before");
+
+  const externalResult = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const set = Object.values(graph.configurationSets).find(
+      (candidate) => (candidate as { kind: string }).kind === "keyMappings",
+    ) as { id: string; revision: number; definitions: Array<Record<string, unknown>> };
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            configuration: {
+              publishConfigurationSet(input: {
+                configSetId: string;
+                expectedRevision: number;
+                definitions: Array<Record<string, unknown>>;
+              }): { success: boolean };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime;
+    return runtime.session.configuration.publishConfigurationSet({
+      configSetId: set.id,
+      expectedRevision: set.revision,
+      definitions: set.definitions.map((definition) => ({
+        ...definition,
+        command: "external-command",
+      })),
+    });
+  });
+  expect(externalResult.success).toBe(true);
+  await expect(keys.getByLabel("Command for F3")).toHaveValue("external-command");
+  await keys.getByLabel("Command for F3").fill("shared-after");
+  await keys.getByLabel("Command for F3").press("Tab");
+
+  const highlights = await settingsGroup(dialog, "Highlights", "Highlights");
+  await highlights.getByRole("button", { name: "Edit shimmer" }).click();
+  let editor = highlights.getByRole("region", { name: "Edit highlights" });
+  await editor.getByLabel("Pattern").fill("");
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  await expect(editor.getByLabel("Pattern")).toBeFocused();
+  await editor.getByLabel("Pattern").fill("shimmer");
+  await editor.getByLabel("Foreground").fill("blue");
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+
+  const functions = await settingsGroup(dialog, "Functions", "Functions");
+  await functions.getByRole("button", { name: "Edit shared_greet" }).click();
+  editor = functions.getByRole("region", { name: "Edit functions" });
+  await editor.getByLabel("Script", { exact: true }).fill("send shared-function-after");
+  await editor.getByRole("button", { name: "Save functions" }).click();
+
+  const shared = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return Object.values(graph.configurationSets) as Array<{
+      kind: string;
+      revision: number;
+      definitions: Array<Record<string, unknown>>;
+    }>;
+  });
+  expect(shared.find(({ kind }) => kind === "keyMappings")).toMatchObject({
+    revision: 3,
+    definitions: [{ id: "key-shared", command: "shared-after" }],
+  });
+  expect(shared.find(({ kind }) => kind === "highlights")).toMatchObject({
+    revision: 2,
+    definitions: [{ id: "highlight-shared", style: { fg: "blue" } }],
+  });
+  expect(shared.find(({ kind }) => kind === "functions")).toMatchObject({
+    revision: 2,
+    definitions: [{ id: "function-shared", script: "send shared-function-after" }],
+  });
+
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await connect(page);
+  await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
+  await page.keyboard.press("F3");
+  const input = page.getByLabel("Command input", { exact: true });
+  await input.fill("sharedfn");
+  await input.press("Enter");
+  await expect
+    .poll(() => endpoint.commands)
+    .toEqual(expect.arrayContaining(["shared-after", "shared-function-after"]));
+  endpoint.sendText("shimmer\n");
+  await expect(
+    page.getByLabel("Terminal output", { exact: true }).locator(".ansi-fg-blue"),
+  ).toContainText("shimmer");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const [groupName, label] of [
+    ["Key mappings", "F3"],
+    ["Highlights", "shimmer"],
+    ["Functions", "shared_greet"],
+  ] as const) {
+    const group = await settingsGroup(
+      settingsDialog(page),
+      groupName === "Key mappings" ? "Controls" : groupName,
+      groupName,
+    );
+    if (groupName === "Key mappings") {
+      await group.getByLabel(`Enable ${label}`).uncheck();
+      await group
+        .getByLabel(`Command for ${label}`)
+        .locator("..")
+        .getByRole("button", { name: "Remove" })
+        .click();
+      await confirmDefinitionDelete(page, label);
+      continue;
+    }
+    await group.getByRole("button", { name: `Edit ${label}` }).click();
+    const activeEditor = group.getByRole("region", { name: `Edit ${groupName.toLowerCase()}` });
+    await activeEditor.getByLabel("Enabled", { exact: true }).uncheck();
+    await activeEditor.getByRole("button", { name: `Save ${groupName.toLowerCase()}` }).click();
+    await group.getByRole("button", { name: `Delete ${label}` }).click();
+    await confirmDefinitionDelete(page, label);
+  }
+  const emptied = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return Object.values(graph.configurationSets).map(
+      (set) => (set as { definitions: unknown[] }).definitions.length,
+    );
+  });
+  expect(emptied).toEqual([0, 0, 0]);
+});
+
+test("Phase 2 edits automation definitions and updates live consumers", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+
+  const aliases = await settingsGroup(dialog, "Aliases", "Aliases");
+  await expect(aliases.getByText("Shared: Shared aliases (revision 1)")).toBeVisible();
+  await aliases.getByRole("button", { name: "Edit allsteps" }).click();
+  let editor = aliases.getByRole("region", { name: "Edit aliases" });
+  expect(
+    await editor
+      .getByRole("region", { name: /^Automation step \d+$/ })
+      .getByLabel("Step type")
+      .evaluateAll((selects) => selects.map((select) => (select as HTMLSelectElement).value)),
+  ).toEqual([
+    "send_command",
+    "set_variable",
+    "show_message",
+    "script",
+    "wait",
+    "set_alias_enabled",
+    "set_trigger_enabled",
+    "set_timer_enabled",
+    "control_timer",
+    "play_sound",
+    "run_alias",
+    "call_function",
+  ]);
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+  await aliases.getByRole("button", { name: "Edit quick" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Template").fill("inventory");
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+  await aliases.getByRole("button", { name: "New alias" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Pattern", { exact: true }).fill("temporary alias");
+  await editor.getByLabel("Template").fill("temporary");
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+  await aliases.getByRole("button", { name: "Edit temporary alias" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+  await aliases.getByRole("button", { name: "Delete temporary alias" }).click();
+  await confirmDefinitionDelete(page, "temporary alias");
+
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
+  await triggers.getByRole("button", { name: "Edit Danger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Template").fill("retreat");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await triggers.getByRole("button", { name: "New trigger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await editor.getByLabel("Pattern").fill("temporary trigger");
+  await editor.getByLabel("Name (required)").fill("Temporary trigger");
+  await editor.getByLabel("Template").fill("temporary");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await triggers.getByRole("button", { name: "Edit Temporary trigger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await triggers.getByRole("button", { name: "Delete Temporary trigger" }).click();
+  await confirmDefinitionDelete(page, "Temporary trigger");
+
+  const timers = await settingsGroup(dialog, "Timers", "Timers");
+  await timers.getByRole("button", { name: "Edit pulse" }).click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await editor.getByLabel("Duration seconds").fill("1");
+  await editor.getByLabel("Auto-start").check();
+  await editor.getByLabel("Template").fill("timer-after");
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  await timers.getByRole("button", { name: "New timer" }).click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await editor.getByLabel("Name").fill("temporary timer");
+  await editor.getByLabel("Template").fill("temporary");
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  await timers.getByRole("button", { name: "Edit temporary timer" }).click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  await timers.getByRole("button", { name: "Delete temporary timer" }).click();
+  await confirmDefinitionDelete(page, "temporary timer");
+
+  const persistedDefinitions = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return (Object.values(graph.characterProfiles)[0] as { localDefinitions: unknown })
+      .localDefinitions;
+  });
+  expect(JSON.stringify(persistedDefinitions)).not.toContain("timerHandles");
+  expect(JSON.stringify(persistedDefinitions)).not.toContain("automationVariables");
+
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  const input = page.getByLabel("Command input", { exact: true });
+  await input.fill("quick");
+  await input.press("Enter");
+  endpoint.sendText("danger\n");
+  await expect
+    .poll(() => endpoint.commands)
+    .toEqual(expect.arrayContaining(["inventory", "retreat", "timer-after"]));
+  await expect(page.getByLabel("Terminal output", { exact: true })).not.toContainText("danger");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reloadedAliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
+  await reloadedAliases.getByRole("button", { name: "Edit quick" }).click();
+  await expect(reloadedAliases.getByLabel("Template")).toHaveValue("inventory");
+});
+
+test("Phase 2 saves duplicate-pattern triggers and targets each stable id", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { triggers: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.triggers.push({
+      id: "trigger-legacy-unnamed",
+      enabled: true,
+      pattern: "legacy unnamed pattern",
+      description: "   ",
+      group: "",
+      isRegex: false,
+      ignoreCase: false,
+      gag: false,
+      steps: [{ type: "send_command", template: "legacy" }],
+    });
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
+
+  await triggers.getByRole("button", { name: "New trigger" }).click();
+  let editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Pattern").fill("You killed %1");
+  await editor.getByLabel("Template").fill("burn %1 corpse");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await expect(editor.getByLabel("Name (required)")).toBeFocused();
+  await editor.getByLabel("Name (required)").fill("Burn corpse");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+
+  await triggers.getByRole("button", { name: "New trigger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Pattern").fill("You killed %1");
+  await editor.getByLabel("Name (required)").fill("Loot corpse");
+  await editor.getByLabel("Template").fill("get coins from corpse");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await editor.getByLabel("Name (required)").fill(" burn   CORPSE ");
+  await expect(
+    editor.getByText("Trigger Name duplicates an existing trigger in this owner."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await expect(triggers.getByText("Trigger Name must be unique in this owner.")).toBeVisible();
+  await editor.getByLabel("Name (required)").fill("Loot corpse");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+
+  const triggerIds = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: {
+        triggers: Array<{ id: string; description: string }>;
+      };
+    };
+    return Object.fromEntries(
+      character.localDefinitions.triggers.map(({ id, description }) => [description, id]),
+    );
+  });
+
+  const aliases = await settingsGroup(dialog, "Aliases", "Aliases");
+  await aliases.getByRole("button", { name: "New alias" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Pattern", { exact: true }).fill("togburn");
+  await editor.getByLabel("Name (required)").fill("Toggle burn trigger");
+  const firstStep = editor.getByRole("region", { name: "Automation step 1" });
+  await firstStep.getByLabel("Step type").selectOption("set_trigger_enabled");
+  await expect(firstStep.getByLabel("Target")).toContainText("Burn corpse");
+  await expect(firstStep.getByLabel("Target")).toContainText("Loot corpse");
+  await expect(
+    firstStep.getByLabel("Target").locator('option[value="trigger-legacy-unnamed"]'),
+  ).toHaveText("legacy unnamed pattern");
+  await firstStep.getByLabel("Target").selectOption({ label: "Burn corpse" });
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+
+  await aliases.getByRole("button", { name: "New alias" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Pattern", { exact: true }).fill("togloot");
+  await editor.getByLabel("Name (required)").fill("Toggle loot trigger");
+  const secondStep = editor.getByRole("region", { name: "Automation step 1" });
+  await secondStep.getByLabel("Step type").selectOption("set_trigger_enabled");
+  await secondStep.getByLabel("Target").selectOption({ label: "Loot corpse" });
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+
+  const savedTargets = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: {
+        aliases: Array<{
+          trigger: string;
+          steps: Array<{ target: string; targetId: string }>;
+        }>;
+      };
+    };
+    return character.localDefinitions.aliases
+      .filter(({ trigger }) => trigger === "togburn" || trigger === "togloot")
+      .map(({ steps }) => steps[0]);
+  });
+  expect(savedTargets).toEqual([
+    {
+      type: "set_trigger_enabled",
+      mode: "toggle",
+      target: "You killed %1",
+      targetId: triggerIds["Burn corpse"],
+    },
+    {
+      type: "set_trigger_enabled",
+      mode: "toggle",
+      target: "You killed %1",
+      targetId: triggerIds["Loot corpse"],
+    },
+  ]);
+
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await page.reload();
+  await connect(page);
+  const input = page.getByLabel("Command input", { exact: true });
+  const commandsBefore = endpoint.commands.length;
+  await input.fill("togburn");
+  await input.press("Enter");
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText(
+    'Alias: Trigger "Burn corpse" disabled.',
+  );
+  endpoint.sendText("You killed goblin\n");
+  await expect
+    .poll(() => endpoint.commands.slice(commandsBefore))
+    .toEqual(["get coins from corpse"]);
+
+  await input.fill("togloot");
+  await input.press("Enter");
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText(
+    'Alias: Trigger "Loot corpse" disabled.',
+  );
+  endpoint.sendText("You killed orc\n");
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText("You killed orc");
+  expect(endpoint.commands.slice(commandsBefore)).toEqual(["get coins from corpse"]);
+});
+
+test("Phase 2 highlights restore legacy discovery, validation, color authoring, and preview", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installDirectDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { highlights: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.highlights.push(
+      {
+        id: "highlight-combat",
+        enabled: true,
+        patternSource: "owl",
+        description: "Combat owl",
+        group: "combat",
+        ignoreCase: true,
+        style: { fg: "bright-cyan", bg: "ansi-17", bold: true },
+      },
+      {
+        id: "highlight-ungrouped",
+        enabled: false,
+        patternSource: "quiet",
+        description: "Quiet rule",
+        group: "",
+        ignoreCase: false,
+        style: { fg: "#ff4d4f", bg: "xterm-255", bold: false },
+      },
+    );
+    character.localDefinitions.highlights[0] = {
+      ...character.localDefinitions.highlights[0],
+      description: "Glow spell",
+      group: "Combat",
+    };
+    const shared = Object.values(graph.configurationSets).find(
+      (set) => (set as { kind: string }).kind === "highlights",
+    ) as { definitions: Array<Record<string, unknown>> };
+    shared.definitions[0] = { ...shared.definitions[0], group: "Travel" };
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const highlights = await settingsGroup(settingsDialog(page), "Highlights", "Highlights");
+  const filters = highlights.getByLabel("Highlight groups");
+  await expect(filters.getByLabel(/combat \(2\)/i)).toBeChecked();
+  await expect(filters.getByLabel(/Ungrouped \(1\)/)).toBeChecked();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await expect(highlights.getByText("No highlights match.")).toBeVisible();
+  await filters.getByLabel(/combat \(2\)/i).check();
+  await highlights.getByLabel("Search Highlights").fill("owl");
+  await expect(highlights.getByRole("button", { name: "Edit owl" })).toBeVisible();
+  await expect(highlights.getByRole("button", { name: "Edit glow" })).not.toBeVisible();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await highlights.getByLabel("Search Highlights").fill("");
+
+  const glow = highlights.getByRole("button", { name: "Edit glow" });
+  await expect(glow).toContainText("Glow spell");
+  await expect(glow).toContainText("glow");
+  await expect(glow).toContainText("Combat");
+  await expect(glow).toContainText("red b black");
+  await glow.focus();
+  await glow.press("ArrowDown");
+  await expect(highlights.getByRole("button", { name: "Edit owl" })).toBeFocused();
+  await glow.click();
+  const editor = highlights.getByRole("region", { name: "Edit highlights" });
+  await expect(editor.getByText("Pattern (regex)")).toBeVisible();
+  await expect(editor.getByLabel("Foreground")).toHaveAttribute("list", "highlight-colors");
+  await expect(
+    editor.locator('datalist#highlight-colors option[value="bright-yellow"]'),
+  ).toHaveCount(1);
+  await expect(editor.locator('datalist#highlight-colors option[value="ansi-255"]')).toHaveCount(1);
+  await expect(editor.locator('datalist#highlight-colors option[value="#ff4d4f"]')).toHaveCount(1);
+  await expect(editor.getByLabel("Foreground").locator("..").locator(".color-swatch")).toHaveCSS(
+    "background-color",
+    "rgb(205, 0, 0)",
+  );
+  await editor.getByLabel("Pattern").fill("[");
+  await editor.getByLabel("Foreground").fill("not-a-color");
+  await expect(editor.getByText(/Invalid regular expression/)).toBeVisible();
+  await expect(editor.getByText("Foreground color is invalid.")).toBeVisible();
+  const definitionsBefore = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return (
+      Object.values(graph.characterProfiles)[0] as {
+        localDefinitions: { highlights: Array<Record<string, unknown>> };
+      }
+    ).localDefinitions.highlights;
+  });
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  expect(
+    await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      return (
+        Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { highlights: Array<Record<string, unknown>> };
+        }
+      ).localDefinitions.highlights;
+    }),
+  ).toEqual(definitionsBefore);
+  await editor.getByLabel("Foreground").fill("red");
+  await editor.getByLabel("Pattern").fill("owl");
+  await expect(
+    editor.getByText("Pattern duplicates an existing highlight rule in this owner."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  expect(
+    await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      return (
+        Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { highlights: Array<Record<string, unknown>> };
+        }
+      ).localDefinitions.highlights;
+    }),
+  ).toEqual(definitionsBefore);
+  await editor.getByLabel("Pattern").fill("glow\\s+owl");
+  await editor.getByLabel("Foreground").fill("BRIGHT-YELLOW");
+  await editor.getByLabel("Background").fill("#FF4D4F");
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  await expect(editor.getByLabel("Foreground")).toHaveValue("bright-yellow");
+  await expect(editor.getByLabel("Background")).toHaveValue("#ff4d4f");
+
+  const commandsBefore = endpoint.commands.length;
+  await expect(editor.getByRole("textbox", { name: "Test output", exact: true })).toHaveValue(
+    "You have emptied the keg!",
+  );
+  await editor.getByRole("textbox", { name: "Test output", exact: true }).fill("glow owl\nquiet");
+  await expect(editor.getByText("styled")).toBeVisible();
+  const previewOutput = editor.getByLabel("Highlight test output");
+  await expect(previewOutput.locator("span")).toHaveCount(1);
+  await expect(previewOutput.locator("span")).toHaveText("glow owl");
+  await expect(previewOutput.locator("span")).toHaveCSS("color", "rgb(255, 255, 0)");
+  expect(endpoint.commands).toHaveLength(commandsBefore);
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await expect(previewOutput.locator("span")).toHaveCount(1);
+  await expect(previewOutput.locator("span")).toHaveText("owl");
+  await expect(previewOutput.locator("span")).toHaveCSS("color", "rgb(0, 255, 255)");
+  await editor.getByRole("textbox", { name: "Test output", exact: true }).fill("nothing");
+  await expect(editor.getByText("no match")).toBeVisible();
+  await editor.getByRole("button", { name: "Test output", exact: true }).click();
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", highlightPreviewCollapsed: true });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reloadedHighlights = await settingsGroup(settingsDialog(page), "Highlights", "Highlights");
+  await reloadedHighlights.getByRole("button", { name: "Edit glow" }).click();
+  await expect(
+    reloadedHighlights.getByRole("region", { name: "Edit highlights" }).getByRole("button", {
+      name: "Test output",
+    }),
+  ).toHaveAttribute("aria-expanded", "false");
+});
+
+test("Phase 2 functions restore legacy discovery, authoring, and safe preview", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installDirectDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { functions: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.functions = [
+      {
+        id: "function-greet",
+        enabled: true,
+        name: "greet",
+        description: "Legacy script",
+        group: "travel",
+        script: "send legacy script",
+      },
+      {
+        id: "function-combat",
+        enabled: true,
+        name: "combat",
+        description: "Combat script",
+        group: "Combat",
+        script: "send combat",
+      },
+      {
+        id: "function-utility",
+        enabled: true,
+        name: "utility",
+        description: "Utility script",
+        group: "Utility",
+        script: "send utility",
+      },
+      {
+        id: "function-broken",
+        enabled: true,
+        name: "broken",
+        description: "Broken script",
+        group: "",
+        script: "if",
+      },
+    ];
+    const shared = Object.values(graph.configurationSets).find(
+      (set) => (set as { kind: string }).kind === "functions",
+    ) as { definitions: Array<Record<string, unknown>> };
+    shared.definitions[0]!.group = "Travel";
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  let functions = await settingsGroup(settingsDialog(page), "Functions", "Functions");
+  const filters = functions.getByLabel("Function groups");
+
+  await expect(filters.getByLabel("Travel (2)")).toBeChecked();
+  await expect(filters.getByLabel("Combat (1)")).toBeChecked();
+  await expect(filters.getByLabel("Utility (1)")).toBeChecked();
+  await expect(filters.getByLabel("Ungrouped (1)")).toBeChecked();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await expect(functions.getByText("No functions match.")).toBeVisible();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await expect(filters.getByLabel("Travel (2)")).toBeChecked();
+  await expect(functions.getByRole("button", { name: "Edit combat" })).toBeVisible();
+  await expect(functions.getByRole("button", { name: "Edit broken" })).toContainText(
+    "1 script issue",
+  );
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await filters.getByLabel("Travel (2)").check();
+
+  const search = functions.getByLabel("Search Functions");
+  await search.fill("legacy script");
+  const greet = functions.getByRole("button", { name: "Edit greet" });
+  await expect(greet.locator("strong")).toHaveText("Legacy script");
+  await expect(greet).toContainText("greet");
+  await expect(greet).toContainText("travel");
+  await expect(greet).toContainText("1 action");
+  await search.fill("");
+
+  await functions.getByRole("button", { name: "New function" }).click();
+  let editor = functions.getByRole("region", { name: "Edit functions" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(editor.getByLabel("Script", { exact: true })).toHaveValue("send look");
+  await expect(editor.getByText("Function name needs content.")).toBeVisible();
+  await expect(editor.getByText("Function script syntax")).toBeVisible();
+  await editor.getByLabel("Function name", { exact: true }).fill("9bad");
+  await expect(editor.getByText(/Function names must start/)).toBeVisible();
+  await editor.getByRole("button", { name: "Save functions" }).click();
+  await expect(editor.getByLabel("Function name", { exact: true })).toHaveValue("9bad");
+  await editor.getByLabel("Function name", { exact: true }).fill("GREET");
+  await expect(editor.getByLabel("Function name", { exact: true })).toHaveValue("greet");
+  await expect(editor.getByText("Function name duplicates an existing function.")).toBeVisible();
+  await editor.getByRole("button", { name: "Save functions" }).click();
+  await expect(functions.getByText("Correct function warnings before saving.")).toBeVisible();
+  await editor.getByLabel("Function name", { exact: true }).fill("draft_function");
+  await editor.getByLabel("Script", { exact: true }).fill("if");
+  await expect(editor.getByRole("list").getByText(/Unknown script action/)).toBeVisible();
+  await editor
+    .getByLabel("Script", { exact: true })
+    .fill("send %0\nset $target = %1\ncall greet %2");
+
+  const commandsBeforePreview = endpoint.commands.length;
+  await editor.getByLabel("Sample arguments", { exact: true }).fill("orc shield");
+  await expect(editor.getByText("3 actions")).toBeVisible();
+  await expect(editor.getByText("Send: orc shield")).toBeVisible();
+  await expect(editor.getByText("Set $target: orc")).toBeVisible();
+  await expect(editor.getByText("call function: greet shield")).toBeVisible();
+  expect(endpoint.commands).toHaveLength(commandsBeforePreview);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+
+  await editor.getByRole("button", { name: "Function preview", exact: true }).click();
+  await expect(
+    editor.getByRole("button", { name: "Function preview", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", functionPreviewCollapsed: true });
+
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  functions = await settingsGroup(settingsDialog(page), "Functions", "Functions");
+  editor = functions.getByRole("region", { name: "Edit functions" });
+  await expect(
+    editor.getByRole("button", { name: "Function preview", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+});
+
+test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { aliases: Array<Record<string, unknown>> };
+    };
+    const localAliases = character.localDefinitions.aliases;
+    localAliases.find(({ id }) => id === "alias-local")!.group = "travel";
+    localAliases.find(({ id }) => id === "alias-local")!.description = "Quick route";
+    localAliases.find(({ id }) => id === "alias-all-steps")!.group = "Combat";
+    localAliases.find(({ id }) => id === "alias-function")!.group = "Utility";
+    const sharedAliases = Object.values(graph.configurationSets).find(
+      (set) => (set as { kind: string }).kind === "aliases",
+    ) as { definitions: Array<Record<string, unknown>> };
+    sharedAliases.definitions[0]!.group = "Travel";
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  let aliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
+  const filters = aliases.getByLabel("Alias groups");
+
+  await expect(filters.getByLabel("Travel (2)")).toBeChecked();
+  await expect(filters.getByLabel("Combat (1)")).toBeChecked();
+  await expect(filters.getByLabel("Utility (1)")).toBeChecked();
+  await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
+  await expect(filters.getByRole("button", { name: "All", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await expect(filters.getByRole("button", { name: "All", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(aliases.getByText("No aliases match.")).toBeVisible();
+  await filters.getByLabel("Travel (2)").check();
+
+  const search = aliases.getByLabel("Search Aliases");
+  await search.fill("Quick route");
+  const quick = aliases.getByRole("button", { name: "Edit quick" });
+  await expect(quick.locator("strong")).toHaveText("Quick route");
+  await expect(quick.locator("code")).toHaveText("quick");
+  await search.fill("travel");
+  await expect(quick).toBeVisible();
+  const sharedAlias = aliases.getByRole("button", { name: "Edit sharedalias" });
+  await expect(sharedAlias).toBeVisible();
+  await quick.focus();
+  await quick.press("ArrowUp");
+  await expect(sharedAlias).toBeFocused();
+  await expect(
+    aliases.getByRole("region", { name: "Edit aliases" }).getByLabel("Pattern", { exact: true }),
+  ).toHaveValue("sharedalias");
+  await search.fill("");
+
+  await aliases.getByRole("button", { name: "New alias" }).click();
+  let editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await expect(editor.getByLabel("Ignore case")).toHaveCount(0);
+  await expect(
+    editor.getByText("Name is recommended so this alias is easy to find."),
+  ).toBeVisible();
+  await expect(editor.getByText("Step 1 needs content.")).toBeVisible();
+  await editor.getByLabel("Regex").check();
+  await expect(editor.getByLabel("Ignore case")).toBeChecked();
+  await editor.getByLabel("Pattern", { exact: true }).fill("[");
+  await expect(editor.getByRole("list")).toContainText(/regular expression|unterminated/i);
+  await editor.getByLabel("Regex").uncheck();
+  await editor.getByLabel("Pattern", { exact: true }).fill("travel draft");
+  await editor.getByLabel("Name (required)", { exact: true }).fill("Draft route");
+  await editor.getByLabel("Template", { exact: true }).fill("score");
+
+  await quick.click();
+  await expect(
+    aliases.getByText("Save or Cancel the current edit before selecting another definition."),
+  ).toBeVisible();
+  await expect(editor.getByLabel("Pattern", { exact: true })).toHaveValue("travel draft");
+
+  await editor.getByLabel("Add step type").selectOption("set_alias_enabled");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const secondStep = editor.getByRole("region", { name: "Automation step 2" });
+  await secondStep.getByLabel("Target").selectOption("alias-local");
+  await expect(secondStep.getByLabel("Target")).toHaveValue("alias-local");
+  await secondStep.getByRole("button", { name: "Move step up" }).click();
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("set_alias_enabled");
+  await editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByRole("button", { name: "Remove step" })
+    .click();
+  await editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByRole("button", { name: "Remove step" })
+    .click();
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await editor.getByLabel("Template", { exact: true }).fill("score");
+
+  const commandsBeforePreview = endpoint.commands.length;
+  await editor.getByLabel("Test input", { exact: true }).fill("travel draft");
+  await expect(editor.getByText("Matches: travel draft")).toBeVisible();
+  await expect(editor.getByText("Send: score")).toBeVisible();
+  await editor.getByLabel("Add step type").selectOption("script");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  await editor.getByLabel("Script", { exact: true }).fill("while 1 == 1\n  send ping\nend");
+  await expect(editor.getByText("Send: ping")).toHaveCount(10);
+  await expect(editor.getByText(/Loop preview stopped after 10 iterations/)).toBeVisible();
+  expect(endpoint.commands).toHaveLength(commandsBeforePreview);
+
+  await editor.getByRole("button", { name: "Test input", exact: true }).click();
+  await expect(editor.getByRole("button", { name: "Test input", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", aliasPreviewCollapsed: true });
+
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  aliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await expect(editor.getByRole("button", { name: "Test input", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+});
+
+test("Phase 2 compact Alias and Trigger steps keep headers, payloads, and controls reachable", async ({
+  page,
+}) => {
+  async function expectCompactSendStep(editor: Locator): Promise<void> {
+    const firstStep = editor.getByRole("region", { name: "Automation step 1" });
+    const header = firstStep.locator(".compact-step-header");
+    const payload = firstStep.locator(".compact-step-payload");
+
+    await expect(header).toHaveCount(1);
+    await expect(payload).toHaveCount(1);
+    await expect(firstStep.getByRole("button", { name: "Move step up" })).toBeDisabled();
+    await expect(firstStep.getByRole("button", { name: "Remove step" })).toBeEnabled();
+    await expect(
+      firstStep.getByRole("button", { name: "Move step up" }).locator(".lucide-arrow-up"),
+    ).toBeVisible();
+    await expect(
+      firstStep.getByRole("button", { name: "Move step down" }).locator(".lucide-arrow-down"),
+    ).toBeVisible();
+    await expect(
+      firstStep.getByRole("button", { name: "Remove step" }).locator(".lucide-trash"),
+    ).toBeVisible();
+    await expect(firstStep.getByRole("button", { name: "Move step up" })).toHaveAttribute(
+      "title",
+      "Move step up",
+    );
+    await expect(firstStep.getByRole("button", { name: "Move step down" })).toHaveAttribute(
+      "title",
+      "Move step down",
+    );
+    await expect(firstStep.getByRole("button", { name: "Remove step" })).toHaveAttribute(
+      "title",
+      "Remove step",
+    );
+
+    if (page.viewportSize()!.width > 390) {
+      const [headerBox, payloadBox, typeBox, actionsBox, templateLabelBox, templateBox] =
+        await Promise.all([
+          header.boundingBox(),
+          payload.boundingBox(),
+          firstStep.getByLabel("Step type").boundingBox(),
+          firstStep.locator(".step-actions").boundingBox(),
+          firstStep.locator(".compact-step-payload > label").first().boundingBox(),
+          firstStep.getByLabel("Template", { exact: true }).boundingBox(),
+        ]);
+      expect(headerBox).not.toBeNull();
+      expect(payloadBox).not.toBeNull();
+      expect(typeBox).not.toBeNull();
+      expect(actionsBox).not.toBeNull();
+      expect(templateLabelBox).not.toBeNull();
+      expect(templateBox).not.toBeNull();
+      expect(typeBox!.y).toBeGreaterThanOrEqual(headerBox!.y - 2);
+      expect(typeBox!.y + typeBox!.height).toBeLessThanOrEqual(
+        headerBox!.y + headerBox!.height + 2,
+      );
+      expect(actionsBox!.y).toBeGreaterThanOrEqual(headerBox!.y - 2);
+      expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(
+        headerBox!.y + headerBox!.height + 2,
+      );
+      expect(payloadBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height - 2);
+      expect(templateLabelBox!.y).toBeCloseTo(templateBox!.y, 0);
+      expect(templateLabelBox!.height).toBeCloseTo(templateBox!.height, 0);
+    }
+
+    expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    expect(
+      await editor
+        .locator('[aria-label^="Automation step "]')
+        .evaluateAll((steps) => steps.every((step) => step.scrollWidth <= step.clientWidth)),
+    ).toBe(true);
+  }
+
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { triggers: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.triggers = [
+      {
+        id: "trigger-layout",
+        enabled: true,
+        pattern: "layout",
+        description: "Compact layout",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [
+          { type: "send_command", template: "look" },
+          {
+            type: "set_trigger_enabled",
+            mode: "toggle",
+            target: "danger",
+            targetId: "trigger-local",
+          },
+          { type: "wait", seconds: 1 },
+          { type: "run_alias", template: "quick north" },
+          { type: "call_function", target: "greet", targetId: "function-greet", template: "orc" },
+          { type: "script", script: "send score" },
+          { type: "play_sound", category: "notification", sound: "bell", volume: 0.5 },
+        ],
+      },
+    ];
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const triggers = await settingsGroup(settingsDialog(page), "Triggers", "Triggers");
+  await triggers.getByRole("button", { name: "Edit Compact layout" }).click();
+  const editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expectCompactSendStep(editor);
+  await expect(
+    editor
+      .getByRole("region", { name: "Automation step 1" })
+      .getByRole("button", { name: "Move step down" }),
+  ).toBeEnabled();
+  await expect(
+    editor
+      .getByRole("region", { name: "Automation step 7" })
+      .getByRole("button", { name: "Move step down" }),
+  ).toBeDisabled();
+
+  await expect(
+    editor
+      .getByRole("region", { name: "Automation step 6" })
+      .getByRole("textbox", { name: "Script" }),
+  ).toBeVisible();
+  await expect(
+    editor
+      .getByRole("region", { name: "Automation step 7" })
+      .getByRole("button", { name: "Test Sound" }),
+  ).toBeVisible();
+
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+  const aliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
+  await aliases.getByRole("button", { name: "Edit quick" }).click();
+  const aliasEditor = aliases.getByRole("region", { name: "Edit aliases" });
+  await expectCompactSendStep(aliasEditor);
+  await expect(aliasEditor.getByText(/Simple aliases match command words/)).toHaveCount(1);
+});
+
+test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { triggers: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.triggers = [
+      {
+        id: "trigger-first",
+        enabled: true,
+        pattern: "danger *",
+        description: "First warning",
+        group: "Travel",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "mark %1" }],
+      },
+      {
+        id: "trigger-second",
+        enabled: true,
+        pattern: "danger %1",
+        description: "Second warning",
+        group: "Combat",
+        isRegex: false,
+        ignoreCase: false,
+        gag: true,
+        steps: [{ type: "send_command", template: "flee %1" }],
+      },
+      {
+        id: "trigger-run",
+        enabled: true,
+        pattern: "legacy",
+        description: "Legacy run",
+        group: "combat",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "run_alias", template: "missing legacy arguments" }],
+      },
+      {
+        id: "trigger-ungrouped",
+        enabled: true,
+        pattern: "plain",
+        description: "Plain warning",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "plain" }],
+      },
+    ];
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.evaluate(() => {
+    const target = window as unknown as {
+      __darkflowPhase1Runtime: { session: { audio: { playLocal(...args: unknown[]): boolean } } };
+      __triggerSoundCalls: unknown[][];
+    };
+    target.__triggerSoundCalls = [];
+    target.__darkflowPhase1Runtime.session.audio.playLocal = (...args) => {
+      target.__triggerSoundCalls.push(args);
+      return true;
+    };
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  let triggers = await settingsGroup(settingsDialog(page), "Triggers", "Triggers");
+  const filters = triggers.getByLabel("Trigger groups");
+  await expect(filters.getByLabel("Combat (2)")).toBeChecked();
+  await expect(filters.getByLabel("Travel (1)")).toBeChecked();
+  await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await expect(triggers.getByText("No triggers match.")).toBeVisible();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await triggers.getByLabel("Search Triggers").fill("First warning");
+  const first = triggers.getByRole("button", { name: "Edit First warning" });
+  await expect(first.locator("strong")).toHaveText("First warning");
+  await expect(first).toContainText("danger *");
+  await triggers.getByLabel("Search Triggers").fill("");
+
+  await triggers.getByRole("button", { name: "New trigger" }).click();
+  let editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(editor.getByLabel("Regex")).not.toBeChecked();
+  await expect(editor.getByLabel("Ignore case")).not.toBeChecked();
+  await expect(editor.getByLabel("Gag line")).not.toBeChecked();
+  await expect(editor.getByText("Trigger Name needs content.")).toBeVisible();
+  await expect(editor.getByText("Pattern needs content.")).toBeVisible();
+  await editor.getByLabel("Regex").check();
+  await editor.getByLabel("Pattern").fill("[");
+  await expect(editor.getByRole("list")).toContainText(/regular expression|unterminated/i);
+  await editor.getByLabel("Pattern").fill("draft");
+  await first.click();
+  await expect(
+    triggers.getByText("Save or Cancel the current edit before selecting another definition."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+
+  await triggers.getByRole("button", { name: "Edit Legacy run" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  const legacyStep = editor.getByRole("region", { name: "Automation step 1" });
+  await expect(legacyStep.getByRole("combobox").nth(1)).toContainText(
+    "Unresolved: missing legacy arguments",
+  );
+  await triggers.getByRole("button", { name: "Edit First warning" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Add step type").selectOption("run_alias");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const runStep = editor.getByRole("region", { name: "Automation step 2" });
+  await runStep.getByRole("combobox").nth(1).selectOption("alias-local");
+  await runStep.getByLabel("Arguments").fill("north");
+  await expect(runStep.getByLabel("Arguments")).toHaveValue("north");
+  await editor.getByLabel("Add step type").selectOption("play_sound");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const soundStep = editor.getByRole("region", { name: "Automation step 3" });
+  await expect(soundStep.getByLabel("Category")).toBeVisible();
+  await expect(soundStep.getByLabel("Volume (100%)")).toHaveAttribute("type", "range");
+  await soundStep.getByLabel("Category").selectOption("alert");
+  await expect(soundStep.getByRole("combobox").nth(2)).not.toHaveValue("");
+  await soundStep.getByLabel("Volume (100%)").fill("0.5");
+  await soundStep.getByRole("button", { name: "Test Sound" }).click();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __triggerSoundCalls: unknown[][] }).__triggerSoundCalls,
+    ),
+  ).toHaveLength(1);
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+
+  await triggers.getByRole("button", { name: "Edit First warning" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(
+    editor.getByRole("region", { name: "Automation step 2" }).getByLabel("Arguments"),
+  ).toHaveValue("north");
+  const savedSound = editor.getByRole("region", { name: "Automation step 3" });
+  await expect(savedSound.getByLabel("Category")).toHaveValue("alert");
+  await expect(savedSound.getByRole("combobox").nth(2)).not.toHaveValue("");
+  await expect(savedSound.getByLabel("Volume (50%)")).toHaveValue("0.5");
+  await editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByLabel("Template")
+    .fill("unsaved %1");
+  const commandsBefore = endpoint.commands.length;
+  await editor.getByLabel("Test output", { exact: true }).fill("danger orc");
+  await expect(editor.getByText("Matches: danger *, danger %1")).toBeVisible();
+  await expect(editor.getByText("Captures: %1=orc")).toHaveCount(2);
+  await expect(editor.getByText("Gag: yes")).toBeVisible();
+  await expect(editor.getByText("Send: unsaved orc")).toBeVisible();
+  expect(endpoint.commands).toHaveLength(commandsBefore);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __triggerSoundCalls: unknown[][] }).__triggerSoundCalls,
+    ),
+  ).toHaveLength(1);
+  await editor.getByRole("button", { name: "Test output", exact: true }).click();
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", triggerPreviewCollapsed: true });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  triggers = await settingsGroup(settingsDialog(page), "Triggers", "Triggers");
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(editor.getByRole("button", { name: "Test output", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+});
+
+test("Phase 2 publishes shared automation definitions with stale protection", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const aliases = await settingsGroup(dialog, "Aliases", "Aliases");
+  await aliases.getByRole("button", { name: "Edit sharedalias" }).click();
+  let editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Template").fill("draft-shared-alias");
+
+  const externalResult = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const set = Object.values(graph.configurationSets).find(
+      (candidate) => (candidate as { kind: string }).kind === "aliases",
+    ) as { id: string; revision: number; definitions: Array<Record<string, unknown>> };
+    return (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            configuration: {
+              publishConfigurationSet(input: {
+                configSetId: string;
+                expectedRevision: number;
+                definitions: Array<Record<string, unknown>>;
+              }): { success: boolean };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.configuration.publishConfigurationSet({
+      configSetId: set.id,
+      expectedRevision: set.revision,
+      definitions: set.definitions.map((definition) => ({
+        ...definition,
+        steps: [{ type: "send_command", template: "external-shared-alias" }],
+      })),
+    });
+  });
+  expect(externalResult.success).toBe(true);
+  await expect(
+    editor.getByText("This shared definition changed while you were editing it."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+  await expect(
+    aliases.getByText("Configuration set revision no longer matches the expected value."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Reload shared definition" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await expect(editor.getByLabel("Template")).toHaveValue("external-shared-alias");
+  await editor.getByLabel("Template").fill("shared-alias-after");
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
+  await triggers.getByRole("button", { name: "Edit Shared trigger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Template").fill("shared-trigger-after");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+
+  const timers = await settingsGroup(dialog, "Timers", "Timers");
+  await timers.getByRole("button", { name: "Edit shared pulse" }).click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await editor.getByLabel("Duration seconds").fill("1");
+  await editor.getByLabel("Auto-start").check();
+  await editor.getByLabel("Template").fill("shared-timer-after");
+  await editor.getByRole("button", { name: "Save timers" }).click();
+
+  const shared = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return (Object.values(graph.configurationSets) as Array<{ kind: string }>).filter(({ kind }) =>
+      ["aliases", "triggers", "timers"].includes(kind),
+    );
+  });
+  expect(shared).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ kind: "aliases", revision: 3 }),
+      expect.objectContaining({ kind: "triggers", revision: 2 }),
+      expect.objectContaining({ kind: "timers", revision: 2 }),
+    ]),
+  );
+
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  const input = page.getByLabel("Command input", { exact: true });
+  await input.fill("sharedalias");
+  await input.press("Enter");
+  endpoint.sendText("shared danger\n");
+  await expect
+    .poll(() => endpoint.commands)
+    .toEqual(
+      expect.arrayContaining(["shared-alias-after", "shared-trigger-after", "shared-timer-after"]),
+    );
+
+  await page.reload();
+  await connect(page);
+  const reconnectedInput = page.getByLabel("Command input", { exact: true });
+  await reconnectedInput.fill("sharedalias");
+  await reconnectedInput.press("Enter");
+  await expect.poll(() => endpoint.commands).toContain("shared-alias-after");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const [groupName, label] of [
+    ["Aliases", "sharedalias"],
+    ["Triggers", "Shared trigger"],
+    ["Timers", "shared pulse"],
+  ] as const) {
+    const group = await settingsGroup(settingsDialog(page), groupName, groupName);
+    await group.getByRole("button", { name: `Edit ${label}` }).click();
+    const activeEditor = group.getByRole("region", {
+      name: `Edit ${groupName.toLowerCase()}`,
+    });
+    await activeEditor.getByLabel("Enabled", { exact: true }).uncheck();
+    await activeEditor.getByRole("button", { name: `Save ${groupName.toLowerCase()}` }).click();
+    await group.getByRole("button", { name: `Delete ${label}` }).click();
+    await confirmDefinitionDelete(page, label);
+  }
+});
+
+test("Phase 2 timers restore legacy discovery, authoring, controls, and safe preview", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { timers: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.timers.push(
+      {
+        id: "timer-combat",
+        enabled: true,
+        name: "combat pulse",
+        description: "Combat pulse",
+        group: "Combat",
+        durationMs: 30000,
+        recurring: true,
+        autoStart: true,
+        steps: [{ type: "send_command", template: "combat-pulse" }],
+      },
+      {
+        id: "timer-ungrouped",
+        enabled: true,
+        name: "plain pulse",
+        description: "Plain pulse",
+        group: "",
+        durationMs: 1000,
+        recurring: false,
+        autoStart: false,
+        steps: [{ type: "run_alias", template: "missing legacy arguments" }],
+      },
+      {
+        id: "timer-travel",
+        enabled: true,
+        name: "travel pulse",
+        description: "Travel pulse",
+        group: "Travel",
+        durationMs: 1000,
+        recurring: false,
+        autoStart: false,
+        steps: [{ type: "send_command", template: "travel-pulse" }],
+      },
+    );
+    character.localDefinitions.timers[0]!.group = "combat";
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.evaluate(() => {
+    const target = window as unknown as {
+      __darkflowPhase1Runtime: { session: { audio: { playLocal(...args: unknown[]): boolean } } };
+      __timerPreviewAudioCalls: unknown[][];
+    };
+    target.__timerPreviewAudioCalls = [];
+    target.__darkflowPhase1Runtime.session.audio.playLocal = (...args) => {
+      target.__timerPreviewAudioCalls.push(args);
+      return true;
+    };
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const timers = await settingsGroup(settingsDialog(page), "Timers", "Timers");
+  const filters = timers.getByLabel("Timer groups");
+  await expect(filters.getByLabel(/combat \(2\)/i)).toBeChecked();
+  await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await expect(timers.getByText("No timers match.")).toBeVisible();
+  await filters.getByLabel(/combat \(2\)/i).check();
+  await timers.getByLabel("Search Timers").fill("pulse");
+  await expect(timers.getByRole("button", { name: "Edit pulse" })).toBeVisible();
+  await expect(timers.getByRole("button", { name: "Edit travel pulse" })).not.toBeVisible();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await timers.getByLabel("Search Timers").fill("");
+  const pulse = timers.getByRole("button", { name: "Edit pulse" });
+  await expect(pulse.locator("code")).toHaveText("1m");
+  await expect(pulse.locator("small")).toContainText("combat · once · 1 step · Local");
+  await pulse.click();
+  let editor = timers.getByRole("region", { name: "Edit timers" });
+  await expect(editor.getByLabel("Duration seconds")).toHaveValue("60");
+  await expect(
+    editor.getByRole("button", { name: "Remove step" }).locator(".lucide-trash"),
+  ).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Start" })).toBeVisible();
+  await editor.getByRole("button", { name: "Start" }).click();
+  await expect(editor.getByText("Timer started.")).toBeVisible();
+  const started = await page.evaluate(() =>
+    (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: { terminal: { automation: { getTimerRuntimeState(id: string): unknown } } };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+  );
+  expect(started).not.toBeNull();
+  await page.waitForTimeout(2);
+  await editor.getByRole("button", { name: "Reset" }).click();
+  await expect(editor.getByText("Timer reset.")).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          __darkflowPhase1Runtime: {
+            session: { terminal: { automation: { getTimerRuntimeState(id: string): unknown } } };
+          };
+        }
+      ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+    ),
+  ).not.toEqual(started);
+  await editor.getByRole("button", { name: "Stop" }).click();
+  await expect(editor.getByText("Timer stopped.")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            __darkflowPhase1Runtime: {
+              session: {
+                terminal: { automation: { getTimerRuntimeState(id: string): unknown } };
+              };
+            };
+          }
+        ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+      ),
+    )
+    .toBeNull();
+  await editor.getByRole("button", { name: "Run now" }).click();
+  await expect(editor.getByText("Timer ran once.")).toBeVisible();
+  await expect.poll(() => endpoint.commands).toContain("pulse-before");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            __darkflowPhase1Runtime: {
+              session: {
+                terminal: { automation: { getTimerRuntimeState(id: string): unknown } };
+              };
+            };
+          }
+        ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+      ),
+    )
+    .toBeNull();
+  await editor.getByLabel("Duration seconds").fill("125");
+  await editor.getByLabel("Add step type").selectOption("run_alias");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const runStep = editor.getByRole("region", { name: "Automation step 2" });
+  await runStep.getByRole("combobox").nth(1).selectOption("alias-local");
+  await runStep.getByLabel("Arguments").fill("north");
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  expect(
+    await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      const character = Object.values(graph.characterProfiles)[0] as {
+        localDefinitions: { timers: Array<{ id: string; durationMs: number }> };
+      };
+      return character.localDefinitions.timers.find(({ id }) => id === "timer-local")!.durationMs;
+    }),
+  ).toBe(125000);
+  await expect(pulse.locator("code")).toHaveText("2m 5s");
+  await expect(pulse.locator("small")).toContainText("combat · once · 2 steps · Local");
+  await pulse.click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await expect(
+    editor.getByRole("region", { name: "Automation step 2" }).getByLabel("Arguments"),
+  ).toHaveValue("north");
+  await editor.getByLabel("Add step type").selectOption("set_variable");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const variableStep = editor.getByRole("region", { name: "Automation step 3" });
+  await variableStep.getByLabel("Variable name").fill("preview_only");
+  await variableStep.getByLabel("Template").fill("value");
+  await editor.getByLabel("Add step type").selectOption("play_sound");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const effectsBeforePreview = await page.evaluate(() => ({
+    timer: (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: {
+              automation: {
+                getAutomationVariables(): Record<string, string>;
+                getTimerRuntimeState(id: string): unknown;
+              };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+    variables: (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation.getAutomationVariables(),
+    audio: (window as unknown as { __timerPreviewAudioCalls: unknown[][] })
+      .__timerPreviewAudioCalls,
+  }));
+  const commandsBeforePreview = endpoint.commands.length;
+  await editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByLabel("Template")
+    .fill("preview-only");
+  await expect(editor.getByText("Runs after: 2m 5s. Starts manually.")).toBeVisible();
+  await expect(editor.getByText("Send: preview-only")).toBeVisible();
+  expect(endpoint.commands).toHaveLength(commandsBeforePreview);
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          __darkflowPhase1Runtime: {
+            session: { terminal: { automation: { getTimerRuntimeState(id: string): unknown } } };
+          };
+        }
+      ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+    ),
+  ).toEqual(effectsBeforePreview.timer);
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          __darkflowPhase1Runtime: {
+            session: {
+              terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+            };
+          };
+        }
+      ).__darkflowPhase1Runtime.session.terminal.automation.getAutomationVariables(),
+    ),
+  ).toEqual(effectsBeforePreview.variables);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { __timerPreviewAudioCalls: unknown[][] }).__timerPreviewAudioCalls,
+    ),
+  ).toEqual(effectsBeforePreview.audio);
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+  const legacy = timers.getByRole("button", { name: "Edit plain pulse" });
+  await legacy.click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  const legacyStep = editor.getByRole("region", { name: "Automation step 1" });
+  await expect(legacyStep.getByRole("combobox").nth(1)).toContainText(
+    "Unresolved: missing legacy arguments",
+  );
+  await editor.getByText("Template syntax", { exact: true }).click();
+  await expect(editor.getByText(/Timer templates use %0 for the timer name/)).toBeVisible();
+  await expect(editor.getByText("Runs after: 1s. Starts manually.")).toBeVisible();
+  await editor.getByRole("button", { name: "Timer preview" }).click();
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", timerPreviewCollapsed: true });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reloadedTimers = await settingsGroup(settingsDialog(page), "Timers", "Timers");
+  await reloadedTimers.getByRole("button", { name: "Edit pulse" }).click();
+  await expect(
+    reloadedTimers.getByRole("region", { name: "Edit timers" }).getByRole("button", {
+      name: "Timer preview",
+    }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await reloadedTimers.getByRole("button", { name: "New timer" }).click();
+  editor = reloadedTimers.getByRole("region", { name: "Edit timers" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(editor.getByLabel("Duration seconds")).toHaveValue("60");
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await expect(editor.getByText("Save this timer before using controls.")).toBeVisible();
+  await expect(editor.getByText("Timer name needs content.")).toBeVisible();
+  await expect(editor.getByText("Step 1 needs content.")).toBeVisible();
+  await editor.getByLabel("Name").fill("invalid duration");
+  await editor.getByLabel("Template").fill("look");
+  await editor.getByLabel("Duration seconds").fill("0");
+  await expect(
+    editor.getByText("Timer duration needs whole seconds from 1 to 86400."),
+  ).toBeVisible();
+  const timerCount = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return (
+      Object.values(graph.characterProfiles)[0] as { localDefinitions: { timers: unknown[] } }
+    ).localDefinitions.timers.length;
+  });
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  expect(
+    await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      return (
+        Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { timers: unknown[] };
+        }
+      ).localDefinitions.timers.length;
+    }),
+  ).toBe(timerCount);
+});

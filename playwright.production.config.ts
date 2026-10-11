@@ -1,0 +1,49 @@
+import { defineConfig, devices } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "e2e",
+  testMatch:
+    /(?:phase2-shell|phase2-workspace|phase2-terminal|phase2-settings|phase2-information-panels|phase2-interactions|phase2-world|phase2-ide|phase2-notifications-audio|phase2-specialty|phase2-diagnostics|production-artifact|session-disposal|transports)\.spec\.ts/,
+  fullyParallel: false,
+  workers: 1,
+  retries: process.env.CI ? 1 : 0,
+  reporter: [["list"], ["html", { open: "never" }]],
+  use: {
+    baseURL: "http://127.0.0.1:3124",
+  },
+  projects: [
+    {
+      name: "chromium",
+      testMatch:
+        /(?:phase2-shell|phase2-workspace|phase2-terminal|phase2-settings|phase2-information-panels|phase2-interactions|phase2-world|phase2-ide|phase2-notifications-audio|phase2-specialty|phase2-diagnostics|production-artifact|session-disposal)\.spec\.ts/,
+      use: devices["Desktop Chrome"],
+    },
+    {
+      name: "mobile-chromium",
+      testMatch:
+        /phase2-(workspace|terminal|settings|information-panels|interactions|world|ide|notifications-audio|specialty|diagnostics)\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      },
+    },
+    {
+      name: "transports",
+      testMatch: /transports\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        ignoreHTTPSErrors: true,
+      },
+    },
+  ],
+  webServer: {
+    command: "node server.js",
+    url: "http://127.0.0.1:3124/ping",
+    env: { PORT: "3124", MCP_ENABLED: "0", MUD_HOST: "" },
+    reuseExistingServer: false,
+    stdout: "pipe",
+    timeout: 300_000,
+  },
+});

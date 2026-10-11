@@ -1,9 +1,10 @@
 # Auto-Angler
 
 The Auto-Angler plays Darkwind's fishing mini-game unattended. It lives in
-`public/js/fishing-auto.js` (loop, timers, panel controls, slash command)
-and `public/js/fishing-auto-core.mjs` (pure decision logic, unit-tested).
-The protocol it drives is in `gmcp-darkwind-fishing.md`.
+`client/runtime/fishing-auto.ts` (the session runtime: loop, timers,
+persistence, slash command) and `public/js/fishing-auto-core.mjs` (pure
+decision logic, unit-tested). The Fishing panel carries its controls. The
+protocol it drives is in `gmcp-darkwind-fishing.md`.
 
 ## Using it
 
@@ -63,13 +64,14 @@ settles at 80%.
 
 ## Settings
 
-Persisted through `settingsManager`:
+Persisted per character in local storage under
+`darkflow-autofish:<characterProfileId>` as one record:
 
-| Key | Meaning |
+| Field | Meaning |
 | --- | --- |
-| `autofishEnabled` | Whether the addon was on when the client last ran. |
-| `autofishCastPower` | The adaptive power, 25..95. |
-| `autofishPowerOverride` | The pinned power, or null for adaptive. |
+| `enabled` | Whether the addon was on when the client last ran. |
+| `castPower` | The adaptive power, 25..95. |
+| `powerOverride` | The pinned power, or null for adaptive. |
 
 A restored "on" comes back armed but does not send `fish` by itself: at
 startup the socket sits at the login prompt, where `fish` would be typed
@@ -78,10 +80,16 @@ session opens.
 
 ## Wiring
 
-`fishing-manager.js` calls into the addon at a fixed set of points
-(attach, onSessionOpen, onBite, onFight, resolveHeld, onFightEnd,
-onServerVerdict, onSessionReset, onDisconnect, notifyManualInput) and reads
-`panelState()` when it renders. `app.js` injects `sendCommand`,
-`isConnected`, `loadSetting`, and `saveSetting` through
-`configureRuntime()`, so the addon never imports the socket or the
-settings store and the tests can capture both.
+The runtime is created per session (`session.fishingAuto`) and follows the
+server's side of the game through the session's fishing snapshot: a new
+Open, Bite, Fight, Caught, Escaped, or End drives the loop, and a lost
+connection halts it. It sends casts and hooks through the same interactions
+runtime the panel uses, and `fish` and `bait hook` through the transport
+as commands, echoed to the terminal.
+
+The panel's part is small: it mirrors the addon's actions on the stage
+(`cast-begin`, `cast`, `hook`), asks `resolveHeld()` for the held state
+each simulation frame while the addon is on, reports the end of a fight
+through `notifyFightEnd()`, and calls `notifyManualInput()` on any
+deliberate press or when the panel is closed. `/autofish` is answered in
+the terminal automation layer before the alias engine sees the line.

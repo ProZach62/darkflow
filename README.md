@@ -2,7 +2,7 @@
 
 Darkflow is the official web and desktop client for Darkwind. It is a fast, terminal-first WebSocket client with Darkwind-specific panels, mapping, media, builder tools, settings, and GMCP integrations layered around the live MUD session.
 
-The app is intentionally lightweight: Express serves static files, the browser connects directly to the MUD over WebSocket, and the frontend is native ES modules with no build step or client-side framework. Electron packages that same server and frontend for Windows, macOS, Linux, and Steam without creating a separate client fork.
+The app is intentionally lightweight: Express serves static files, the browser connects directly to the MUD over WebSocket, and the default Vite-built Svelte/Dockview client lives in `client/app/`. Retained `public/js/` modules remain copied rollback inputs, but the root no longer loads the legacy application.
 
 ## What Darkflow Supports
 
@@ -12,12 +12,11 @@ The app is intentionally lightweight: Express serves static files, the browser c
 - **Dockable interface**: left/right sidebars, floating panels, drag/drop ordering, snapping, collapse/close controls, mobile panel sheet, and persisted panel layout.
 - **Curated backgrounds**: selectable workspace artwork repeats horizontally for standard, ultrawide, and super-ultrawide displays.
 - **Player panels**: avatar, status, vitals, worth, stats, room, room image, group, inventory, enemy, chat, quests, achievements, and dynamic server-driven panels.
-- **DPS meter**: client-side damage-per-second tracking built from the `Darkwind.Combat` event stream, with live and per-fight rates, a rolling window, peak, hit and crit rates, session totals, and a recent-fight list. See [docs/dps-meter.md](docs/dps-meter.md).
+- **DPS Meter**: a client-side damage meter computed from the `Darkwind.Combat` event stream, with per-fight and session figures, recent fights, and honest dashes when damage numbers are off. See [docs/dps-meter.md](docs/dps-meter.md).
 - **Map system**: generic `Room.Info` learning plus server-authoritative `Darkwind.MapData2 2` sync, area browsing, safe speedwalk verification, and tile-based rendering.
 - **Server-driven windows**: `Darkwind.Window` modals/panels for login and in-game UI, including forms, buttons, updates, submits, actions, and close notifications.
 - **Builder IDE**: `Darkwind.IDE` opens files in the browser, supports save/compile feedback, diagnostics, and close notifications.
 - **Command ergonomics**: command history, optional history-based Tab completion, server-authoritative completion, aliases, triggers, custom key mappings, and highlight rules.
-- **Auto-Angler**: `/autofish on` (or the Auto toggle in the Fishing panel) plays the whole fishing loop unattended: it baits, casts, hooks, plays the reel fight, and re-baits until the bait runs out, then stops and says why. Any click or key in the panel hands control straight back. `/autofish` prints the run counters and cast power, and `/autofish power <n>` pins the cast power. See `docs/fishing-auto-angler.md`.
 - **Announcements and media**: announcement inbox with unread state, Giphy popups, avatar media, room imagery, and media refresh support.
 - **Portable settings**: settings, aliases, highlights, triggers, and panel layouts can be exported/imported as JSON.
 - **Darkflow branding**: app icon, favicons, manifest, About modal, and hidden brand asset page at `/darkflow-brand.html`.
@@ -37,21 +36,125 @@ Darkflow identifies itself in GMCP as:
 { "client": "Darkflow", "version": "<runtime version>" }
 ```
 
-The version comes from `public/version.json`; the custom protocol packages
-remain `Darkwind.*` for compatibility.
+In the default development mode, the version comes from
+`public/version.json`. Built and release modes use `dist/client/version.json`,
+which is generated from `package.json` during `npm run build`; the custom
+protocol packages remain `Darkwind.*` for compatibility.
+
+## Build System and Release Workflow
+
+If you are cutting a release and were not involved in the Phase 2 migration,
+read this section first. The Svelte/Dockview UI is now the default root, so both
+the player-visible application and what ships in production changed.
+
+### Architecture in one paragraph
+
+The visible shell HTML lives in `client/index.html` and mounts `client/app/phase2.ts`.
+`/phase2/` temporarily mounts the same generated application entry for certification.
+CSS, images, audio, and retained compatibility modules remain copied from `public/`.
+
+```text
+Development (npm run dev)
+  client/index.html  --Vite transform-->  /app/phase2.ts  -->  Svelte/Dockview client
+
+Production / release (npm run build)
+  dist/client/index.html  -->  dist/client/assets/phase2-*.js  -->  Svelte/Dockview client
+```
+
+### Three ways to run the client
+
+| Command                                      | When to use                                            | Root HTML                                   | Retained static assets     | Build required?                                        |
+| -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------- | -------------------------- | ------------------------------------------------------ |
+| `npm run dev`                                | Day-to-day UI and server work                          | Vite-transformed `client/index.html` at `/` | Served from `public/`      | No                                                     |
+| `npm run build` then `npm start`             | Production-like web server locally, CI, Docker runtime | Generated `dist/client/index.html`          | Copied into `dist/client/` | Yes                                                    |
+| `npm run desktop` or any `desktop:*` command | Electron development or packaging                      | Same built artifact as `npm start`          | Copied into `dist/client/` | Yes — every desktop command runs `npm run build` first |
+
+**Important:** `npm start` defaults to **built** mode. It serves `dist/client/` and
+refuses to start if that artifact is missing or invalid. It does **not** fall back
+to raw `public/` files. For local iteration without a build step, use
+`npm run dev`.
+
+Development still exposes Vite HMR for `/phase0/` and transforms the root
+client entry on the shared Express origin. Production, Docker, and packaged Electron
+expose only the generated files under `dist/client/` — no raw `.ts`, no
+`/@vite/client`, and no `public/` or `client/` source trees.
+
+### What `npm run build` produces
+
+`vite build` writes the release artifact to `dist/client/`:
+
+- `index.html` — generated shell; references the same hashed `assets/phase2-*.js` entry as `/phase2/`
+- `assets/phase2-*.js` — the Svelte/Dockview client entry; it does not hand off to `/js/app.js`
+- `phase0/` — isolated Phase 0 harness bundle (separate Vite input)
+- `js/`, `css/`, `assets/`, and the rest of `public/**` — byte-copied legacy runtime files (`public/index.html` no longer exists in source)
+- `version.json` — `{ "version": "<package.json version>" }`, written by the postbuild step
+
+The postbuild hook also runs validation gates that must pass before the artifact
+is considered releasable:
+
+- `verify:bundle` — fails if any shipped JavaScript still contains untransformed Typia factory code
+- `verify:client-artifact` — fails if `/` and `/phase2/` do not share the generated client entry, if legacy handoff returns, or if Phase 0/public-file parity or version checks fail
+
+Run `npm run build` explicitly before `npm start`, Docker image builds that
+expect a prebuilt tree, or any manual inspection of `dist/client/`. CI and
+`npm run desktop:*` already invoke it.
+
+### Where to edit what
+
+| You want to change…                                   | Edit…                                                |
+| ----------------------------------------------------- | ---------------------------------------------------- |
+| Root metadata, static links, and application mount          | `client/index.html`                                      |
+| App chrome and future multi-connection host                 | `client/app/**`                                          |
+| Session logic, GMCP owners, terminal, panels, and workspace | `client/runtime/**`, `client/gmcp/**`, `client/workspace/**` |
+| Retained legacy and compatibility rollback modules          | `public/js/**`                                           |
+| Static styles and assets                                    | `public/css/**`, `public/assets/**`                       |
+| Phase 0 harness only                                        | `client/phase0/**`                                       |
+
+Do not recreate `public/index.html`; the root entry moved to `client/index.html`
+on purpose so Vite owns Svelte startup while retained legacy modules remain
+available for rollback.
+
+### Web release checklist
+
+1. Bump the version with `npm run version:set -- <version>` (keeps `package.json`, lockfile, and `public/version.json` aligned).
+2. On the pinned toolchain (`nvm use && npm ci`), run the quality gates you normally use before merge (`npm test`, browser tests, etc.).
+3. Run `npm run build` and confirm postbuild validation succeeds.
+4. Deploy the server plus the **`dist/client/` artifact**. Docker builds and validates this artifact inside the image; its runtime image contains no `public/`, `client/`, Vite, or test sources.
+
+Browser clients detect updates via `/api/version`, which reads `dist/client/version.json` in built mode.
+
+### Desktop and Docker releases
+
+- **Desktop:** every `npm run desktop:*` command rebuilds and validates `dist/client/` before packaging. Unpacked and packaged Electron builds load the same generated root as production web — not raw `public/`. Tagging, installers, auto-update metadata, and platform-specific release steps are documented in [docs/desktop.md](docs/desktop.md).
+- **Docker:** `docker build` runs `npm run build` in a builder stage and copies only `dist/client/` into the runtime image. See the [Docker](#docker) section below.
+
+### Common release mistakes
+
+- Running `npm start` or shipping Docker/Electron without a fresh `npm run build` → intentional startup failure or stale UI.
+- Editing or expecting `public/index.html` → that file was removed; use `client/index.html`.
+- Assuming development HMR or raw TypeScript routes exist in production → they do not; only generated assets ship.
+- Bumping `package.json` without rebuilding → `dist/client/version.json` and GMCP `Core.Hello` stay stale until the next successful build.
 
 ## Quick Start
 
-Requires [Node.js](https://nodejs.org/) 18+.
+Requires [Node.js](https://nodejs.org/) 22.15.0+.
 
 ```bash
 git clone https://github.com/jasona/darkflow.git
 cd darkflow
-npm install
-npm start
+nvm use          # Node 22.15.0 — required by package.json engines
+npm ci
+npm run dev      # development server with Vite-transformed root at /
 ```
 
 Open `http://localhost:3000`. If no host is configured by the server, enter the MUD host and port manually and click **Connect**.
+
+For a production-like local server (what Docker and deployment use), build first:
+
+```bash
+npm run build
+npm start
+```
 
 To launch the desktop client during development:
 
@@ -62,24 +165,43 @@ npm run desktop
 See [Darkwind Desktop Client](docs/desktop.md) for native packages, GitHub
 auto-updates, signing, versioned releases, and Steam depot builds.
 
+### Production start
+
+This is the same **built** mode used by deployment and `npm start` without
+`--dev`. See [Build System and Release Workflow](#build-system-and-release-workflow) for what the artifact contains.
+
+```bash
+npm run build
+npm start
+```
+
+`npm start` serves the validated files under `dist/client/`. Missing or invalid
+built output is an intentional startup failure; run `npm run build` to
+regenerate it. Use `npm run dev` for development with Vite-transformed root
+HTML at `/` and HMR at `/phase0/`. Electron desktop commands build and
+serve `dist/client/` as well.
+
 ## Configuration
 
 The Express server serves static files and exposes `/config.json` and `/api/version`.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3000` | HTTP port for Darkflow |
-| `HOST` | all interfaces | Optional HTTP bind address, such as `127.0.0.1` |
-| `MUD_HOST` | empty | Default host shown in the toolbar; if set, the client auto-connects |
-| `MUD_PORT` | `4242` | Default MUD port |
-| `MUD_WSS` | enabled | Set to `0` to default to plain `ws://` |
-| `GAME_NAME` | empty | Optional game name appended to the browser title |
-| `MCP_ENABLED` | `1` | Set to `0` to not mount the MCP relay at `/mcp` |
-| `MCP_PATH` | `/mcp` | Route the MCP relay is served on (use a long random path in production) |
-| `MCP_AUTH_TOKEN` | empty | If set, MCP clients must send `Authorization: Bearer <token>` |
-| `DARKFLOW_LOG_DIR` | `./log` | Proxy log directory; Electron sets this to per-user app data |
+| Variable           | Default        | Description                                                             |
+| ------------------ | -------------- | ----------------------------------------------------------------------- |
+| `PORT`             | `3000`         | HTTP port for Darkflow                                                  |
+| `HOST`             | all interfaces | Optional HTTP bind address, such as `127.0.0.1`                         |
+| `MUD_HOST`         | empty          | Default host shown in the toolbar; if set, the client auto-connects     |
+| `MUD_PORT`         | `4242`         | Default MUD port                                                        |
+| `MUD_WSS`          | enabled        | Set to `0` to default to plain `ws://`                                  |
+| `GAME_NAME`        | empty          | Optional game name appended to the browser title                        |
+| `MCP_ENABLED`      | `1`            | Set to `0` to not mount the MCP relay at `/mcp`                         |
+| `MCP_PATH`         | `/mcp`         | Route the MCP relay is served on (use a long random path in production) |
+| `MCP_AUTH_TOKEN`   | empty          | If set, MCP clients must send `Authorization: Bearer <token>`           |
+| `DARKFLOW_LOG_DIR` | `./log`        | Proxy log directory; Electron sets this to per-user app data            |
 
-The runtime client version is stored in `public/version.json` and returned by `/api/version` with `Cache-Control: no-store`.
+The runtime client version is returned by `/api/version` with
+`Cache-Control: no-store`. Legacy and development serving read
+`public/version.json`; built serving reads the generated
+`dist/client/version.json`.
 
 ## MCP / MUD test harness
 
@@ -109,14 +231,29 @@ docker build -t darkflow-client .
 docker run -p 3000:3000 darkflow-client
 ```
 
+The multi-stage image builds and validates `dist/client/` inside the builder.
+Its production-only runtime contains the server, runtime libraries, and built
+client, but not `public/`, client source, tests, or Vite.
+
+Deterministic connection coverage is available without contacting Darkwind:
+
+```bash
+npm run test:transports  # built Chromium against local ws/wss/telnet/telnets fixtures
+npm run test:mcp         # clean install and test of the separately owned MCP harness
+```
+
 ## Project Layout
 
 ```
 .
-├── server.js                    # Express static server plus config/version endpoints
+├── server.js                    # Express server with legacy, development, and opt-in built modes
 ├── desktop/                     # Electron main/preload, updater, and release helpers
+├── client/
+│   ├── index.html               # Vite-transformed Darkflow app shell
+│   ├── app/
+│   │   └── bootstrap.ts         # Root bootstrap with Typia transform proof
+│   └── phase0/                  # Phase 0 harness (Typia, HMR, Dockview)
 ├── public/
-│   ├── index.html               # Darkflow app shell
 │   ├── darkflow-brand.html      # Hidden brand asset download page
 │   ├── site.webmanifest         # PWA/app metadata
 │   ├── version.json             # Runtime client version
@@ -149,6 +286,8 @@ docker run -p 3000:3000 darkflow-client
 │       ├── completion.js        # Local/server Tab completion
 │       ├── announcements-manager.js
 │       └── giphy-manager.js
+├── scripts/                     # Build artifact generation and validation commands
+├── dist/client/                 # Ignored, generated built-client artifact
 ├── docs/                        # GMCP protocol + MCP/test-harness documentation
 ├── mud-test-mcp/                # MCP relay + CLI MUD test harness (see docs/mcp.md)
 ├── Dockerfile
@@ -190,8 +329,17 @@ The generated source sheet is stored as `Gemini_Generated_Image_itemzcitemzcitem
 
 ## Development Notes
 
-- No frontend build step is required; edit files in `public/` directly.
-- Keep `/api/version` backed by `public/version.json`; the client uses it for update detection and GMCP `Core.Hello`.
+- Use `npm run dev` for day-to-day work; it serves a Vite-transformed root at
+  `/` while legacy assets and modules remain under `public/`. HMR for the Phase 0
+  harness is at `/phase0/`.
+- `npm start`, packaged Electron, and Docker require a freshly built,
+  validated `dist/client/` artifact and do not carry a `public/` fallback.
+  See [Build System and Release Workflow](#build-system-and-release-workflow).
+- Run `npm run build` before `npm start` or any release packaging; the build
+  rewrites and validates `dist/client/version.json` from `package.json`.
+- Keep `/api/version` aligned with the selected client root: `public/version.json`
+  for development and generated `dist/client/version.json` for built mode. The
+  client uses it for update detection and GMCP `Core.Hello`.
 - Keep the visible product name as **Darkflow**, but do not rename existing `Darkwind.*` GMCP packages without a coordinated server compatibility plan.
 - The settings export format remains `darkwind-client-settings-export` for backward compatibility, even though download filenames now use `darkflow-settings-...json`.
 - Keep browser game audio behind `sound-manager.js` and `howler-audio-engine.js`; the server exposes the pinned Howler core runtime at `/vendor/howler.core.min.js` for both web and Electron clients.
@@ -200,7 +348,8 @@ The generated source sheet is stored as `Gemini_Generated_Image_itemzcitemzcitem
 
 ## Browser Support
 
-Chrome 90+, Firefox 90+, Safari 15+, Edge 90+ with native WebSocket support.
+Chrome 111+, Edge 111+, Firefox 114+, Safari 16.4+ with native WebSocket
+support (Vite 8 `baseline-widely-available` default).
 
 Desktop packages target current supported releases of Windows, macOS, and
 mainstream x64 Linux distributions.
@@ -212,10 +361,10 @@ mainstream x64 Linux distributions.
 This package includes or depends on third-party components under their own
 licenses:
 
-| Dependency | License |
-| --- | --- |
-| [Electron](https://github.com/electron/electron) | MIT |
-| [electron-updater](https://github.com/electron-userland/electron-builder) | MIT |
-| [express](https://github.com/expressjs/express) | MIT |
-| [howler.js](https://howlerjs.com/) | MIT |
-| [ws](https://github.com/websockets/ws) | MIT |
+| Dependency                                                                | License |
+| ------------------------------------------------------------------------- | ------- |
+| [Electron](https://github.com/electron/electron)                          | MIT     |
+| [electron-updater](https://github.com/electron-userland/electron-builder) | MIT     |
+| [express](https://github.com/expressjs/express)                           | MIT     |
+| [howler.js](https://howlerjs.com/)                                        | MIT     |
+| [ws](https://github.com/websockets/ws)                                    | MIT     |

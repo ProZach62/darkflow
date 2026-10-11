@@ -1,0 +1,81 @@
+import type {
+  AliasDefinition,
+  CommandButtonDefinition,
+  ConfigKind,
+  FunctionDefinition,
+  HighlightDefinition,
+  KeyMappingDefinition,
+  TimerDefinition,
+  TriggerDefinition,
+} from "../model/configuration";
+
+/** Collapses surrounding and internal whitespace the way legacy managers do. */
+export function normalizeWhitespace(value: string): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+/** Alias identity: normalizeWhitespace(trigger).toLowerCase() — alias-manager.js:364 */
+export function aliasIdentityKey(definition: AliasDefinition): string {
+  return normalizeWhitespace(definition.trigger).toLowerCase();
+}
+
+/** Trigger identity: normalized Name, with a namespaced pattern fallback for unnamed records. */
+export function triggerIdentityKey(definition: TriggerDefinition): string {
+  const name = normalizeWhitespace(definition.description).toLowerCase();
+  return name ? `name:${name}` : `pattern:${String(definition.pattern ?? "").trim()}`;
+}
+
+/** Highlight identity: trim(patternSource) only — highlight-manager.js:472 */
+export function highlightIdentityKey(definition: HighlightDefinition): string {
+  return String(definition.patternSource ?? "").trim();
+}
+
+/** Function identity: normalizeWhitespace(name).toLowerCase() — function-manager.js:15-16 */
+export function functionIdentityKey(definition: FunctionDefinition): string {
+  return normalizeWhitespace(definition.name).toLowerCase();
+}
+
+/** Key-mapping identity: trim(code), case-sensitive — settings-manager.js:1198-1201 */
+export function keyMappingIdentityKey(definition: KeyMappingDefinition): string {
+  return typeof definition.code === "string" ? definition.code.trim() : "";
+}
+
+/** Timer identity: normalizeWhitespace(name).toLowerCase() — timer-manager.js:258 */
+export function timerIdentityKey(definition: TimerDefinition): string {
+  return normalizeWhitespace(definition.name).toLowerCase();
+}
+
+/**
+ * Command button identity is the id itself: two buttons with the same label
+ * are two buttons, and a shared set's button is never overridden by a local
+ * one that happens to read the same.
+ */
+export function commandButtonIdentityKey(definition: CommandButtonDefinition): string {
+  return typeof definition.id === "string" ? definition.id : "";
+}
+
+export function identityKeyFor(kind: ConfigKind, definition: unknown): string {
+  switch (kind) {
+    case "aliases":
+      return aliasIdentityKey(definition as AliasDefinition);
+    case "triggers":
+      return triggerIdentityKey(definition as TriggerDefinition);
+    case "highlights":
+      return highlightIdentityKey(definition as HighlightDefinition);
+    case "functions":
+      return functionIdentityKey(definition as FunctionDefinition);
+    case "keyMappings":
+      return keyMappingIdentityKey(definition as KeyMappingDefinition);
+    case "timers":
+      return timerIdentityKey(definition as TimerDefinition);
+    case "commandButtons":
+      return commandButtonIdentityKey(definition as CommandButtonDefinition);
+  }
+}
+
+/** Dispatches identity normalization once the configuration kind is already selected. */
+export function identityKeyForDefinition(kind: ConfigKind, definition: unknown): string {
+  return identityKeyFor(kind, definition);
+}

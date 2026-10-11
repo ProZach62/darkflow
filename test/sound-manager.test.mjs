@@ -30,6 +30,7 @@ class FakeAudioEngine {
     this.plays = [];
     this.stops = [];
     this.globalVolumes = [];
+    this.playbackVolumes = [];
     this.nextId = 1;
   }
 
@@ -72,6 +73,18 @@ class FakeAudioEngine {
     this.stops.push({ handle, id });
   }
 
+  setPlaybackVolume(handle, volume, id) {
+    this.playbackVolumes.push({ handle, volume, id });
+  }
+
+  getPlaybackVolume() {
+    return this.currentVolume === undefined ? null : this.currentVolume;
+  }
+
+  fade(handle, from, to, durationMs, id) {
+    (this.fades ??= []).push({ handle, from, to, durationMs, id });
+  }
+
   emit(playIndex, event, error) {
     const playback = this.plays[playIndex];
     const matching = playback.handle.listeners.filter((listener) => (
@@ -102,8 +115,8 @@ test('queues locked sounds and loops, then drains each once after unlock', async
   assert.equal(manager.getSettings().pendingCount, 0);
   assert.equal(engine.plays.length, 2);
   assert.deepEqual(engine.plays.map((playback) => playback.options), [
-    { volume: 0.5 },
-    { volume: 0.25, loop: true },
+    { volume: 0.25 },
+    { volume: 0.125, loop: true },
   ]);
 });
 
@@ -122,7 +135,7 @@ test('reuses one Howl while tracking overlapping playback IDs independently', ()
   assert.equal(manager.getDebugSnapshot().activeOneShots, 1);
   engine.emit(1, 'play');
   assert.equal(manager.getDebugSnapshot().lastPlayResult.ok, true);
-  assert.ok(Math.abs(manager.getDebugSnapshot().lastPlayResult.volume - 0.525) < Number.EPSILON);
+  assert.ok(Math.abs(manager.getDebugSnapshot().lastPlayResult.volume - 0.2625) < Number.EPSILON);
 });
 
 test('uses HTML5 streaming only for long-form music keys', () => {
@@ -133,6 +146,42 @@ test('uses HTML5 streaming only for long-form music keys', () => {
 
   assert.equal(engine.created[0].options.html5, false);
   assert.equal(engine.created[1].options.html5, true);
+});
+
+test('controls phase 2 login music independently of ambient sounds', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+
+  manager.setCategoryEnabled('ambient', false);
+  manager.loop('music', 'darkwind-theme', 'login-theme');
+  assert.equal(engine.plays.length, 1);
+  assert.equal(engine.created[0].src, '/assets/sounds/darkwind-theme.mp3');
+
+  manager.setCategoryEnabled('music', false);
+  assert.equal(engine.playbackVolumes.at(-1).volume, 0);
+  assert.equal(manager.getSettings().categoryEnabled.music, false);
+  manager.setCategoryEnabled('music', true);
+  assert.equal(engine.playbackVolumes.at(-1).volume, 0.5);
+  assert.equal(engine.plays.length, 1);
+  assert.equal(manager.getSettings().categoryEnabled.music, true);
+});
+
+test('applies and persists independent category volumes without losing muted levels', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+
+  manager.play('combat', 'hit');
+  manager.loop('ambient', 'rain', 'weather');
+  assert.deepEqual(engine.plays.map(({ options }) => options.volume), [0.5, 0.5]);
+
+  manager.setCategoryVolume('combat', 0.8);
+  manager.setCategoryVolume('ambient', 0.25);
+  assert.deepEqual(engine.playbackVolumes.map(({ volume }) => volume), [0.8, 0.25]);
+
+  manager.setCategoryEnabled('ambient', false);
+  manager.setCategoryEnabled('ambient', true);
+  assert.equal(manager.getSettings().categoryVolume.ambient, 0.25);
+  assert.deepEqual(engine.playbackVolumes.map(({ volume }) => volume), [0.8, 0.25, 0, 0.25]);
+  assert.equal(engine.plays.length, 2);
+  assert.equal(JSON.parse(storage.get('darkwind-sound-settings')).categoryVolume.ambient, 0.25);
 });
 
 test('replaces and stops loops by Darkflow semantic ID', () => {
@@ -148,6 +197,58 @@ test('replaces and stops loops by Darkflow semantic ID', () => {
   assert.deepEqual(manager.getDebugSnapshot().loops, []);
 });
 
+test('resets active session playback without resetting application sound state', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+  manager.setVolume(0.4);
+  manager.setCategoryEnabled('spell', false);
+  manager.play('combat', 'hit');
+  manager.loop('ambient', 'rain', 'weather');
+  engine.emit(0, 'play');
+
+  const settings = manager.getSettings();
+  const cachedSounds = manager.getDebugSnapshot().cachedSounds;
+  assert.equal(manager.getDebugSnapshot().lastPlayResult.ok, true);
+
+  manager.resetSessionPlayback();
+
+  const reset = manager.getDebugSnapshot();
+  assert.deepEqual(engine.stops.map(({ id }) => id), [1, 2]);
+  assert.equal(engine.created.every(({ listeners }) => listeners.length === 0), true);
+  assert.deepEqual(manager.getSettings(), settings);
+  assert.deepEqual(reset.pendingSounds, []);
+  assert.deepEqual(reset.pendingLoops, []);
+  assert.deepEqual(reset.cachedSounds, cachedSounds);
+  assert.equal(reset.activeOneShots, 0);
+  assert.deepEqual(reset.loops, []);
+  assert.equal(reset.lastPlayResult, null);
+  assert.equal(manager.isAudioUnlocked(), true);
+  assert.deepEqual(engine.globalVolumes, [0.7, 0.4]);
+
+  manager.resetSessionPlayback();
+  assert.equal(engine.stops.length, 2);
+  assert.deepEqual(manager.getDebugSnapshot().cachedSounds, cachedSounds);
+});
+
+test('clears pending session playback and remembered loop metadata', async () => {
+  const { engine, manager } = createManager();
+  manager.play('combat', 'hit');
+  manager.loop('ambient', 'rain', 'weather');
+  assert.equal(manager.getSettings().pendingCount, 2);
+
+  manager.resetSessionPlayback();
+  assert.equal(manager.getSettings().pendingCount, 0);
+
+  await manager.unlockFromUserGesture();
+  document.hidden = true;
+  for (const callback of documentListeners.get('visibilitychange') || []) callback();
+  document.hidden = false;
+  for (const callback of documentListeners.get('visibilitychange') || []) callback();
+
+  assert.equal(engine.plays.length, 0);
+  assert.deepEqual(manager.getDebugSnapshot().loops, []);
+  assert.equal(manager.isAudioUnlocked(), true);
+});
+
 test('applies master volume globally and preserves the stored settings schema', () => {
   const { engine, manager } = createManager({ unlocked: true });
 
@@ -159,6 +260,7 @@ test('applies master volume globally and preserves the stored settings schema', 
     enabled: true,
     volume: 0.4,
     categoryEnabled: manager.getSettings().categoryEnabled,
+    categoryVolume: manager.getSettings().categoryVolume,
   });
   const originalWarn = console.warn;
   console.warn = () => {};
@@ -204,4 +306,53 @@ test('stops loops while hidden and resumes remembered loops when visible', () =>
   for (const callback of documentListeners.get('visibilitychange') || []) callback();
   assert.deepEqual(manager.getDebugSnapshot().loops, ['weather']);
   assert.equal(engine.plays.length, 2);
+});
+
+test('a loop can fade in from silence and fade out before it stops', async () => {
+  const { engine, manager } = createManager({ unlocked: true });
+  manager.setCategoryVolume('music', 0.5);
+
+  manager.loop('music', 'boss-battle', 'boss', 0.6, { fadeInMs: 1500 });
+  assert.equal(engine.plays[0].options.volume, 0, 'it starts silent');
+  assert.deepEqual(
+    engine.fades.map(({ from, to, durationMs, id }) => ({ from, to, durationMs, id })),
+    [{ from: 0, to: 0.3, durationMs: 1500, id: 1 }],
+  );
+
+  // Stopped part way up, it fades from where it is, not from full.
+  engine.currentVolume = 0.1;
+  manager.stop('music', 'boss', { fadeOutMs: 20 });
+  assert.deepEqual(manager.getDebugSnapshot().loops, [], 'it is no longer a loop by ID');
+  assert.equal(engine.stops.length, 0, 'but it is still sounding');
+  assert.deepEqual(
+    engine.fades.slice(1).map(({ from, to, durationMs, id }) => ({ from, to, durationMs, id })),
+    [{ from: 0.1, to: 0, durationMs: 20, id: 1 }],
+  );
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.deepEqual(engine.stops.map((stop) => stop.id), [1], 'and stops once the fade is done');
+});
+
+test('the same loop ID can start again over a fading tail, and a reset cuts the tail', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+  manager.loop('music', 'boss-battle', 'boss', 0.6);
+  assert.equal(engine.plays[0].options.volume > 0, true, 'no fade asked, none given');
+  manager.stop('music', 'boss', { fadeOutMs: 5000 });
+  manager.loop('music', 'boss-battle', 'boss', 0.6, { fadeInMs: 1000 });
+  assert.equal(engine.stops.length, 0);
+  assert.deepEqual(manager.getDebugSnapshot().loops, ['boss']);
+
+  manager.resetSessionPlayback();
+  assert.deepEqual(engine.stops.map((stop) => stop.id).sort(), [1, 2], 'the tail goes with everything else');
+});
+
+test('fade lengths are bounded and nonsense means no fade', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+  manager.loop('music', 'boss-battle', 'a', 1, { fadeInMs: 999999 });
+  assert.equal(engine.fades[0].durationMs, 10000);
+  manager.loop('music', 'boss-battle', 'b', 1, { fadeInMs: -5 });
+  manager.loop('music', 'boss-battle', 'c', 1, { fadeInMs: 'soon' });
+  assert.equal(engine.fades.length, 1);
+  manager.stop('music', 'b', { fadeOutMs: 0 });
+  assert.equal(engine.stops.length, 1, 'no fade out means a cut');
+  manager.stopAll();
 });

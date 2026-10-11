@@ -29,7 +29,7 @@ globalThis.window = {
   },
 };
 
-const { panelRenderers } = await import('../public/js/panel-renderers.js');
+const { renderDpsPanel } = await import('../public/js/dps-panel-renderer.mjs');
 const {
   createDpsState,
   reduceDpsEvents,
@@ -79,7 +79,7 @@ function swing(seq, overrides = {}) {
 
 test('dps pane waits for combat before it shows numbers', () => {
   const bodyEl = { innerHTML: '' };
-  panelRenderers.dps(bodyEl, null);
+  renderDpsPanel(bodyEl, null);
   assert.match(bodyEl.innerHTML, /Waiting for combat/);
 });
 
@@ -92,7 +92,7 @@ test('dps pane renders a live fight with its target and totals', () => {
     swing(2, { result: 'critical', damage: 600 }),
   ]), NOW);
 
-  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 10_000));
+  renderDpsPanel(bodyEl, selectDpsView(state, NOW + 10_000));
 
   assert.match(bodyEl.innerHTML, /dps-panel-active/);
   assert.match(bodyEl.innerHTML, /an ash drake/);
@@ -108,7 +108,7 @@ test('dps pane names the idle state instead of a stale target', () => {
   state = reduceDpsEvents(state, eventFrame([swing(1, { damage: 400 })]), NOW);
   state = reduceDpsState(state, stateFrame({ active: false, outcome: 'victory' }), NOW + 4000);
 
-  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 5000));
+  renderDpsPanel(bodyEl, selectDpsView(state, NOW + 5000));
 
   assert.match(bodyEl.innerHTML, /Idle/);
   assert.match(bodyEl.innerHTML, /Last fight DPS/);
@@ -123,7 +123,7 @@ test('dps pane explains missing damage numbers rather than showing zeroes', () =
     { seq: 1, kind: 'attack', perspective: 'outgoing', result: 'hit', summary: 'You hit an ash drake.' },
   ]), NOW);
 
-  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 1000));
+  renderDpsPanel(bodyEl, selectDpsView(state, NOW + 1000));
 
   assert.match(bodyEl.innerHTML, /combatbrief damage/);
   // The damage figures are dashed out rather than shown as an unearned zero.
@@ -147,7 +147,7 @@ test('dps pane keeps a real session total when only the live fight lacks numbers
     { seq: 1, kind: 'attack', perspective: 'outgoing', result: 'hit', summary: 'You hit.' },
   ], { encounter_id: 'encounter-13' }), NOW + 3000);
 
-  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 4000));
+  renderDpsPanel(bodyEl, selectDpsView(state, NOW + 4000));
 
   assert.match(bodyEl.innerHTML, /combatbrief damage/, 'the live fight is flagged');
   assert.match(bodyEl.innerHTML, /750/, 'the banked session total survives');
@@ -155,7 +155,7 @@ test('dps pane keeps a real session total when only the live fight lacks numbers
 
 test('dps pane shows a dash for a rate it cannot compute yet', () => {
   const bodyEl = { innerHTML: '', querySelectorAll: () => [] };
-  panelRenderers.dps(bodyEl, selectDpsView(createDpsState(), NOW));
+  renderDpsPanel(bodyEl, selectDpsView(createDpsState(), NOW));
   assert.match(bodyEl.innerHTML, /--/);
   assert.match(bodyEl.innerHTML, /No combat recorded yet/);
 });
@@ -180,7 +180,7 @@ test('dps pane lists recent fights newest first', () => {
     state = reduceDpsState(state, { ...frame, active: false }, NOW + 2000);
   }
 
-  panelRenderers.dps(bodyEl, selectDpsView(state, NOW + 3000));
+  renderDpsPanel(bodyEl, selectDpsView(state, NOW + 3000));
 
   const batIndex = bodyEl.innerHTML.indexOf('a cave bat');
   const drakeIndex = bodyEl.innerHTML.indexOf('an ash drake');
@@ -198,7 +198,7 @@ test('dps pane escapes a hostile target name', () => {
     ],
   }), NOW);
 
-  panelRenderers.dps(bodyEl, selectDpsView(state, NOW));
+  renderDpsPanel(bodyEl, selectDpsView(state, NOW));
 
   assert.doesNotMatch(bodyEl.innerHTML, /<img src=x/);
   assert.match(bodyEl.innerHTML, /&lt;img/);
@@ -226,7 +226,7 @@ test('dps pane reports the session crit rate across fights', () => {
   assert.equal(view.session.crits, 1);
   assert.equal(view.session.hits, 3);
 
-  panelRenderers.dps(bodyEl, view);
+  renderDpsPanel(bodyEl, view);
 
   // Crits are a share of landed hits, matching the per-fight row above it.
   assert.match(bodyEl.innerHTML, /1 \(33%\)/);
@@ -245,9 +245,25 @@ test('session crit counts survive damage numbers being turned off', () => {
   const view = selectDpsView(state, NOW + 2000);
   assert.equal(view.missingDamageNumbers, true);
 
-  panelRenderers.dps(bodyEl, view);
+  renderDpsPanel(bodyEl, view);
 
   // Damage figures are dashed, but the crit tally is still real and shown.
   assert.match(bodyEl.innerHTML, /combatbrief damage/);
   assert.match(bodyEl.innerHTML, /1 \(50%\)/);
+});
+
+test('the reset button calls back instead of dispatching a document event', () => {
+  const clicks = [];
+  const bodyEl = {
+    innerHTML: '',
+    querySelectorAll() {
+      return [{ addEventListener(type, handler) { clicks.push([type, handler]); } }];
+    },
+  };
+  let resets = 0;
+  renderDpsPanel(bodyEl, selectDpsView(createDpsState(), NOW), { onReset: () => { resets += 1; } });
+  assert.equal(clicks.length, 1);
+  assert.equal(clicks[0][0], 'click');
+  clicks[0][1]();
+  assert.equal(resets, 1);
 });

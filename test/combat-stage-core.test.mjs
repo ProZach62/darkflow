@@ -2,8 +2,37 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const {
+  ACTION_CONTACT_FRACTION,
+  LOW_HEALTH_ALERT,
+  LOW_HEALTH_REARM,
+  STREAK_MIN,
+  createFightRecap,
+  fightSummaryRows,
+  formatFightDuration,
+  heartbeat,
+  lowHealthAlert,
+  lowHealthLevel,
+  recapEvents,
+  recapStreaks,
+  AURA_EXPIRING_SECONDS,
+  bossKey,
+  hasBossTag,
+  isBossName,
+  bossSightings,
+  matchesBossSighting,
+  BOSS_TRACKS,
+  pickBossTrack,
+  MAX_ALLIES,
+  allyLayout,
+  auraLook,
+  partyAllies,
+  summarizeAuras,
   ACTION_DURATION_MS,
+  actionSoundCue,
+  encounterSoundCue,
+  sceneAmbience,
   buildAction,
+  buildSceneAction,
   computeStageLayout,
   createSeededRandom,
   idleOffset,
@@ -11,6 +40,11 @@ const {
   resolveActionSides,
   resolveStageBackdrop,
   sampleAction,
+  sampleSceneAction,
+  sceneLayout,
+  targetEntrance,
+  bystanderLayout,
+  bystanderPresence,
 } = await import('../public/js/combat-stage-core.mjs');
 
 const view = {
@@ -44,13 +78,13 @@ test('layout keeps the tokens inside the stage at any size', () => {
 
 test('backdrop resolves room terrain to a shipped tile and never concatenates server text', () => {
   assert.deepEqual(resolveStageBackdrop({ terrain: 'forest' }),
-    { terrain: 'forest', tile: '/assets/tiles/forest.jpg' });
+    { terrain: 'forest', tile: '/assets/tiles/forest.jpg', image: '' });
   assert.deepEqual(resolveStageBackdrop({ environment: ['dark', 'underground cave'] }),
-    { terrain: 'underground', tile: '/assets/tiles/underground.jpg' });
+    { terrain: 'underground', tile: '/assets/tiles/underground.jpg', image: '' });
   assert.deepEqual(resolveStageBackdrop({ terrain: '../../etc/passwd' }),
-    { terrain: 'outside', tile: '/assets/tiles/outside.jpg' });
+    { terrain: 'outside', tile: '/assets/tiles/outside.jpg', image: '' });
   assert.deepEqual(resolveStageBackdrop(null),
-    { terrain: 'outside', tile: '/assets/tiles/outside.jpg' });
+    { terrain: 'outside', tile: '/assets/tiles/outside.jpg', image: '' });
 });
 
 test('perspective decides sides before actor ids, and observed fights fall back to ids', () => {
@@ -183,4 +217,428 @@ test('reduced motion removes movement but keeps the outcome readable', () => {
   assert.deepEqual(burst.particles, [], 'no particle spray under reduced motion');
   assert.deepEqual(idleOffset('player', 1234, true), { x: 0, y: 0 });
   assert.notEqual(idleOffset('player', 1234, false).y, 0);
+});
+
+test('a room image rides ahead of the terrain tile as the backdrop', () => {
+  assert.deepEqual(resolveStageBackdrop({ terrain: 'forest' }, { url: 'https://media.example/clearing.png' }),
+    { terrain: 'forest', tile: '/assets/tiles/forest.jpg', image: 'https://media.example/clearing.png' });
+  assert.equal(resolveStageBackdrop({ terrain: 'forest' }, '/room/42.jpg').image, '/room/42.jpg', 'root-relative art is fine');
+  assert.equal(resolveStageBackdrop({ terrain: 'forest' }, 'javascript:alert(1)').image, '', 'only http(s) or root-relative addresses are drawn');
+  assert.equal(resolveStageBackdrop({ terrain: 'forest' }, { url: 42 }).image, '');
+  assert.equal(resolveStageBackdrop(null, null).image, '');
+});
+
+test('the scene layout centres a lone player and steps them left as the opponent arrives', () => {
+  const layout = computeStageLayout(1000, 400);
+  const solo = sceneLayout(layout, 0);
+  assert.equal(solo.player.x, 500, 'alone, the player stands centre stage');
+  assert.equal(solo.player.y, layout.player.y);
+  assert.deepEqual(solo.target, layout.target, 'the opponent slot does not move');
+  const duel = sceneLayout(layout, 1);
+  assert.equal(duel.player.x, layout.player.x, 'a present opponent puts the player in the duel position');
+  const mid = sceneLayout(layout, 0.5);
+  assert.ok(mid.player.x > layout.player.x && mid.player.x < 500, 'the step is gradual');
+  assert.equal(sceneLayout(layout, 7).duel, 1, 'presence is clamped');
+  assert.equal(sceneLayout(layout, NaN).player.x, 500);
+});
+
+test('the opponent drops in from above and fades up to full presence', () => {
+  assert.deepEqual(targetEntrance(0, false), { alpha: 0, y: -1.4, scale: 0.86 });
+  const half = targetEntrance(0.5, false);
+  assert.ok(half.alpha > 0 && half.alpha <= 1);
+  assert.ok(half.y < 0 && half.y > -1.4, 'still above the ground line');
+  assert.ok(half.scale > 0.86 && half.scale < 1);
+  assert.deepEqual(targetEntrance(1, false), { alpha: 1, y: 0, scale: 1 });
+  assert.deepEqual(targetEntrance(0.3, true), { alpha: 1, y: 0, scale: 1 }, 'reduced motion cuts straight in');
+  assert.deepEqual(targetEntrance(0, true), { alpha: 0, y: 0, scale: 1 });
+});
+
+test('a look glances left, turns back, and shades the eyes before settling', () => {
+  const action = buildSceneAction({ kind: 'look', seq: 3 }, 1000);
+  assert.equal(action.duration, 1500);
+  assert.equal(action.facing, 1);
+  const early = sampleSceneAction(action, 1000 + 1500 * 0.05);
+  assert.equal(early.facing, 0, 'the figure keeps its rest facing at first');
+  const glance = sampleSceneAction(action, 1000 + 1500 * 0.3);
+  assert.equal(glance.facing, -1, 'then turns to glance left');
+  assert.equal(glance.phase, null);
+  const shade = sampleSceneAction(action, 1000 + 1500 * 0.7);
+  assert.equal(shade.facing, 1);
+  assert.equal(shade.phase.to, 'look');
+  assert.equal(shade.phase.t, 1);
+  const settle = sampleSceneAction(action, 1000 + 1500 * 0.93);
+  assert.equal(settle.phase.from, 'look');
+  assert.equal(settle.phase.to, 'idle');
+  assert.ok(settle.active);
+  const done = sampleSceneAction(action, 2500);
+  assert.equal(done.active, false);
+  assert.deepEqual([done.x, done.y, done.alpha, done.facing, done.phase], [0, 0, 1, 0, null]);
+  assert.equal(sampleSceneAction(action, 1300, { reducedMotion: true }).facing, 0, 'reduced motion holds still');
+});
+
+test('a walk enters from the edge opposite its facing, striding, and settles at the rest spot', () => {
+  const west = buildSceneAction({ kind: 'walk', facing: -1 }, 0);
+  const start = sampleSceneAction(west, 0);
+  assert.ok(start.x > 1.5, 'a westward walk starts off stage right: ' + start.x);
+  assert.equal(start.alpha, 0);
+  assert.equal(start.facing, -1);
+  assert.equal(start.phase.from, 'stepA');
+  const mid = sampleSceneAction(west, 450);
+  assert.ok(mid.x > 0 && mid.x < start.x, 'still arriving');
+  assert.equal(mid.alpha, 1);
+  assert.ok(['stepA', 'stepB'].includes(mid.phase.from) && ['stepA', 'stepB'].includes(mid.phase.to));
+  const late = sampleSceneAction(west, 850);
+  assert.equal(late.x, 0, 'home before the settle finishes');
+  assert.equal(late.phase.to, 'idle');
+  const east = buildSceneAction({ kind: 'walk', facing: 1 }, 0);
+  assert.ok(sampleSceneAction(east, 0).x < -1.5, 'an eastward walk starts off stage left');
+  assert.equal(sampleSceneAction(east, 0).facing, 1);
+  assert.equal(buildSceneAction({ kind: 'dance' }, 0), null, 'unknown activities are ignored');
+  assert.equal(buildSceneAction(null, 0), null);
+});
+
+test('bystanders stand in a smaller band behind the scene, clear of the player, capped at six', () => {
+  const layout = sceneLayout(computeStageLayout(800, 400), 0);
+  assert.deepEqual(bystanderLayout(layout, 0).spots, []);
+  const three = bystanderLayout(layout, 3);
+  assert.equal(three.spots.length, 3);
+  assert.ok(three.radius < layout.radius && three.groundY < layout.groundY, 'smaller and further back');
+  for (const spot of three.spots) {
+    assert.ok(spot.x > 0 && spot.x < layout.width, 'inside the stage');
+    assert.ok(Math.abs(spot.x - layout.player.x) >= layout.radius * 1.15, 'not in front of the player');
+  }
+  const crowd = bystanderLayout(layout, 9);
+  assert.equal(crowd.spots.length, 6);
+  assert.equal(crowd.overflow, 3);
+  assert.deepEqual(bystanderPresence(0, false), { alpha: 0, y: -0.3 });
+  assert.deepEqual(bystanderPresence(1, false), { alpha: 1, y: 0 });
+  assert.deepEqual(bystanderPresence(0.5, true), { alpha: 1, y: 0 }, 'reduced motion cuts straight in');
+});
+
+test('sound cues name the result, land with the blow, and quieten a watched fight', () => {
+  const event = (result, perspective = 'outgoing') => ({ seq: 1, result, perspective, actorId: 'self', targetId: 'actor-2' });
+  const hit = actionSoundCue(buildAction(event('hit'), view, 0));
+  assert.deepEqual(hit, { sound: 'hit', volume: 0.8, delayMs: Math.round(ACTION_DURATION_MS * ACTION_CONTACT_FRACTION) });
+  assert.deepEqual(
+    ['critical', 'miss', 'dodge', 'absorb'].map((result) => actionSoundCue(buildAction(event(result), view, 0)).sound),
+    ['critical', 'miss', 'dodge', 'absorb'],
+  );
+  assert.equal(actionSoundCue(buildAction(event('critical'), view, 0)).volume, 1, 'a critical is the loudest');
+  assert.equal(actionSoundCue(buildAction(event('hit', 'observed'), view, 0)).volume, 0.45, 'a watched fight is quieter');
+  assert.equal(actionSoundCue(null), null);
+  assert.equal(actionSoundCue({ result: 'parry', duration: 900 }), null, 'an unknown result makes no sound');
+});
+
+test('encounter cues mark the start, a victory, and a death, and stay silent on first sight', () => {
+  const idle = { active: false, outcome: '' };
+  const fighting = { active: true, outcome: '' };
+  assert.equal(encounterSoundCue(null, fighting), null, 'a fight already under way gets no start cue');
+  assert.equal(encounterSoundCue(idle, fighting).sound, 'start');
+  assert.equal(encounterSoundCue(fighting, { active: false, outcome: 'victory' }).sound, 'victory');
+  assert.equal(encounterSoundCue(fighting, { active: false, outcome: 'Defeat' }).sound, 'death');
+  assert.equal(encounterSoundCue(fighting, { active: false, outcome: 'fled' }), null, 'other endings are silent');
+  assert.equal(encounterSoundCue(fighting, fighting), null);
+  assert.equal(encounterSoundCue(idle, idle), null);
+});
+
+test('the day and night tint follows the sky, lifts with moonlight, and skips rooms with no sky', () => {
+  assert.equal(sceneAmbience({ stage: 'day', moonLight: 0 }, 'forest'), null, 'daylight is untinted');
+  assert.equal(sceneAmbience(null, 'forest'), null);
+  assert.equal(sceneAmbience({ stage: 'dawn' }, 'city').key, 'dawn');
+  assert.equal(sceneAmbience({ stage: 'twilight' }, 'city').key, 'twilight');
+  const dark = sceneAmbience({ stage: 'night', moonLight: 0 }, 'plains');
+  const moonlit = sceneAmbience({ stage: 'night', moonLight: 12 }, 'plains');
+  assert.equal(dark.key, 'night:0');
+  assert.ok(moonlit.backdrop < dark.backdrop, 'moonlight lightens the night');
+  assert.ok(moonlit.figures < dark.figures);
+  assert.ok(dark.figures < dark.backdrop, 'figures are tinted less than the room');
+  assert.notEqual(moonlit.key, dark.key, 'a different tint is a different cache key');
+  for (const terrain of ['inside', 'underground', 'underwater']) {
+    assert.equal(sceneAmbience({ stage: 'night', moonLight: 0 }, terrain), null, terrain + ' has no sky');
+  }
+});
+
+test('party allies are the members who are here, without the player, in party order', () => {
+  const group = {
+    leader: 'Nacho',
+    members: [
+      { name: 'Acer', info: { hp: 80, maxhp: 100, here: 'Yes' } },
+      { name: 'Nacho', info: { hp: 420, maxhp: 500, here: 'Yes' } },
+      { name: 'Zed', info: { hp: 10, maxhp: 100, here: 'No' } },
+      { name: 'Mira', info: { hp: 0, maxhp: 0 } },
+      { name: 'nacho', info: { hp: 1, maxhp: 1 } },
+      { name: '  ' },
+    ],
+  };
+  assert.deepEqual(partyAllies(group, 'acer'), [
+    { name: 'Nacho', key: 'nacho', leader: true, hpPct: 84 },
+    { name: 'Mira', key: 'mira', leader: false, hpPct: null },
+  ]);
+  assert.deepEqual(partyAllies('', 'Acer'), [], 'the blank not-in-a-group payload');
+  assert.deepEqual(partyAllies(null, 'Acer'), []);
+  assert.deepEqual(partyAllies({ members: [{ name: 'Solo', info: { here: 1 } }] }, ''), [
+    { name: 'Solo', key: 'solo', leader: false, hpPct: null },
+  ]);
+});
+
+test('allies rank behind the player with room to spare, and recede diagonally without it', () => {
+  const fight = computeStageLayout(900, 500);
+  // At rest the player stands mid-stage, which leaves room behind.
+  const rest = { ...fight, player: { ...fight.player, x: fight.width / 2 } };
+  const rank = allyLayout(rest, 3);
+  assert.equal(rank.tight, false);
+  assert.equal(rank.captions, true, 'a roomy rank carries names');
+  assert.equal(rank.spots.length, 3);
+  assert.ok(rank.spots.every((spot) => spot.x < rest.player.x), 'behind the player');
+  assert.ok(rank.spots[0].x > rank.spots[1].x && rank.spots[1].x > rank.spots[2].x, 'stepping away');
+  assert.ok(rank.spots.every((spot) => spot.radius === rank.radius), 'one size');
+  assert.ok(rank.groundY < rest.groundY, 'a step further back than the player');
+  assert.ok(rank.radius < rest.radius, 'smaller than the player');
+
+  const file = allyLayout(fight, 3);
+  assert.equal(file.tight, true, 'the fight layout has no room behind the player');
+  assert.equal(file.captions, false, 'a receding rank drops the names');
+  assert.ok(file.spots.every((spot) => spot.x < fight.player.x && spot.x >= spot.radius * 0.9), 'behind, and on the stage');
+  assert.ok(file.spots[0].depth < file.spots[1].depth && file.spots[1].depth < file.spots[2].depth, 'each further back');
+  assert.ok(file.spots[0].radius > file.spots[1].radius && file.spots[1].radius > file.spots[2].radius, 'and smaller');
+
+  const crowd = allyLayout(rest, MAX_ALLIES + 2);
+  assert.equal(crowd.spots.length, MAX_ALLIES);
+  assert.equal(crowd.overflow, 2);
+  assert.deepEqual(allyLayout(rest, 0).spots, []);
+  assert.equal(allyLayout(rest, 0).tight, false);
+  const cornered = { ...fight, player: { ...fight.player, x: fight.radius } };
+  assert.equal(allyLayout(cornered, 1).tight, true, 'one ally with the player against the edge');
+  assert.ok(allyLayout(cornered, 1).spots[0].x > 0, 'still on the stage');
+});
+
+test('auras count buffs and debuffs and notice a buff in its last seconds', () => {
+  const t0 = 1_000_000;
+  const defences = [
+    { name: 'stoneskin', kind: 'buff', duration: 60, remaining: 30 },
+    { name: 'bless', duration: 0 },
+    { name: 'weakness', kind: 'debuff', duration: 20, remaining: 5 },
+    { name: 'mystery', kind: 'unknown' },
+    null,
+  ];
+  const at = () => t0;
+  assert.deepEqual(summarizeAuras(defences, at, t0), { buffs: 2, debuffs: 1, expiring: false, key: '2:1:0' });
+  const late = summarizeAuras(defences, at, t0 + (30 - AURA_EXPIRING_SECONDS + 1) * 1000);
+  assert.equal(late.expiring, true, 'inside the last seconds');
+  assert.equal(late.key, '2:1:1');
+  assert.equal(summarizeAuras(defences, at, t0 + 31_000).expiring, false, 'a lapsed buff is not expiring');
+  assert.deepEqual(summarizeAuras(null, at, t0), { buffs: 0, debuffs: 0, expiring: false, key: '0:0:0' });
+  assert.equal(
+    summarizeAuras([{ name: 'short', duration: 8 }], at, t0).expiring, true,
+    'no remaining sent means the full duration',
+  );
+});
+
+test('the aura glows brighter with more buffs, flickers near the end, and holds still for reduced motion', () => {
+  assert.deepEqual(auraLook(null, 0, false), { buff: 0, debuff: 0, dashed: false });
+  assert.deepEqual(auraLook({ buffs: 0, debuffs: 0 }, 0, false), { buff: 0, debuff: 0, dashed: false });
+  const one = auraLook({ buffs: 1, debuffs: 0 }, 0, true);
+  const many = auraLook({ buffs: 9, debuffs: 0 }, 0, true);
+  const four = auraLook({ buffs: 4, debuffs: 0 }, 0, true);
+  assert.ok(many.buff > one.buff);
+  assert.equal(many.buff, four.buff, 'the glow stops growing at four');
+  assert.equal(one.debuff, 0);
+  assert.ok(auraLook({ buffs: 0, debuffs: 2 }, 0, true).debuff > 0);
+  const steady = auraLook({ buffs: 2, debuffs: 0, expiring: true }, 70, true);
+  assert.equal(steady.buff, auraLook({ buffs: 2, debuffs: 0 }, 999, true).buff, 'reduced motion never flickers');
+  assert.equal(steady.dashed, true, 'the lapse shows as a dashed ring instead');
+  const samples = [0, 70, 140, 210].map((t) => auraLook({ buffs: 2, debuffs: 0, expiring: true }, t, false).buff);
+  assert.ok(new Set(samples).size > 1, 'an expiring buff flickers');
+});
+
+test('bystanders take ground the party is not standing on', () => {
+  const fight = computeStageLayout(900, 500);
+  const rest = { ...fight, player: { ...fight.player, x: fight.width / 2 } };
+  const party = allyLayout(rest, 2).spots.map((spot) => spot.x);
+  const alone = bystanderLayout(rest, 1);
+  const beside = bystanderLayout(rest, 1, party);
+  assert.equal(beside.spots.length, 1, 'a lone bystander still gets a spot');
+  assert.ok(party.every((x) => Math.abs(x - beside.spots[0].x) >= beside.radius * 1.3), 'clear of the party');
+  assert.equal(alone.spots.length, 1);
+  assert.deepEqual(bystanderLayout(rest, 3, []).spots, bystanderLayout(rest, 3).spots, 'nothing to avoid changes nothing');
+});
+
+test('a boss is matched by name without its article, case, or spacing', () => {
+  assert.equal(bossKey('A swamp troll'), 'swamp troll');
+  assert.equal(bossKey('the  Swamp   Troll '), 'swamp troll');
+  assert.equal(bossKey('an ash drake'), 'ash drake');
+  assert.equal(bossKey('Some bandits'), 'bandits');
+  assert.equal(bossKey('Theron the Bold'), 'theron the bold', 'only a leading article is dropped');
+  assert.equal(bossKey('Another'), 'another', 'a word that merely starts like an article is kept');
+  assert.equal(bossKey(''), '');
+  assert.equal(bossKey(null), '');
+  const marked = new Set(['swamp troll']);
+  assert.equal(isBossName('The Swamp Troll', marked), true);
+  assert.equal(isBossName('a swamp rat', marked), false);
+  assert.equal(isBossName('', marked), false);
+  assert.equal(isBossName('a swamp troll', ['swamp troll']), true, 'a plain list works too');
+  assert.equal(isBossName('a swamp troll', null), false);
+});
+
+test('the game tags its bosses in the name, and the tag never changes which enemy it is', () => {
+  assert.equal(hasBossTag('Aurora, Captain of the Dawnbound (BOSS)'), true);
+  assert.equal(hasBossTag('aurora (boss)'), true, 'any case');
+  assert.equal(hasBossTag('Aurora ( Boss )'), true, 'and loose spacing');
+  assert.equal(hasBossTag('Aurora (BOSS) [wounded]'), true, 'not only at the very end');
+  assert.equal(hasBossTag('Boss Hogg'), false, 'the word alone is not the tag');
+  assert.equal(hasBossTag('a swamp troll (bossy)'), false);
+  assert.equal(hasBossTag('Aurora, Captain of the Dawnbound'), false);
+  assert.equal(hasBossTag(''), false);
+  assert.equal(hasBossTag(null), false);
+  assert.equal(bossKey('Aurora, Captain of the Dawnbound (BOSS)'), 'aurora, captain of the dawnbound');
+  assert.equal(bossKey('the  Swamp Troll (BOSS)'), bossKey('A swamp troll'), 'the tag is not part of the name');
+});
+
+test('low health closes in from 35% and is full at 10%, and unknown health is never low', () => {
+  const at = (percent) => lowHealthLevel({ known: true, percent });
+  assert.equal(at(100), 0);
+  assert.equal(at(35), 0);
+  assert.ok(at(34) > 0 && at(34) < at(20), 'it grows as health falls');
+  assert.equal(at(10), 1);
+  assert.equal(at(0), 1);
+  assert.equal(lowHealthLevel({ known: false, percent: 0 }), 0);
+  assert.equal(lowHealthLevel(null), 0);
+});
+
+test('the heartbeat is a double thump that quickens as things get worse', () => {
+  const samples = (level) => Array.from({ length: 230 }, (_, i) => heartbeat(i * 5, level));
+  const calm = samples(0);
+  assert.ok(calm.every((v) => v >= 0 && v <= 1));
+  assert.ok(Math.max(...calm) > 0.9 && Math.min(...calm) < 0.05, 'it beats, and rests between beats');
+  const peaks = (values) => values.filter((v, i) => i > 0 && i < values.length - 1 && v > 0.5 && v >= values[i - 1] && v > values[i + 1]).length;
+  assert.equal(peaks(calm), 2, 'two thumps in one calm period');
+  assert.ok(peaks(samples(1)) > peaks(calm), 'more beats in the same time when badly hurt');
+});
+
+test('the low health alert sounds once on the way down and re-arms only after real recovery', () => {
+  const hp = (percent) => ({ known: true, percent });
+  let state = null;
+  const step = (percent, active = true) => { const next = lowHealthAlert(state, hp(percent), active); state = { armed: next.armed }; return next.cue; };
+  assert.equal(step(80), null);
+  assert.deepEqual(step(LOW_HEALTH_ALERT), { category: 'alert', sound: 'low-hp', volume: 0.8, delayMs: 0 });
+  assert.equal(step(12), null, 'not again while still low');
+  assert.equal(step(30), null, 'a small heal does not re-arm it');
+  assert.equal(step(20), null);
+  assert.equal(step(LOW_HEALTH_REARM), null, 'recovering re-arms it silently');
+  assert.ok(step(18), 'and it sounds again on the next drop');
+  state = null;
+  assert.equal(step(10, false), null, 'never outside a fight');
+  assert.ok(step(10, true), 'but it is still armed when the fight starts');
+  assert.deepEqual(lowHealthAlert(null, { known: false, percent: 0 }, true), { armed: true, cue: null });
+});
+
+test('a hurt fighter breathes harder and sags, and reduced motion holds still', () => {
+  const swing = (strain) => { const ys = Array.from({ length: 400 }, (_, i) => idleOffset('player', i * 20, false, strain).y); return Math.max(...ys) - Math.min(...ys); };
+  assert.ok(swing(1) > swing(0) * 2, 'a bigger breath');
+  assert.ok(idleOffset('player', 0, false, 1).y > idleOffset('player', 0, false, 0).y, 'and a sag');
+  assert.deepEqual(idleOffset('player', 123, false), idleOffset('player', 123, false, 0), 'no strain is the old sway');
+  assert.deepEqual(idleOffset('player', 123, true, 1), { x: 0, y: 0 });
+});
+
+test('a critical punches the camera in and whites the frame; an ordinary hit and reduced motion do not', () => {
+  const event = (result) => ({ seq: 1, result, perspective: 'outgoing', actorId: 'self', targetId: 'actor-2' });
+  const atContact = (result, options) => sampleAction(buildAction(event(result), view, 0), ACTION_DURATION_MS * ACTION_CONTACT_FRACTION + 1, options);
+  const crit = atContact('critical');
+  assert.ok(crit.zoom > 0.04 && crit.whiteFlash > 0.2);
+  const later = sampleAction(buildAction(event('critical'), view, 0), ACTION_DURATION_MS * 0.6);
+  assert.equal(later.whiteFlash, 0, 'the flash is over in an instant');
+  assert.ok(later.zoom < crit.zoom, 'and the camera eases back');
+  const hit = atContact('hit');
+  assert.equal(hit.zoom, 0);
+  assert.equal(hit.whiteFlash, 0);
+  const calm = atContact('critical', { reducedMotion: true });
+  assert.equal(calm.zoom, 0);
+  assert.equal(calm.whiteFlash, 0);
+  assert.equal(sampleAction(null, 0).zoom, 0);
+});
+
+test('the recap keeps damage taken and streaks, once per event, ignoring fights only watched', () => {
+  const out = (seq, result) => ({ seq, perspective: 'outgoing', result, damage: 10 });
+  const inc = (seq, result, damage = 0) => ({ seq, perspective: 'incoming', result, damage });
+  let recap = recapEvents(createFightRecap(), [out(1, 'hit'), out(2, 'critical'), out(3, 'hit')]);
+  assert.equal(recap.hitStreak, 3);
+  assert.deepEqual(recapStreaks(recap), [{ kind: 'hit', label: 'Hit streak', count: 3 }]);
+  recap = recapEvents(recap, [out(1, 'hit'), out(3, 'hit')]);
+  assert.equal(recap.hitStreak, 3, 'events already counted are not counted again');
+  recap = recapEvents(recap, [out(5, 'miss'), out(4, 'hit')]);
+  assert.equal(recap.hitStreak, 0, 'events apply in order, so the later miss ends it');
+  assert.equal(recap.bestHitStreak, 4);
+  recap = recapEvents(recap, [inc(6, 'dodge'), inc(7, 'miss'), inc(8, 'absorb')]);
+  assert.deepEqual(recapStreaks(recap), [{ kind: 'guard', label: 'Untouched', count: 3 }]);
+  recap = recapEvents(recap, [inc(9, 'hit', 40), inc(10, 'critical', 75), { seq: 11, perspective: 'observed', result: 'hit', damage: 999 }]);
+  assert.equal(recap.taken, 115);
+  assert.equal(recap.hitsTaken, 2);
+  assert.equal(recap.guardStreak, 0);
+  assert.equal(recap.bestGuardStreak, 3);
+  assert.equal(recap.lastSeq, 11);
+  assert.deepEqual(recapStreaks(createFightRecap()), []);
+  assert.equal(STREAK_MIN, 3);
+  assert.equal(recapEvents(null, null).lastSeq, 0);
+});
+
+test('the fight summary takes what was dealt from the DPS meter and the rest from the recap', () => {
+  const dps = { damage: 1412, swings: 9, hits: 7, crits: 2, bestHit: 310, hitRate: 7 / 9, durationMs: 42_400, dps: 33.31, missingDamageNumbers: false };
+  const recap = { ...createFightRecap(), taken: 96, hitsTaken: 3, bestHitStreak: 5, bestGuardStreak: 2 };
+  assert.deepEqual(fightSummaryRows(recap, dps), [
+    { label: 'Dealt', value: '1,412' },
+    { label: 'Taken', value: '96' },
+    { label: 'Accuracy', value: '78%' },
+    { label: 'Best hit', value: '310' },
+    { label: 'Criticals', value: '2' },
+    { label: 'Time', value: '0:42' },
+    { label: 'DPS', value: '33.3' },
+    { label: 'Best streak', value: '\u00d75' },
+  ]);
+  const wordless = fightSummaryRows(recap, { ...dps, missingDamageNumbers: true }).map((row) => row.label);
+  assert.deepEqual(wordless, ['Taken', 'Accuracy', 'Criticals', 'Time', 'Best streak'], 'no confident zeroes when the game sends no numbers');
+  assert.deepEqual(fightSummaryRows(createFightRecap(), null), [], 'nothing happened, nothing to say');
+  assert.deepEqual(fightSummaryRows(createFightRecap(), { ...dps, swings: 0 }), []);
+  assert.equal(formatFightDuration(0), '0:00');
+  assert.equal(formatFightDuration(125_000), '2:05');
+});
+
+test('the boss tag is read off the game text, and the plain name the fight data carries matches it', () => {
+  assert.deepEqual(bossSightings('Aurora, Captain of the Dawnbound (BOSS)'), ['Aurora, Captain of the Dawnbound']);
+  assert.deepEqual(bossSightings('  the Ember Warden (Boss) is in excellent shape.'), ['the Ember Warden']);
+  assert.deepEqual(bossSightings('You see: a rat (tiny). The Ember Warden (BOSS) and Aurora (BOSS)'), ['The Ember Warden', 'and Aurora']);
+  assert.deepEqual(bossSightings('A plain line about a boss.'), []);
+  assert.deepEqual(bossSightings('(BOSS)'), []);
+  assert.deepEqual(bossSightings(null), []);
+
+  const seen = ['aurora, captain of the dawnbound', 'ember warden'];
+  assert.equal(matchesBossSighting('Aurora', seen), true, 'the short name opens the printed one');
+  assert.equal(matchesBossSighting('Aurora, Captain of the Dawnbound', seen), true);
+  assert.equal(matchesBossSighting('captain of the dawnbound', seen), true, 'a run of several words anywhere');
+  assert.equal(matchesBossSighting('the Ember Warden', seen), true);
+  assert.equal(matchesBossSighting('warden', seen), true, 'a single word may close the name');
+  assert.equal(matchesBossSighting('a captain', seen), false, 'but not sit in the middle of it');
+  assert.equal(matchesBossSighting('a Dawnbound soldier', seen), false);
+  assert.equal(matchesBossSighting('the', seen), false);
+  assert.equal(matchesBossSighting('', seen), false);
+  assert.equal(matchesBossSighting('Aurora', null), false);
+  assert.equal(matchesBossSighting('Aurora, Captain of the Dawnbound, enraged', ['aurora']), true, 'the sighting may be the shorter one');
+});
+
+test('each boss fight takes a track, and never the one the last fight had', () => {
+  assert.ok(BOSS_TRACKS.length >= 1 && BOSS_TRACKS.every((track) => /^[a-z0-9-]+$/.test(track)));
+  assert.equal(pickBossTrack(['a'], 'a'), 'a', 'a lone track repeats');
+  assert.equal(pickBossTrack(['a', 'b'], 'a', () => 0), 'b');
+  assert.equal(pickBossTrack(['a', 'b'], 'a', () => 0.99), 'b');
+  assert.equal(pickBossTrack(['a', 'b', 'c'], 'b', () => 0), 'a');
+  assert.equal(pickBossTrack(['a', 'b', 'c'], 'b', () => 0.99), 'c');
+  assert.equal(pickBossTrack(['a', 'b', 'c'], '', () => 0.5), 'b', 'the first fight may take any');
+  assert.equal(pickBossTrack(['a', 'b'], 'a', () => 1), 'b', 'a roll of one stays in range');
+  assert.equal(pickBossTrack(['a', 'b'], 'a', () => NaN), 'b');
+  assert.equal(pickBossTrack([], 'a'), '');
+  assert.equal(pickBossTrack(null, 'a'), '');
+  for (let i = 0, last = ''; i < 50; i++) {
+    const next = pickBossTrack(['a', 'b', 'c'], last);
+    assert.notEqual(next, last);
+    last = next;
+  }
 });

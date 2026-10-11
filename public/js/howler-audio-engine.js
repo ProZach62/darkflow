@@ -76,6 +76,16 @@ export class HowlerAudioEngine {
     handle.howl.volume(volume, id);
   }
 
+  getPlaybackVolume(handle, id) {
+    const volume = handle.howl.volume(id);
+    return typeof volume === 'number' ? volume : null;
+  }
+
+  // Ramps one playback between two volumes. Setting its volume ends the ramp.
+  fade(handle, from, to, durationMs, id) {
+    handle.howl.fade(from, to, durationMs, id);
+  }
+
   async unlock() {
     if (!this.isAvailable()) return false;
     if (this.unlocked) return true;

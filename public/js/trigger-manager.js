@@ -1,6 +1,21 @@
 import { dom } from './state.js';
 import { getSoundCatalog, isKnownSound } from './sound-manager.js';
 import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
+import { executeTriggerMatches } from './automation-executor.js';
+import { evaluateTriggerDefinitions } from './definition-runtime-core.mjs';
+import {
+  getActiveCharacterProfileId,
+  getEffectiveDefinitions,
+  isConfigurationCompatActive,
+  removeLocalDefinitionById,
+  replaceLocalDefinitions,
+  setLocalDefinitionEnabledById,
+  upsertLocalDefinitionByIdentity,
+} from './session-compat/configuration.js';
+import {
+  isAutomationCompatActive,
+  scheduleWait,
+} from './session-compat/automation.js';
 
 const TRIGGER_STORAGE_KEY = 'darkwind-client-triggers-v1';
 const MAX_WAIT_SECONDS = 24 * 60 * 60;
@@ -17,10 +32,6 @@ function normalizeWaitSeconds(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 1;
   return Math.max(0, Math.min(MAX_WAIT_SECONDS, number));
-}
-
-function normalizeTriggerMatchText(value) {
-  return String(value || '').replace(/^>\s?/, '');
 }
 
 function normalizeVolume(value) {
@@ -142,6 +153,25 @@ function normalizeData(data) {
   return { scopes };
 }
 
+function triggerIdentityKey(pattern) {
+  return String(pattern || '').trim();
+}
+
+function cloneTrigger(trigger) {
+  return {
+    ...trigger,
+    steps: trigger.steps.map((step) => ({ ...step })),
+  };
+}
+
+function getEffectiveTriggerEntries() {
+  return getEffectiveDefinitions('triggers');
+}
+
+function getEffectiveTriggerDefinitions() {
+  return getEffectiveTriggerEntries().map((entry) => cloneTrigger(entry.definition));
+}
+
 function escapeRegex(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -235,6 +265,9 @@ export const triggerManager = {
   },
 
   getActiveScopeKey() {
+    if (isConfigurationCompatActive()) {
+      return getActiveCharacterProfileId();
+    }
     const host = normalizeWhitespace(dom.host && dom.host.value ? dom.host.value : '').toLowerCase() || 'default';
     const port = normalizeWhitespace(dom.port && dom.port.value ? dom.port.value : '') || '4242';
     // Preserve existing scope keys: secure (wss/telnets) → 'wss', plain → 'ws'.
@@ -251,6 +284,11 @@ export const triggerManager = {
   },
 
   getScopeSnapshot(scopeKey = this.getActiveScopeKey()) {
+    if (isConfigurationCompatActive()) {
+      return {
+        triggers: getEffectiveTriggerDefinitions(),
+      };
+    }
     const scope = normalizeScope(this._ensureScope(scopeKey));
     return {
       triggers: scope.triggers.map((trigger) => ({
@@ -261,6 +299,11 @@ export const triggerManager = {
   },
 
   saveScope(scopeKey, scope) {
+    if (isConfigurationCompatActive()) {
+      replaceLocalDefinitions('triggers', normalizeScope(scope).triggers);
+      emitTriggerDataChanged({ scopeKey });
+      return;
+    }
     this._data.scopes[scopeKey] = normalizeScope(scope);
     this._save({ scopeKey });
   },
@@ -280,8 +323,14 @@ export const triggerManager = {
   },
 
   findTriggerByPattern(pattern, scopeKey = this.getActiveScopeKey()) {
-    const normalizedPattern = String(pattern || '').trim();
+    const normalizedPattern = triggerIdentityKey(pattern);
     if (!normalizedPattern) return null;
+    if (isConfigurationCompatActive()) {
+      const entry = getEffectiveTriggerEntries().find(
+        (item) => triggerIdentityKey(item.definition.pattern) === normalizedPattern,
+      );
+      return entry ? cloneTrigger(entry.definition) : null;
+    }
     return this._ensureScope(scopeKey).triggers.find((trigger) => trigger.pattern === normalizedPattern) || null;
   },
 
@@ -302,7 +351,6 @@ export const triggerManager = {
       return { trigger: null, error: compiled.error };
     }
 
-    const scope = this._ensureScope(scopeKey);
     const existing = this.findTriggerByPattern(normalizedPattern, scopeKey);
     const trigger = existing || this.createEmptyTrigger();
 
@@ -313,11 +361,21 @@ export const triggerManager = {
     trigger.gag = false;
     trigger.steps = [{ type: 'send_command', template: normalizedTemplate }];
 
-    if (!existing) {
-      scope.triggers.push(trigger);
+    if (isConfigurationCompatActive()) {
+      const normalizedTrigger = normalizeTrigger(trigger);
+      if (!normalizedTrigger) {
+        return { trigger: null, error: 'Trigger pattern is required.' };
+      }
+      upsertLocalDefinitionByIdentity('triggers', normalizedTrigger);
+      emitTriggerDataChanged({ scopeKey });
+    } else {
+      const scope = this._ensureScope(scopeKey);
+      if (!existing) {
+        scope.triggers.push(trigger);
+      }
+      this._save({ scopeKey });
     }
 
-    this._save({ scopeKey });
     return {
       trigger: {
         ...trigger,
@@ -328,11 +386,19 @@ export const triggerManager = {
   },
 
   removeTriggerByPattern(pattern, scopeKey = this.getActiveScopeKey()) {
-    const normalizedPattern = String(pattern || '').trim();
+    const normalizedPattern = triggerIdentityKey(pattern);
     if (!normalizedPattern) return false;
+    const trigger = this.findTriggerByPattern(normalizedPattern, scopeKey);
+    if (!trigger) return false;
+
+    if (isConfigurationCompatActive()) {
+      const removed = removeLocalDefinitionById('triggers', trigger.id);
+      if (removed) emitTriggerDataChanged({ scopeKey });
+      return removed;
+    }
 
     const scope = this._ensureScope(scopeKey);
-    const nextTriggers = scope.triggers.filter((trigger) => trigger.pattern !== normalizedPattern);
+    const nextTriggers = scope.triggers.filter((item) => item.id !== trigger.id);
     if (nextTriggers.length === scope.triggers.length) return false;
     scope.triggers = nextTriggers;
     this._save({ scopeKey });
@@ -342,6 +408,12 @@ export const triggerManager = {
   setEnabledByTarget(pattern, enabled, scopeKey = this.getActiveScopeKey()) {
     const trigger = this.findTriggerByPattern(pattern, scopeKey);
     if (!trigger) return { target: null, enabled: null };
+    if (isConfigurationCompatActive()) {
+      const nextEnabled = enabled !== false;
+      const changed = setLocalDefinitionEnabledById('triggers', trigger.id, nextEnabled);
+      if (changed) emitTriggerDataChanged({ scopeKey });
+      return { target: trigger, enabled: changed ? nextEnabled : trigger.enabled };
+    }
     trigger.enabled = enabled !== false;
     this._save({ scopeKey });
     return { target: trigger, enabled: trigger.enabled };
@@ -350,12 +422,22 @@ export const triggerManager = {
   findTriggerById(id, scopeKey = this.getActiveScopeKey()) {
     const key = String(id || '');
     if (!key) return null;
+    if (isConfigurationCompatActive()) {
+      const entry = getEffectiveTriggerEntries().find((item) => item.definition.id === key);
+      return entry ? cloneTrigger(entry.definition) : null;
+    }
     return this._ensureScope(scopeKey).triggers.find((trigger) => trigger.id === key) || null;
   },
 
   setEnabledById(id, enabled, scopeKey = this.getActiveScopeKey()) {
     const trigger = this.findTriggerById(id, scopeKey);
     if (!trigger) return { target: null, enabled: null };
+    if (isConfigurationCompatActive()) {
+      const nextEnabled = enabled !== false;
+      const changed = setLocalDefinitionEnabledById('triggers', trigger.id, nextEnabled);
+      if (changed) emitTriggerDataChanged({ scopeKey });
+      return { target: trigger, enabled: changed ? nextEnabled : trigger.enabled };
+    }
     trigger.enabled = enabled !== false;
     this._save({ scopeKey });
     return { target: trigger, enabled: trigger.enabled };
@@ -364,6 +446,12 @@ export const triggerManager = {
   toggleEnabledById(id, scopeKey = this.getActiveScopeKey()) {
     const trigger = this.findTriggerById(id, scopeKey);
     if (!trigger) return { target: null, enabled: null };
+    if (isConfigurationCompatActive()) {
+      const nextEnabled = trigger.enabled === false;
+      const changed = setLocalDefinitionEnabledById('triggers', trigger.id, nextEnabled);
+      if (changed) emitTriggerDataChanged({ scopeKey });
+      return { target: trigger, enabled: changed ? nextEnabled : trigger.enabled };
+    }
     trigger.enabled = trigger.enabled === false;
     this._save({ scopeKey });
     return { target: trigger, enabled: trigger.enabled };
@@ -372,6 +460,12 @@ export const triggerManager = {
   toggleEnabledByTarget(pattern, scopeKey = this.getActiveScopeKey()) {
     const trigger = this.findTriggerByPattern(pattern, scopeKey);
     if (!trigger) return { target: null, enabled: null };
+    if (isConfigurationCompatActive()) {
+      const nextEnabled = trigger.enabled === false;
+      const changed = setLocalDefinitionEnabledById('triggers', trigger.id, nextEnabled);
+      if (changed) emitTriggerDataChanged({ scopeKey });
+      return { target: trigger, enabled: changed ? nextEnabled : trigger.enabled };
+    }
     trigger.enabled = trigger.enabled === false;
     this._save({ scopeKey });
     return { target: trigger, enabled: trigger.enabled };
@@ -391,13 +485,13 @@ export const triggerManager = {
       diagnostics.push('Name is required.');
     }
 
-    const duplicate = triggers.find((item) => (
+    const normalizedName = normalizeWhitespace(trigger.description).toLowerCase();
+    const duplicate = normalizedName && triggers.find((item) => (
       item.id !== trigger.id
-      && Boolean(item.isRegex) === Boolean(trigger.isRegex)
-      && item.pattern === trigger.pattern
+      && normalizeWhitespace(item.description).toLowerCase() === normalizedName
     ));
     if (duplicate) {
-      diagnostics.push('Pattern conflicts with another trigger in this scope.');
+      diagnostics.push('Name conflicts with another trigger in this scope.');
     }
 
     const compiled = compilePattern(trigger.pattern, {
@@ -477,7 +571,11 @@ export const triggerManager = {
   },
 
   getCompiledTriggers(scopeKey = this.getActiveScopeKey(), scopeOverride = null) {
-    const sourceScope = scopeOverride ? normalizeScope(scopeOverride) : this._ensureScope(scopeKey);
+    const sourceScope = scopeOverride
+      ? normalizeScope(scopeOverride)
+      : (isConfigurationCompatActive()
+        ? { triggers: getEffectiveTriggerDefinitions() }
+        : this._ensureScope(scopeKey));
     return sourceScope.triggers
       .filter((trigger) => trigger.enabled !== false)
       .map((trigger) => {
@@ -495,28 +593,19 @@ export const triggerManager = {
   },
 
   evaluateLine(text, scopeKey = this.getActiveScopeKey(), scopeOverride = null) {
-    const compiledTriggers = this.getCompiledTriggers(scopeKey, scopeOverride);
-    if (!compiledTriggers.length) {
-      return { matches: [], gag: false };
+    const triggers = scopeOverride
+      ? normalizeScope(scopeOverride).triggers
+      : (isConfigurationCompatActive()
+        ? getEffectiveTriggerDefinitions()
+        : this._ensureScope(scopeKey).triggers);
+    return evaluateTriggerDefinitions(text, triggers);
+  },
+
+  executeMatches(matches, scopeKey, options = {}) {
+    const nextOptions = { ...options };
+    if (isAutomationCompatActive()) {
+      nextOptions.scheduleWait = (delayMs) => scheduleWait(delayMs);
     }
-
-    const line = normalizeTriggerMatchText(text);
-    const matches = [];
-    let gag = false;
-
-    for (const trigger of compiledTriggers) {
-      trigger.regex.lastIndex = 0;
-      const match = trigger.regex.exec(line);
-      if (!match) continue;
-
-      matches.push({
-        trigger,
-        fullMatch: String(match[0] ?? line),
-        captures: match.slice(1).map((value) => String(value ?? '')),
-      });
-      if (trigger.gag) gag = true;
-    }
-
-    return { matches, gag };
+    return executeTriggerMatches(matches, scopeKey, nextOptions);
   },
 };

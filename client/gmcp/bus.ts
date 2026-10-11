@@ -1,0 +1,611 @@
+import type { SessionId } from "../model/ids";
+import type { SessionDiagnostics } from "../runtime/diagnostics";
+import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from "./frame";
+import type { CoreHello } from "./contracts/core";
+import type { DarkwindClientNaws } from "./contracts/darkwind-client";
+import type { CompletionRequest, CompletionResult } from "./contracts/completion";
+import type { MapData2Browse, MapData2Sync } from "./contracts/darkwind-map-data-v2";
+import type {
+  DarkwindIdeClose,
+  DarkwindIdeSave,
+  DarkwindIdeSaveAbort,
+  DarkwindIdeSaveChunk,
+  DarkwindIdeSaveFinish,
+  DarkwindIdeSaveStart,
+} from "./contracts/darkwind-ide";
+import type {
+  DarkwindAnnouncementsMarkRead,
+  DarkwindFishingCast,
+  DarkwindFishingCancel,
+  DarkwindFishingHook,
+  DarkwindFishingResult,
+  DarkwindSnoopClosed,
+  DarkwindSnoopCommand,
+  DarkwindSnoopStop,
+} from "./contracts/interactions";
+import type {
+  DarkwindWindowAction,
+  DarkwindWindowClosed,
+  DarkwindWindowSubmit,
+} from "./contracts/darkwind-window";
+import type { DarkwindRoomPlaylistAction, DarkwindRoomPlaylistReport } from "./contracts/world";
+import type { DarkwindTutorialAction, DarkwindTutorialResync } from "./contracts/tutorial";
+import {
+  validateDarkwindRoomPlaylistAction,
+  validateDarkwindRoomPlaylistReport,
+  lookupGmcpValidator,
+  validateCompletionRequest,
+  validateCompletionResult,
+  validateDarkwindIdeClose,
+  validateDarkwindIdeSave,
+  validateDarkwindIdeSaveAbort,
+  validateDarkwindIdeSaveChunk,
+  validateDarkwindIdeSaveFinish,
+  validateDarkwindIdeSaveStart,
+  validateMapData2Browse,
+  validateMapData2Sync,
+  validateDarkwindTutorialAction,
+  validateDarkwindTutorialResync,
+} from "./contracts/validators";
+
+const GMCP_MEDIA_REFRESH_PACKAGE = "Darkwind.Client.RefreshMedia";
+const GMCP_SUBSCRIPTIONS_PACKAGE = "Darkwind.Client.Subscriptions";
+const gmcpTextEncoder = new TextEncoder();
+
+/** Client support packages sent during handshake (public/js/gmcp.js:137-179). */
+export const CLIENT_SUPPORTS_SET: readonly string[] = [
+  "Char 1",
+  "Char.Vitals 1",
+  "Char.Status 1",
+  "Char.StatusVars 1",
+  "Char.Stats 1",
+  "Char.RealStats 1",
+  "Char.Worth 1",
+  "Char.Enemy 1",
+  "Char.Items 1",
+  "Char.Defences 1",
+  "Room 1",
+  "Comm 1",
+  "Comm.Channel 1",
+  "Comm.Channel.Text 2",
+  "Group 1",
+  "Game 1",
+  "Darkwind.Char.Avatar 1",
+  "Darkwind.Combat 1",
+  "Darkwind.Tutorial 1",
+  "Darkwind.Visual 1",
+  "Darkwind.Room.Image 1",
+  "Darkwind.Divine 1",
+  "Darkwind.Sky 1",
+  "Darkwind.GuildVitals 2",
+  "Darkwind.XPMon 1",
+  "Darkwind.Client.Subscriptions 1",
+  "Darkwind.Client.NAWS 1",
+  "Darkwind.Window 2",
+  "Darkwind.Snoop 1",
+  "Darkwind.IDE 2",
+  "Darkwind.MapData2 2",
+  "Darkwind.Completion 1",
+  "Darkwind.Quests 1",
+  "Darkwind.Achievements 1",
+  "Darkwind.Announcements 1",
+  "Darkwind.Giphy 1",
+  "Darkwind.Sound 1",
+  "Darkwind.Broadcast 1",
+  "Darkwind.LinuxRescue 1",
+  "Darkwind.Lag 1",
+  "Darkwind.Fishing 1",
+  "Darkwind.Cyberware 1",
+  "Darkwind.StreetSamurai 1",
+  "Darkwind.Room.Playlist 1",
+];
+
+/** Subscription payload merged and sent after handshake. */
+export interface GmcpSubscriptionPayload {
+  reason: string;
+  full: boolean;
+  panels: Record<string, unknown>;
+  features: Record<string, unknown>;
+}
+
+/** Wildcard handler receives package name then payload. */
+export type GmcpWildcardHandler = (packageName: string, data: unknown) => void;
+
+/** Package handler receives payload then package name. */
+export type GmcpPackageHandler = (data: unknown, packageName: string) => void;
+
+/** Typed callback for validated server completion results. */
+export type CompletionResultHandler = (result: CompletionResult) => void;
+
+/** Session-scoped GMCP bus with validation, supports tracking, and send helpers. */
+export interface SessionGmcpBus {
+  readonly sessionId: SessionId;
+  readonly enabled: boolean;
+  on(packageName: string, handler: GmcpWildcardHandler | GmcpPackageHandler): void;
+  off(packageName: string, handler: GmcpWildcardHandler | GmcpPackageHandler): void;
+  dispatch(packageName: string, data: unknown): void;
+  serverSupportsPackage(packageName: string): boolean;
+  sendHandshake(clientInfo: CoreHello): boolean;
+  sendTerminalGeometry(payload: DarkwindClientNaws): boolean;
+  sendSubscriptions(payload?: Partial<GmcpSubscriptionPayload>): boolean;
+  requestMediaRefresh(): boolean;
+  sendMapData2Sync(payload: MapData2Sync): boolean;
+  sendMapData2Browse(payload: MapData2Browse): boolean;
+  sendRoomPlaylistAction(payload: DarkwindRoomPlaylistAction): boolean;
+  sendRoomPlaylistReport(payload: DarkwindRoomPlaylistReport): boolean;
+  sendIdeSave(payload: DarkwindIdeSave): boolean;
+  sendIdeSaveStart(payload: DarkwindIdeSaveStart): boolean;
+  sendIdeSaveChunk(payload: DarkwindIdeSaveChunk): boolean;
+  sendIdeSaveFinish(payload: DarkwindIdeSaveFinish): boolean;
+  sendIdeSaveAbort(payload: DarkwindIdeSaveAbort): boolean;
+  sendIdeClose(payload: DarkwindIdeClose): boolean;
+  requestChannelPlayers(): boolean;
+  enableChannel(channel: string): boolean;
+  requestCompletion(request: CompletionRequest): boolean;
+  requestCyberwareDetails(id: string): boolean;
+  sendWindowSubmit(payload: DarkwindWindowSubmit): boolean;
+  sendWindowAction(payload: DarkwindWindowAction): boolean;
+  sendWindowClosed(payload: DarkwindWindowClosed): boolean;
+  sendSnoopCommand(payload: DarkwindSnoopCommand): boolean;
+  sendSnoopStop(payload: DarkwindSnoopStop): boolean;
+  sendSnoopClosed(payload: DarkwindSnoopClosed): boolean;
+  requestAnnouncements(): boolean;
+  markAnnouncementRead(payload: DarkwindAnnouncementsMarkRead): boolean;
+  sendFishingCast(payload: DarkwindFishingCast): boolean;
+  sendFishingHook(payload: DarkwindFishingHook): boolean;
+  sendFishingResult(payload: DarkwindFishingResult): boolean;
+  sendFishingCancel(payload: DarkwindFishingCancel): boolean;
+  sendCombatResync(): boolean;
+  sendTutorialAction(payload: DarkwindTutorialAction): boolean;
+  sendTutorialResync(payload: DarkwindTutorialResync): boolean;
+  sendPing(): boolean;
+  requestLagStatus(): boolean;
+  onCompletionResult(handler: CompletionResultHandler): void;
+  offCompletionResult(handler: CompletionResultHandler): void;
+  restartHandshake(payload?: Partial<GmcpSubscriptionPayload>): boolean;
+}
+
+/** Creates a session-scoped GMCP bus backed by an injected byte send sink. */
+export function createSessionGmcpBus(
+  sessionId: SessionId,
+  sendSink: (bytes: Uint8Array) => boolean,
+  diagnostics: SessionDiagnostics,
+): SessionGmcpBus {
+  return new SessionGmcpBusImpl(sessionId, sendSink, diagnostics);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Formats Typia validation errors for GMCP dispatch logging. */
+function formatGmcpValidationErrors(
+  errors: ReadonlyArray<{ path: string; expected: string; value: unknown }>,
+): string {
+  return errors
+    .map(
+      (error) =>
+        `${error.path || "$input"}: expected ${error.expected}, got ${JSON.stringify(error.value)}`,
+    )
+    .join("; ");
+}
+
+function normalizeSupports(payload: unknown): Record<string, string | number> {
+  const normalized = normalizeSupportsPayload(payload);
+  const supports: Record<string, string | number> = {};
+  if (Array.isArray(normalized)) {
+    for (const item of normalized) {
+      if (typeof item !== "string") {
+        continue;
+      }
+      const parts = item.trim().split(/\s+/);
+      if (parts[0]) {
+        supports[parts[0]] = parts[1] || "1";
+      }
+    }
+  } else if (isObject(normalized)) {
+    for (const [name, version] of Object.entries(normalized)) {
+      if (typeof version === "string" || typeof version === "number") {
+        supports[name] = version || "1";
+      } else {
+        supports[name] = "1";
+      }
+    }
+  }
+  return supports;
+}
+
+/** Normalizes subscription payload defaults matching legacy gmcp.js. */
+export function normalizeSubscriptionPayload(
+  payload: Partial<GmcpSubscriptionPayload> = {},
+): GmcpSubscriptionPayload {
+  return {
+    reason: payload.reason ?? "visibility-sync",
+    full: !!payload.full,
+    panels: payload.panels && typeof payload.panels === "object" ? { ...payload.panels } : {},
+    features: {
+      announcementsBadge: true,
+      channelTerminalSuppression: false,
+      enemyAutoOpen: true,
+      combatPane: false,
+      visualEffects: false,
+      tutorialPane: false,
+      windows: true,
+      ide: true,
+      completion: true,
+      giphy: true,
+      broadcast: true,
+      ...(payload.features && typeof payload.features === "object" ? payload.features : {}),
+    },
+  };
+}
+
+class SessionGmcpBusImpl implements SessionGmcpBus {
+  readonly sessionId: SessionId;
+  #sendSink: (bytes: Uint8Array) => boolean;
+  #diagnostics: SessionDiagnostics;
+  #enabled = false;
+  #handlers: Record<string, Array<GmcpWildcardHandler | GmcpPackageHandler>> = {};
+  #completionHandlers = new Map<CompletionResultHandler, GmcpPackageHandler>();
+  #subscriptions: GmcpSubscriptionPayload = normalizeSubscriptionPayload();
+  #serverSupports: Record<string, string | number> = {};
+  #lastClientInfo: CoreHello = {
+    client: "Darkflow",
+    version: "unknown",
+    width: 75,
+    height: 24,
+  };
+
+  constructor(
+    sessionId: SessionId,
+    sendSink: (bytes: Uint8Array) => boolean,
+    diagnostics: SessionDiagnostics,
+  ) {
+    this.sessionId = sessionId;
+    this.#sendSink = sendSink;
+    this.#diagnostics = diagnostics;
+  }
+
+  get enabled(): boolean {
+    return this.#enabled;
+  }
+
+  on(packageName: string, handler: GmcpWildcardHandler | GmcpPackageHandler): void {
+    const canonical = canonicalPackageName(packageName);
+    if (!this.#handlers[canonical]) {
+      this.#handlers[canonical] = [];
+    }
+    this.#handlers[canonical].push(handler);
+  }
+
+  off(packageName: string, handler: GmcpWildcardHandler | GmcpPackageHandler): void {
+    const canonical = canonicalPackageName(packageName);
+    if (!this.#handlers[canonical]) {
+      return;
+    }
+    this.#handlers[canonical] = this.#handlers[canonical].filter((cb) => cb !== handler);
+  }
+
+  dispatch(packageName: string, data: unknown): void {
+    const normalized = normalizeGmcpFrame(packageName, data);
+    packageName = normalized.packageName;
+    data = normalized.data;
+
+    const validator = lookupGmcpValidator(packageName);
+    if (validator) {
+      const result = validator(data);
+      if (!result.success) {
+        console.error(
+          `GMCP validation failed for ${packageName}: ${formatGmcpValidationErrors(result.errors)}`,
+          data,
+        );
+      }
+    }
+
+    if (packageName === "Core.Supports.Set") {
+      this.#serverSupports = normalizeSupports(data);
+    } else if (packageName === "Core.Supports.Add") {
+      this.#serverSupports = {
+        ...this.#serverSupports,
+        ...normalizeSupports(data),
+      };
+    } else if (packageName === "Core.Supports.Remove") {
+      const removed = normalizeSupports(data);
+      for (const name of Object.keys(removed)) {
+        delete this.#serverSupports[name];
+      }
+    }
+
+    const wildcardHandlers = this.#handlers["*"];
+    if (wildcardHandlers) {
+      for (const cb of [...wildcardHandlers]) {
+        try {
+          (cb as GmcpWildcardHandler)(packageName, data);
+        } catch (error) {
+          console.error(`GMCP wildcard handler failed for ${packageName}`, error);
+          this.#diagnostics.recordHandlerFailure();
+        }
+      }
+    }
+
+    const packageHandlers = this.#handlers[packageName];
+    if (packageHandlers) {
+      for (const cb of [...packageHandlers]) {
+        try {
+          (cb as GmcpPackageHandler)(data, packageName);
+        } catch (error) {
+          console.error(`GMCP handler failed for ${packageName}`, error);
+          this.#diagnostics.recordHandlerFailure();
+        }
+      }
+    }
+  }
+
+  serverSupportsPackage(packageName: string): boolean {
+    return !!this.#serverSupports[canonicalPackageName(packageName)];
+  }
+
+  send(packageName: string, data?: unknown): boolean {
+    const payload = data !== undefined ? packageName + " " + JSON.stringify(data) : packageName;
+    return this.#sendSink(gmcpTextEncoder.encode(payload));
+  }
+
+  sendHandshake(clientInfo: CoreHello): boolean {
+    this.#lastClientInfo = clientInfo;
+    this.send("Core.Hello", clientInfo);
+    this.send("Core.Supports.Set", [...CLIENT_SUPPORTS_SET]);
+    this.#enabled = true;
+    return true;
+  }
+
+  sendTerminalGeometry(payload: DarkwindClientNaws): boolean {
+    return this.send("Darkwind.Client.NAWS", payload);
+  }
+
+  reset(): void {
+    this.#enabled = false;
+    this.#serverSupports = {};
+    const setHandlers = this.#handlers["Core.Supports.Set"];
+    if (setHandlers) {
+      for (const cb of [...setHandlers]) {
+        try {
+          (cb as GmcpPackageHandler)({}, "Core.Supports.Set");
+        } catch (error) {
+          console.error("GMCP handler failed for Core.Supports.Set", error);
+          this.#diagnostics.recordHandlerFailure();
+        }
+      }
+    }
+  }
+
+  sendSubscriptions(payload: Partial<GmcpSubscriptionPayload> = {}): boolean {
+    const subscriptions = normalizeSubscriptionPayload({
+      ...payload,
+      panels: {
+        ...this.#subscriptions.panels,
+        ...(payload.panels ?? {}),
+      },
+      features: {
+        ...this.#subscriptions.features,
+        ...(payload.features ?? {}),
+      },
+    });
+    this.#subscriptions = subscriptions;
+    const sent = this.send(GMCP_SUBSCRIPTIONS_PACKAGE, subscriptions);
+    if (!sent) {
+      return false;
+    }
+    if (payload.features && payload.features.announcementsList) {
+      this.#subscriptions.features.announcementsList = false;
+    }
+    return true;
+  }
+
+  requestMediaRefresh(): boolean {
+    return this.send(GMCP_MEDIA_REFRESH_PACKAGE);
+  }
+
+  sendMapData2Sync(payload: MapData2Sync): boolean {
+    return validateMapData2Sync(payload).success
+      ? this.send("Darkwind.MapData2.Sync", payload)
+      : false;
+  }
+
+  sendMapData2Browse(payload: MapData2Browse): boolean {
+    return validateMapData2Browse(payload).success
+      ? this.send("Darkwind.MapData2.Browse", payload)
+      : false;
+  }
+
+  sendRoomPlaylistAction(payload: DarkwindRoomPlaylistAction): boolean {
+    return validateDarkwindRoomPlaylistAction(payload).success
+      ? this.send("Darkwind.Room.Playlist.Action", payload)
+      : false;
+  }
+
+  sendRoomPlaylistReport(payload: DarkwindRoomPlaylistReport): boolean {
+    return validateDarkwindRoomPlaylistReport(payload).success
+      ? this.send("Darkwind.Room.Playlist.Report", payload)
+      : false;
+  }
+
+  sendIdeSave(payload: DarkwindIdeSave): boolean {
+    return validateDarkwindIdeSave(payload).success
+      ? this.send("Darkwind.IDE.Save", payload)
+      : false;
+  }
+
+  sendIdeSaveStart(payload: DarkwindIdeSaveStart): boolean {
+    return validateDarkwindIdeSaveStart(payload).success
+      ? this.send("Darkwind.IDE.SaveStart", payload)
+      : false;
+  }
+
+  sendIdeSaveChunk(payload: DarkwindIdeSaveChunk): boolean {
+    return validateDarkwindIdeSaveChunk(payload).success
+      ? this.send("Darkwind.IDE.SaveChunk", payload)
+      : false;
+  }
+
+  sendIdeSaveFinish(payload: DarkwindIdeSaveFinish): boolean {
+    return validateDarkwindIdeSaveFinish(payload).success
+      ? this.send("Darkwind.IDE.SaveFinish", payload)
+      : false;
+  }
+
+  sendIdeSaveAbort(payload: DarkwindIdeSaveAbort): boolean {
+    return validateDarkwindIdeSaveAbort(payload).success
+      ? this.send("Darkwind.IDE.SaveAbort", payload)
+      : false;
+  }
+
+  sendIdeClose(payload: DarkwindIdeClose): boolean {
+    return validateDarkwindIdeClose(payload).success
+      ? this.send("Darkwind.IDE.Close", payload)
+      : false;
+  }
+
+  requestChannelPlayers(): boolean {
+    return this.send("Comm.Channel.Players", {});
+  }
+
+  enableChannel(channel: string): boolean {
+    const name = typeof channel === "string" ? channel.trim() : "";
+    if (!name) {
+      return false;
+    }
+    return this.send("Comm.Channel.Enable", name);
+  }
+
+  requestCompletion(request: CompletionRequest): boolean {
+    return validateCompletionRequest(request).success
+      ? this.send("Darkwind.Completion.Request", request)
+      : false;
+  }
+
+  requestCyberwareDetails(id: string): boolean {
+    const value = typeof id === "string" ? id.trim() : "";
+    return value ? this.send("Darkwind.Cyberware.Details", { id: value }) : false;
+  }
+
+  sendWindowSubmit(payload: DarkwindWindowSubmit): boolean {
+    return this.send("Darkwind.Window.Submit", payload);
+  }
+
+  sendWindowAction(payload: DarkwindWindowAction): boolean {
+    return this.send("Darkwind.Window.Action", payload);
+  }
+
+  sendWindowClosed(payload: DarkwindWindowClosed): boolean {
+    return this.send("Darkwind.Window.Closed", payload);
+  }
+
+  sendSnoopCommand(payload: DarkwindSnoopCommand): boolean {
+    return this.send("Darkwind.Snoop.Command", payload);
+  }
+
+  sendSnoopStop(payload: DarkwindSnoopStop): boolean {
+    return this.send("Darkwind.Snoop.Stop", payload);
+  }
+
+  sendSnoopClosed(payload: DarkwindSnoopClosed): boolean {
+    return this.send("Darkwind.Snoop.Closed", payload);
+  }
+
+  requestAnnouncements(): boolean {
+    return this.sendSubscriptions({
+      reason: "modal-open",
+      full: false,
+      features: { announcementsList: true },
+    });
+  }
+
+  markAnnouncementRead(payload: DarkwindAnnouncementsMarkRead): boolean {
+    return this.send("Darkwind.Announcements.MarkRead", payload);
+  }
+
+  sendFishingCast(payload: DarkwindFishingCast): boolean {
+    return this.send("Darkwind.Fishing.Cast", payload);
+  }
+
+  sendFishingHook(payload: DarkwindFishingHook): boolean {
+    return this.send("Darkwind.Fishing.Hook", payload);
+  }
+
+  sendFishingResult(payload: DarkwindFishingResult): boolean {
+    return this.send("Darkwind.Fishing.Result", payload);
+  }
+
+  sendFishingCancel(payload: DarkwindFishingCancel): boolean {
+    return this.send("Darkwind.Fishing.Cancel", payload);
+  }
+
+  sendCombatResync(): boolean {
+    return this.send("Darkwind.Combat.Resync");
+  }
+
+  sendTutorialAction(payload: DarkwindTutorialAction): boolean {
+    const result = validateDarkwindTutorialAction(payload);
+    return result.success ? this.send("Darkwind.Tutorial.Action", result.data) : false;
+  }
+
+  sendTutorialResync(payload: DarkwindTutorialResync): boolean {
+    const result = validateDarkwindTutorialResync(payload);
+    return result.success ? this.send("Darkwind.Tutorial.Resync", result.data) : false;
+  }
+
+  sendPing(): boolean {
+    return this.send("Core.Ping");
+  }
+
+  requestLagStatus(): boolean {
+    return this.send("Darkwind.Lag.Get");
+  }
+
+  onCompletionResult(handler: CompletionResultHandler): void {
+    const listener: GmcpPackageHandler = (data) => {
+      const result = validateCompletionResult(data);
+      if (result.success) {
+        handler({
+          ...result.data,
+          ambiguous: result.data.ambiguous === true || result.data.ambiguous === 1,
+        });
+      }
+    };
+    this.#completionHandlers.set(handler, listener);
+    this.on("Darkwind.Completion.Result", listener);
+  }
+
+  offCompletionResult(handler: CompletionResultHandler): void {
+    const listener = this.#completionHandlers.get(handler);
+    if (!listener) {
+      return;
+    }
+    this.#completionHandlers.delete(handler);
+    this.off("Darkwind.Completion.Result", listener);
+  }
+
+  restartHandshake(payload: Partial<GmcpSubscriptionPayload> = {}): boolean {
+    const subscriptions = normalizeSubscriptionPayload({
+      ...this.#subscriptions,
+      ...payload,
+      panels: {
+        ...this.#subscriptions.panels,
+        ...(payload.panels ?? {}),
+      },
+      features: {
+        ...this.#subscriptions.features,
+        ...(payload.features ?? {}),
+      },
+    });
+    this.reset();
+    this.sendHandshake(this.#lastClientInfo);
+    this.sendSubscriptions({
+      ...subscriptions,
+      reason: payload.reason ?? "ctrl-k",
+      full: true,
+    });
+    this.requestMediaRefresh();
+    return true;
+  }
+}

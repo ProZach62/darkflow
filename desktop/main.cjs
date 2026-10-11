@@ -9,15 +9,18 @@ const {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   screen,
   shell,
 } = require('electron');
+const { WebSocketServer } = require('ws');
 const packageMetadata = require('../package.json');
 const { createDesktopUpdater } = require('./updater.cjs');
 const {
   isAllowedAppUrl,
   isSafeExternalUrl,
   isSteamDistribution,
+  selectDesktopServeMode,
 } = require('./runtime.cjs');
 
 const PRODUCT_NAME = 'Darkwind';
@@ -27,12 +30,23 @@ const smokeTest = process.argv.includes('--smoke-test');
 const steamDistribution = isSteamDistribution({
   distribution: packageMetadata.darkflowDistribution,
 });
+const desktopServeMode = selectDesktopServeMode({
+  isPackaged: app.isPackaged,
+});
+const clientRoot = path.join(
+  __dirname,
+  '..',
+  ...(desktopServeMode === 'built' ? ['dist', 'client'] : ['public']),
+);
+const windowIconPath = path.join(clientRoot, 'assets', 'brand', 'darkflow-icon-512.png');
 
 let appOrigin = '';
 let desktopToken = '';
 let mainWindow = null;
 let stopLocalServer = null;
+let stopSmokeMud = null;
 let updater = null;
+let smokeDiagnostics = null;
 
 app.setName(PRODUCT_NAME);
 app.setAppUserModelId('ai.darkwind.game');
@@ -71,6 +85,7 @@ if (!hasSingleInstanceLock) {
 
   app.on('before-quit', () => {
     if (updater) updater.stop();
+    if (stopSmokeMud) stopSmokeMud();
     if (stopLocalServer) stopLocalServer().catch((error) => {
       console.error('[desktop] local server shutdown failed:', error);
     });
@@ -80,8 +95,20 @@ if (!hasSingleInstanceLock) {
 async function startDesktopApp() {
   configureDesktopEnvironment();
 
+  if (smokeTest) {
+    const smokeMud = await startSmokeMudServer();
+    process.env.MUD_HOST = '127.0.0.1';
+    process.env.MUD_PORT = String(smokeMud.port);
+    process.env.MUD_WSS = '0';
+    stopSmokeMud = smokeMud.stop;
+  }
+
   const { startServer, stopServer } = require('../server.js');
-  const address = await startServer({ port: requestedDesktopPort(), host: '127.0.0.1' });
+  const address = await startServer({
+    port: requestedDesktopPort(),
+    host: '127.0.0.1',
+    mode: desktopServeMode,
+  });
   if (!address || typeof address !== 'object') {
     throw new Error('The local Darkflow server did not return a TCP address.');
   }
@@ -108,7 +135,8 @@ function configureDesktopEnvironment() {
   desktopToken = crypto.randomBytes(32).toString('hex');
   process.env.DARKFLOW_DESKTOP_TOKEN = desktopToken;
   process.env.DARKFLOW_LOG_DIR = path.join(app.getPath('userData'), 'logs');
-  if (!process.env.MUD_HOST) process.env.MUD_HOST = 'darkwind.ai';
+  if (smokeTest) process.env.MUD_HOST = '';
+  else if (!process.env.MUD_HOST) process.env.MUD_HOST = 'darkwind.ai';
   if (!process.env.MUD_PORT) process.env.MUD_PORT = '4242';
   if (!process.env.MUD_WSS) process.env.MUD_WSS = '1';
   if (!process.env.GAME_NAME) process.env.GAME_NAME = PRODUCT_NAME;
@@ -121,6 +149,27 @@ function requestedDesktopPort() {
     throw new Error('DARKFLOW_DESKTOP_PORT must be an integer from 0 through 65535.');
   }
   return smokeTest ? 0 : DEFAULT_DESKTOP_PORT;
+}
+
+function startSmokeMudServer() {
+  return new Promise((resolve, reject) => {
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    server.once('error', reject);
+    server.once('listening', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        reject(new Error('The packaged smoke MUD did not expose a TCP port.'));
+        return;
+      }
+      resolve({
+        port: address.port,
+        stop() {
+          for (const client of server.clients) client.terminate();
+          server.close();
+        },
+      });
+    });
+  });
 }
 
 async function createMainWindow() {
@@ -136,7 +185,7 @@ async function createMainWindow() {
     show: false,
     title: PRODUCT_NAME,
     backgroundColor: '#0d1117',
-    icon: path.join(__dirname, '..', 'public', 'assets', 'brand', 'darkflow-icon-512.png'),
+    icon: windowIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -168,6 +217,7 @@ async function createMainWindow() {
     httpOnly: true,
     sameSite: 'strict',
   });
+  if (smokeTest) smokeDiagnostics = monitorSmokeFailures(localSession);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     openExternal(url);
@@ -193,20 +243,265 @@ async function createMainWindow() {
 
 async function runSmokeTest() {
   try {
+    const localSession = mainWindow.webContents.session;
+
     const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+      const waitFor = async (read, label) => {
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+          const value = read();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error('Timed out waiting for ' + label);
+      };
+      const fetchResult = async (url, responseType = null) => {
+        const response = await fetch(url);
+        return {
+          status: response.status,
+          contentType: response.headers.get('content-type') || '',
+          body: responseType === 'json' ? await response.json() : null,
+        };
+      };
+      const desktopApi = window.darkflowDesktop;
+      const desktopApiKeys = Object.keys(desktopApi).sort();
       const info = await window.darkflowDesktop.getInfo();
-      const config = await fetch('/config.json').then((response) => response.json());
+      const configResponse = await fetchResult('/config.json', 'json');
+      const versionResponse = await fetchResult('/api/version', 'json');
+      const bridge = await waitFor(
+        () => window.__darkflowPhase1RuntimeBridge,
+        'the Phase 2 runtime bridge',
+      );
+      await waitFor(() => bridge.getConnectionState() === 'connected', 'the smoke MUD connection');
+      bridge.gmcpDispatch('Core.Supports.Set', ['Darkwind.Sound 1']);
+      bridge.gmcpDispatch('Char.Status', { name: 'Desktop smoke' });
+      const audioIndicator = await waitFor(
+        () => {
+          const root = document.querySelector('#audio-widget-root:not([hidden])');
+          const indicator = root && root.querySelector('.sound-widget-indicator');
+          return indicator && !indicator.disabled && indicator;
+        },
+        'the enabled Svelte audio control',
+      );
+      const audioIndicatorBounds = audioIndicator.getBoundingClientRect();
+      bridge.gmcpDispatch('Darkwind.IDE.Open', {
+        path: '/domains/fixture/packaged-smoke.c',
+        title: 'Packaged IDE smoke',
+        content: 'int packaged_smoke = 1;\\n',
+        language: 'c',
+        readOnly: 0,
+        editable: 1,
+      });
+      const editor = await waitFor(
+        () => document.querySelector('.ide-pane[data-panel-id="ide"] .cm-editor'),
+        'the packaged CodeMirror editor',
+      );
+      editor.querySelector('.cm-content').focus();
       return {
         title: document.title,
-        desktopApi: Boolean(window.darkflowDesktop),
+        bootstrapPhase: window.__darkflowPhase1Bootstrap?.phase,
+        desktopApi: Boolean(desktopApi),
+        desktopApiFrozen: Object.isFrozen(desktopApi),
+        desktopApiKeys,
+        desktopApiFunctions: desktopApiKeys.every((key) => typeof desktopApi[key] === 'function'),
+        desktopCookieVisible: document.cookie.includes('darkflow-desktop-token='),
         howler: typeof window.Howl === 'function' && Boolean(window.Howler),
         info,
-        config,
+        config: configResponse,
+        version: versionResponse,
+        howlerRoute: await fetchResult('/vendor/howler.core.min.js'),
+        icon: await fetchResult('/assets/brand/darkflow-icon-512.png'),
+        phase0: await fetchResult('/phase0/'),
+        ide: {
+          bridge: typeof bridge.gmcpDispatch === 'function',
+          opened: Boolean(editor),
+        },
+        audio: {
+          connected: bridge.getConnectionState() === 'connected',
+          supported: !document.querySelector('#audio-widget-root').hidden,
+          enabled: !audioIndicator.disabled,
+          indicatorBounds: {
+            x: audioIndicatorBounds.x,
+            y: audioIndicatorBounds.y,
+            width: audioIndicatorBounds.width,
+            height: audioIndicatorBounds.height,
+          },
+        },
       };
     })()`);
 
-    if (!result.desktopApi || !result.howler || result.info.productName !== PRODUCT_NAME
-        || result.config.host !== 'darkwind.ai' || result.config.port !== 4242) {
+    const audioPoint = {
+      x: Math.round(result.audio.indicatorBounds.x + result.audio.indicatorBounds.width / 2),
+      y: Math.round(result.audio.indicatorBounds.y + result.audio.indicatorBounds.height / 2),
+    };
+    mainWindow.webContents.sendInputEvent({ type: 'mouseDown', ...audioPoint, button: 'left', clickCount: 1 });
+    mainWindow.webContents.sendInputEvent({ type: 'mouseUp', ...audioPoint, button: 'left', clickCount: 1 });
+    Object.assign(result.audio, await mainWindow.webContents.executeJavaScript(`(async () => {
+      const waitFor = async (read, label) => {
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+          const value = read();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error('Timed out waiting for ' + label);
+      };
+      const audio = window.__darkflowPhase1Runtime.session.audio;
+      const bridge = window.__darkflowPhase1RuntimeBridge;
+      await waitFor(() => audio.getSnapshot().audioUnlocked, 'trusted audio unlock');
+      const controls = await waitFor(
+        () => document.querySelector('.sound-widget-expanded:not([hidden])'),
+        'the expanded audio controls',
+      );
+      bridge.gmcpDispatch('Darkwind.Sound', {
+        type: 'play',
+        category: 'alert',
+        sound: 'ping',
+      });
+      await waitFor(
+        () => audio.getSnapshot().currentCategory === 'alert',
+        'the injected alert sound activity',
+      );
+      return {
+        unlocked: audio.getSnapshot().audioUnlocked,
+        controlsExpanded: Boolean(controls),
+        injectedActivity: audio.getSnapshot().currentCategory,
+      };
+    })()`));
+
+    const soundDeadline = Date.now() + 10000;
+    while (smokeDiagnostics.localSoundAssets.length === 0 && Date.now() < soundDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    result.audio.localSoundAssets = smokeDiagnostics.localSoundAssets;
+
+    const editMarker = '// packaged Electron edit';
+    await mainWindow.webContents.insertText(editMarker);
+    result.ide = {
+      ...result.ide,
+      ...await mainWindow.webContents.executeJavaScript(`(async () => {
+        const waitFor = async (read, label) => {
+          const deadline = Date.now() + 10000;
+          while (Date.now() < deadline) {
+            const value = read();
+            if (value) return value;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          throw new Error('Timed out waiting for ' + label);
+        };
+        const root = await waitFor(
+          () => document.querySelector('.ide-pane[data-panel-id="ide"]'),
+          'the IDE panel',
+        );
+        await waitFor(() => root.querySelector('.ide-modified-dot'), 'the IDE dirty marker');
+        const content = root.querySelector('.cm-content').textContent;
+        let confirmMessage = '';
+        const previousConfirm = window.confirm;
+        window.confirm = (message) => {
+          confirmMessage = String(message);
+          return true;
+        };
+        root.querySelector('.ide-btn-close').click();
+        window.confirm = previousConfirm;
+        await waitFor(
+          () => !document.querySelector('.ide-pane[data-panel-id="ide"]'),
+          'the IDE panel to close',
+        );
+        return {
+          modified: true,
+          content,
+          confirmMessage,
+          closed: true,
+        };
+      })()`),
+    };
+
+    const phase0Source = await fetchDesktopRoute('/phase0/main.ts');
+    const viteClient = await fetchDesktopRoute('/@vite/client');
+    const cookies = await localSession.cookies.get({
+      url: appOrigin,
+      name: 'darkflow-desktop-token',
+    });
+    const expectedDistribution = steamDistribution
+      ? 'steam'
+      : (app.isPackaged ? 'direct' : 'development');
+    const expectedUpdateState = app.isPackaged && !steamDistribution ? 'idle' : 'disabled';
+    const expectedDesktopApiKeys = [
+      'checkForUpdates',
+      'getInfo',
+      'installUpdate',
+      'onUpdateStatus',
+    ];
+    const icon = nativeImage.createFromPath(windowIconPath);
+
+    Object.assign(result, {
+      serveMode: desktopServeMode,
+      cookieCount: cookies.length,
+      cookieHttpOnly: cookies.length === 1 && cookies[0].httpOnly,
+      nativeIcon: !icon.isEmpty(),
+      phase0Source,
+      viteClient,
+      ...smokeDiagnostics,
+    });
+    Object.assign(result.ide, {
+      localEditorChunks: smokeDiagnostics.localEditorChunks,
+      externalEditorRequests: smokeDiagnostics.externalEditorRequests,
+      localChunkLoaded: smokeDiagnostics.localEditorChunks.length > 0,
+      noExternalEditorNetwork: smokeDiagnostics.externalEditorRequests.length === 0,
+    });
+
+    if (desktopServeMode !== 'built'
+        || result.bootstrapPhase !== 'client-loaded'
+        || !result.desktopApi
+        || !result.desktopApiFrozen
+        || !result.desktopApiFunctions
+        || JSON.stringify(result.desktopApiKeys) !== JSON.stringify(expectedDesktopApiKeys)
+        || result.desktopCookieVisible
+        || result.cookieCount !== 1
+        || !result.cookieHttpOnly
+        || !result.howler
+        || !result.nativeIcon
+        || result.info.productName !== PRODUCT_NAME
+        || result.info.version !== packageMetadata.version
+        || result.info.platform !== process.platform
+        || result.info.distribution !== expectedDistribution
+        || result.info.updateStatus.state !== expectedUpdateState
+        || result.config.status !== 200
+        || result.config.body.host !== '127.0.0.1'
+        || result.config.body.port !== Number(process.env.MUD_PORT)
+        || result.config.body.wss !== false
+        || result.config.body.gameName !== PRODUCT_NAME
+        || result.version.status !== 200
+        || result.version.body.version !== packageMetadata.version
+        || result.howlerRoute.status !== 200
+        || !/javascript/.test(result.howlerRoute.contentType)
+        || result.icon.status !== 200
+        || !/image\/png/.test(result.icon.contentType)
+        || result.phase0.status !== 200
+        || result.phase0Source.status !== 404
+        || result.viteClient.status !== 404
+        || !result.ide.bridge
+        || !result.ide.opened
+        || !result.ide.modified
+        || !result.ide.content.includes(editMarker)
+        || result.ide.confirmMessage !== 'You have unsaved changes. Close anyway?'
+        || !result.ide.closed
+        || !result.ide.localChunkLoaded
+        || !result.ide.noExternalEditorNetwork
+        || !result.audio.connected
+        || !result.audio.supported
+        || !result.audio.enabled
+        || !result.audio.unlocked
+        || !result.audio.controlsExpanded
+        || result.audio.injectedActivity !== 'alert'
+        || result.audio.localSoundAssets.length !== 1
+        || !result.audio.localSoundAssets[0].url.endsWith('/assets/sounds/alert-ping.mp3')
+        || result.audio.localSoundAssets[0].statusCode !== 200
+        || smokeDiagnostics.consoleFailures.length
+        || smokeDiagnostics.pageFailures.length
+        || smokeDiagnostics.requestFailures.length
+        || smokeDiagnostics.websocketRequests.length !== 1
+        || smokeDiagnostics.websocketRequests[0] !== `ws://127.0.0.1:${process.env.MUD_PORT}/`) {
       throw new Error(`Unexpected smoke-test state: ${JSON.stringify(result)}`);
     }
     console.log('[desktop-smoke]', JSON.stringify(result));
@@ -215,6 +510,68 @@ async function runSmokeTest() {
     console.error('[desktop-smoke] failed:', error);
     app.exit(1);
   }
+}
+
+async function fetchDesktopRoute(route) {
+  const response = await fetch(new URL(route, appOrigin), {
+    headers: { Cookie: `darkflow-desktop-token=${desktopToken}` },
+  });
+  await response.arrayBuffer();
+  return {
+    status: response.status,
+    contentType: response.headers.get('content-type') || '',
+  };
+}
+
+function monitorSmokeFailures(localSession) {
+  const diagnostics = {
+    consoleFailures: [],
+    pageFailures: [],
+    requestFailures: [],
+    websocketRequests: [],
+    localEditorChunks: [],
+    localSoundAssets: [],
+    externalEditorRequests: [],
+  };
+
+  mainWindow.webContents.on('console-message', (event) => {
+    const level = event.level;
+    const text = event.message;
+    if (level === 'error' || level === 3) diagnostics.consoleFailures.push(String(text));
+  });
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedUrl) => {
+    diagnostics.pageFailures.push({ errorCode, errorDescription, url: validatedUrl });
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    diagnostics.pageFailures.push({ reason: details.reason, exitCode: details.exitCode });
+  });
+  localSession.webRequest.onErrorOccurred((details) => {
+    if (new URL(details.url).origin === appOrigin) {
+      diagnostics.requestFailures.push({ error: details.error, method: details.method, url: details.url });
+    }
+  });
+  localSession.webRequest.onBeforeRequest((details, callback) => {
+    if (details.resourceType === 'webSocket') diagnostics.websocketRequests.push(details.url);
+    const url = new URL(details.url);
+    if (url.origin === appOrigin && /^\/assets\/ide-editor-[^/]+\.js$/.test(url.pathname)) {
+      diagnostics.localEditorChunks.push(details.url);
+    } else if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== appOrigin) {
+      diagnostics.externalEditorRequests.push(details.url);
+    }
+    callback({});
+  });
+  localSession.webRequest.onCompleted((details) => {
+    const url = new URL(details.url);
+    if (url.origin === appOrigin && url.pathname.startsWith('/assets/sounds/')) {
+      diagnostics.localSoundAssets.push({
+        method: details.method,
+        statusCode: details.statusCode,
+        url: details.url,
+      });
+    }
+  });
+
+  return diagnostics;
 }
 
 function createApplicationMenu() {

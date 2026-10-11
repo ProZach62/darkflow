@@ -5,8 +5,9 @@ is dealing. It computes everything in the browser from the
 [`Darkwind.Combat`](gmcp-darkwind-combat.md) event stream; the server needs no
 changes and sends no DPS figures of its own.
 
-Open it from the **Panels** menu ("DPS Meter"). It is hidden by default and
-its position, size, and visibility persist with the rest of the panel layout.
+Open it from the **Panels** menu under Character ("DPS Meter"). It is hidden by
+default and its position, size, and visibility persist with the rest of the
+workspace layout.
 
 ## What It Measures
 
@@ -75,17 +76,16 @@ connection carry no meaning.
 - `public/js/dps-meter-core.mjs` -- pure, DOM-free reducers and the view
   selector. It reuses `normalizeCombatEvent` and `normalizeCombatState` from
   `combat-visual-core.mjs` so both consumers parse frames the same way.
-- `public/js/dps-meter-manager.js` -- GMCP subscription, the one second tick
-  that keeps a live fight moving between swings, session reset, and disconnect
-  handling.
-- `panelRenderers.dps` in `public/js/panel-renderers.js` -- pure data-in,
-  HTML-out rendering.
+- `client/runtime/dps.ts` -- the session-owned meter: subscribes to the
+  three `Darkwind.Combat` packages on the session's GMCP bus, runs the one
+  second tick that keeps a live fight moving between swings through the
+  session's resource scope, closes the fight on disconnect, and publishes
+  frozen view models. Every session has its own, so two connections never
+  share a tally.
+- `public/js/dps-panel-renderer.mjs` -- pure data-in, HTML-out rendering.
+- `client/workspace/DpsPanel.svelte` -- mounts the renderer on the session's
+  meter and passes its Reset button through to `session.dps.resetSession()`.
 
-The manager publishes its view model on the `dw:dps-update` document event and
-`panel-manager` renders it, the same seam `lag-monitor` uses for the
-Connection Health panel. Nothing in the meter reaches into the renderer, and
-the renderer's Reset button dispatches `dw:dps-reset` back rather than
-importing the manager.
-
-`window.dpsDebug.snapshot()` returns the current view model from the console;
-`window.dpsDebug.reset()` clears the session.
+The meter is reachable from a running session as `session.dps`; the
+workspace registers the panel under the id `dps` and lists it in the
+Panels menu under Character.

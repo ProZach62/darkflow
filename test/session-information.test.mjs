@@ -1,0 +1,348 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+import { createServer, isRunnableDevEnvironment } from "vite";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+async function loadModules(t) {
+  const server = await createServer({
+    configFile: path.join(repoRoot, "vite.config.ts"),
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+    hmr: false,
+    watch: null,
+  });
+  t.after(async () => server.close());
+
+  const ssr = server.environments.ssr;
+  assert.ok(isRunnableDevEnvironment(ssr));
+  const [information, bus, diagnostics, ids, scope, events] = await Promise.all([
+    ssr.runner.import("/runtime/information.ts"),
+    ssr.runner.import("/gmcp/bus.ts"),
+    ssr.runner.import("/runtime/diagnostics.ts"),
+    ssr.runner.import("/model/ids.ts"),
+    ssr.runner.import("/runtime/resource-scope.ts"),
+    ssr.runner.import("/runtime/event-bus.ts"),
+  ]);
+  return { ...information, ...bus, ...diagnostics, ...ids, ...scope, ...events };
+}
+
+function createInformation(modules) {
+  const sessionId = modules.createSessionId(modules.createSequentialUuidFactory());
+  const diagnostics = new modules.SessionDiagnostics(sessionId);
+  const scope = modules.createResourceScope(sessionId, diagnostics);
+  const eventBus = modules.createSessionEventBus(sessionId, diagnostics);
+  const sent = [];
+  const bus = modules.createSessionGmcpBus(sessionId, (bytes) => {
+    sent.push(new TextDecoder().decode(bytes));
+    return true;
+  }, diagnostics);
+  return {
+    bus,
+    eventBus,
+    information: modules.createSessionInformation(bus, scope, eventBus),
+    scope,
+    sent,
+  };
+}
+
+test("information snapshots accept valid frames, merge deltas, and stay frozen", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, eventBus, information, sent } = createInformation(modules);
+  const snapshots = [];
+  information.subscribe((snapshot) => snapshots.push(snapshot));
+
+  bus.dispatch("Char.Status", { name: "Nacho", gold: 100 });
+  bus.dispatch("Char.Status", { level: 42 });
+  bus.dispatch("Char.Vitals", { hp: 90, maxhp: 100, sp: 50, maxsp: 60 });
+  bus.dispatch("Char.Stats", { str: 15 });
+  bus.dispatch("Char.RealStats", { realstr: 12 });
+  bus.dispatch("Char.Defences.List", [{ name: "stoneskin", kind: "buff" }]);
+  bus.dispatch("Char.Defences.Add", { name: "shield", kind: "buff" });
+  bus.dispatch("Char.Defences.Remove", { name: "stoneskin" });
+  bus.dispatch("Group", { groupname: "Expedition", members: [{ name: "Nacho", info: { hp: 90 } }] });
+  bus.dispatch("Game", { game_name: "Darkwind", game_version: "4.2.2", game_uptime: 86400 });
+  bus.dispatch("Game", { game_uptime: 86430, game_reboot: 1153471 });
+  bus.dispatch("Darkwind.Char.Avatar", { url: "/assets/avatar.png", name: "Nacho" });
+  bus.dispatch("Darkwind.Divine", {
+    patron: "mitra", summary: "Bright.", holy_hour: { god: 0 }, eclipse: { active: 0 },
+  });
+  bus.dispatch("Darkwind.Sky", { server_time: 1, game_now: 2, scale: { second: 1 }, time: { hour: 1 } });
+  bus.dispatch("Darkwind.GuildVitals", {
+    items: [{ id: "focus", label: "Focus", kind: "boolean", on: 1 }],
+  });
+  bus.dispatch("Darkwind.XPMon", { active: 1, xp: 25 });
+
+  const snapshot = information.getSnapshot();
+  assert.deepEqual(snapshot.status, { name: "Nacho", gold: 100, level: 42 });
+  assert.equal(snapshot.vitals?.divine_patron, "mitra");
+  assert.equal(snapshot.omens?.holy_hour.god, 0);
+  assert.equal(snapshot.omens?.eclipse.active, 0);
+  assert.deepEqual(snapshot.stats, { current: { str: 15 }, base: { realstr: 12 } });
+  assert.deepEqual(snapshot.defences, [{ name: "shield", kind: "buff" }]);
+  assert.equal(snapshot.group?.groupname, "Expedition");
+  assert.deepEqual(snapshot.game, {
+    game_name: "Darkwind",
+    game_version: "4.2.2",
+    game_uptime: 86430,
+    game_reboot: 1153471,
+  });
+  assert.equal(snapshot.avatar?.url, "/assets/avatar.png");
+  assert.equal(snapshot.sky?.receivedAt !== undefined, true);
+  assert.equal(snapshot.guildVitals?.items?.[0]?.on, 1);
+  assert.equal(snapshot.xpmon?.xp, 25);
+  assert.equal(Object.isFrozen(snapshot), true);
+  assert.equal(Object.isFrozen(snapshot.defences), true);
+  assert.ok(snapshots.length > 1);
+
+  information.setVisiblePanels(["avatar", "buffs"]);
+  const subscription = JSON.parse(sent.at(-1).slice("Darkwind.Client.Subscriptions ".length));
+  assert.equal(subscription.panels.avatar, true);
+  assert.equal(subscription.panels.buffs, true);
+  assert.equal(subscription.panels.status, true);
+  assert.equal(subscription.panels.vitals, true);
+
+  const sentBeforeReconnect = sent.length;
+  information.setVisiblePanels(["group"]);
+  const sentBeforeConnected = sent.length;
+  assert.equal(sentBeforeConnected, sentBeforeReconnect + 1);
+  // The composed session handshake owns the one reconnect resend using the
+  // subscription payload retained by the GMCP bus.
+  eventBus.publish("transport:reconnect-status", { status: "connected", transport: "ws" });
+  assert.equal(sent.length, sentBeforeConnected);
+});
+
+test("divine patron attaches to vitals regardless of frame order", async (t) => {
+  const modules = await loadModules(t);
+
+  const early = createInformation(modules);
+  early.bus.dispatch("Darkwind.Divine", { patron: "mitra" });
+  early.bus.dispatch("Char.Vitals", { hp: 1, maxhp: 2 });
+  assert.equal(early.information.getSnapshot().vitals?.divine_patron, "mitra");
+
+  const late = createInformation(modules);
+  late.bus.dispatch("Char.Vitals", { hp: 1, maxhp: 2 });
+  late.bus.dispatch("Darkwind.Divine", { patron: "mitra" });
+  assert.equal(late.information.getSnapshot().vitals?.divine_patron, "mitra");
+  late.bus.dispatch("Darkwind.Divine", { patron: "gaea" });
+  assert.equal(late.information.getSnapshot().vitals?.divine_patron, "gaea");
+  late.bus.dispatch("Darkwind.Divine", { patron: "" });
+  assert.equal(late.information.getSnapshot().vitals?.divine_patron, "");
+});
+
+test("vitals reconcile Avatar full snapshots and filtered deltas", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, information } = createInformation(modules);
+  let now = 1_000;
+  t.mock.method(Date, "now", () => now);
+  const cachedVitals = {
+    hp: 100,
+    maxhp: 100,
+    sp: 50,
+    maxsp: 50,
+    nl: 0,
+    level_pct: 0,
+    carry: 0,
+    maxcarry: 100,
+    encumberance: 0,
+    encumberance_pct: 0,
+    encumberance_label: "Unburdened",
+    string: "HP:100/100 SP:50/50",
+  };
+
+  bus.dispatch("Darkwind.Divine", { patron: "mitra" });
+  bus.dispatch("Char.Vitals", {
+    ...cachedVitals,
+    rested: 0,
+    avatar_charge: 25,
+    avatar_charge_max: 100,
+    avatar_charge_rate_pct: 200,
+    divine_patron: "set",
+  });
+  assert.equal(information.getSnapshot().vitals?.divine_patron, "set");
+
+  now = 2_000;
+  bus.dispatch("Char.Vitals", { ...cachedVitals, avatar_charge_pct: 26 });
+  let vitals = information.getSnapshot().vitals;
+  assert.equal(vitals?.avatar_charge, 26);
+  assert.equal(vitals?.avatar_charge_max, 100);
+  assert.equal(vitals?.avatar_charge_rate_pct, 200);
+  assert.equal(vitals?.receivedAt, 2_000);
+
+  const percentageWithMax = createInformation(modules);
+  percentageWithMax.bus.dispatch("Char.Vitals", {
+    avatar_charge_pct: 30,
+    avatar_charge_max: 200,
+  });
+  assert.equal(percentageWithMax.information.getSnapshot().vitals?.avatar_charge, 60);
+
+  now = 3_000;
+  bus.dispatch("Char.Vitals", {
+    ...cachedVitals,
+    avatar_charge_pct: 0,
+    avatar_active_remaining: 61,
+  });
+  now = 4_000;
+  bus.dispatch("Char.Vitals", { ...cachedVitals, avatar_active_remaining: 60 });
+  vitals = information.getSnapshot().vitals;
+  assert.equal(vitals?.avatar_active_max, 61);
+  assert.equal(vitals?.receivedAt, 4_000);
+
+  now = 5_000;
+  bus.dispatch("Char.Vitals", cachedVitals);
+  assert.equal(information.getSnapshot().vitals?.receivedAt, 4_000);
+
+  now = 6_000;
+  bus.dispatch("Char.Vitals", { ...cachedVitals, avatar_charge_pct: 10 });
+  vitals = information.getSnapshot().vitals;
+  assert.equal(vitals?.avatar_active_remaining, undefined);
+  assert.equal(vitals?.avatar_active_max, undefined);
+  assert.equal(vitals?.avatar_charge, 10);
+
+  bus.dispatch("Char.Vitals", { ...cachedVitals, rested: 0 });
+  assert.equal(information.getSnapshot().vitals?.avatar_charge, undefined);
+  assert.equal(Object.isFrozen(information.getSnapshot().vitals), true);
+});
+
+test("information reduces inventory, progress, and requested cyberware details", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, eventBus, information, sent } = createInformation(modules);
+
+  bus.dispatch("Char.Items.List", {
+    location: "inv",
+    items: [{ id: "sword", name: "a sword" }],
+  });
+  bus.dispatch("Char.Items.Add", { location: "inv", item: { id: "shield", name: "a shield" } });
+  bus.dispatch("Char.Items.Update", { location: "inv", item: { id: "sword", name: "a sharp sword" } });
+  bus.dispatch("Char.Items.Remove", { location: "inv", item: { id: "shield" } });
+  bus.dispatch("Darkwind.Quests.List", [{
+    id: "herbs",
+    name: "Gather herbs",
+    status: "Started",
+    current: 1,
+    total: 3,
+    objectives: [{ name: "Herbs", current: 1, required: 3, status: "started" }],
+  }]);
+  bus.dispatch("Darkwind.Quests.Update", {
+    questId: "herbs",
+    objective: "Herbs",
+    current: 3,
+    required: 3,
+    readyToTurnIn: true,
+  });
+  bus.dispatch("Darkwind.Achievements.List", {
+    summary: { unlockedTierCount: 1, totalTierCount: 2, completedFamilyCount: 0, totalFamilyCount: 1 },
+    families: [{ id: "explorer", name: "Explorer", currentValue: 2, nextTierThreshold: 5 }],
+  });
+  bus.dispatch("Darkwind.Achievements.Update", {
+    families: [{ id: "explorer", name: "Explorer", currentValue: 3, nextTierThreshold: 5 }],
+  });
+  bus.dispatch("Darkwind.Cyberware.List", {
+    installed: [{ id: "eyes", name: "Targeting suite" }],
+    strain: { used: 2, total: 6 },
+  });
+
+  assert.equal(information.requestCyberwareDetails(" eyes "), true);
+  assert.equal(sent.at(-1), 'Darkwind.Cyberware.Details {"id":"eyes"}');
+  bus.dispatch("Darkwind.Cyberware.Details", { id: "other", description: "Ignore me" });
+  bus.dispatch("Darkwind.Cyberware.Details", { id: "eyes", description: "Locked on" });
+  bus.dispatch("Darkwind.Cyberware.Image", { id: "eyes", url: "/eyes.png" });
+
+  const snapshot = information.getSnapshot();
+  assert.deepEqual(snapshot.inventory, [{ id: "sword", name: "a sharp sword" }]);
+  assert.equal(snapshot.quests?.list[0]?.current, 3);
+  assert.equal(snapshot.quests?.list[0]?.readyToTurnIn, true);
+  assert.equal(snapshot.achievements?.families[0]?.currentValue, 3);
+  assert.equal(snapshot.cyberwareDetail?.description, "Locked on");
+  assert.equal(snapshot.cyberwareDetail?.image, "/eyes.png");
+
+  eventBus.publish("transport:reconnect-status", { status: "scheduled", attempt: 1, transport: "wss" });
+  bus.dispatch("Darkwind.Cyberware.Details", { id: "eyes", description: "Stale" });
+  assert.equal(information.getSnapshot().cyberwareDetail, null);
+});
+
+test("information ignores malformed frames while compatibility handlers still receive them", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, information } = createInformation(modules);
+  const legacy = [];
+  const errorSpy = t.mock.method(console, "error", () => {});
+  bus.on("Char.Vitals", (data) => legacy.push(data));
+
+  bus.dispatch("Char.Vitals", { hp: "wrong" });
+  assert.equal(legacy.length, 1);
+  assert.equal(information.getSnapshot().vitals, null);
+  assert.equal(errorSpy.mock.callCount(), 1);
+
+  bus.dispatch("Game", { game_uptime: "wrong" });
+  assert.equal(information.getSnapshot().game, null);
+  assert.equal(errorSpy.mock.callCount(), 2);
+
+  bus.dispatch("Char.Vitals", { hp: 1, maxhp: 2 });
+  assert.equal(legacy.length, 2);
+  assert.equal(information.getSnapshot().vitals?.hp, 1);
+
+  const questFrames = [];
+  bus.on("Darkwind.Quests.Update", (data) => questFrames.push(data));
+  bus.dispatch("Darkwind.Quests.Update", { questId: "herbs", objective: "Herbs", current: "wrong", required: 2 });
+  assert.equal(questFrames.length, 1);
+  assert.equal(information.getSnapshot().quests, null);
+});
+
+test("information resets on disconnect and stays isolated after disposal", async (t) => {
+  const modules = await loadModules(t);
+  const first = createInformation(modules);
+  const second = createInformation(modules);
+
+  first.bus.dispatch("Char.Status", { name: "First" });
+  assert.equal(first.information.getSnapshot().status?.name, "First");
+  assert.equal(second.information.getSnapshot().status, null);
+
+  first.eventBus.publish("transport:reconnect-status", { status: "scheduled", attempt: 1, transport: "wss" });
+  assert.equal(first.information.getSnapshot().status, null);
+
+  first.scope.dispose();
+  first.bus.dispatch("Char.Status", { name: "Late" });
+  assert.equal(first.information.getSnapshot().status, null);
+});
+
+test("resync clears the complete transient information snapshot", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, eventBus, information, scope, sent } = createInformation(modules);
+  bus.dispatch("Char.Status", { name: "Acer" });
+  bus.dispatch("Char.Vitals", { hp: 90, maxhp: 100 });
+  bus.dispatch("Darkwind.Cyberware.List", {
+    installed: [{ id: "eyes", name: "Eyes" }],
+    strain: { used: 1, total: 2 },
+  });
+  assert.equal(information.requestCyberwareDetails("eyes"), true);
+  bus.dispatch("Darkwind.Cyberware.Details", { id: "eyes", description: "Sharp" });
+  assert.ok(information.getSnapshot().cyberwareDetail);
+  const sentBefore = sent.length;
+
+  eventBus.publish("session:resync", undefined);
+  assert.deepEqual(information.getSnapshot(), {
+    game: null,
+    avatar: null,
+    status: null,
+    statusVars: null,
+    vitals: null,
+    guildVitals: null,
+    xpmon: null,
+    omens: null,
+    sky: null,
+    stats: { current: null, base: null },
+    worth: null,
+    defences: [],
+    group: null,
+    inventory: [],
+    quests: null,
+    achievements: null,
+    cyberware: null,
+    cyberwareDetail: null,
+  });
+  assert.equal(sent.length, sentBefore);
+  scope.dispose();
+});

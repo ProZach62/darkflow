@@ -66,7 +66,7 @@
   border: 1px solid color-mix(in srgb, #ffffff 25%, transparent);
   background: rgba(0, 0, 0, 0.45);
   color: #e8edf2;
-  font-size: 14px;
+  font-size: calc(14px * var(--pane-font-scale, 1));
   line-height: 1;
   cursor: pointer;
 }
@@ -183,7 +183,7 @@
   left: 50%;
   top: 18%;
   transform: translateX(-50%);
-  font-size: 44px;
+  font-size: calc(44px * var(--pane-font-scale, 1));
   font-weight: 900;
   color: var(--df-warn, #ffb300);
   text-shadow: 0 2px 6px rgba(0,0,0,0.6);
@@ -213,7 +213,14 @@
 .fishing-bitebar-fill {
   height: 100%;
   width: 100%;
+  /* Per-frame values animate with transforms: a width, height, or bottom
+     write forces a layout on every frame of the bite, cast, and fight. */
+  transform: scaleX(1);
+  transform-origin: left center;
   background: var(--df-warn, #ffb300);
+  transform: scaleX(1);
+  transform-origin: left center;
+  will-change: transform;
 }
 
 /* Bite reaction window */
@@ -243,18 +250,18 @@
   animation: fishing-bitehelp-pulse 0.7s ease-in-out infinite alternate;
 }
 .fishing-bitehelp-kicker {
-  font-size: 11px;
+  font-size: calc(11px * var(--pane-font-scale, 1));
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--df-warn, #ffb300) 82%, #ffffff);
 }
 .fishing-bitehelp-title {
-  font-size: 20px;
+  font-size: calc(20px * var(--pane-font-scale, 1));
   font-weight: 800;
 }
 .fishing-bitehelp-action {
-  font-size: 13px;
+  font-size: calc(13px * var(--pane-font-scale, 1));
   line-height: 1.3;
   color: color-mix(in srgb, #e8edf2 88%, var(--df-warn, #ffb300));
 }
@@ -295,7 +302,7 @@
 }
 .fishing-waiting-kicker,
 .fishing-hooking-kicker {
-  font-size: 11px;
+  font-size: calc(11px * var(--pane-font-scale, 1));
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -306,7 +313,7 @@
 }
 .fishing-waiting-title,
 .fishing-hooking-title {
-  font-size: 20px;
+  font-size: calc(20px * var(--pane-font-scale, 1));
   font-weight: 800;
 }
 .fishing-waiting-dots,
@@ -341,7 +348,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: calc(13px * var(--pane-font-scale, 1));
   line-height: 1.3;
   color: color-mix(in srgb, #e8edf2 86%, var(--df-accent));
 }
@@ -371,27 +378,45 @@
 
 .fishing-bar {
   position: absolute;
+  top: 0;
+  bottom: 0;
   left: 4px;
   right: 4px;
-  height: 20%;
+  pointer-events: none;
+  will-change: transform;
+}
+.fishing-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--fishing-bar-size, 20%);
+  box-sizing: border-box;
+  transform: translateY(-50%);
   border-radius: 6px;
   background: color-mix(in srgb, var(--df-ok, #4caf50) 45%, transparent);
   border: 1px solid var(--df-ok, #4caf50);
-  will-change: transform;
 }
 
 .fishing-fish {
   position: absolute;
+  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
+  bottom: 0;
   display: flex;
+  align-items: flex-start;
   justify-content: center;
   color: var(--df-text);
+  pointer-events: none;
   will-change: transform;
 }
 .fishing-fish img {
   width: 42px;
   height: 27px;
+  transform: translateY(-50%);
 }
 .fish-running .fishing-fish img {
   filter: drop-shadow(0 0 6px var(--df-warn, #ffb300));
@@ -420,7 +445,7 @@
   display: flex;
   align-items: center;
   padding-left: 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--pane-font-scale, 1));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--df-text);
@@ -429,9 +454,12 @@
 }
 .fishing-meter-fill {
   height: 100%;
-  width: 0%;
+  width: 100%;
   background: var(--df-accent);
+  transform: scaleX(0);
+  transform-origin: left center;
   transition: none;
+  will-change: transform;
 }
 .fishing-progress .fishing-meter-fill { background: var(--df-ok, #4caf50); }
 .fishing-tension .fishing-meter-fill { background: var(--df-accent); }
@@ -472,17 +500,17 @@
   color: var(--df-text);
 }
 .fishing-trophy-name {
-  font-size: 18px;
+  font-size: calc(18px * var(--pane-font-scale, 1));
   font-weight: 700;
   color: var(--fishing-rarity, var(--df-text));
 }
 .fishing-trophy-details {
-  font-size: 12px;
+  font-size: calc(12px * var(--pane-font-scale, 1));
   color: var(--df-text);
   opacity: 0.85;
 }
 .fishing-trophy-status {
-  font-size: 12px;
+  font-size: calc(12px * var(--pane-font-scale, 1));
   text-align: center;
   color: var(--df-ok, #4caf50);
 }
@@ -497,7 +525,7 @@
   right: 10px;
   top: 8px;
   text-align: center;
-  font-size: 13px;
+  font-size: calc(13px * var(--pane-font-scale, 1));
   /* Fixed light tone: this renders over water scenery/AI art, which stays
      dark regardless of UI theme (same reasoning as terminal text). */
   color: #e8edf2;
@@ -511,7 +539,7 @@
   right: 10px;
   bottom: 6px;
   text-align: center;
-  font-size: 12px;
+  font-size: calc(12px * var(--pane-font-scale, 1));
   color: var(--df-ok, #4caf50);
   text-shadow: 0 1px 3px rgba(0,0,0,0.5);
   pointer-events: none;
@@ -595,8 +623,11 @@
 }
 .fishing-power-fill {
   width: 100%;
-  height: 0%;
+  height: 100%;
   background: var(--df-accent);
+  transform: scaleY(0);
+  transform-origin: center bottom;
+  will-change: transform;
 }
 .fishing-power-fill.hot { background: var(--df-warn, #ffb300); }
 .fishing-cast-btn {
@@ -621,11 +652,69 @@
   .fishing-waiting,
   .fishing-hooking { width: min(88%, 340px); top: 45%; }
   .fishing-bitehelp { width: min(90%, 340px); top: 46%; }
-  .fishing-bitehelp-title { font-size: 18px; }
+  .fishing-bitehelp-title { font-size: calc(18px * var(--pane-font-scale, 1)); }
   .fishing-waiting-title,
-  .fishing-hooking-title { font-size: 18px; }
-  .fishing-cast-btn { padding: 14px 26px; font-size: 15px; }
+  .fishing-hooking-title { font-size: calc(18px * var(--pane-font-scale, 1)); }
+  .fishing-cast-btn { padding: 14px 26px; font-size: calc(15px * var(--pane-font-scale, 1)); }
   .fishing-power { width: 24px; height: 100px; }
   .fishing-bitebar { width: 120px; height: 8px; }
   .fishing-meter { height: 30px; }
+}
+
+/* Auto-Angler strip and indicator (client/runtime/fishing-auto.ts) */
+.fishing-auto-strip {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 6px 8px 2px;
+  font-size: 12px;
+}
+.fishing-auto-toggle {
+  min-width: 92px;
+  padding: 4px 10px;
+  border: 1px solid var(--df-border);
+  border-radius: 6px;
+  background: var(--df-panel, var(--df-bg));
+  color: var(--df-text);
+  font-weight: 700;
+  cursor: pointer;
+}
+.fishing-auto-toggle[aria-pressed="true"] {
+  border-color: var(--df-accent);
+  background: var(--df-accent);
+  color: var(--df-bg);
+}
+.fishing-auto-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--df-text);
+  opacity: 0.85;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Who is in control must be unmistakable: border plus a text badge, never
+   colour alone. */
+.fishing-stage[data-auto="on"] {
+  box-shadow: inset 0 0 0 3px var(--df-accent);
+}
+.fishing-auto-badge {
+  position: absolute;
+  z-index: 10;
+  top: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--df-accent);
+  color: var(--df-bg);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+.fishing-stage[data-auto="on"] .fishing-message {
+  right: 44px;
+  left: 64px;
 }

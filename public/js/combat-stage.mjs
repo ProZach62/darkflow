@@ -11,11 +11,27 @@
 //   so the renderer can pick the DOM fallback instead of pretending.
 
 import {
+  actionSoundCue,
   buildAction,
+  encounterSoundCue,
+  heartbeat,
+  lowHealthAlert,
+  lowHealthLevel,
+  sceneAmbience,
   computeStageLayout,
+  buildSceneAction,
+  sampleSceneAction,
+  sceneLayout,
+  targetEntrance,
   idleOffset,
   resolveStageBackdrop,
   sampleAction,
+  allyHealthColor,
+  allyLayout,
+  auraLook,
+  bystanderLayout,
+  bystanderPresence,
+  BYSTANDER_MS,
 } from './combat-stage-core.mjs';
 import {
   MELEE_WEAPONS,
@@ -71,16 +87,46 @@ export function isCanvasStageSupported(doc) {
   }
 }
 
+// How far the camera shake can move the scene, and so how much backdrop is
+// painted beyond the canvas edge.
+const BACKDROP_PAD = 24;
+// Images kept decoded at once: the current backdrop and tokens with their
+// fallbacks, plus a little slack so a quick step back does not reload.
+const MAX_CACHED_IMAGES = 12;
+
 function fallbackList(value) {
   if (Array.isArray(value)) return value.filter((item) => typeof item === 'string' && item);
   return typeof value === 'string' && value ? [value] : [];
 }
 
+const hexCache = new Map();
+
 function hexToRgb(hex) {
-  const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
-  if (!match) return null;
-  const value = parseInt(match[1], 16);
-  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  const key = String(hex || '');
+  const cached = hexCache.get(key);
+  if (cached !== undefined) return cached;
+  const match = /^#?([0-9a-f]{6})$/i.exec(key.trim());
+  const value = match ? parseInt(match[1], 16) : 0;
+  const rgb = match ? [(value >> 16) & 255, (value >> 8) & 255, value & 255] : null;
+  if (hexCache.size > 256) hexCache.clear();
+  hexCache.set(key, rgb);
+  return rgb;
+}
+
+// Radial glows (token halos, side tints) are drawn from small cached sprites
+// instead of a fresh gradient per frame; a sprite is keyed by its radius and
+// colour so a bobbing token reuses it every frame.
+// Device pixels the stage will rasterise per frame. A large floating Scene
+// on a 2x display would otherwise be four million pixels every frame, which
+// is where software rasterisation starts to stall the page; past the budget
+// the pixel ratio eases down (never below 1) and the painting goes a little
+// softer instead.
+const PIXEL_BUDGET = 2_200_000;
+const STATS_WINDOW_MS = 5000;
+const GLOW_SPRITE_LIMIT = 24;
+const PORTRAIT_SPRITE_LIMIT = 8;
+function bucketRadius(radius) {
+  return Math.max(4, Math.round(radius / 4) * 4);
 }
 
 function rgba(color, alpha) {
@@ -91,6 +137,14 @@ function rgba(color, alpha) {
 export function createCombatStage(doc, options = {}) {
   if (!isCanvasStageSupported(doc)) return null;
   const win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
+  let showStats = options.showStats === true;
+  if (!showStats && win) {
+    try {
+      showStats = win.localStorage && win.localStorage.getItem('darkflow-scene-stats') === '1';
+    } catch (error) {
+      showStats = false;
+    }
+  }
   const raf = options.requestAnimationFrame
     || (win && typeof win.requestAnimationFrame === 'function'
       ? win.requestAnimationFrame.bind(win)
@@ -127,12 +181,56 @@ export function createCombatStage(doc, options = {}) {
     _height: 0,
     _dpr: 1,
     _images: new Map(),
+    // The composed backdrop (fill, room art or tile, wash, vignette) at device
+    // resolution, redrawn only when the art or the canvas size changes. Per
+    // frame the stage blits it once instead of scaling the art and filling
+    // four full-canvas gradients, which is what made a large room image
+    // expensive at 60fps.
+    _backdropCache: null,
+    // Steady-state frames (a fight with no exchange playing) draw at half
+    // rate; the idle breath reads the same at 30fps and costs half as much.
+    _restFrameSkip: false,
+    _hasSize: false,
+    _glowSprites: new Map(),
+    _portraitSprites: new Map(),
+    _spriteSurfaces: true,
+    // Rolling draw cost: a smoothed per-frame draw time and the worst frame
+    // of the last few seconds. Shown on the canvas when stats are enabled
+    // (options.showStats, or localStorage darkflow-scene-stats = "1").
+    _stats: { drawMs: 0, maxDrawMs: 0, maxAt: 0 },
+    _showStats: showStats,
     _actions: [],
     _playedSeqs: new Set(),
+    // Day and night tint for the current backdrop, or null in daylight.
+    _ambience: null,
+    // Sound cues are handed to the host, which owns settings and the audio
+    // runtime. Pending cues wait for the blow to land.
+    _onSound: typeof options.onSound === 'function' ? options.onSound : null,
+    _soundTimers: new Set(),
+    _encounterState: null,
+    _lowHealthState: null,
     _encounterKey: '',
     _view: null,
     _reducedMotion: false,
     _backdrop: resolveStageBackdrop(null),
+    // Scene mode: no fight is being presented, so the player stands alone.
+    // `_presence` is how far the opponent is onto the stage (0..1); it eases
+    // toward 1 when a fight starts and back to 0 when it ends.
+    _sceneIdle: true,
+    _presence: 0,
+    _presenceClockAt: 0,
+    // Idle-scene animations (look, walk) queued by playScene(); the newest
+    // one drives the player's figure.
+    _sceneActions: [],
+    // Other players in the room, shown on the idle scene. Each carries its
+    // own presence (0 absent .. 1 on stage) so arrivals fade in and
+    // departures fade out; a fight hides them all.
+    _bystanders: [],
+    // Party members who are here, and the player's buff and debuff auras.
+    _allies: [],
+    _allyClockAt: 0,
+    _auras: null,
+    _bystanderClockAt: 0,
     _palette: {
       accent: readCssVar(doc, '--df-accent', '#42d6c9'),
       danger: readCssVar(doc, '--df-err', '#f85149'),
@@ -148,6 +246,53 @@ export function createCombatStage(doc, options = {}) {
     _secondaryState: null,
     _lightDir: 1,
     frames: 0,
+    // The scene state, for diagnostics and tests.
+    // { drawMs, maxDrawMs, width, height, dpr, frames }: the smoothed draw
+    // time, the worst frame of the last few seconds, and the canvas size.
+    get stats() {
+      return {
+        drawMs: this._stats.drawMs,
+        maxDrawMs: this._stats.maxDrawMs,
+        width: this._width,
+        height: this._height,
+        dpr: this._dpr,
+        frames: this.frames,
+      };
+    },
+
+    setShowStats(enabled) {
+      this._showStats = !!enabled;
+    },
+
+    _recordDraw(elapsed, frameTime) {
+      const stats = this._stats;
+      stats.drawMs = stats.drawMs ? stats.drawMs * 0.9 + elapsed * 0.1 : elapsed;
+      if (frameTime - stats.maxAt > STATS_WINDOW_MS) {
+        stats.maxDrawMs = 0;
+        stats.maxAt = frameTime;
+      }
+      if (elapsed > stats.maxDrawMs) stats.maxDrawMs = elapsed;
+      if (this._showStats) this._drawStats();
+    },
+
+    _drawStats() {
+      const c = ctx;
+      const stats = this._stats;
+      const text = 'draw ' + stats.drawMs.toFixed(2) + 'ms  max ' + stats.maxDrawMs.toFixed(1) + 'ms  '
+        + this._width + 'x' + this._height + '@' + this._dpr.toFixed(2) + '  f' + this.frames;
+      c.save();
+      c.setTransform(this._dpr, 0, 0, this._dpr, 0, 0);
+      c.font = '11px monospace';
+      c.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      c.fillRect(4, 4, text.length * 6.8 + 8, 18);
+      c.fillStyle = '#d6e4f0';
+      c.fillText(text, 8, 17);
+      c.restore();
+    },
+
+    get scene() {
+      return { idle: this._sceneIdle, presence: this._presence };
+    },
 
     update(view, sources = {}) {
       if (this.destroyed || !view) return;
@@ -159,12 +304,34 @@ export function createCombatStage(doc, options = {}) {
       }
       this._view = view;
       this._reducedMotion = !!view.reducedMotion;
-      this._backdrop = resolveStageBackdrop(sources.room);
-      this._ensureImage(this._backdrop.tile, '');
+      const encounterState = { active: !!view.active, outcome: String(view.outcome || '') };
+      const encounterCue = encounterSoundCue(this._encounterState, encounterState);
+      this._encounterState = encounterState;
+      if (encounterCue) this._cueSound(encounterCue);
+      const alert = lowHealthAlert(this._lowHealthState, view.player && view.player.health, !!view.active);
+      this._lowHealthState = { armed: alert.armed };
+      if (alert.cue) this._cueSound(alert.cue);
+      const scene = sources.scene && typeof sources.scene === 'object' ? sources.scene : {};
+      this._sceneIdle = scene.idle !== undefined ? !!scene.idle : !view.active;
+      if (!this._sceneIdle) this._sceneActions = [];
+      this._backdrop = resolveStageBackdrop(sources.room, sources.roomImage);
+      this._ambience = sceneAmbience(sources.ambience, this._backdrop.terrain);
+      // The room's art is the backdrop when it loads; the terrain tile stands
+      // in until then and takes over for good if the art fails.
+      this._ensureImage(this._backdrop.image, [this._backdrop.tile]);
       this._playerFallback = fallbackList(sources.playerFallback);
       this._targetFallback = fallbackList(sources.targetFallback);
+      // Allies first: a party member is not also shown as a bystander.
+      this._setAllies(sources.allies);
+      this._setBystanders(sources.players);
+      this._auras = sources.auras && typeof sources.auras === 'object' ? sources.auras : null;
       this._ensureImage(view.player.image, this._playerFallback);
       this._ensureImage(view.target.image, this._targetFallback);
+      this._pruneImages([
+        this._backdrop.image, this._backdrop.tile,
+        view.player.image, ...this._playerFallback,
+        view.target.image, ...this._targetFallback,
+      ]);
 
       const event = view.event;
       if (event && Number.isFinite(Number(event.seq)) && !this._playedSeqs.has(event.seq)) {
@@ -172,6 +339,8 @@ export function createCombatStage(doc, options = {}) {
         if (action) {
           this._playedSeqs.add(event.seq);
           this._actions.push(action);
+          const cue = actionSoundCue(action);
+          if (cue) this._cueSound(cue);
           if (this._actions.length > MAX_CONCURRENT_ACTIONS) {
             this._actions.splice(0, this._actions.length - MAX_CONCURRENT_ACTIONS);
           }
@@ -182,13 +351,37 @@ export function createCombatStage(doc, options = {}) {
         const keep = Array.from(this._playedSeqs).slice(-256);
         this._playedSeqs = new Set(keep);
       }
-      this._resize();
+      // Without a resize observer (older hosts, tests) publish is the only
+      // chance to notice a size change; with one, the observer already did.
+      if (!this._resizeObserver) this._resize();
       this.start();
+    },
+
+    // Plays a scene activity ({ kind: 'look' | 'walk', facing, seq }) on the
+    // player's figure. Only the idle scene acts these out; during a fight the
+    // combat actions own the figure. A new activity replaces one in progress,
+    // so a speedwalk reads as one continuous stride rather than a pile-up.
+    playScene(activity) {
+      if (this.destroyed || !this._sceneIdle || this._reducedMotion) return false;
+      const action = buildSceneAction(activity, now());
+      if (!action) return false;
+      this._sceneActions = [action];
+      this.start();
+      return true;
+    },
+
+    _sceneSample(t) {
+      if (!this._sceneIdle || !this._sceneActions.length) return null;
+      const action = this._sceneActions[this._sceneActions.length - 1];
+      return sampleSceneAction(action, t, { reducedMotion: this._reducedMotion });
     },
 
     start() {
       if (this.destroyed || this.running) return;
       if (doc.hidden) return;
+      // A restart paints its first frame: an idle scene stops after one
+      // frame, so letting the rest cadence skip it would drop the update.
+      this._restFrameSkip = false;
       this.running = true;
       this._rafId = raf((t) => this._tick(t));
     },
@@ -203,6 +396,7 @@ export function createCombatStage(doc, options = {}) {
       if (this.destroyed) return;
       this.destroyed = true;
       this.stop();
+      this._clearSoundTimers();
       if (this._resizeObserver) {
         try { this._resizeObserver.disconnect(); } catch (error) { /* ignore */ }
         this._resizeObserver = null;
@@ -216,6 +410,8 @@ export function createCombatStage(doc, options = {}) {
         this._resizeHandler = null;
       }
       this._images.clear();
+      this._glowSprites.clear();
+      this._portraitSprites.clear();
       if (element.parentNode && typeof element.parentNode.removeChild === 'function') {
         element.parentNode.removeChild(element);
       }
@@ -238,8 +434,29 @@ export function createCombatStage(doc, options = {}) {
         const img = new ImageCtor();
         img.decoding = 'async';
         img.onload = () => {
-          entry.status = 'loaded';
-          if (!this.running) this.start();
+          // A first drawImage of an undecoded image decodes it synchronously
+          // on the main thread; a large room painting can take tens of
+          // milliseconds. Decode off-thread first where the browser allows.
+          const ready = () => {
+            if (entry.status !== 'loading') return;
+            entry.status = 'loaded';
+            if (!this.running) this.start();
+          };
+          if (typeof img.decode === 'function') {
+            let settled = false;
+            const once = () => {
+              if (settled) return;
+              settled = true;
+              ready();
+            };
+            try {
+              img.decode().then(once, once);
+            } catch (error) {
+              once();
+            }
+          } else {
+            ready();
+          }
         };
         img.onerror = () => {
           entry.status = 'failed';
@@ -254,6 +471,17 @@ export function createCombatStage(doc, options = {}) {
       }
     },
 
+    // Every room the player walks through hands the stage a new painting; a
+    // long session would otherwise keep them all decoded. Keep what the
+    // current scene can still draw and drop the rest once the cache grows.
+    _pruneImages(keep) {
+      if (this._images.size <= MAX_CACHED_IMAGES) return;
+      const wanted = new Set(keep.filter(Boolean));
+      for (const key of Array.from(this._images.keys())) {
+        if (!wanted.has(key)) this._images.delete(key);
+      }
+    },
+
     _imageFor(url, fallback) {
       const candidates = (url ? [url] : []).concat(fallbackList(fallback));
       for (const candidate of candidates) {
@@ -263,11 +491,20 @@ export function createCombatStage(doc, options = {}) {
       return null;
     },
 
+    // The only place the stage reads layout. The resize observer calls it
+    // when the pane changes size; the frame loop trusts the cached answer so
+    // a busy terminal's pending layout is not forced once per frame.
     _resize() {
       const parent = element;
-      const width = Math.max(1, Math.round(parent.clientWidth || 0));
-      const height = Math.max(1, Math.round(parent.clientHeight || 0));
-      const dpr = Math.max(1, Math.min(3, (win && win.devicePixelRatio) || 1));
+      const rawWidth = parent.clientWidth || 0;
+      const rawHeight = parent.clientHeight || 0;
+      this._hasSize = rawWidth > 0 && rawHeight > 0;
+      const width = Math.max(1, Math.round(rawWidth));
+      const height = Math.max(1, Math.round(rawHeight));
+      // Capped at 2: a 3x display would triple the pixels the fight loop
+      // paints every frame for no visible gain on a painted scene.
+      const budgetDpr = Math.sqrt(PIXEL_BUDGET / Math.max(1, width * height));
+      const dpr = Math.max(1, Math.min(2, (win && win.devicePixelRatio) || 1, budgetDpr));
       if (width === this._width && height === this._height && dpr === this._dpr) return;
       this._width = width;
       this._height = height;
@@ -311,24 +548,59 @@ export function createCombatStage(doc, options = {}) {
       }
       // A collapsed or hidden pane has no size. Stop drawing; the resize
       // observer or the next publish restarts the loop when it comes back.
-      if (!(element.clientWidth > 0 && element.clientHeight > 0)) {
+      if (!this._hasSize) {
         this.running = false;
         return;
       }
       const frameTime = Number.isFinite(timestamp) ? timestamp : now();
       const t = this._reducedMotion ? frameTime : this._applyHitStop(frameTime);
       this._lastFrameAt = t;
+      const presenceSettled = this._advancePresence(frameTime);
+      const bystandersSettled = this._advanceBystanders(frameTime);
+      const alliesSettled = this._advanceAllies(frameTime);
+      const settled = presenceSettled && bystandersSettled && alliesSettled;
       this._actions = this._actions.filter((action) => t - action.startedAt < action.duration);
-      this._draw(t);
-      this.frames++;
+      this._sceneActions = this._sceneActions.filter((action) => t - action.startedAt < action.duration);
+      const resting = settled && !this._actions.length && !this._sceneActions.length;
+      if (resting && this._restFrameSkip) {
+        this._restFrameSkip = false;
+      } else {
+        this._restFrameSkip = resting;
+        const drawStart = now();
+        this._draw(t);
+        this._recordDraw(now() - drawStart, frameTime);
+        this.frames++;
+      }
       const view = this._view;
+      // Idle scenes settle to a still frame; the loop only runs while a fight
+      // is on, an action is playing, or the opponent is entering or leaving.
       const keepGoing = this._actions.length > 0
-        || (view && view.active && !this._reducedMotion);
+        || this._sceneActions.length > 0
+        || !settled
+        || (view && view.active && !this._sceneIdle && !this._reducedMotion);
       if (keepGoing) {
         this._rafId = raf((next) => this._tick(next));
       } else {
         this.running = false;
       }
+    },
+
+    // Moves the opponent's presence toward where the scene wants it, on the
+    // real clock so a hit-stop never freezes an entrance. Returns true once
+    // it has arrived.
+    _advancePresence(frameTime) {
+      const want = this._sceneIdle ? 0 : 1;
+      const last = this._presenceClockAt || frameTime;
+      this._presenceClockAt = frameTime;
+      if (this._reducedMotion) {
+        this._presence = want;
+        return true;
+      }
+      const dt = Math.max(0, Math.min(100, frameTime - last));
+      const step = dt / (want ? 560 : 420);
+      const delta = want - this._presence;
+      this._presence = Math.abs(delta) <= step ? want : this._presence + Math.sign(delta) * step;
+      return this._presence === want;
     },
 
     // Returns the effective animation time. While a hit-stop is active the
@@ -354,10 +626,9 @@ export function createCombatStage(doc, options = {}) {
     },
 
     _draw(t) {
-      this._resize();
       const w = this._width;
       const h = this._height;
-      const layout = computeStageLayout(w, h);
+      const layout = sceneLayout(computeStageLayout(w, h), this._presence);
       const view = this._view;
       const reduced = this._reducedMotion;
       const samples = this._actions.map((action) => ({
@@ -370,21 +641,42 @@ export function createCombatStage(doc, options = {}) {
 
       let shake = 0;
       let flash = 0;
+      let zoom = 0;
+      let whiteFlash = 0;
       for (const sample of samples) {
         shake = Math.max(shake, sample.shake);
         flash = Math.max(flash, sample.flash);
+        zoom = Math.max(zoom, sample.zoom || 0);
+        whiteFlash = Math.max(whiteFlash, sample.whiteFlash || 0);
       }
       const shakeX = shake ? Math.sin(t / 19) * shake * layout.radius * 0.14 : 0;
       const shakeY = shake ? Math.cos(t / 23) * shake * layout.radius * 0.08 : 0;
 
+      const scene = this._sceneSample(t);
       c.save();
       c.translate(shakeX, shakeY);
+      if (zoom > 0) {
+        // A critical punches the camera in about the fighters, not the corner.
+        const cx = w / 2;
+        const cy = layout.groundY;
+        c.translate(cx, cy);
+        c.scale(1 + zoom, 1 + zoom);
+        c.translate(-cx, -cy);
+      }
       this._drawBackdrop(c, layout);
-      const tokens = this._tokenPositions(layout, samples, t);
+      const tokens = this._tokenPositions(layout, samples, t, scene);
       this._drawGround(c, layout, tokens);
+      this._drawBystanders(c, layout, t);
+      this._drawAllies(c, layout, t);
       for (const sample of samples) this._drawBackEffects(c, layout, tokens, sample);
-      this._drawToken(c, layout, tokens.player, 'player', view.player, samples);
+      this._drawAuras(c, layout, tokens.player, t);
+      this._drawToken(c, layout, tokens.player, 'player', view.player, samples, scene);
       this._drawToken(c, layout, tokens.target, 'target', view.target, samples);
+      // A lighter pass over the figures so they sit in the same light as the
+      // room. Effects and numbers draw after it and stay at full brightness.
+      if (this._ambience) {
+        this._fillAmbience(c, -BACKDROP_PAD, -BACKDROP_PAD, w + BACKDROP_PAD * 2, h + BACKDROP_PAD * 2, this._ambience.figures);
+      }
       for (const sample of samples) this._drawFrontEffects(c, layout, tokens, sample);
       c.restore();
 
@@ -395,17 +687,23 @@ export function createCombatStage(doc, options = {}) {
         c.fillStyle = gradient;
         c.fillRect(0, 0, w, h);
       }
-      if (view && !view.effective) {
+      if (whiteFlash > 0) {
+        c.fillStyle = 'rgba(255, 255, 255, ' + whiteFlash + ')';
+        c.fillRect(0, 0, w, h);
+      }
+      this._drawLowHealth(c, w, h, view, t);
+      if (view && !view.effective && !this._sceneIdle) {
         c.fillStyle = 'rgba(3, 7, 11, 0.32)';
         c.fillRect(0, 0, w, h);
       }
     },
 
-    _tokenPositions(layout, samples, t) {
+    _tokenPositions(layout, samples, t, scene = null) {
       const positions = {};
       for (const side of ['player', 'target']) {
         const base = layout[side];
-        const idle = idleOffset(side, t, this._reducedMotion);
+        const strain = side === 'player' && this._view ? lowHealthLevel(this._view.player.health) : 0;
+        const idle = idleOffset(side, t, this._reducedMotion, strain);
         let x = idle.x;
         let y = idle.y;
         let scale = 1;
@@ -418,6 +716,17 @@ export function createCombatStage(doc, options = {}) {
           scale *= offset.scale;
           alpha = Math.min(alpha, offset.alpha);
           flashAmount = Math.max(flashAmount, offset.flash);
+        }
+        if (side === 'player' && scene) {
+          x += scene.x;
+          y += scene.y;
+          alpha *= scene.alpha;
+        }
+        if (side === 'target') {
+          const entrance = targetEntrance(this._presence, this._reducedMotion);
+          y += entrance.y;
+          scale *= entrance.scale;
+          alpha *= entrance.alpha;
         }
         positions[side] = {
           x: base.x + x * layout.radius,
@@ -432,43 +741,492 @@ export function createCombatStage(doc, options = {}) {
       return positions;
     },
 
+    // Below 35% health a red vignette closes in from the edges. It beats like
+    // a heart while a fight keeps the stage running, and holds steady at rest
+    // and with reduced motion.
+    _drawLowHealth(c, w, h, view, t) {
+      const level = view && view.player ? lowHealthLevel(view.player.health) : 0;
+      if (!(level > 0)) return;
+      const beating = !this._reducedMotion && !!view.active && !this._sceneIdle;
+      const pulse = beating ? heartbeat(t, level) : 0.35;
+      const strength = (0.12 + 0.3 * level) * (0.65 + 0.35 * pulse);
+      const gradient = c.createRadialGradient(
+        w / 2, h / 2, Math.min(w, h) * (0.42 - 0.12 * level),
+        w / 2, h / 2, Math.max(w, h) * 0.78,
+      );
+      gradient.addColorStop(0, rgba(this._palette.danger, 0));
+      gradient.addColorStop(1, rgba(this._palette.danger, strength));
+      c.fillStyle = gradient;
+      c.fillRect(0, 0, w, h);
+    },
+
+    _fillAmbience(c, x, y, width, height, alpha) {
+      if (!this._ambience || !(alpha > 0)) return;
+      c.save();
+      c.globalCompositeOperation = 'multiply';
+      c.globalAlpha = alpha;
+      c.fillStyle = this._ambience.color;
+      c.fillRect(x, y, width, height);
+      c.restore();
+    },
+
+    _cueSound(cue) {
+      if (!this._onSound || this.destroyed) return;
+      const fire = () => {
+        if (this.destroyed) return;
+        try { this._onSound(cue); } catch (error) { /* a sound must never break the scene */ }
+      };
+      if (!(cue.delayMs > 0)) { fire(); return; }
+      const timers = this._soundTimers;
+      const setTimer = win && typeof win.setTimeout === 'function' ? win.setTimeout.bind(win) : setTimeout;
+      const id = setTimer(() => { timers.delete(id); fire(); }, cue.delayMs);
+      timers.add(id);
+    },
+
+    _clearSoundTimers() {
+      const clearTimer = win && typeof win.clearTimeout === 'function' ? win.clearTimeout.bind(win) : clearTimeout;
+      for (const id of this._soundTimers) clearTimer(id);
+      this._soundTimers.clear();
+    },
+
     _drawBackdrop(c, layout) {
       const w = layout.width;
       const h = layout.height;
-      const tile = this._imageFor(this._backdrop.tile, '');
+      // The margin covers the camera shake, which translates the whole scene
+      // by up to a fraction of the token radius.
+      const pad = BACKDROP_PAD;
       c.fillStyle = '#05090e';
-      c.fillRect(-w, -h, w * 3, h * 3);
-      if (tile && tile.naturalWidth > 0) {
-        const scale = Math.max(w / tile.naturalWidth, h / tile.naturalHeight) * 1.08;
-        const drawW = tile.naturalWidth * scale;
-        const drawH = tile.naturalHeight * scale;
+      c.fillRect(-pad, -pad, w + pad * 2, h + pad * 2);
+      const cache = this._backdropLayer(w, h);
+      if (cache) {
+        c.drawImage(cache.canvas, -pad, -pad, w + pad * 2, h + pad * 2);
+      } else {
+        this._paintBackdrop(c, w, h, 0);
+      }
+      // Side tints keep the left/right reading even on a neutral tile. They
+      // follow the tokens, so they stay live; each covers only its own patch.
+      const reach = layout.radius * 3.2;
+      for (const [x, y, color, alpha] of [
+        [layout.player.x, layout.player.y, this._palette.accent, 0.16],
+        [layout.target.x, layout.target.y, this._palette.danger, 0.14],
+      ]) {
+        this._drawGlow(c, x, y, reach, color, alpha, 0);
+      }
+    },
+
+    // Paints a radial glow of `reach` around (x, y): `alpha` at the centre
+    // (held flat out to innerRatio of the reach) fading to nothing at the
+    // edge. Cached as a sprite per radius bucket and colour; falls back to a
+    // live gradient where offscreen canvases are unavailable.
+    _drawGlow(c, x, y, reach, color, alpha, innerRatio) {
+      const sprite = this._glowSprite(reach, color, alpha, innerRatio);
+      if (sprite) {
+        c.drawImage(sprite.canvas, x - sprite.reach, y - sprite.reach, sprite.reach * 2, sprite.reach * 2);
+        return;
+      }
+      const glow = c.createRadialGradient(x, y, reach * innerRatio, x, y, reach);
+      glow.addColorStop(0, rgba(color, alpha));
+      glow.addColorStop(1, rgba(color, 0));
+      c.fillStyle = glow;
+      c.fillRect(x - reach, y - reach, reach * 2, reach * 2);
+    },
+
+    _offscreen(width, height) {
+      if (!this._spriteSurfaces) return null;
+      try {
+        const surface = doc.createElement('canvas');
+        const context = surface && typeof surface.getContext === 'function' ? surface.getContext('2d') : null;
+        if (!context) {
+          this._spriteSurfaces = false;
+          return null;
+        }
+        surface.width = Math.max(1, Math.round(width));
+        surface.height = Math.max(1, Math.round(height));
+        return { canvas: surface, ctx: context };
+      } catch (error) {
+        this._spriteSurfaces = false;
+        return null;
+      }
+    },
+
+    _glowSprite(reach, color, alpha, innerRatio) {
+      const bucket = bucketRadius(reach);
+      const dpr = this._dpr;
+      const key = bucket + '|' + color + '|' + alpha + '|' + innerRatio + '|' + dpr;
+      const cached = this._glowSprites.get(key);
+      if (cached) return cached;
+      const size = bucket * 2 * dpr;
+      const surface = this._offscreen(size, size);
+      if (!surface) return null;
+      const g = surface.ctx;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const glow = g.createRadialGradient(bucket, bucket, bucket * innerRatio, bucket, bucket, bucket);
+      glow.addColorStop(0, rgba(color, alpha));
+      glow.addColorStop(1, rgba(color, 0));
+      g.fillStyle = glow;
+      g.fillRect(0, 0, bucket * 2, bucket * 2);
+      if (this._glowSprites.size >= GLOW_SPRITE_LIMIT) this._glowSprites.clear();
+      const sprite = { canvas: surface.canvas, reach: bucket };
+      this._glowSprites.set(key, sprite);
+      return sprite;
+    },
+
+    // The portrait disc at the size it is drawn, so a fight does not
+    // downscale a full-resolution portrait every frame. Keyed by image and
+    // radius bucket; the disc is cropped the way the live draw was.
+    _portraitSprite(img, radius) {
+      const bucket = bucketRadius(radius);
+      const dpr = this._dpr;
+      const key = (img.src || '') + '|' + bucket + '|' + dpr;
+      const cached = this._portraitSprites.get(key);
+      if (cached && cached.img === img) return cached;
+      const size = bucket * 2;
+      const surface = this._offscreen(size * dpr, size * dpr);
+      if (!surface) return null;
+      const g = surface.ctx;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const scale = Math.max(size / img.naturalWidth, size / img.naturalHeight);
+      const drawW = img.naturalWidth * scale;
+      const drawH = img.naturalHeight * scale;
+      g.drawImage(img, bucket - drawW / 2, -(drawH - size) * 0.3, drawW, drawH);
+      if (this._portraitSprites.size >= PORTRAIT_SPRITE_LIMIT) this._portraitSprites.clear();
+      const sprite = { canvas: surface.canvas, img, size };
+      this._portraitSprites.set(key, sprite);
+      return sprite;
+    },
+
+    // The static part of the backdrop at device resolution, rebuilt only when
+    // the art, the canvas size, or the pixel ratio changes. null when this
+    // environment cannot make an offscreen canvas, in which case the caller
+    // paints directly.
+    _backdropLayer(w, h) {
+      const art = this._imageFor(this._backdrop.image, [this._backdrop.tile]);
+      const artEntry = this._backdrop.image ? this._images.get(this._backdrop.image) : null;
+      const isRoomArt = !!(art && artEntry && artEntry.img === art);
+      const dpr = this._dpr;
+      const cache = this._backdropCache;
+      const ambienceKey = this._ambience ? this._ambience.key : '';
+      if (
+        cache && cache.art === art && cache.w === w && cache.h === h && cache.dpr === dpr
+        && cache.ambience === ambienceKey
+      ) return cache;
+      if (this._backdropCache === false) return null;
+      let canvas = cache ? cache.canvas : null;
+      let ctx = cache ? cache.ctx : null;
+      if (!canvas) {
+        try {
+          canvas = doc.createElement('canvas');
+          ctx = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+        } catch (error) {
+          ctx = null;
+        }
+        if (!ctx) {
+          this._backdropCache = false;
+          return null;
+        }
+      }
+      const pad = BACKDROP_PAD;
+      canvas.width = Math.max(1, Math.round((w + pad * 2) * dpr));
+      canvas.height = Math.max(1, Math.round((h + pad * 2) * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w + pad * 2, h + pad * 2);
+      this._paintBackdrop(ctx, w, h, pad, art, isRoomArt);
+      this._backdropCache = { canvas, ctx, art, w, h, dpr, ambience: ambienceKey };
+      return this._backdropCache;
+    },
+
+    // Fill, art, wash, and vignette for a w x h stage drawn at (pad, pad).
+    // Without an explicit `art` the current backdrop's image is resolved.
+    _paintBackdrop(c, w, h, pad, artArg, isRoomArtArg) {
+      let art = artArg;
+      let isRoomArt = isRoomArtArg;
+      if (artArg === undefined) {
+        art = this._imageFor(this._backdrop.image, [this._backdrop.tile]);
+        const artEntry = this._backdrop.image ? this._images.get(this._backdrop.image) : null;
+        isRoomArt = !!(art && artEntry && artEntry.img === art);
+      }
+      c.save();
+      c.translate(pad, pad);
+      c.fillStyle = '#05090e';
+      c.fillRect(-pad, -pad, w + pad * 2, h + pad * 2);
+      if (art && art.naturalWidth > 0) {
+        const scale = Math.max(w / art.naturalWidth, h / art.naturalHeight) * (isRoomArt ? 1.02 : 1.08);
+        const drawW = art.naturalWidth * scale;
+        const drawH = art.naturalHeight * scale;
         c.save();
-        c.globalAlpha = 0.55;
-        c.drawImage(tile, (w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
+        // Room art is the point of the scene, so it shows through more than a
+        // repeating terrain tile does; the wash below still keeps the tokens
+        // readable on a bright painting.
+        c.globalAlpha = isRoomArt ? 0.82 : 0.55;
+        c.drawImage(art, (w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
         c.restore();
       }
+      // Time of day tints the room before the wash, so it is baked into the
+      // cached layer and costs nothing per frame.
+      if (this._ambience) this._fillAmbience(c, -pad, -pad, w + pad * 2, h + pad * 2, this._ambience.backdrop);
       const wash = c.createLinearGradient(0, 0, 0, h);
       wash.addColorStop(0, 'rgba(4, 9, 14, 0.66)');
       wash.addColorStop(0.5, 'rgba(4, 9, 14, 0.28)');
       wash.addColorStop(1, 'rgba(2, 5, 8, 0.9)');
       c.fillStyle = wash;
-      c.fillRect(-w, -h, w * 3, h * 3);
+      c.fillRect(-pad, -pad, w + pad * 2, h + pad * 2);
       const vignette = c.createRadialGradient(w / 2, h * 0.5, Math.min(w, h) * 0.25, w / 2, h * 0.5, Math.max(w, h) * 0.75);
       vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
       vignette.addColorStop(1, 'rgba(0, 0, 0, 0.62)');
       c.fillStyle = vignette;
-      c.fillRect(-w, -h, w * 3, h * 3);
-      // Side tints keep the left/right reading even on a neutral tile.
-      const left = c.createRadialGradient(layout.player.x, layout.player.y, 0, layout.player.x, layout.player.y, layout.radius * 3.2);
-      left.addColorStop(0, rgba(this._palette.accent, 0.16));
-      left.addColorStop(1, rgba(this._palette.accent, 0));
-      c.fillStyle = left;
-      c.fillRect(0, 0, w, h);
-      const right = c.createRadialGradient(layout.target.x, layout.target.y, 0, layout.target.x, layout.target.y, layout.radius * 3.2);
-      right.addColorStop(0, rgba(this._palette.danger, 0.14));
-      right.addColorStop(1, rgba(this._palette.danger, 0));
-      c.fillStyle = right;
-      c.fillRect(0, 0, w, h);
+      c.fillRect(-pad, -pad, w + pad * 2, h + pad * 2);
+      c.restore();
+    },
+
+    // Replaces the bystander list from the room's player list. Names are
+    // the identity: a player who stays keeps their presence, a newcomer
+    // starts absent and fades in, and one who left fades out and is dropped.
+    _setAllies(allies) {
+      const seen = new Set();
+      const next = [];
+      for (const ally of Array.isArray(allies) ? allies : []) {
+        const name = ally && typeof ally.name === 'string' ? ally.name.trim() : '';
+        const key = name.toLowerCase();
+        if (!name || seen.has(key)) continue;
+        seen.add(key);
+        const existing = this._allies.find((entry) => entry.key === key);
+        const fresh = {
+          name,
+          key,
+          label: name,
+          leader: !!ally.leader,
+          hpPct: typeof ally.hpPct === 'number' ? ally.hpPct : null,
+          want: 1,
+        };
+        next.push({ ...fresh, presence: existing ? existing.presence : 0 });
+      }
+      for (const entry of this._allies) {
+        if (!seen.has(entry.key) && entry.presence > 0) next.push({ ...entry, want: 0 });
+      }
+      this._allies = next;
+    },
+
+    // Allies fade in and out like bystanders, but stay for the fight.
+    _advanceAllies(frameTime) {
+      const last = this._allyClockAt || frameTime;
+      this._allyClockAt = frameTime;
+      if (!this._allies.length) return true;
+      const dt = Math.max(0, Math.min(100, frameTime - last));
+      let settled = true;
+      const kept = [];
+      for (const entry of this._allies) {
+        let presence = entry.presence;
+        if (this._reducedMotion) presence = entry.want;
+        else {
+          const step = dt / (entry.want ? BYSTANDER_MS.in : BYSTANDER_MS.out);
+          const delta = entry.want - presence;
+          presence = Math.abs(delta) <= step ? entry.want : presence + Math.sign(delta) * step;
+        }
+        if (presence !== entry.want) settled = false;
+        if (presence === 0 && entry.want === 0) continue;
+        kept.push(presence === entry.presence ? entry : { ...entry, presence });
+      }
+      this._allies = kept;
+      return settled;
+    },
+
+    // The party stands behind the player in the player's colours, facing the
+    // fight, each with a name and a health bar. The leader is starred.
+    _drawAllies(c, layout, t) {
+      const visible = this._allies.filter((entry) => entry.presence > 0);
+      if (!visible.length) return;
+      const rank = allyLayout(layout, visible.length);
+      // Furthest first, so nearer allies overlap the ones behind them.
+      for (let index = Math.min(visible.length, rank.spots.length) - 1; index >= 0; index -= 1) {
+        const entry = visible[index];
+        const spot = rank.spots[index];
+        const look = bystanderPresence(entry.presence, this._reducedMotion);
+        if (!(look.alpha > 0.002)) continue;
+        const band = { ...rank, radius: spot.radius, groundY: rank.groundY - spot.depth };
+        const unit = spot.radius * FIGURE_UNIT_SCALE;
+        this._drawBystander(c, entry, spot, band, unit, look, t, index + 7, layout.player.x, {
+          facing: 1,
+          ring: this._palette.accent,
+          cloth: '#1e5461',
+          clothShade: '#0f2f37',
+          // A receding rank has no room for names; initials and bars carry it.
+          caption: rank.captions ? (entry.leader ? '\u2605 ' : '') + entry.name : ' ',
+          hpPct: entry.hpPct,
+        });
+      }
+      if (rank.overflow > 0) {
+        c.save();
+        c.globalAlpha = 0.8;
+        c.fillStyle = rgba(this._palette.accent, 0.8);
+        c.font = '600 ' + Math.round(rank.radius * 0.5) + 'px "Segoe UI", system-ui, sans-serif';
+        c.textAlign = 'left';
+        c.textBaseline = 'alphabetic';
+        c.fillText('+' + rank.overflow, rank.radius * 0.4, rank.groundY + rank.radius * 0.5);
+        c.restore();
+      }
+    },
+
+    // Glows on the ground under the player: warm for buffs, brighter with
+    // more of them, and murky for debuffs. A buff about to lapse flickers, or
+    // shows a dashed ring when motion is reduced.
+    _drawAuras(c, layout, token, t) {
+      const look = auraLook(this._auras, t, this._reducedMotion);
+      if (!(look.buff > 0) && !(look.debuff > 0)) return;
+      const groundY = layout.groundY + layout.radius * 0.95;
+      const alpha = Math.max(0, Math.min(1, token.alpha === undefined ? 1 : token.alpha));
+      if (!(alpha > 0)) return;
+      const squash = 0.3;
+      c.save();
+      c.translate(token.x, groundY);
+      c.scale(1, squash);
+      if (look.debuff > 0) this._drawGlow(c, 0, 0, layout.radius * 1.9, '#9b3d6e', look.debuff * alpha, 0.15);
+      if (look.buff > 0) {
+        this._drawGlow(c, 0, 0, layout.radius * 1.7, '#e3b341', look.buff * alpha, 0.2);
+        c.strokeStyle = rgba('#e3b341', Math.min(1, look.buff * 1.6) * alpha);
+        c.lineWidth = Math.max(1, layout.radius * 0.05) / squash;
+        if (look.dashed && this._reducedMotion && typeof c.setLineDash === 'function') {
+          c.setLineDash([layout.radius * 0.3, layout.radius * 0.2]);
+        }
+        c.beginPath();
+        c.arc(0, 0, layout.radius * 1.15, 0, Math.PI * 2);
+        c.stroke();
+      }
+      c.restore();
+    },
+
+    _setBystanders(players) {
+      const seen = new Set();
+      const next = [];
+      for (const player of Array.isArray(players) ? players : []) {
+        const name = player && typeof player.name === 'string' ? player.name.trim() : '';
+        if (!name || seen.has(name)) continue;
+        if (this._allies.some((ally) => ally.want && ally.key === name.toLowerCase())) continue;
+        seen.add(name);
+        const label = player.fullname && typeof player.fullname === 'string' && player.fullname.trim()
+          ? player.fullname.trim()
+          : name;
+        const existing = this._bystanders.find((entry) => entry.name === name);
+        next.push(existing ? { ...existing, label, want: 1 } : { name, label, presence: 0, want: 1 });
+      }
+      for (const entry of this._bystanders) {
+        if (!seen.has(entry.name) && entry.presence > 0) next.push({ ...entry, want: 0 });
+      }
+      this._bystanders = next;
+    },
+
+    _advanceBystanders(frameTime) {
+      const last = this._bystanderClockAt || frameTime;
+      this._bystanderClockAt = frameTime;
+      if (!this._bystanders.length) return true;
+      const dt = Math.max(0, Math.min(100, frameTime - last));
+      let settled = true;
+      const kept = [];
+      for (const entry of this._bystanders) {
+        const want = this._sceneIdle ? entry.want : 0;
+        let presence = entry.presence;
+        if (this._reducedMotion) presence = want;
+        else {
+          const step = dt / (want ? BYSTANDER_MS.in : BYSTANDER_MS.out);
+          const delta = want - presence;
+          presence = Math.abs(delta) <= step ? want : presence + Math.sign(delta) * step;
+        }
+        if (presence !== want) settled = false;
+        // Gone for good once faded out after leaving the room.
+        if (presence === 0 && entry.want === 0) continue;
+        kept.push(presence === entry.presence ? entry : { ...entry, presence });
+      }
+      this._bystanders = kept;
+      return settled;
+    },
+
+    _drawBystanders(c, layout, t) {
+      const visible = this._bystanders.filter((entry) => entry.presence > 0);
+      if (!visible.length) return;
+      // The party has first call on the ground behind the player.
+      const allies = this._allies.filter((entry) => entry.presence > 0);
+      const taken = allies.length ? allyLayout(layout, allies.length).spots.map((spot) => spot.x) : [];
+      const band = bystanderLayout(layout, visible.length, taken);
+      const unit = band.radius * FIGURE_UNIT_SCALE;
+      visible.slice(0, band.spots.length).forEach((entry, index) => {
+        const spot = band.spots[index];
+        const look = bystanderPresence(entry.presence, this._reducedMotion);
+        if (!(look.alpha > 0.002)) return;
+        this._drawBystander(c, entry, spot, band, unit, look, t, index, layout.player.x);
+      });
+      if (band.overflow > 0) {
+        c.save();
+        c.globalAlpha = 0.75;
+        c.fillStyle = rgba(this._palette.text, 0.7);
+        c.font = '600 ' + Math.round(band.radius * 0.5) + 'px "Segoe UI", system-ui, sans-serif';
+        c.textAlign = 'right';
+        c.textBaseline = 'alphabetic';
+        c.fillText('+' + band.overflow, layout.width - band.radius * 0.6, band.groundY + band.radius * 0.5);
+        c.restore();
+      }
+    },
+
+    // One bystander: the humanoid rig in muted colours, unarmed, facing the
+    // player, with a name under its feet. No portrait is known for other
+    // players, so the head is the initial-lettered silhouette.
+    _drawBystander(c, entry, spot, band, unit, look, t, index, playerX, options = {}) {
+      const base = resolveFigure({ name: entry.label }, 'player');
+      const figure = {
+        ...base,
+        weapon: 'none',
+        offKind: '',
+        shield: false,
+        helmet: false,
+        armor: false,
+        twoHanded: false,
+        caster: false,
+        facing: options.facing || (spot.x <= playerX ? 1 : -1),
+      };
+      const groundLine = band.groundY + band.radius * 0.95 + look.y * band.radius;
+      const joints = resolvePose(null, t, { reducedMotion: this._reducedMotion, phaseOffset: 0.9 * (index + 1) });
+      const geo = figureGeometry(figure, joints, spot.x, groundLine, unit, { baseX: spot.x, stretch: 1 });
+      const material = {
+        ring: options.ring || this._palette.text,
+        skin: '#b59b86',
+        skinShade: '#7d6653',
+        cloth: options.cloth || '#46525c',
+        clothShade: options.clothShade || '#28313a',
+        leather: '#4b4036',
+        metal: '#8b949e',
+        outline: '#07090c',
+        highlight: 'rgba(255, 255, 255, 0.08)',
+        flash: 0,
+      };
+      c.save();
+      c.globalAlpha = look.alpha * 0.92;
+      // Ground shadow, then the rig back to front, then the name.
+      c.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      c.beginPath();
+      c.ellipse(spot.x, groundLine, band.radius * 0.7, band.radius * 0.16, 0, 0, Math.PI * 2);
+      c.fill();
+      this._drawLeg(c, geo, geo.legs.rear, material, 0.72);
+      this._drawArm(c, geo, geo.arms.left, material, 0.72);
+      this._drawTorso(c, geo, material);
+      this._drawLeg(c, geo, geo.legs.front, material, 1);
+      this._drawNeck(c, geo, material);
+      this._drawSilhouette(c, { x: geo.head.x, y: geo.head.y }, geo.head.r, { name: entry.label }, material.ring);
+      this._drawArm(c, geo, geo.arms.right, material, 1);
+      c.fillStyle = rgba(this._palette.text, 0.78);
+      c.font = '600 ' + Math.max(9, Math.round(band.radius * 0.4)) + 'px "Segoe UI", system-ui, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'alphabetic';
+      c.fillText(options.caption || entry.name, spot.x, groundLine + band.radius * 0.55);
+      if (typeof options.hpPct === 'number') {
+        // A small health bar over an ally's head.
+        const barW = band.radius * 1.5;
+        const barH = Math.max(3, band.radius * 0.13);
+        const barX = spot.x - barW / 2;
+        const barY = geo.head.y - geo.head.r * 1.75 - barH;
+        c.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        c.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        c.fillStyle = allyHealthColor(options.hpPct, this._palette);
+        c.fillRect(barX, barY, barW * (options.hpPct / 100), barH);
+      }
+      c.restore();
     },
 
     _drawGround(c, layout, tokens) {
@@ -492,8 +1250,11 @@ export function createCombatStage(doc, options = {}) {
       c.restore();
     },
 
-    _drawToken(c, layout, token, side, combatant, samples) {
-      const figure = resolveFigure(combatant, side);
+    _drawToken(c, layout, token, side, combatant, samples, scene = null) {
+      const restFigure = resolveFigure(combatant, side);
+      // A scene activity can turn the figure around (a glance, or walking in
+      // from stage right); the sheet is mirrored along with the rig.
+      const figure = scene && scene.facing ? { ...restFigure, facing: scene.facing } : restFigure;
       const unit = layout.radius * FIGURE_UNIT_SCALE;
       // Lunge and knockback offsets move the body; vertical offsets lift its
       // ground line. Feet stay planted around the rest position.
@@ -525,6 +1286,7 @@ export function createCombatStage(doc, options = {}) {
           }
         }
       }
+      if (!phase && scene && scene.phase) phase = scene.phase;
       const joints = resolvePose(phase, this._lastFrameAt, {
         reducedMotion: this._reducedMotion,
         phaseOffset: side === 'player' ? 0 : 2.1,
@@ -546,6 +1308,13 @@ export function createCombatStage(doc, options = {}) {
       const sprite = this._sprites
         ? this._sprites.pick(spriteKeysFor({ ...combatant, observed: !!(this._view && this._view.observer) }, figure, side))
         : null;
+      // An opponent that has not entered the scene (or has left it) is not
+      // drawn. Its sheet was still picked above, so it is loading by the time
+      // the token lands.
+      if (!(token.alpha > 0.002)) {
+        c.restore();
+        return;
+      }
       const weaponsInArt = !!(sprite && sprite.sheet.weaponsInArt);
       let head = geo.head;
       if (sprite) {
@@ -1231,13 +2000,7 @@ export function createCombatStage(doc, options = {}) {
       const x = head.x;
       const y = head.y;
       c.save();
-      const glow = c.createRadialGradient(x, y, radius * 0.7, x, y, radius * 1.6);
-      glow.addColorStop(0, rgba(ringColor, isActor ? 0.34 : 0.16));
-      glow.addColorStop(1, rgba(ringColor, 0));
-      c.fillStyle = glow;
-      c.beginPath();
-      c.arc(x, y, radius * 1.6, 0, Math.PI * 2);
-      c.fill();
+      this._drawGlow(c, x, y, radius * 1.6, ringColor, isActor ? 0.34 : 0.16, 0.7 / 1.6);
 
       c.save();
       c.beginPath();
@@ -1247,10 +2010,15 @@ export function createCombatStage(doc, options = {}) {
       c.fillStyle = side === 'player' ? '#07131a' : '#180d0b';
       c.fillRect(x - radius, y - radius, radius * 2, radius * 2);
       if (img && img.naturalWidth > 0) {
-        const scale = Math.max((radius * 2) / img.naturalWidth, (radius * 2) / img.naturalHeight);
-        const drawW = img.naturalWidth * scale;
-        const drawH = img.naturalHeight * scale;
-        c.drawImage(img, x - drawW / 2, y - radius - (drawH - radius * 2) * 0.3, drawW, drawH);
+        const portrait = this._portraitSprite(img, radius);
+        if (portrait) {
+          c.drawImage(portrait.canvas, x - radius, y - radius, radius * 2, radius * 2);
+        } else {
+          const scale = Math.max((radius * 2) / img.naturalWidth, (radius * 2) / img.naturalHeight);
+          const drawW = img.naturalWidth * scale;
+          const drawH = img.naturalHeight * scale;
+          c.drawImage(img, x - drawW / 2, y - radius - (drawH - radius * 2) * 0.3, drawW, drawH);
+        }
       } else {
         this._drawSilhouette(c, { x, y }, radius, combatant, ringColor);
       }
@@ -1260,12 +2028,17 @@ export function createCombatStage(doc, options = {}) {
       }
       c.restore();
 
-      c.lineWidth = Math.max(2, radius * 0.1);
-      c.strokeStyle = rgba(ringColor, 0.95);
-      c.shadowColor = rgba(ringColor, 0.7);
-      c.shadowBlur = isActor ? radius * 0.4 : radius * 0.15;
+      // The ring's soft edge used to be a shadowBlur, which rasterises a
+      // blur every frame; a wider translucent stroke underneath reads the
+      // same at token size and costs a second arc.
+      const ringWidth = Math.max(2, radius * 0.1);
       c.beginPath();
       c.arc(x, y, radius, 0, Math.PI * 2);
+      c.lineWidth = ringWidth + (isActor ? radius * 0.3 : radius * 0.12);
+      c.strokeStyle = rgba(ringColor, isActor ? 0.28 : 0.18);
+      c.stroke();
+      c.lineWidth = ringWidth;
+      c.strokeStyle = rgba(ringColor, 0.95);
       c.stroke();
       c.restore();
     },

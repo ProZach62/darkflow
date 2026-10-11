@@ -1,6 +1,9 @@
 import { LAYOUT_TYPES, INPUT_TYPES, DISPLAY_TYPES, STYLE_ALLOWLIST } from './window-types.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
-import { renderStreetSamuraiDashboard } from './street-samurai-dashboard.js';
+import {
+  createStreetSamuraiDashboard,
+  renderStreetSamuraiDashboard,
+} from './street-samurai-dashboard.js';
 import {
   NPC_FALLBACK_IMAGE,
   applyNpcImageFallback,
@@ -31,6 +34,10 @@ export function renderLayout(schema, buttonHandler, options = {}) {
   return root;
 }
 
+export function disposeLayout(root) {
+  root?.dispatchEvent(new Event('dw:dispose'));
+}
+
 function renderNode(schema, buttonHandler, options) {
   if (!schema || !schema.type) {
     const span = document.createElement('span');
@@ -39,7 +46,7 @@ function renderNode(schema, buttonHandler, options) {
   }
   if (LAYOUT_TYPES.has(schema.type)) return renderContainer(schema, buttonHandler, options);
   if (INPUT_TYPES.has(schema.type)) return renderInput(schema, buttonHandler);
-  if (DISPLAY_TYPES.has(schema.type)) return renderDisplay(schema, buttonHandler);
+  if (DISPLAY_TYPES.has(schema.type)) return renderDisplay(schema, buttonHandler, options);
 
   const span = document.createElement('span');
   span.textContent = '[' + schema.type + ']';
@@ -91,7 +98,7 @@ export function usesNpcDialogueMultiColumnChoices(choiceCount) {
 }
 
 // ── Display elements ────────────────────────────────────────────────
-function renderDisplay(schema, buttonHandler) {
+function renderDisplay(schema, buttonHandler, options) {
   switch (schema.type) {
     case 'npc_dialogue':
       return renderNpcDialogue(schema, buttonHandler);
@@ -100,7 +107,9 @@ function renderDisplay(schema, buttonHandler) {
     case 'finger_profile':
       return renderFingerProfile(schema);
     case 'street_samurai_dashboard':
-      return renderStreetSamuraiDashboard(schema);
+      return options.instanceOwnedStreetSamurai
+        ? createStreetSamuraiDashboard(schema)
+        : renderStreetSamuraiDashboard(schema);
     case 'heading': {
       const el = document.createElement('h3');
       el.className = 'dw-heading';
@@ -124,6 +133,8 @@ function renderDisplay(schema, buttonHandler) {
     }
     case 'ansi_text':
       return renderAnsiText(schema);
+    case 'paged_text':
+      return renderPagedText(schema);
     case 'divider': {
       const el = document.createElement('hr');
       el.className = 'dw-divider';
@@ -286,6 +297,61 @@ function renderAnsiText(schema) {
   return el;
 }
 
+function renderPagedText(schema) {
+  const el = document.createElement('section');
+  el.className = 'dw-paged-text';
+  setAttr(el, schema);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'dw-paged-text-toolbar';
+  const viewport = document.createElement('div');
+  viewport.className = 'dw-paged-text-viewport';
+  viewport.tabIndex = 0;
+  const content = renderAnsiText(schema);
+  const status = document.createElement('span');
+  status.className = 'dw-paged-text-status';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+
+  const buttons = {};
+  for (const [name, action] of [
+    ['Previous Page', () => viewport.scrollBy(0, -viewport.clientHeight)],
+    ['Next Page', () => viewport.scrollBy(0, viewport.clientHeight)],
+    ['Top', () => viewport.scrollTo(0, 0)],
+    ['Bottom', () => viewport.scrollTo(0, viewport.scrollHeight)],
+  ]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dw-paged-text-button';
+    button.textContent = name;
+    button.addEventListener('click', action);
+    buttons[name] = button;
+    toolbar.appendChild(button);
+  }
+  toolbar.appendChild(status);
+  viewport.appendChild(content);
+  el.append(toolbar, viewport);
+
+  const sync = () => {
+    const maxScroll = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+    const pageHeight = Math.max(1, viewport.clientHeight);
+    const pages = Math.max(1, Math.ceil(viewport.scrollHeight / pageHeight));
+    const atBottom = viewport.scrollTop >= maxScroll - 1;
+    const page = atBottom ? pages : Math.min(pages, Math.floor(viewport.scrollTop / pageHeight) + 1);
+    status.textContent = 'Page ' + page + ' of ' + pages;
+    buttons['Previous Page'].disabled = viewport.scrollTop <= 0;
+    buttons['Next Page'].disabled = atBottom;
+    buttons.Top.disabled = viewport.scrollTop <= 0;
+    buttons.Bottom.disabled = atBottom;
+  };
+  viewport.addEventListener('scroll', sync);
+  const observer = new ResizeObserver(sync);
+  observer.observe(viewport);
+  el.addEventListener('dw:dispose', () => observer.disconnect(), { once: true });
+  requestAnimationFrame(sync);
+  return el;
+}
+
 function renderFingerProfile(schema) {
   const fallbackAvatar = schema.fallback_avatar || '/assets/avatar-ghost.svg';
   const el = document.createElement('div');
@@ -311,6 +377,7 @@ function renderFingerProfile(schema) {
     event.stopPropagation();
     document.dispatchEvent(new CustomEvent('dw:avatarZoom', {
       detail: {
+        source: avatarButton,
         src: img.currentSrc || img.src || fallbackAvatar,
         fallback: fallbackAvatar,
         alt: img.alt,
@@ -404,6 +471,7 @@ function renderPlayerRow(schema) {
     event.stopPropagation();
     document.dispatchEvent(new CustomEvent('dw:avatarZoom', {
       detail: {
+        source: avatarButton,
         src: img.currentSrc || img.src || fallbackAvatar,
         fallback: fallbackAvatar,
         alt: img.alt,

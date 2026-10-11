@@ -1235,3 +1235,158 @@
     display: none;
   }
 }
+
+/* Phase 2 Combat panel (CombatPanel.svelte). The rules above size the stage
+   with flex: 1 1 auto and, from 720px of container width, drop its minimum
+   height, which assumed the legacy panel body: a flex column of definite
+   height. The Dockview panel is a block of automatic height, so without a
+   column to grow in the stage collapsed to nothing at wide widths. Make the
+   panel fill its container as a column and let the stage take the room. */
+.combat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.combat-panel > div {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.combat-panel .combat-visual {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Between fights the panel is a scene: the player alone in the room. The
+   opponent's HUD is not rendered then, and the room's name takes the place
+   of the exchange line. */
+[data-panel-id="enemy"] .combat-scene-room {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--df-border);
+  border-bottom: 1px solid var(--df-border);
+  background: rgba(8, 13, 20, 0.78);
+  color: var(--df-text);
+  font-size: calc(12px * var(--pane-font-scale, 1));
+}
+
+[data-panel-id="enemy"] .combat-scene-room-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The star that marks an enemy as a boss, under its health bar. */
+[data-panel-id="enemy"] .combat-boss-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+[data-panel-id="enemy"] .combat-boss-toggle {
+  pointer-events: auto;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--df-text) 22%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--df-bg, #0d1117) 70%, transparent);
+  color: var(--df-muted, #8b949e);
+  font: inherit;
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+[data-panel-id="enemy"] .combat-boss-toggle:hover,
+[data-panel-id="enemy"] .combat-boss-toggle:focus-visible {
+  color: var(--df-text);
+  border-color: color-mix(in srgb, var(--df-text) 45%, transparent);
+}
+
+[data-panel-id="enemy"] .combat-boss-toggle.combat-boss-marked {
+  border-color: #e3b341;
+  color: #e3b341;
+}
+
+/* A boss the game itself tagged: the same gold, but not a control. */
+[data-panel-id="enemy"] .combat-boss-badge {
+  padding: 1px 6px;
+  border: 1px solid #e3b341;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--df-bg, #0d1117) 70%, transparent);
+  color: #e3b341;
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Runs of luck, shown under the current exchange while the fight is on. */
+[data-panel-id="enemy"] .combat-streaks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+[data-panel-id="enemy"] .combat-streak-chip {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--df-accent, #42d6c9) 55%, transparent);
+  border-radius: 999px;
+  color: var(--df-accent, #42d6c9);
+  font-size: calc(11px * var(--pane-font-scale, 1));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-panel-id="enemy"] .combat-streak-chip.combat-streak-guard {
+  border-color: color-mix(in srgb, #e3b341 55%, transparent);
+  color: #e3b341;
+}
+
+/* The card under the outcome once a fight is over. */
+[data-panel-id="enemy"] .combat-recap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--df-text) 14%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--df-bg, #0d1117) 60%, transparent);
+}
+
+[data-panel-id="enemy"] .combat-recap-row {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+[data-panel-id="enemy"] .combat-recap dt {
+  color: var(--df-muted, #8b949e);
+  font-size: calc(10px * var(--pane-font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-panel-id="enemy"] .combat-recap dd {
+  margin: 0;
+  color: var(--df-text);
+  font-size: calc(14px * var(--pane-font-scale, 1));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+

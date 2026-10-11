@@ -145,7 +145,18 @@ globalThis.localStorage = {
 globalThis.document = fakeDocument;
 globalThis.window = fakeWindow;
 
-const { panelRenderers } = await import('../public/js/panel-renderers.js');
+const { createCombatStageRenderer } = await import('../public/js/combat-stage-renderer.mjs');
+
+// One renderer per body, the way CombatPanel.svelte mounts one per panel.
+const renderers = new WeakMap();
+function mountRenderer(body) {
+  let renderer = renderers.get(body);
+  if (!renderer) {
+    renderer = createCombatStageRenderer(body);
+    renderers.set(body, renderer);
+  }
+  return renderer;
+}
 const {
   createCombatVisualState,
   reduceCombatEvents,
@@ -200,14 +211,13 @@ function deepHtml(el) {
 
 test('canvas stage renders the DOM overlay with escaped names and accessible health bars', () => {
   const body = bodyElement();
-  panelRenderers.enemy(body, {
-    combatVisual: true,
+  assert.equal(mountRenderer(body).render({
     model: combatModel(),
     vitals: { hp: 78, maxhp: 100 },
     enemy: { enemy_name: '<script>drake</script>', enemy_curhp: 41, enemy_maxhp: 100, enemy_is_npc: 1, enemy_hp_string: 'bloodied' },
     avatar: { url: 'https://media.example/acer.jpg', name: 'Acer' },
     room: { terrain: 'forest' },
-  });
+  }), true, 'a supported canvas reports success to the panel');
 
   const root = body.children[0];
   assert.ok(root, 'root element appended');
@@ -233,8 +243,7 @@ test('canvas stage renders the DOM overlay with escaped names and accessible hea
 test('re-rendering reuses the same canvas and plays each event once', () => {
   const body = bodyElement();
   let model = combatModel();
-  const render = (nextModel) => panelRenderers.enemy(body, {
-    combatVisual: true,
+  const render = (nextModel) => mountRenderer(body).render({
     model: nextModel,
     vitals: { hp: 78, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_curhp: 41, enemy_maxhp: 100, enemy_is_npc: 1 },
@@ -242,7 +251,7 @@ test('re-rendering reuses the same canvas and plays each event once', () => {
   });
   render(model);
   const canvas = findCanvas(body);
-  const stage = body._combatStageHost.stage;
+  const stage = mountRenderer(body).stage;
   runFrame(1000);
   const framesBefore = stage.frames;
 
@@ -272,34 +281,32 @@ test('re-rendering reuses the same canvas and plays each event once', () => {
     'damage number drawn on the canvas');
 });
 
-test('stage stops when the pane leaves visual combat and when its element is detached', () => {
+test('stage stops when the renderer is disposed and when its element is detached', () => {
   const body = bodyElement();
-  panelRenderers.enemy(body, {
-    combatVisual: true,
+  mountRenderer(body).render({
     model: combatModel(),
     vitals: { hp: 10, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
     avatar: {},
   });
-  const stage = body._combatStageHost.stage;
+  const stage = mountRenderer(body).stage;
   assert.equal(stage.running, true);
 
-  // Compact Enemy renderer takes the pane back: stage must be destroyed.
-  panelRenderers.enemy(body, { enemy_name: 'None' });
-  assert.equal(body._combatStageHost, null);
+  // The panel unmounts: the renderer is disposed and the stage with it.
+  mountRenderer(body).dispose();
+  assert.equal(mountRenderer(body).stage, null);
   assert.equal(stage.destroyed, true);
   assert.equal(stage.running, false);
 
   // A detached stage stops on its own even if nobody called destroy.
   const other = bodyElement();
-  panelRenderers.enemy(other, {
-    combatVisual: true,
+  mountRenderer(other).render({
     model: combatModel({ encounter_id: 'encounter-2' }),
     vitals: { hp: 10, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
     avatar: {},
   });
-  const second = other._combatStageHost.stage;
+  const second = mountRenderer(other).stage;
   other.innerHTML = '<div class="panel-inactive placeholder">Combat view unavailable</div>';
   assert.equal(second.running, true, 'nothing has told the stage to stop yet');
   runFrame(2000);
@@ -310,8 +317,7 @@ test('stage stops when the pane leaves visual combat and when its element is det
 test('image failures fall back to the NPC placeholder without throwing', () => {
   const body = bodyElement();
   createdImages.length = 0;
-  panelRenderers.enemy(body, {
-    combatVisual: true,
+  mountRenderer(body).render({
     model: combatModel(),
     vitals: { hp: 50, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_image: 'https://media.example/drake.jpg', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
@@ -322,7 +328,7 @@ test('image failures fall back to the NPC placeholder without throwing', () => {
   drake.fail();
   assert.ok(createdImages.some((img) => img.src === '/assets/generic-monster.png'),
     'generic monster requested after the generated art fails');
-  const stage = body._combatStageHost.stage;
+  const stage = mountRenderer(body).stage;
   runFrame(3000);
   assert.ok(stage.frames > 0);
 });
@@ -330,8 +336,7 @@ test('image failures fall back to the NPC placeholder without throwing', () => {
 test('status descriptor shows under the player name and its portrait loads before the ghost', () => {
   const body = bodyElement();
   createdImages.length = 0;
-  panelRenderers.enemy(body, {
-    combatVisual: true,
+  mountRenderer(body).render({
     model: combatModel({ encounter_id: 'encounter-status' }),
     vitals: { hp: 50, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
@@ -352,8 +357,7 @@ test('status descriptor shows under the player name and its portrait loads befor
 
 test('inventory equipment reaches the stage figure', () => {
   const body = bodyElement();
-  panelRenderers.enemy(body, {
-    combatVisual: true,
+  mountRenderer(body).render({
     model: combatModel({ encounter_id: 'encounter-gear' }),
     vitals: { hp: 50, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
@@ -365,7 +369,7 @@ test('inventory equipment reaches the stage figure', () => {
       { id: 'h1', name: 'an iron helm (worn on head)', attrib: 'w' },
     ],
   });
-  const stage = body._combatStageHost.stage;
+  const stage = mountRenderer(body).stage;
   const equipment = stage._view.player.equipment;
   assert.equal(equipment.mainHand.kind, 'blade', 'the wielded sword outranks the mage guild staff');
   assert.equal(equipment.shield, true);
@@ -395,8 +399,7 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
   };
   const body = bodyElement();
   createdImages.length = 0;
-  panelRenderers.enemy(body, {
-    combatVisual: true,
+  mountRenderer(body).render({
     model: combatModel({ encounter_id: 'encounter-sprite' }),
     vitals: { hp: 50, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
@@ -404,7 +407,7 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
     status: { race: 'Northman', class: 'Fighter', gender: 'Female' },
     inventory: [{ id: 's1', name: 'a steel sword (main weapon)', attrib: 'l' }, { id: 'b1', name: 'a shield (used as shield)', attrib: 'w' }],
   });
-  const stage = body._combatStageHost.stage;
+  const stage = mountRenderer(body).stage;
   // The sheet is requested the first time a figure draws, not at render.
   runFrame(4990);
   await new Promise((resolve) => setTimeout(resolve, 5));
@@ -437,14 +440,13 @@ test('a pixelated sheet is drawn with image smoothing off', async () => {
   };
   const body = bodyElement();
   createdImages.length = 0;
-  panelRenderers.enemy(body, {
-    combatVisual: true,
+  mountRenderer(body).render({
     model: combatModel({ encounter_id: 'encounter-pixel' }),
     vitals: { hp: 50, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
     avatar: {},
   });
-  const stage = body._combatStageHost.stage;
+  const stage = mountRenderer(body).stage;
   runFrame(6000);
   await new Promise((resolve) => setTimeout(resolve, 5));
   const sheetImage = createdImages.find((img) => img.src.startsWith('/assets/sprites/humanoid.png?v='));
@@ -473,8 +475,7 @@ test('a sheet with weapons painted into the art suppresses weapon overlays but k
   };
   const body = bodyElement();
   createdImages.length = 0;
-  panelRenderers.enemy(body, {
-    combatVisual: true,
+  mountRenderer(body).render({
     model: combatModel({ encounter_id: 'encounter-armed-art' }),
     vitals: { hp: 50, maxhp: 100 },
     enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
@@ -484,7 +485,7 @@ test('a sheet with weapons painted into the art suppresses weapon overlays but k
       { id: 'b1', name: 'a round shield (used as shield)', attrib: 'w' },
     ],
   });
-  const stage = body._combatStageHost.stage;
+  const stage = mountRenderer(body).stage;
   runFrame(7000);
   await new Promise((resolve) => setTimeout(resolve, 5));
   createdImages.find((img) => img.src.startsWith('/assets/sprites/humanoid.png?v=')).finishLoading();
@@ -500,4 +501,348 @@ test('a sheet with weapons painted into the art suppresses weapon overlays but k
   assert.ok(!strokes.includes('rgba(255, 255, 255, 0.7)'), 'no blade edge highlight when weapons are in the art');
   assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield still drawn');
   fetchManifest = null;
+});
+
+test('without a 2D canvas the DOM card renderer takes over and the contract still holds', () => {
+  const body = bodyElement();
+  const noCanvasDocument = {
+    ...fakeDocument,
+    createElement(tag) {
+      const el = makeElement(tag, noCanvasDocument);
+      if (tag === 'canvas') el.getContext = () => null;
+      return el;
+    },
+  };
+  const renderer = createCombatStageRenderer(body, { document: noCanvasDocument });
+  assert.equal(renderer.render({
+    model: combatModel({ encounter_id: 'encounter-fallback' }),
+    vitals: { hp: 30, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+  }), true, 'the DOM fallback still counts as a working presentation');
+  assert.equal(renderer.stage, null, 'no canvas stage was mounted');
+  assert.match(body._innerHTML, /combatant-card combatant-player/);
+  assert.match(body._innerHTML, /aria-label="Visual combat"/);
+  assert.match(body._innerHTML, /aria-valuenow="30"/);
+  renderer.dispose();
+  assert.equal(renderer.render({ model: combatModel() }), false, 'a disposed renderer reports failure');
+});
+
+test('a room image becomes the stage backdrop and the terrain tile is its fallback', () => {
+  const body = bodyElement();
+  createdImages.length = 0;
+  const renderer = createCombatStageRenderer(body);
+  renderer.render({
+    model: combatModel({ encounter_id: 'encounter-room-art' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+    room: { terrain: 'forest' },
+    roomImage: 'https://media.example/clearing.png',
+  });
+  const art = createdImages.find((img) => img.src === 'https://media.example/clearing.png');
+  assert.ok(art, 'the room image is requested');
+  assert.ok(!createdImages.some((img) => img.src === '/assets/tiles/forest.jpg'),
+    'the tile is not fetched while the art is still the first choice');
+  art.fail();
+  assert.ok(createdImages.some((img) => img.src === '/assets/tiles/forest.jpg'),
+    'the terrain tile is requested once the art fails');
+  const canvas = findCanvas(body);
+  canvas.drawLog.length = 0;
+  runFrame(8000);
+  assert.ok(canvas.drawLog.some(([name]) => name === 'fillRect'), 'the backdrop still paints without art');
+});
+
+test('between fights the stage is a scene: the player alone in the room, and the opponent pops in when a fight starts', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  const room = { name: 'The Dusty Crossroads', terrain: 'forest' };
+  const enemy = { enemy_name: 'a drake', enemy_curhp: 40, enemy_maxhp: 50, enemy_is_npc: 1 };
+  assert.equal(renderer.render({
+    model: createCombatVisualState(),
+    vitals: { hp: 60, maxhp: 100 },
+    avatar: { name: 'Acer' },
+    room,
+  }), true, 'an empty model still renders the scene');
+  const root = body.children[0];
+  assert.match(root.className, /combat-scene-idle/);
+  assert.doesNotMatch(root.className, /combat-visual-syncing/, 'an idle scene is not "synchronizing"');
+  let html = deepHtml(body);
+  assert.match(html, /combat-scene-room-name">The Dusty Crossroads</);
+  assert.match(html, /combat-token-hud-player/);
+  assert.match(html, /aria-valuenow="60"/, 'the player keeps a health bar');
+  assert.doesNotMatch(html, /combat-token-hud-target/, 'no opponent HUD between fights');
+  assert.doesNotMatch(html, /combat-current-event/);
+  assert.doesNotMatch(html, /combat-sync-state/);
+  assert.deepEqual(renderer.stage.scene, { idle: true, presence: 0 });
+  runFrame(500);
+  assert.equal(renderer.stage.running, false, 'an idle scene settles to a still frame');
+
+  // A fight begins: the duel HUD returns and the opponent enters over a few frames.
+  renderer.render({ model: combatModel(), vitals: { hp: 60, maxhp: 100 }, enemy, avatar: { name: 'Acer' }, room, present: true });
+  assert.doesNotMatch(body.children[0].className, /combat-scene-idle/);
+  html = deepHtml(body);
+  assert.match(html, /combat-token-hud-target/);
+  assert.match(html, /combat-current-event/);
+  assert.doesNotMatch(html, /combat-scene-room/);
+  assert.equal(renderer.stage.scene.idle, false);
+  runFrame(1000);
+  runFrame(1100);
+  const partway = renderer.stage.scene.presence;
+  assert.ok(partway > 0 && partway < 1, 'the opponent is still entering: ' + partway);
+  for (let t = 1200; t <= 2200; t += 100) runFrame(t);
+  assert.equal(renderer.stage.scene.presence, 1, 'fully on stage');
+
+  // The player dismisses the fight: the panel stays, the opponent leaves.
+  renderer.render({ model: combatModel(), vitals: { hp: 60, maxhp: 100 }, enemy, avatar: { name: 'Acer' }, room, present: false });
+  assert.match(body.children[0].className, /combat-scene-idle/);
+  assert.doesNotMatch(deepHtml(body), /combat-token-hud-target/);
+  for (let t = 2300; t <= 3300; t += 100) runFrame(t);
+  assert.deepEqual(renderer.stage.scene, { idle: true, presence: 0 });
+
+  // A fight that ends leaves its outcome under the scene.
+  renderer.render({
+    model: combatModel({ active: 0, outcome: 'victory', summary: 'Victory.' }),
+    vitals: { hp: 60, maxhp: 100 },
+    enemy,
+    avatar: { name: 'Acer' },
+    room,
+    present: false,
+  });
+  html = deepHtml(body);
+  assert.match(body.children[0].className, /combat-scene-idle/);
+  assert.match(html, /combat-scene-room-name">The Dusty Crossroads</);
+  assert.match(html, /combat-outcome combat-outcome-victory">Victory\./);
+  assert.doesNotMatch(html, /combat-token-hud-target/);
+});
+
+test('the idle scene acts out looks and walks from the activity feed, but a fight does not', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  const vitals = { hp: 60, maxhp: 100 };
+  const room = { name: 'The Long Road', terrain: 'forest' };
+  renderer.render({ model: createCombatVisualState(), vitals, avatar: { name: 'Acer' }, room });
+  runFrame(100);
+  assert.equal(renderer.stage.running, false);
+
+  assert.equal(renderer.playActivity({ kind: 'walk', facing: -1, seq: 1 }), true, 'the idle scene takes a walk');
+  assert.equal(renderer.stage.running, true, 'and starts animating');
+  runFrame(200);
+  runFrame(400);
+  const canvas = findCanvas(body);
+  assert.ok(canvas.drawLog.length > 0, 'frames draw while the walk plays');
+  assert.equal(renderer.stage._sceneActions.length, 1);
+  assert.equal(renderer.playActivity({ kind: 'look', seq: 2 }), true, 'a new activity replaces the one in progress');
+  assert.equal(renderer.stage._sceneActions[0].kind, 'look');
+  // The stage clock is pinned at 1000 in this harness, so the look ends at 2500.
+  for (let t = 500; t <= 2600; t += 100) runFrame(t);
+  assert.equal(renderer.stage._sceneActions.length, 0, 'the look has played out');
+  assert.equal(renderer.stage.running, false, 'and the scene is still again');
+  assert.equal(renderer.playActivity({ kind: 'dance', seq: 3 }), false, 'unknown activities are ignored');
+
+  renderer.render({
+    model: combatModel(),
+    vitals,
+    enemy: { enemy_name: 'a drake', enemy_curhp: 40, enemy_maxhp: 50, enemy_is_npc: 1 },
+    avatar: { name: 'Acer' },
+    room,
+    present: true,
+  });
+  assert.equal(renderer.playActivity({ kind: 'look', seq: 4 }), false, 'a fight owns the figure');
+  assert.equal(renderer.stage._sceneActions.length, 0);
+});
+
+test('the backdrop is composed once and blitted per frame, and old room paintings are evicted', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  createdImages.length = 0;
+  const data = (n) => ({
+    model: combatModel({ encounter_id: 'encounter-perf' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+    room: { terrain: 'forest' },
+    roomImage: 'https://media.example/room-' + n + '.png',
+    present: true,
+  });
+  renderer.render(data(1));
+  const art = createdImages.find((img) => img.src === 'https://media.example/room-1.png');
+  art.finishLoading();
+  const canvas = findCanvas(body);
+  canvas.drawLog.length = 0;
+  runFrame(1000);
+  runFrame(1016);
+  runFrame(1032);
+  const names = canvas.drawLog.map(([name]) => name);
+  assert.equal(names.filter((name) => name === 'createLinearGradient').length, 0,
+    'the wash gradient lives in the cached layer, not in every frame');
+  assert.ok(names.filter((name) => name === 'drawImage').length >= 1, 'the cached layer is blitted');
+  const stage = renderer.stage;
+  assert.ok(stage._backdropCache && stage._backdropCache.art === art, 'the layer was composed for the room art');
+  const composedFor = stage._backdropCache;
+  runFrame(1048);
+  assert.equal(stage._backdropCache, composedFor, 'a steady frame reuses the composed layer');
+
+  for (let n = 2; n <= 20; n++) renderer.render(data(n));
+  assert.ok(stage._images.size <= 12, 'the image cache stays bounded: ' + stage._images.size);
+  assert.ok(stage._images.has('https://media.example/room-20.png'), 'the current room stays');
+  assert.ok(!stage._images.has('https://media.example/room-2.png'), 'an old room is gone');
+});
+
+test('a resting fight draws every other frame while an exchange draws every frame', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  renderer.render({
+    model: combatModel({ encounter_id: 'encounter-rest' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+    present: true,
+  });
+  const stage = renderer.stage;
+  // Let the opponent finish entering so the scene is at rest.
+  for (let t = 0; t <= 1200; t += 16) runFrame(t);
+  const before = stage.frames;
+  for (let t = 1216; t <= 1216 + 16 * 20; t += 16) runFrame(t);
+  const drawn = stage.frames - before;
+  assert.ok(drawn >= 9 && drawn <= 12, 'about half of 21 resting frames are drawn: ' + drawn);
+});
+
+test('a large stage eases its pixel ratio down to the pixel budget and reports draw stats', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  renderer.render({
+    model: combatModel({ encounter_id: 'encounter-budget' }),
+    vitals: { hp: 50, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 5, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+    present: true,
+  });
+  const stage = renderer.stage;
+  const canvas = findCanvas(body);
+  assert.equal(stage.stats.dpr, 2, 'a 640x320 stage fits the budget at the display ratio');
+  const host = canvas.parentNode;
+  host.clientWidth = 1600;
+  host.clientHeight = 1000;
+  stage._resize();
+  const eased = stage.stats.dpr;
+  assert.ok(eased > 1 && eased < 1.3, 'ratio eased towards the budget: ' + eased);
+  assert.equal(canvas.width, Math.round(1600 * eased));
+  assert.ok(1600 * 1000 * eased * eased <= 2_200_000 + 1, 'device pixels stay within the budget');
+  host.clientWidth = 640;
+  host.clientHeight = 320;
+  stage._resize();
+  assert.equal(stage.stats.dpr, 2, 'shrinking back restores the display ratio');
+
+  for (let t = 0; t <= 400; t += 16) runFrame(t);
+  assert.ok(stage.stats.frames > 0);
+  assert.ok(stage.stats.drawMs >= 0 && stage.stats.maxDrawMs >= 0);
+  const before = canvas.drawLog.filter(([name]) => name === 'fillText').length;
+  stage.setShowStats(true);
+  runFrame(416);
+  runFrame(432);
+  const after = canvas.drawLog.filter(([name]) => name === 'fillText').length;
+  assert.ok(after > before, 'the readout is written onto the canvas once enabled');
+});
+
+test('other players in the room stand behind the idle scene and step aside for a fight', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  const players = [{ name: 'nacho', fullname: 'Nacho the Bold' }, { name: 'zed' }];
+  renderer.render({ model: createCombatVisualState(), vitals: { hp: 60, maxhp: 100 }, avatar: { name: 'Acer' }, players });
+  const stage = renderer.stage;
+  const canvas = findCanvas(body);
+  assert.deepEqual(stage._bystanders.map((b) => [b.name, b.label, b.presence, b.want]), [['nacho', 'Nacho the Bold', 0, 1], ['zed', 'zed', 0, 1]], 'newcomers start absent');
+  for (let t = 0; t <= 800; t += 16) runFrame(t);
+  assert.ok(stage._bystanders.every((b) => b.presence === 1), 'they fade in over a few frames');
+  assert.equal(stage.running, false, 'and the scene settles again');
+  canvas.drawLog.length = 0;
+  renderer.render({ model: createCombatVisualState(), vitals: { hp: 60, maxhp: 100 }, avatar: { name: 'Acer' }, players });
+  // A resting scene draws every other frame; two frames guarantee a paint.
+  runFrame(816);
+  runFrame(832);
+  const names = canvas.drawLog.filter(([name, args]) => name === 'fillText' && (args[0] === 'nacho' || args[0] === 'zed'));
+  assert.equal(names.length, 2, 'each bystander is named on the canvas');
+
+  renderer.render({ model: createCombatVisualState(), vitals: { hp: 60, maxhp: 100 }, avatar: { name: 'Acer' }, players: [players[0]] });
+  for (let t = 848; t <= 1600; t += 16) runFrame(t);
+  assert.deepEqual(stage._bystanders.map((b) => b.name), ['nacho'], 'a player who left fades out and is dropped');
+
+  const enemy = { enemy_name: 'a drake', enemy_curhp: 40, enemy_maxhp: 50, enemy_is_npc: 1 };
+  renderer.render({ model: combatModel(), vitals: { hp: 60, maxhp: 100 }, enemy, avatar: { name: 'Acer' }, players: [players[0]], present: true });
+  for (let t = 1616; t <= 2400; t += 16) runFrame(t);
+  assert.ok(stage._bystanders.every((b) => b.presence === 0), 'a fight clears the band');
+  canvas.drawLog.length = 0;
+  runFrame(2416);
+  runFrame(2432);
+  assert.equal(canvas.drawLog.filter(([name, args]) => name === 'fillText' && args[0] === 'nacho').length, 0, 'nothing drawn for them mid-fight');
+});
+
+test('the enemy header shows a fixed badge for a tagged boss, a star for the rest, and nothing for players', () => {
+  const render = (enemy, boss) => {
+    const body = bodyElement();
+    assert.equal(mountRenderer(body).render({ model: combatModel(), vitals: { hp: 78, maxhp: 100 }, enemy, boss }), true);
+    return deepHtml(body);
+  };
+  const aurora = { enemy_name: 'Aurora, Captain of the Dawnbound (BOSS)', enemy_curhp: 9, enemy_maxhp: 9, enemy_is_npc: 1 };
+  const tagged = render(aurora, { tagged: true, canMark: true, marked: false });
+  assert.match(tagged, /class="combat-boss-badge" role="img" aria-label="Boss"/);
+  assert.doesNotMatch(tagged, /data-action="toggle-boss"/, 'the game tagged it, so there is nothing to toggle');
+  assert.match(tagged, /combat-token-hud-boss/);
+  assert.match(tagged, /<span title="Aurora, Captain of the Dawnbound \(BOSS\)">Aurora, Captain of the Dawnbound<\/span>/, 'the header drops the tag and keeps the full name as hover text');
+
+  const troll = { enemy_name: 'a <b>swamp</b> troll', enemy_curhp: 9, enemy_maxhp: 9, enemy_is_npc: 1 };
+  const unmarked = render(troll, { tagged: false, canMark: true, marked: false });
+  assert.match(unmarked, /data-action="toggle-boss" aria-pressed="false" aria-label="Mark a &lt;b&gt;swamp&lt;\/b&gt; troll as a boss"/);
+  assert.doesNotMatch(unmarked, /combat-token-hud-boss|combat-boss-badge/);
+  const marked = render(troll, { tagged: false, canMark: true, marked: true });
+  assert.match(marked, /combat-boss-marked" data-action="toggle-boss" aria-pressed="true" aria-label="Unmark /);
+  assert.match(marked, /combat-token-hud-boss/);
+
+  const rival = { enemy_name: 'Zed (BOSS)', enemy_curhp: 9, enemy_maxhp: 9, enemy_is_npc: 0 };
+  const player = render(rival, { tagged: true, canMark: true, marked: false });
+  assert.doesNotMatch(player, /combat-boss-badge|toggle-boss|combat-token-hud-boss/, 'another player is never a boss');
+  assert.doesNotMatch(render(troll, undefined), /toggle-boss|combat-boss-badge/, 'a host that passes no boss data gets no control');
+});
+
+test('streak chips show during a fight and a summary card follows the outcome', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  const swing = (seq, perspective, result, damage) => ({
+    seq, kind: 'attack', perspective, result, damage, summary: 'swing ' + seq,
+    actor_id: perspective === 'outgoing' ? 'self' : 'target-1',
+    target_id: perspective === 'outgoing' ? 'target-1' : 'self',
+  });
+  let model = reduceCombatEvents(combatModel(), {
+    epoch: 'epoch-1', encounter_id: 'encounter-1', first_seq: 5, last_seq: 8,
+    events: [swing(5, 'outgoing', 'hit', 10), swing(6, 'outgoing', 'hit', 12), swing(7, 'outgoing', 'critical', 40), swing(8, 'incoming', 'hit', 25)],
+  });
+  const present = (extra = {}) => {
+    model = takeNextCombatEvent(model).state;
+    assert.equal(renderer.render({ model, vitals: { hp: 50, maxhp: 100 }, ...extra }), true);
+    return deepHtml(body);
+  };
+  assert.doesNotMatch(present(), /combat-streak-chip/, 'one hit is not a streak');
+  assert.doesNotMatch(present(), /combat-streak-chip/);
+  let html = present();
+  assert.match(html, /combat-streak-chip combat-streak-hit">Hit streak <strong>\u00d73<\/strong>/);
+  html = present();
+  assert.match(html, /Hit streak <strong>\u00d73/, 'being hit does not end a hit streak');
+  assert.doesNotMatch(html, /combat-recap/, 'no summary while the fight is on');
+
+  model = reduceCombatState(model, {
+    epoch: 'epoch-1', encounter_id: 'encounter-1', seq: 9, visual_enabled: 1, effective: 1, active: 0,
+    current_target_id: 'target-1',
+    actors: [{ id: 'self', name: 'Acer', role: 'self' }, { id: 'target-1', name: 'a drake', role: 'target' }],
+    summary: 'Victory.', outcome: 'victory',
+  });
+  const dps = { damage: 62, swings: 3, hits: 3, crits: 1, bestHit: 40, hitRate: 1, durationMs: 9000, dps: 6.9, missingDamageNumbers: false };
+  assert.equal(renderer.render({ model, vitals: { hp: 50, maxhp: 100 }, dps }), true);
+  html = deepHtml(body);
+  assert.match(html, /<dl class="combat-recap" aria-label="Fight summary">/);
+  assert.match(html, /<dt>Dealt<\/dt><dd>62<\/dd>/);
+  assert.match(html, /<dt>Taken<\/dt><dd>25<\/dd>/);
+  assert.match(html, /<dt>Accuracy<\/dt><dd>100%<\/dd>/);
+  assert.match(html, /<dt>Best streak<\/dt><dd>\u00d73<\/dd>/);
+  assert.doesNotMatch(html, /combat-streak-chip/, 'the live chips are gone once it is over');
 });

@@ -1,0 +1,378 @@
+// combat-stage-renderer.mjs - the canvas combat stage behind the Combat
+// panel's renderer contract.
+//
+// createCombatStageRenderer(bodyEl) returns { render(data), dispose() } with
+// the same shape as createCombatVisualRenderer in combat-visual-renderer.mjs,
+// so CombatPanel.svelte can mount either one. render() draws the fighters on
+// a canvas (combat-stage.mjs) and keeps names, health bars, the current
+// exchange, threats, history, and the polite live region in the DOM, where
+// assistive technology and the browser specs can read them.
+//
+// When the environment has no 2D canvas, render() delegates to the DOM card
+// renderer instead of reporting a failure: the pane still works, it just
+// does not animate. Only a renderer that cannot draw at all returns false,
+// which is what the panel turns into "presentation unavailable" so the
+// server keeps the text fallback on.
+//
+// `data` is the session combat snapshot plus the recipient-only inputs the
+// stage uses for the player token: `status` (Char.Status, for the race,
+// guild, and gender descriptor and the bundled portrait), `inventory`
+// (Char.Items, for the wielded and worn equipment), `room` (Room.Info, for
+// the terrain backdrop and, between fights, the room's name), and `roomImage`
+// (the Darkwind.Room.Image URL, drawn as the backdrop ahead of the terrain
+// tile). All four are optional. `present` (the session's shouldPresent) is
+// false when the fight is not to be shown: the server has visual combat off
+// or the player dismissed this encounter.
+//
+// The panel is persistent, so the renderer has two modes. While a fight is
+// presented it is the duel: both tokens, both HUDs, the exchange line. At any
+// other time it is the scene: the player alone in the room, with the room's
+// name in place of the exchange and the opponent's HUD gone. The opponent's
+// token pops onto the stage when a fight begins and leaves when it ends.
+//
+// playActivity(activity) acts out a scene activity from the session's
+// activity feed (a look or a walk) on the player's figure while the scene is
+// idle; it is ignored during a fight.
+
+import { buildCombatView } from './combat-visual-core.mjs';
+import { createCombatStage, isCanvasStageSupported } from './combat-stage.mjs';
+import { createFightRecap, fightSummaryRows, recapEvents, recapStreaks } from './combat-stage-core.mjs';
+import {
+  RESULT_LABELS,
+  createCombatVisualRenderer,
+  eventLabel,
+  healthHtml,
+} from './combat-visual-renderer.mjs';
+import { escHtml, formatInt } from './core-information-panel-renderers.mjs';
+import { NPC_FALLBACK_IMAGE, PLAYER_FALLBACK_IMAGE } from './image-fallbacks.js';
+
+function eventClasses(view, event, idle) {
+  // Perspective is the recipient-safe source of truth. Keep the actor IDs for
+  // observed combat, but never let an older/mixed server omit the player-side
+  // impact treatment from an explicitly incoming event.
+  const incomingEvent = !!(event && event.perspective === 'incoming');
+  const outgoingEvent = !!(event && event.perspective === 'outgoing');
+  const playerImpact = event && (incomingEvent || event.targetId === view.player.id);
+  const targetImpact = event && (outgoingEvent || event.targetId === view.target.id);
+  const playerActor = event && (outgoingEvent || event.actorId === view.player.id);
+  const targetActor = event && (incomingEvent || event.actorId === view.target.id);
+  const resultClass = event ? ' combat-result-' + event.result : '';
+  const perspectiveClass = event && event.perspective
+    ? ' combat-perspective-' + event.perspective.replace(/[^a-z0-9_-]/g, '')
+    : '';
+  const impactSideClass = playerImpact
+    ? ' combat-impact-player'
+    : (targetImpact ? ' combat-impact-opponent' : '');
+  return {
+    rootClass: 'combat-visual' + resultClass + perspectiveClass + impactSideClass +
+      (idle
+        ? ' combat-scene-idle'
+        : (view.effective ? ' combat-visual-effective' : ' combat-visual-syncing')) +
+      (view.reducedMotion ? ' combat-visual-reduced' : ''),
+    playerClass: (playerImpact ? ' is-impact-target' : '') +
+      (playerActor ? ' is-event-actor' : ''),
+    targetClass: (targetImpact ? ' is-impact-target' : '') +
+      (targetActor ? ' is-event-actor' : ''),
+  };
+}
+
+// Name, descriptor, and health for one token, positioned over the canvas by
+// combat-visual.css so the progress bars stay real DOM.
+// The player marks bosses by hand; the star sits under the enemy's health.
+function bossToggleHtml(combatant, boss) {
+  // The game tags its bosses; those get a fixed badge, not a control.
+  if (boss && boss.tagged) {
+    return '<div class="combat-boss-row"><span class="combat-boss-badge" role="img" aria-label="Boss">' +
+      '\u2605 Boss</span></div>';
+  }
+  if (!boss || !boss.canMark || !combatant.name) return '';
+  const marked = !!boss.marked;
+  const label = (marked ? 'Unmark ' : 'Mark ') + combatant.name + ' as a boss';
+  return '<div class="combat-boss-row"><button type="button" class="combat-boss-toggle' +
+    (marked ? ' combat-boss-marked' : '') + '" data-action="toggle-boss" aria-pressed="' + marked +
+    '" aria-label="' + escHtml(label) + '" title="' + escHtml(label) + '">' +
+    (marked ? '\u2605 Boss' : '\u2606 Mark boss') + '</button></div>';
+}
+
+function tokenHudHtml(side, combatant, sideClass, boss) {
+  let html = '<div class="combat-token-hud combat-token-hud-' + side + sideClass +
+    (side === 'target' && boss && (boss.marked || boss.tagged) ? ' combat-token-hud-boss' : '') + '">';
+  // A tagged boss already wears the badge, so the tag is left off the header,
+  // which is short on room; the full name stays as the hover text.
+  const tagged = side === 'target' && boss && boss.tagged;
+  const shown = tagged ? combatant.name.replace(/\s*\(\s*boss\s*\)\s*/gi, ' ').trim() : combatant.name;
+  html += '<div class="combat-hud-name"><span' + (tagged ? ' title="' + escHtml(combatant.name) + '"' : '') +
+    '>' + escHtml(shown || combatant.name) + '</span></div>';
+  if (combatant.descriptor) {
+    html += '<div class="combat-hud-descriptor">' + escHtml(combatant.descriptor) + '</div>';
+  }
+  html += healthHtml(side, combatant.name, combatant.health);
+  if (side === 'target' && combatant.condition) {
+    html += '<div class="combat-target-condition">' + escHtml(combatant.condition) + '</div>';
+  }
+  if (side === 'target') html += bossToggleHtml(combatant, boss);
+  return html + '</div>';
+}
+
+// Everything below the stage: current exchange, threats, history, outcome,
+// and the live region. Between fights the exchange line becomes the room's
+// name and there are no threats to list.
+// Runs of luck worth showing while the fight is on.
+function streaksHtml(recap) {
+  const streaks = recapStreaks(recap);
+  if (!streaks.length) return '';
+  let html = '<div class="combat-streaks" aria-label="Streaks">';
+  for (const streak of streaks) {
+    html += '<span class="combat-streak-chip combat-streak-' + streak.kind + '">' +
+      escHtml(streak.label) + ' <strong>\u00d7' + streak.count + '</strong></span>';
+  }
+  return html + '</div>';
+}
+
+// The card under the outcome once a fight is over.
+function summaryHtml(recap, dps) {
+  const rows = fightSummaryRows(recap, dps);
+  if (!rows.length) return '';
+  let html = '<dl class="combat-recap" aria-label="Fight summary">';
+  for (const row of rows) {
+    html += '<div class="combat-recap-row"><dt>' + escHtml(row.label) + '</dt><dd>' + escHtml(row.value) + '</dd></div>';
+  }
+  return html + '</dl>';
+}
+
+function hudHtml(view, event, label, announcement, scene, recap, dps) {
+  let html = '';
+  if (scene.idle) {
+    html += '<div class="combat-scene-room"><span class="combat-section-label">Scene</span>' +
+      '<span class="combat-scene-room-name">' + escHtml(scene.roomName || 'Darkwind') + '</span></div>';
+  } else {
+    html += '<div class="combat-current-event combat-current-' +
+      escHtml(event ? event.result : 'waiting') + '"><span class="combat-event-glyph" aria-hidden="true"></span>' +
+      '<span class="combat-event-copy"><strong>' + escHtml(label) + '</strong>';
+    if (event && event.summary) {
+      html += '<span class="combat-event-summary">' + escHtml(event.summary) + '</span>';
+    }
+    html += '</span></div>';
+    html += streaksHtml(recap);
+  }
+
+  if (!scene.idle && (view.threats.length || view.hiddenThreatCount)) {
+    html += '<div class="combat-threats" aria-label="Additional combat threats"><span class="combat-section-label">Threats</span>';
+    for (const threat of view.threats) {
+      html += '<span class="combat-threat-chip">' + escHtml(threat.name) + '</span>';
+    }
+    if (view.hiddenThreatCount) {
+      html += '<span class="combat-threat-chip combat-threat-more">+' +
+        view.hiddenThreatCount + '</span>';
+    }
+    html += '</div>';
+  }
+
+  if (view.history.length) {
+    html += '<ol class="combat-event-history" aria-label="Recent combat events">';
+    for (const historyEvent of view.history.slice(-5).reverse()) {
+      html += '<li class="combat-history-' + escHtml(historyEvent.result) + '"><span>' +
+        escHtml(RESULT_LABELS[historyEvent.result] || historyEvent.result) + '</span><span>' +
+        escHtml(historyEvent.summary || eventLabel(historyEvent)) + '</span></li>';
+    }
+    if (view.overflow.omitted) {
+      html += '<li class="combat-history-overflow"><span>Combined</span><span>+' +
+        formatInt(view.overflow.omitted) + ' exchanges</span></li>';
+    }
+    html += '</ol>';
+  }
+
+  if (!view.active && view.outcome) {
+    html += '<div class="combat-outcome combat-outcome-' + escHtml(view.outcome) + '">' +
+      escHtml(view.summary || view.outcome) + '</div>';
+    html += summaryHtml(recap, dps);
+  } else if (!view.effective && !scene.idle) {
+    html += '<div class="combat-sync-state">' +
+      'Visual combat is synchronizing; text fallback remains active</div>';
+  }
+  html += '<div class="sr-only combat-live-region" role="status" aria-live="polite" aria-atomic="true">' +
+    escHtml(announcement) + '</div>';
+  return html;
+}
+
+export function createCombatStageRenderer(bodyEl, options = {}) {
+  const doc = options.document
+    || (bodyEl && bodyEl.ownerDocument)
+    || (typeof document !== 'undefined' ? document : null);
+  let host = null;
+  let fallback = null;
+  let announcementKey = '';
+  let disposed = false;
+  // Damage taken and streaks for the current encounter, from its events.
+  let recap = createFightRecap();
+  let recapKey = '';
+
+  // One delegated listener: the header is rebuilt on every publish.
+  const onClick = (event) => {
+    const target = event.target && typeof event.target.closest === 'function'
+      ? event.target.closest('[data-action="toggle-boss"]')
+      : null;
+    if (!target || typeof options.onToggleBoss !== 'function') return;
+    event.preventDefault();
+    options.onToggleBoss();
+  };
+  if (bodyEl && typeof bodyEl.addEventListener === 'function') bodyEl.addEventListener('click', onClick);
+
+  function hostAlive() {
+    return !!(host && host.stage && !host.stage.destroyed && host.root.parentNode === bodyEl);
+  }
+
+  function destroyStage() {
+    if (!host) return;
+    const stage = host.stage;
+    host = null;
+    if (stage && typeof stage.destroy === 'function') stage.destroy();
+  }
+
+  function mountStage() {
+    const stage = createCombatStage(doc, { ...(options.stage || {}), onSound: options.onSound });
+    if (!stage) return null;
+    const root = doc.createElement('div');
+    root.setAttribute('role', 'region');
+    root.setAttribute('aria-label', 'Visual combat');
+    const stageEl = doc.createElement('div');
+    stageEl.className = 'combat-stage combat-stage-canvas-host';
+    stageEl.appendChild(stage.element);
+    const overlay = doc.createElement('div');
+    overlay.className = 'combat-stage-overlay';
+    stageEl.appendChild(overlay);
+    const hud = doc.createElement('div');
+    hud.className = 'combat-hud';
+    root.appendChild(stageEl);
+    root.appendChild(hud);
+    bodyEl.innerHTML = '';
+    bodyEl.appendChild(root);
+    return { stage, root, overlay, hud };
+  }
+
+  // The polite live region only announces a beat once per event or state
+  // change; every re-render in between leaves it empty so screen readers do
+  // not hear the same exchange repeated.
+  function nextAnnouncement(view, event, label) {
+    let announcement = '';
+    let key = '';
+    if (event) {
+      announcement = event.summary || label;
+      key = view.epoch + ':' + view.encounterId + ':event:' + event.seq;
+    } else if (view.summary && (!view.active || !view.history.length)) {
+      announcement = view.summary;
+      key = view.epoch + ':' + view.encounterId + ':state:' + view.stateSeq;
+    }
+    if (!key || announcementKey === key) return '';
+    announcementKey = key;
+    return announcement;
+  }
+
+  function renderFallback(data) {
+    destroyStage();
+    if (!fallback) fallback = createCombatVisualRenderer(bodyEl);
+    return fallback.render(data);
+  }
+
+  function render(data) {
+    if (disposed || !data || !data.model) return false;
+    if (!doc || !isCanvasStageSupported(doc)) return renderFallback(data);
+    if (!hostAlive()) {
+      destroyStage();
+      host = mountStage();
+      if (!host) return renderFallback(data);
+    }
+    if (fallback) {
+      fallback.dispose();
+      fallback = null;
+    }
+
+    const view = buildCombatView(data.model, {
+      enemy: data.enemy,
+      vitals: data.vitals,
+      avatar: data.avatar,
+      status: data.status,
+      inventory: data.inventory,
+    });
+    const event = view.event;
+    const scene = {
+      idle: !view.active || !view.visualEnabled || data.present === false,
+      roomName: data.room && typeof data.room.name === 'string' ? data.room.name.trim() : '',
+    };
+    const classes = eventClasses(view, event, scene.idle);
+    const label = eventLabel(event);
+    const announcement = nextAnnouncement(view, event, label);
+
+    host.root.className = classes.rootClass + ' combat-visual-canvas';
+    host.root.setAttribute('data-encounter-id', view.encounterId || '');
+    // Rebuilding the header would drop keyboard focus from the star.
+    const active = doc && doc.activeElement;
+    const starFocused = !!(active && typeof active.matches === 'function'
+      && active.matches('[data-action="toggle-boss"]') && host.overlay.contains(active));
+    const boss = view.target.isNpc ? data.boss : null;
+    host.overlay.innerHTML =
+      tokenHudHtml('player', view.player, classes.playerClass) +
+      (scene.idle ? '' : tokenHudHtml('target', view.target, classes.targetClass, boss));
+    if (starFocused) {
+      const star = host.overlay.querySelector('[data-action="toggle-boss"]');
+      if (star && typeof star.focus === 'function') star.focus();
+    }
+    const encounterKey = String(view.epoch || '') + ':' + String(view.encounterId || '');
+    if (encounterKey !== recapKey) {
+      recapKey = encounterKey;
+      recap = createFightRecap();
+    }
+    // The model's history fills as events arrive, but the stage presents them
+    // a beat at a time. Count only as far as the beat on show, so a streak
+    // never appears ahead of the blows that made it, and sweep up the rest
+    // once the fight is over.
+    const shownSeq = event ? Number(event.seq) : (view.active ? recap.lastSeq : Infinity);
+    recap = recapEvents(
+      recap,
+      view.history.concat(event ? [event] : []).filter((entry) => Number(entry.seq) <= shownSeq),
+    );
+    host.hud.innerHTML = hudHtml(view, event, label, announcement, scene, recap, data.dps || null);
+    host.stage.update(view, {
+      scene,
+      room: data.room || null,
+      roomImage: data.roomImage || null,
+      // Other players in the room stand behind the figures on the idle scene.
+      players: Array.isArray(data.players) ? data.players : [],
+      // Sky stage and moonlight for the day and night tint, or nothing.
+      ambience: data.ambience || null,
+      // Party members who are here, and the player's buff and debuff counts.
+      allies: Array.isArray(data.allies) ? data.allies : [],
+      auras: data.auras || null,
+      playerFallback: [view.player.fallbackImage, PLAYER_FALLBACK_IMAGE].filter(Boolean),
+      targetFallback: view.target.isNpc ? NPC_FALLBACK_IMAGE : PLAYER_FALLBACK_IMAGE,
+    });
+    return true;
+  }
+
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    if (bodyEl && typeof bodyEl.removeEventListener === 'function') bodyEl.removeEventListener('click', onClick);
+    destroyStage();
+    if (fallback) {
+      fallback.dispose();
+      fallback = null;
+    }
+    announcementKey = '';
+  }
+
+  function playActivity(activity) {
+    if (disposed || !hostAlive()) return false;
+    return host.stage.playScene(activity);
+  }
+
+  return Object.freeze({
+    render,
+    dispose,
+    playActivity,
+    // The live stage, for diagnostics and tests; null between mounts.
+    get stage() {
+      return hostAlive() ? host.stage : null;
+    },
+  });
+}

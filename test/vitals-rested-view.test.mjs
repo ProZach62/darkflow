@@ -21,6 +21,8 @@ globalThis.window = {
 
 const { renderVitalBar, reserveVitalBarColor, restedVitalsView } =
   await import('../public/js/panel-renderers.js');
+const { createInformationPanelRenderers } =
+  await import('../public/js/core-information-panel-renderers.mjs');
 
 function makeClassList() {
   const values = new Set();
@@ -70,6 +72,7 @@ function makeVitalRow() {
 function makeVitalBody() {
   return {
     children: [],
+    querySelectorAll() { return []; },
     querySelector(selector) {
       if (!selector.startsWith('.')) return null;
       const className = selector.slice(1);
@@ -155,6 +158,23 @@ test('rested meter exposes numeric progress and readable state', () => {
   assert.equal(row.track.attributes['aria-valuenow'], '2400');
   assert.equal(row.track.attributes['aria-valuetext'],
     '2,400 of 5,715 rested XP. +100% active.');
-  assert.equal(row.fill.style.width, '42%');
+  assert.equal(row.fill.style.transform, 'scaleX(0.42)');
   assert.equal(row.fill.style.backgroundColor, '#58a6ff');
+});
+
+test('the V2 vitals renderer includes the optional rested reserve', () => {
+  globalThis.document.createElement = () => makeVitalRow();
+  const body = makeVitalBody();
+  createInformationPanelRenderers().vitals(body, {
+    hp: 100, maxhp: 100, level_pct: 25,
+    rested: 2400, rested_max: 5715, rested_bonus_pct: 100,
+    carry: 10, maxcarry: 100,
+  });
+  assert.deepEqual(body.children.map((row) => row.label.textContent),
+    ['HP', 'Level', 'Rested XP', 'Carry']);
+  assert.equal(body.querySelector('.vitals-rested-xp').value.textContent,
+    '2,400 / 5,715 \u00b7 +100% active');
+  const legacy = makeVitalBody();
+  createInformationPanelRenderers().vitals(legacy, { hp: 100, maxhp: 100 });
+  assert.equal(legacy.querySelector('.vitals-rested-xp'), null);
 });

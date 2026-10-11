@@ -1,20 +1,26 @@
 # Comm GMCP Protocol Support
 
-Darkflow advertises `Comm 1` and `Comm.Channel 1`. The package supplies the
+Darkflow advertises `Comm 1`, `Comm.Channel 1`, and `Comm.Channel.Text 2`. The package supplies the
 Chat panel, desktop mention notifications, channel filters, and the player
 roster used by the mention picker.
 
+`Darkwind.Client.Subscriptions.features.channelTerminalSuppression` mirrors the
+server-owned terminal-channel setting: `true` requests eligible messages only in
+Chat, while `false` keeps terminal copies. Full/login/reconnect frames receive
+the current server value; only the Settings action writes it. Missing legacy
+clients retain terminal text.
+
 ## Messages
 
-| Message | Direction | Purpose |
-| --- | --- | --- |
-| `Comm.Channel` | Server -> Client | Receive a channel message |
-| `Comm.Channel.Text` | Server -> Client | Receive a channel message |
-| `Comm.Channel.List` | Server -> Client | Replace channel metadata |
-| `Comm.Channel.Players` | Mixed | Request or receive the online player roster |
-| `Comm.Channel.Start` | Server -> Client | Mark a channel active for this session |
-| `Comm.Channel.End` | Server -> Client | Mark a channel inactive for this session |
-| `Comm.Channel.Enable` | Client -> Server | Ask the server to enable one channel |
+| Message                | Direction        | Purpose                                     |
+| ---------------------- | ---------------- | ------------------------------------------- |
+| `Comm.Channel`         | Server -> Client | Receive a channel message                   |
+| `Comm.Channel.Text`    | Server -> Client | Receive a channel message                   |
+| `Comm.Channel.List`    | Server -> Client | Replace channel metadata                    |
+| `Comm.Channel.Players` | Mixed            | Request or receive the online player roster |
+| `Comm.Channel.Start`   | Server -> Client | Mark a channel active for this session      |
+| `Comm.Channel.End`     | Server -> Client | Mark a channel inactive for this session    |
+| `Comm.Channel.Enable`  | Client -> Server | Ask the server to enable one channel        |
 
 ## Channel Messages
 
@@ -38,8 +44,23 @@ Darkflow accepts both common field families:
 
 The normalizer fills both aliases (`channel`/`chan`, `talker`/`player`, and
 `text`/`msg`) before dispatch. A non-object payload becomes `{ "text": ... }`.
+When the saved terminal-channel setting is off, sender-view tells and standard
+soul emotes are ordinary transient channel messages with an empty `talker` and
+actor-perspective `text` (for example, `"You tell Bob: Hello."` or `"You
+smile."`). With terminal-channel output on, those sender views remain
+Terminal-only.
+For `Comm.Channel.Text 2`, Darkwind may additionally send an optional `ansi`
+string, limited to 4096 characters. Darkflow ignores a missing, malformed, or
+oversized value; otherwise it uses only the first effective foreground for the
+synthetic Chat channel label. It never styles the talker or message body.
+
 The Chat panel keeps the latest 200 distinct messages and suppresses an
-immediately repeated message with the same channel, talker, and text.
+immediately repeated message with the same channel, talker, and text. Plain
+`text` remains the source for mention matching, terminal correlation, and
+deduplication. Version-2 clients receive one `Comm.Channel.Text` event; older
+or ambiguous clients retain the compatible `Comm.Channel` plus
+`Comm.Channel.Text` plain events. Channel and active-channel labels are passive
+metadata above the combined log.
 
 ## Channel And Player Lists
 
@@ -48,9 +69,7 @@ objects and uses common fields such as `name`, `caption`, and `command` when
 rendering controls.
 
 ```json
-[
-  { "name": "gossip", "caption": "Gossip", "command": "gossip" }
-]
+[{ "name": "gossip", "caption": "Gossip", "command": "gossip" }]
 ```
 
 `Comm.Channel.Players` is sent by Darkflow with an empty object after the first

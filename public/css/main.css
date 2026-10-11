@@ -1878,12 +1878,13 @@ html[data-background-active="true"] #output-shell {
   display: flex;
 }
 
-#avatar-meter {
+#avatar-meter,
+.avatar-meter {
   position: relative;
   display: none;
-  flex: 0 0 24px;
+  flex: 0 0 16px;
   width: 100%;
-  min-height: 24px;
+  min-height: 16px;
   overflow: hidden;
   border-top: 1px solid #5a1e24;
   background:
@@ -1892,7 +1893,13 @@ html[data-background-active="true"] #output-shell {
   font-family: var(--df-font-mono);
 }
 
-#avatar-meter.visible {
+#avatar-meter.visible,
+.avatar-meter.visible {
+  display: flex;
+}
+
+/* Phase 2 renders the meter only when it should be shown, so it needs no .visible flip. */
+.avatar-meter {
   display: flex;
 }
 
@@ -1905,82 +1912,100 @@ html[data-background-active="true"] #output-shell {
   transition: width 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
-#avatar-meter.full .avatar-meter-fill {
+#avatar-meter.full .avatar-meter-fill,
+.avatar-meter.full .avatar-meter-fill {
   background: linear-gradient(90deg, #b62335, #ff7b72);
   box-shadow: 0 0 18px rgba(255, 123, 114, 0.68);
 }
 
-#avatar-meter.patron-mitra {
+#avatar-meter.patron-mitra,
+.avatar-meter.patron-mitra {
   border-top-color: #9e6a03;
   background:
     linear-gradient(180deg, rgba(242, 204, 96, 0.16), rgba(13, 17, 23, 0.2)),
     #140f05;
 }
 
-#avatar-meter.patron-mitra .avatar-meter-fill {
+#avatar-meter.patron-mitra .avatar-meter-fill,
+.avatar-meter.patron-mitra .avatar-meter-fill {
   background: linear-gradient(90deg, #8f6b18, #f2cc60);
   box-shadow: 0 0 14px rgba(242, 204, 96, 0.44);
 }
 
 #avatar-meter.patron-mitra.full .avatar-meter-fill,
-#avatar-meter.patron-mitra.active .avatar-meter-fill {
+.avatar-meter.patron-mitra.full .avatar-meter-fill,
+#avatar-meter.patron-mitra.active .avatar-meter-fill,
+.avatar-meter.patron-mitra.active .avatar-meter-fill {
   background: linear-gradient(90deg, #f2cc60, #fff2a8, #f2cc60);
   box-shadow: 0 0 20px rgba(242, 204, 96, 0.72);
 }
 
-#avatar-meter.patron-mitra.active {
+#avatar-meter.patron-mitra.active,
+.avatar-meter.patron-mitra.active {
   border-top-color: #f2cc60;
 }
 
-#avatar-meter.patron-gaea {
+#avatar-meter.patron-gaea,
+.avatar-meter.patron-gaea {
   border-top-color: var(--df-btn-bg);
   background:
     linear-gradient(180deg, rgba(126, 231, 135, 0.14), rgba(13, 17, 23, 0.2)),
     #07140a;
 }
 
-#avatar-meter.patron-gaea .avatar-meter-fill {
+#avatar-meter.patron-gaea .avatar-meter-fill,
+.avatar-meter.patron-gaea .avatar-meter-fill {
   background: linear-gradient(90deg, #1f7a3b, #7ee787);
   box-shadow: 0 0 14px rgba(126, 231, 135, 0.42);
 }
 
 #avatar-meter.patron-gaea.full .avatar-meter-fill,
-#avatar-meter.patron-gaea.active .avatar-meter-fill {
+.avatar-meter.patron-gaea.full .avatar-meter-fill,
+#avatar-meter.patron-gaea.active .avatar-meter-fill,
+.avatar-meter.patron-gaea.active .avatar-meter-fill {
   background: linear-gradient(90deg, #56d364, #aff5b4, #56d364);
   box-shadow: 0 0 20px rgba(126, 231, 135, 0.68);
 }
 
-#avatar-meter.patron-gaea.active {
+#avatar-meter.patron-gaea.active,
+.avatar-meter.patron-gaea.active {
   border-top-color: #7ee787;
 }
 
-#avatar-meter.patron-set {
+#avatar-meter.patron-set,
+.avatar-meter.patron-set {
   border-top-color: #8957e5;
   background:
     linear-gradient(180deg, rgba(210, 168, 255, 0.16), rgba(13, 17, 23, 0.2)),
     #10091a;
 }
 
-#avatar-meter.patron-set .avatar-meter-fill {
+#avatar-meter.patron-set .avatar-meter-fill,
+.avatar-meter.patron-set .avatar-meter-fill {
   background: linear-gradient(90deg, #5f2c82, #d2a8ff);
   box-shadow: 0 0 14px rgba(210, 168, 255, 0.46);
 }
 
 #avatar-meter.patron-set.full .avatar-meter-fill,
-#avatar-meter.patron-set.active .avatar-meter-fill {
+.avatar-meter.patron-set.full .avatar-meter-fill,
+#avatar-meter.patron-set.active .avatar-meter-fill,
+.avatar-meter.patron-set.active .avatar-meter-fill {
   background: linear-gradient(90deg, #a371f7, #e2c5ff, #a371f7);
   box-shadow: 0 0 20px rgba(210, 168, 255, 0.72);
 }
 
-#avatar-meter.patron-set.active {
+#avatar-meter.patron-set.active,
+.avatar-meter.patron-set.active {
   border-top-color: #d2a8ff;
 }
 
-#avatar-meter.active {
+#avatar-meter.active,
+.avatar-meter.active {
   border-top-color: #ff7b72;
 }
 
-#avatar-meter.active .avatar-meter-fill {
+#avatar-meter.active .avatar-meter-fill,
+.avatar-meter.active .avatar-meter-fill {
   width: 100%;
   background: linear-gradient(90deg, var(--df-err), #ffb3ad, var(--df-err));
   background-size: 200% 100%;
@@ -1993,12 +2018,14 @@ html[data-background-active="true"] #output-shell {
   z-index: 1;
   display: flex;
   align-items: center;
-  height: 100%;
+  height: 18px;
   padding: 0 12px;
   color: #ffe2de;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1;
   text-shadow: 0 1px 2px #000;
+  transform: translateY(-1px);
   white-space: nowrap;
 }
 
@@ -3539,8 +3566,7 @@ html[data-background-active="true"] #output-shell {
 }
 
 .sound-widget-indicator,
-.sound-widget-mute,
-.sound-widget-category {
+.sound-widget-mute {
   font-family: inherit;
   border: 1px solid var(--df-border);
   border-radius: 6px;
@@ -3561,15 +3587,15 @@ html[data-background-active="true"] #output-shell {
 }
 
 .sound-widget-indicator:hover,
-.sound-widget-mute:hover,
-.sound-widget-category:hover {
+.sound-widget-mute:hover {
   border-color: var(--df-accent-blue);
   background: #1f2733;
 }
 
 .sound-widget-indicator:focus-visible,
 .sound-widget-mute:focus-visible,
-.sound-widget-category:focus-visible,
+.sound-widget-category-toggle:focus-visible,
+.sound-widget-category-volume:focus-visible,
 .sound-widget-volume-slider:focus-visible {
   outline: 2px solid rgba(88, 166, 255, 0.75);
   outline-offset: 2px;
@@ -3590,6 +3616,10 @@ html[data-background-active="true"] #output-shell {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
+}
+
+.sound-widget-category-label {
+  line-height: 1;
 }
 
 .sound-widget-mute {
@@ -3641,23 +3671,112 @@ html[data-background-active="true"] #output-shell {
 }
 
 .sound-widget-category {
+  --sound-category-fill: 50%;
+  display: grid;
+  grid-template-rows: minmax(30px, 1fr) 10px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  min-height: 32px;
+  overflow: hidden;
+  font-family: inherit;
+  color: var(--df-text);
+  border: 1px solid var(--df-border);
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(66, 214, 201, 0.22) 0 var(--sound-category-fill),
+    var(--df-panel) var(--sound-category-fill) 100%
+  );
+}
+
+.sound-widget-category:hover {
+  border-color: var(--df-accent-blue);
+  filter: brightness(1.08);
+}
+
+.sound-widget-category-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
   min-width: 0;
-  min-height: 32px;
-  padding: 6px 8px;
+  min-height: 30px;
+  padding: 5px 8px 3px;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sound-widget-category-percent {
+  flex: 0 0 4ch;
+  margin-left: auto;
+  color: var(--df-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: right;
+}
+
+.sound-widget-category-volume {
+  width: 100%;
+  min-width: 0;
+  height: 10px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.sound-widget-category-volume::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+}
+
+.sound-widget-category-volume::-webkit-slider-thumb {
+  width: 3px;
+  height: 12px;
+  margin-top: -1px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 2px;
+  background: var(--df-text-strong);
+}
+
+.sound-widget-category-volume::-moz-range-track {
+  height: 100%;
+  background: transparent;
+}
+
+.sound-widget-category-volume::-moz-range-thumb {
+  width: 3px;
+  height: 12px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--df-text-strong);
+}
+
+.sound-widget-category-volume:disabled {
+  cursor: not-allowed;
 }
 
 .sound-widget-category.enabled {
   color: var(--df-text-strong);
   border-color: var(--df-accent);
-  background: rgba(66, 214, 201, 0.12);
 }
 
 .sound-widget-category.disabled {
   color: var(--df-muted);
   opacity: 0.58;
+  background: linear-gradient(
+    90deg,
+    rgba(139, 148, 158, 0.18) 0 var(--sound-category-fill),
+    var(--df-panel) var(--sound-category-fill) 100%
+  );
 }
 
 .settings-sound-categories {

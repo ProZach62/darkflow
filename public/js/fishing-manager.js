@@ -9,6 +9,7 @@ import { panelManager } from './panel-manager.js';
 import { soundManager } from './sound-manager.js';
 import { fishingAuto } from './fishing-auto.js';
 import { createFightSim, computeAccuracy, castPowerAt, PROGRESS_START } from './fishing-core.mjs';
+import { disposeControllerLifecycle, installControllerLifecycle } from './session-compat/controllers.js';
 
 const REEL_LOOP_ID = 'fishing-reel';
 
@@ -128,24 +129,35 @@ export const fishingManager = {
   artCache: {},       // species id -> url
 
   init() {
-    gmcp.on(PKG.OPEN, (data) => this._onOpen(data));
-    gmcp.on(PKG.BITE, (data) => this._onBite(data));
-    gmcp.on(PKG.FIGHT, (data) => this._onFight(data));
-    gmcp.on(PKG.CAUGHT, (data) => this._onCaught(data));
-    gmcp.on(PKG.ESCAPED, (data) => this._onEscaped(data));
-    gmcp.on(PKG.ART, (data) => this._onArt(data));
-    gmcp.on(PKG.END, (data) => this._onEnd(data));
-
-    fishingAuto.attach(this);
-
-    panelManager.registerPanelCloseHandler('fishing', () => {
-      // Closing the panel is the player taking over, and it reports as such
-      // rather than as the session ending.
-      fishingAuto.notifyManualInput();
-      if (this.session) gmcp.send(PKG.CANCEL, { session: this.session.id });
+    return installControllerLifecycle(this, 'fishing', gmcp, (scopedGmcp, lifecycle) => {
+      scopedGmcp.on(PKG.OPEN, (data) => this._onOpen(data));
+      scopedGmcp.on(PKG.BITE, (data) => this._onBite(data));
+      scopedGmcp.on(PKG.FIGHT, (data) => this._onFight(data));
+      scopedGmcp.on(PKG.CAUGHT, (data) => this._onCaught(data));
+      scopedGmcp.on(PKG.ESCAPED, (data) => this._onEscaped(data));
+      scopedGmcp.on(PKG.ART, (data) => this._onArt(data));
+      scopedGmcp.on(PKG.END, (data) => this._onEnd(data));
+      fishingAuto.attach(this);
+      const closeHandler = () => {
+        fishingAuto.notifyManualInput();
+        if (this.session) gmcp.send(PKG.CANCEL, { session: this.session.id });
+        this._reset('idle');
+        return true;
+      };
+      panelManager.registerPanelCloseHandler('fishing', closeHandler);
+      lifecycle.own('teardown', () => {
+        panelManager.unregisterPanelCloseHandler('fishing', closeHandler);
+      });
+    }, () => {
+      if (this._clearCastPointer) this._clearCastPointer();
+      this._clearCastPointer = null;
+      fishingAuto.onDisconnect();
       this._reset('idle');
-      return true;
     });
+  },
+
+  dispose() {
+    disposeControllerLifecycle(this);
   },
 
   // ---- GMCP handlers -------------------------------------------------
@@ -440,6 +452,7 @@ export const fishingManager = {
         castPointerId = null;
       }
     };
+    this._clearCastPointer = clearCastPointer;
     const castDown = (ev) => {
       if (this.phase !== 'ready') return;
       fishingAuto.notifyManualInput();
