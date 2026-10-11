@@ -531,6 +531,201 @@ test.describe("room combat", () => {
     }
   });
 
+  test("isometric room plays V2 abilities without turning heals into weapon hits", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    const clockStart = new Date();
+    await page.clock.install({ time: clockStart });
+    await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+    endpoint.sendGmcp("Room.Info", {
+      num: 101,
+      name: "Ability courtyard",
+      area: "Fixture Town",
+      environment: "city",
+      exits: {},
+    });
+    const roster = {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "viewer", name: "Observer", kind: "self", race: "human", weapon: "long sword" },
+        { id: "combat-enemy", name: "a sentry", kind: "npc", race: "elf" },
+        { id: "room-enemy", name: "a sentry", kind: "npc", race: "dwarf" },
+        { id: "ally", name: "Healer", kind: "player", race: "elf", weapon: "long bow" },
+      ],
+      removed: [],
+    };
+    endpoint.sendGmcp("Darkwind.Room.Occupants", roster);
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
+    const state = {
+      version: 2,
+      epoch: "ability-fixture",
+      encounter_id: "courtyard-fight",
+      seq: 0,
+      visual_enabled: true,
+      effective: true,
+      active: true,
+      current_actor_id: "self",
+      current_target_id: "combat-enemy",
+      actors: [
+        { id: "self", name: "Observer", role: "self", occupant_id: "viewer" },
+        { id: "combat-enemy", name: "a sentry", role: "target", occupant_id: "room-enemy" },
+        { id: "ally", name: "Healer", role: "participant" },
+        { id: "missing", name: "a sentry", role: "participant", occupant_id: "not-visible" },
+      ],
+      outcome: "",
+      summary: "An exchange in the courtyard.",
+    };
+    endpoint.sendGmcp("Darkwind.Combat.State", state);
+    const self = isoRoom.locator('[data-occupant-id="viewer"]');
+    const enemy = isoRoom.locator('[data-occupant-id="room-enemy"]');
+    await expect(enemy).toHaveAttribute("data-combat-side", "1");
+    let seq = 0;
+    const ability = (
+      kind: "skill" | "spell" | "heal",
+      actor: string,
+      target: string,
+      result: string,
+      amount?: number,
+    ) => {
+      const eventSeq = ++seq;
+      const label = { skill: "Snap Cut", spell: "Fireball", heal: "Nanomend" }[kind];
+      const frame = {
+        version: 2,
+        epoch: state.epoch,
+        encounter_id: state.encounter_id,
+        first_seq: eventSeq,
+        last_seq: eventSeq,
+        events: [
+          {
+            seq: eventSeq,
+            kind,
+            perspective: actor === target ? "self" : actor === "self" ? "outgoing" : "observed",
+            actor_id: actor,
+            target_id: target,
+            ability_id: kind === "heal" ? "nanomend" : kind === "spell" ? "fireball" : "snap-cut",
+            ability_name: label,
+            result,
+            ...(amount === undefined ? {} : { [kind === "heal" ? "healing" : "damage"]: amount }),
+            summary: `${label} outcome ${eventSeq}: ${result}.`,
+          },
+        ],
+      };
+      endpoint.sendGmcp("Darkwind.Combat.Events", frame);
+      return frame;
+    };
+    const capture = async (name: string) => {
+      if (!process.env.SCENE_SCREENSHOTS) return;
+      await isoRoom
+        .locator(".combat-impact, .combat-projectile, .occupant")
+        .evaluateAll((nodes) => {
+          for (const node of nodes)
+            for (const animation of node.getAnimations()) {
+              animation.pause();
+              animation.currentTime = 350;
+            }
+        });
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/isometric-v2-${name}-${testInfo.project.name}.png`,
+      });
+    };
+    const finish = async () => {
+      await page.clock.fastForward(1500);
+      await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    };
+
+    const skill = ability("skill", "self", "combat-enemy", "critical", 37);
+    await expect(isoRoom.locator(".combat-impact")).toContainText("37");
+    await expect(isoRoom.locator(".combat-impact")).toContainText("Snap Cut");
+    await expect(self).toHaveClass(/attacking/);
+    await expect(enemy).toHaveClass(/reacting/);
+    await expect(isoRoom.locator('[data-occupant-id="combat-enemy"]')).not.toHaveClass(/reacting/);
+    await capture("skill");
+    await finish();
+    endpoint.sendGmcp("Darkwind.Combat.Events", skill);
+    await page.clock.fastForward(200);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+
+    ability("spell", "self", "combat-enemy", "hit");
+    await expect(isoRoom.locator(".combat-impact")).toHaveText(/^Hit\s*Fireball$/);
+    await expect(isoRoom.getByRole("status")).not.toContainText("Damage:");
+    await expect(self).toHaveClass(/casting/);
+    await expect(self).not.toHaveClass(/attacking/);
+    await expect(isoRoom.locator(".combat-projectile")).toHaveCount(1);
+    await capture("spell");
+    await finish();
+
+    ability("heal", "self", "self", "healed", 23);
+    await expect(isoRoom.locator(".combat-impact")).toHaveText(/^\+23\s*Nanomend$/);
+    await expect(isoRoom.getByRole("status")).toContainText("Healing: 23");
+    await expect(self).toHaveClass(/healing/);
+    await expect(isoRoom.locator(".attacking, .reacting, .combat-projectile")).toHaveCount(0);
+    await capture("self-heal");
+    await finish();
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    ability("heal", "ally", "self", "healed");
+    await expect(isoRoom.locator(".combat-impact")).toHaveText(/^Healed\s*Nanomend$/);
+    await expect(isoRoom.getByRole("status")).not.toContainText("Healing:");
+    await expect(isoRoom.locator(".attacking, .reacting, .combat-projectile")).toHaveCount(0);
+    await expect(self).toHaveClass(/healing/);
+    await expect
+      .poll(() => self.evaluate((node) => getComputedStyle(node).animationName))
+      .toBe("none");
+    await expect
+      .poll(() => self.locator(".figure").evaluate((node) => getComputedStyle(node).animationName))
+      .toBe("none");
+    await capture("reduced-heal");
+    await finish();
+
+    for (const kind of ["skill", "spell", "heal"] as const) {
+      ability(kind, "ally", "self", "no-effect");
+      await expect(isoRoom.locator(".combat-impact")).toContainText("No Effect");
+      await expect(isoRoom.locator(".reacting, .healing")).toHaveCount(0);
+      if (kind === "spell") await capture("no-effect");
+      await finish();
+    }
+    ability("spell", "missing", "self", "hit", 91);
+    await expect(page.locator(".combat-event-copy")).toContainText(`outcome ${seq}: hit`);
+    await expect(isoRoom.locator(".combat-impact, .combat-projectile, .casting")).toHaveCount(0);
+    await finish();
+
+    ability("heal", "self", "self", "healed", 0);
+    await expect(isoRoom.locator(".combat-impact")).toHaveText(/^\+0\s*Nanomend$/);
+    endpoint.sendGmcp("Darkwind.Combat.State", { ...state, seq, resync: true });
+    await expect(isoRoom.locator(".combat-impact, .healing")).toHaveCount(0);
+    await page.clock.fastForward(1500);
+    ability("spell", "self", "combat-enemy", "hit", 41);
+    await expect(isoRoom.locator(".combat-impact")).toContainText("41");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", { ...roster, revision: 2, dark: 1, upsert: [] });
+    await expect(isoRoom.locator(".combat-impact, .combat-projectile, .occupant")).toHaveCount(0);
+    await expect(isoRoom.getByRole("status")).not.toContainText("Fireball");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", { ...roster, revision: 3 });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
+    await finish();
+    ability("heal", "ally", "combat-enemy", "healed", 19);
+    await expect(enemy).toHaveClass(/healing/);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      revision: 4,
+      upsert: roster.upsert.filter((occupant) => occupant.id !== "room-enemy"),
+    });
+    await expect(isoRoom.locator(".combat-impact, .healing")).toHaveCount(0);
+    await finish();
+    ability("heal", "self", "self", "healed", 11);
+    await expect(isoRoom.locator(".combat-impact")).toContainText("+11");
+    endpoint.sendGmcp("Room.Info", { num: 102, name: "Empty courtyard", exits: {} });
+    await expect(isoRoom.getByRole("heading", { name: "Empty courtyard" })).toBeVisible();
+    await expect(isoRoom.locator(".combat-impact, .healing")).toHaveCount(0);
+  });
+
   test("isometric room renders one terrain scene with services, exits, and occupants", async ({
     page,
   }, testInfo) => {

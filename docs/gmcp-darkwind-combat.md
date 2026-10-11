@@ -208,6 +208,14 @@ or recounting same-epoch sequences. A sequence gap, unknown kind, or unknown
 actor requests a bounded fresh State and disables readiness; duplicate frames
 only advance nothing and do not disturb valid readiness.
 
+Isometric Room also consumes the current accepted V2 event, resolving actors
+only to visible room occupants. It shows generic skill/spell/heal cues and
+public ability/result labels, preserves omitted numbers, supports self-heals,
+and clears in-flight effects on resync. It does not alter Scene readiness,
+text suppression, or DPS accounting. See
+`isometric-room-server-handoff.md` for the room presentation and acceptance
+boundary.
+
 Events are transient and arrive in ordered, bounded batches:
 
 ```json

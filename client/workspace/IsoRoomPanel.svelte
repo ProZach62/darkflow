@@ -133,10 +133,13 @@
   let focusCombat = $state(false);
   let beat = $state<{
     seq: number;
+    kind: SessionCombatEvent["kind"];
     actor: string;
     target: string;
     result: string;
     damage?: number;
+    healing?: number;
+    abilityName?: string;
     ranged: boolean;
     summary: string;
   } | null>(null);
@@ -173,18 +176,29 @@
   }
 
   function playCombatEvent(event: SessionCombatEvent): void {
-    if (event.kind !== "attack") return;
     const actor = resolveActor(event.actorId);
     const target = resolveActor(event.targetId);
-    if (!actor || !target || actor.id === target.id || snapshot.occupantsDark) return;
+    if (
+      !actor ||
+      !target ||
+      (actor.id === target.id && event.kind !== "heal") ||
+      snapshot.occupantsDark ||
+      snapshot.occupantsUnavailable
+    )
+      return;
     clearTimeout(beatTimer);
     beat = {
       seq: event.seq,
+      kind: event.kind,
       actor: actor.id,
       target: target.id,
       result: event.result,
       ...(event.damage !== undefined ? { damage: event.damage } : {}),
-      ranged: /bow|crossbow|staff|wand/i.test(actor.weapon ?? ""),
+      ...(event.healing !== undefined ? { healing: event.healing } : {}),
+      ...(event.abilityName ? { abilityName: event.abilityName } : {}),
+      ranged:
+        event.kind === "spell" ||
+        (event.kind === "attack" && /bow|crossbow|staff|wand/i.test(actor.weapon ?? "")),
       summary: event.summary,
     };
     beatTimer = setTimeout(() => (beat = null), 850);
@@ -194,6 +208,7 @@
     const initial = activeSession.combat.getSnapshot().model;
     seenBeat = `${initial.epoch}:${initial.encounterId}:${initial.currentEvent?.seq ?? 0}`;
     const unsubscribe = activeSession.combat.subscribe((next) => {
+      const reset = next.model.presentationReset !== combat.presentationReset;
       if (
         next.model.epoch !== combat.epoch ||
         next.model.encounterId !== combat.encounterId ||
@@ -204,7 +219,7 @@
       combat = next.model;
       const event = next.model.currentEvent;
       const key = `${next.model.epoch}:${next.model.encounterId}:${event?.seq ?? 0}`;
-      if (!next.connected || !next.model.active) {
+      if (reset || !next.connected || !next.model.active || !next.model.visualEnabled) {
         clearTimeout(beatTimer);
         beat = null;
       } else if (event && key !== seenBeat && combatRoomGeneration === snapshot.roomGeneration) {
@@ -356,7 +371,7 @@
   }
 
   function sceneOccupants(value: SessionWorldSnapshot): SceneOccupant[] {
-    if (value.occupantsDark) return [];
+    if (value.occupantsDark || value.occupantsUnavailable) return [];
     if (value.occupantsAuthoritative) {
       return value.occupants.slice(0, 8).map(normalizeOccupant).sort(occupantOrder);
     }
@@ -548,18 +563,23 @@
             {@const targetPosition = combatPosition(occupants[targetIndex]!, targetIndex)}
             {@const actorPosition = combatPosition(occupants[actorIndex]!, actorIndex)}
             <div
-              class={`combat-impact result-${beat.result}`}
-              style={`left:${targetPosition.x}%;top:${targetPosition.y - 15}%`}
+              class={`combat-impact kind-${beat.kind} result-${beat.result}`}
+              style={`left:${targetPosition.x}%;top:${targetPosition.y - (beat.abilityName ? 24 : 15)}%`}
               aria-hidden="true"
             >
-              {beat.result === "hit" || beat.result === "critical"
-                ? (beat.damage ?? "Hit")
-                : detailLabel(beat.result)}
+              {beat.result === "healed"
+                ? beat.healing !== undefined
+                  ? `+${beat.healing}`
+                  : "Healed"
+                : beat.result === "hit" || beat.result === "critical"
+                  ? (beat.damage ?? "Hit")
+                  : detailLabel(beat.result)}
               {#if beat.result === "critical"}<small>Critical</small>{/if}
+              {#if beat.abilityName}<small>{beat.abilityName}</small>{/if}
             </div>
             {#if beat.ranged}
               <div
-                class="combat-projectile"
+                class={`combat-projectile kind-${beat.kind}`}
                 style={`--from-x:${actorPosition.x}%;--from-y:${actorPosition.y - 12}%;--to-x:${targetPosition.x}%;--to-y:${targetPosition.y - 12}%`}
                 aria-hidden="true"
               ></div>
@@ -667,13 +687,23 @@
                 class:hostile={occupant.hostile}
                 class:fighting={occupant.fighting}
                 class:anchored={occupant.anchor_id}
-                class:attacking={beat?.actor === occupant.id && !beat.ranged}
-                class:reacting={beat?.target === occupant.id}
+                class:attacking={beat?.actor === occupant.id &&
+                  (beat.kind === "skill" || (beat.kind === "attack" && !beat.ranged))}
+                class:casting={beat?.actor === occupant.id && beat.kind === "spell"}
+                class:healing={beat?.target === occupant.id &&
+                  beat.kind === "heal" &&
+                  beat.result === "healed"}
+                class:reacting={beat?.target === occupant.id &&
+                  beat.kind !== "heal" &&
+                  beat.result !== "no-effect"}
                 class:ranked={formation.has(occupant.id)}
                 data-result={beat?.target === occupant.id ? beat.result : ""}
+                data-combat-kind={beat?.actor === occupant.id || beat?.target === occupant.id
+                  ? beat.kind
+                  : ""}
                 data-occupant-id={occupant.id}
                 data-combat-side={formation.get(occupant.id)?.side ?? ""}
-                style={`--x:${position.x}%;--y:${position.y}%;--strike-x:${(opponentPosition.x - home.x) * 0.5}%;--strike-y:${(opponentPosition.y - home.y) * 0.5}%;--delay:${index * -0.31}s;--depth:${100 + Math.round(position.y)};--label-shift:${index % 2 ? -10 : 10}px`}
+                style={`--x:${position.x}%;--y:${position.y}%;--strike-x:${(opponentPosition.x - home.x) * (beat?.kind === "skill" ? 0.25 : 0.5)}%;--strike-y:${(opponentPosition.y - home.y) * (beat?.kind === "skill" ? 0.25 : 0.5)}%;--delay:${index * -0.31}s;--depth:${100 + Math.round(position.y)};--label-shift:${index % 2 ? -10 : 10}px`}
                 title={occupantLabel(occupant)}
                 aria-label={occupantLabel(occupant)}
                 data-engaged-with={occupant.engaged_with ?? ""}
@@ -722,6 +752,13 @@
     <footer>
       <p class="combat-summary" role="status">
         {beat?.summary || (combatActive ? "Combat in progress" : "")}
+        {#if beat?.abilityName}
+          <span class="sr-only">
+            {beat.abilityName}: {detailLabel(beat.result)}.
+            {#if beat.damage !== undefined}Damage: {beat.damage}.{/if}
+            {#if beat.healing !== undefined}Healing: {beat.healing}.{/if}
+          </span>
+        {/if}
       </p>
       <div class="room-facts">
         {#if targets.length}
@@ -1324,6 +1361,19 @@
     filter: drop-shadow(0 0 12px #a8beff);
   }
 
+  .occupant.attacking[data-combat-kind="skill"] .figure {
+    filter: drop-shadow(0 0 12px #7ee7df);
+  }
+
+  .occupant.casting .figure {
+    filter: drop-shadow(0 0 12px #b4abff);
+  }
+
+  .occupant.healing .figure {
+    filter: drop-shadow(0 0 12px #7ee7a5);
+    animation: room-heal 850ms ease-out;
+  }
+
   .combat-impact {
     position: absolute;
     z-index: 250;
@@ -1338,12 +1388,26 @@
 
   .combat-impact small {
     display: block;
+    max-width: 160px;
+    overflow-wrap: anywhere;
     font-size: 12px;
   }
 
   .combat-impact.result-critical {
     color: #ffbd62;
     font-size: 28px;
+  }
+
+  .combat-impact.kind-skill {
+    color: #7ee7df;
+  }
+
+  .combat-impact.kind-spell {
+    color: #b4abff;
+  }
+
+  .combat-impact.kind-heal {
+    color: #7ee7a5;
   }
 
   .combat-projectile {
@@ -1356,6 +1420,13 @@
     box-shadow: 0 0 8px #ffc257;
     pointer-events: none;
     animation: room-projectile 400ms 150ms both linear;
+  }
+
+  .combat-projectile.kind-spell {
+    width: 12px;
+    height: 12px;
+    background: #b4abff;
+    box-shadow: 0 0 12px #b4abff;
   }
 
   .combat-focus .building,
@@ -1380,6 +1451,12 @@
   @keyframes room-recoil {
     45% {
       transform: translate(-44%, -88%) rotate(5deg);
+    }
+  }
+
+  @keyframes room-heal {
+    40% {
+      filter: drop-shadow(0 0 20px #7ee7a5) brightness(1.2);
     }
   }
 
@@ -1738,6 +1815,7 @@
     .occupant.attacking,
     .occupant.reacting,
     .occupant.reacting[data-result="dodge"],
+    .occupant.healing .figure,
     .living-surface,
     .weather-layer i,
     .weather-layer,

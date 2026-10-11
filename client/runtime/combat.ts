@@ -40,9 +40,14 @@ const { ACTION_DURATION_MS, combatBeatMs } = stageCore as {
 /** One blow's length on the Scene; the beat between blows when none wait. */
 export const COMBAT_BEAT_MS: number = ACTION_DURATION_MS;
 
-export interface SessionCombatEvent extends Omit<DarkwindCombatEvent, "actor_id" | "target_id"> {
+export interface SessionCombatEvent extends Omit<
+  DarkwindCombatEvent,
+  "actor_id" | "target_id" | "ability_id" | "ability_name"
+> {
   readonly actorId: string;
   readonly targetId: string;
+  readonly abilityId?: string;
+  readonly abilityName?: string;
   readonly receivedAt: number;
 }
 

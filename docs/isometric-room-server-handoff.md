@@ -393,9 +393,18 @@ matching object. The client assigns safe positions automatically when
 The room panel consumes the session's existing `Darkwind.Combat` presentation
 stream without changing the Scene panel's readiness or text-fallback contract.
 It places visible combatants in stable opposing ranks and plays each current
-attack once: melee advances and returns, ranged weapon hints produce a
+event once: melee attacks advance and return, ranged weapon hints produce a
 projectile, and outcomes produce recoil, dodge, mitigation glows, or impact
-labels. Reduced motion preserves static outcomes and suppresses movement.
+labels. Combat V2 skills add teal strike/impact cues; spells use a purple
+caster glow and generic projectile rather than a weapon lunge. Heals use a
+green recipient pulse without a strike, damage recoil, or projectile, including
+when actor and target are the same visible occupant. Public ability names are
+shown with the result. Authorized damage/healing amounts remain optional:
+missing values show Hit/Healed, not zero; an explicit healing amount uses a
+plus-prefixed number. No-effect outcomes do not produce damage recoil or a
+healing pulse. Reduced motion preserves static labels/glows and suppresses
+movement, healing pulses, and projectiles. The status live region includes
+ability/result labels and only the numeric amounts supplied by the server.
 The optional Combat focus toggle dims scenery and bystanders, not the floor
 or combatants. Formation placement is cosmetic, not tactical authority.
 
@@ -405,8 +414,9 @@ if its occupant is absent, hidden, or outside the displayed cap, the actor
 remains unresolved. Without a bridge, legacy `self` resolves to the visible
 self occupant and other actors may use an exact room occupant ID. Display
 names are never used for combat matching, even when unique. Unknown actors are
-not invented or animated. Room changes, visibility changes, disconnects, and
-encounter completion clear transient effects.
+not invented or animated. Room changes, occupant removal, dark/unavailable
+views, disconnects, encounter completion, and Combat presentation resets
+(including V2 resync) clear transient effects.
 
 The local identity regression fails before this resolver change and passes
 afterward on desktop and 390px Chromium. Two identically named sentries and an
@@ -416,10 +426,15 @@ unresolved explicit bridges with matching IDs produce no room attack effects;
 exact-ID compatibility still works. The fixtures exercise actual GMCP delivery
 and rendered output, not a live MUD encounter.
 
-This initial version uses visible weapon labels to infer ranged presentation;
-typed weapon and ability events remain future server extensions. It does not
-invent spell, heal, death, or formation mechanics from attack prose. Combat
-animations require the existing visual combat event stream to be delivered.
+Weapon attacks still use visible weapon labels to infer ranged presentation.
+Abilities use the typed Combat V2 kind, never attack prose or guessed ability
+mechanics. No ability-specific art, death, or tactical formation mechanics are
+inferred. Combat animations require the existing visual combat event stream
+to be delivered. The V2 browser regression exercises skill criticals, spells,
+self/other heals, omitted/zero amounts, no-effect outcomes, duplicate events,
+unresolved bridges, reduced motion, resync, occupant removal and room clearing
+on desktop and 390px Chromium. These are local GMCP fixtures, not live MUD
+acceptance; ability text suppression remains subject to its existing gates.
 
 ## Pilot and acceptance boundary
 
