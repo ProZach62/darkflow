@@ -233,6 +233,23 @@ test("idle Scene consumes authored room targets and clears private fallbacks", a
     exit_details: { north: { kind: "door", label: "North gate" } },
     scene: { time: "night", lighting: "lit" },
   });
+  endpoint.sendGmcp("Char.Status", { name: "Acer", race: "human" });
+  endpoint.sendGmcp("Room.Players", [{ name: "Legacy visitor" }]);
+  endpoint.sendGmcp("Group", {
+    leader: "Party ally",
+    members: [
+      { name: "Acer", info: { here: "yes", hp: 100, maxhp: 100 } },
+      { name: "Party ally", info: { here: "yes", hp: 40, maxhp: 100 } },
+    ],
+  });
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState({ active: 0, seq: 2 }));
+  await expect(scene).toHaveClass(/combat-scene-idle/);
+  await expect(scene.locator(".combat-token-hud-player")).toContainText("Acer");
+  await expect(scene.getByRole("list", { name: "Room occupants" })).toHaveCount(0);
+  if (process.env.SCENE_SCREENSHOTS)
+    await scene.screenshot({
+      path: `${process.env.SCENE_SCREENSHOTS}/scene-self-only-legacy-${testInfo.project.name}.png`,
+    });
   const roster = {
     version: 1,
     room: 101,
@@ -257,6 +274,7 @@ test("idle Scene consumes authored room targets and clears private fallbacks", a
         appearance: { race: "elf", gender: "female" },
         equipment: {},
       },
+      { id: "visitor", name: "Room visitor", kind: "player", appearance: { race: "elf" } },
     ],
     removed: [],
   };
@@ -267,8 +285,11 @@ test("idle Scene consumes authored room targets and clears private fallbacks", a
   await expect(
     scene.getByRole("button", { name: "Go North gate (locked)", exact: true }),
   ).toBeVisible();
-  await expect(scene.locator('[aria-label="Room occupants"] li')).toHaveCount(3);
-  await expect(scene.locator('[aria-label="Room occupants"]')).toContainText("badly wounded");
+  await expect(scene.getByRole("list", { name: "Room occupants" })).toHaveCount(0);
+  await expect(scene.locator(".combat-token-hud-player")).toContainText("Acer");
+  await expect(scene.locator(".combat-token-hud-target")).toHaveCount(0);
+  await expect(scene).not.toContainText("a guard");
+  await expect(scene).not.toContainText("Room visitor");
   const commandStart = endpoint.commands.length;
   await scene.getByRole("button", { name: "Look at Survey stakes" }).click();
   await expect.poll(() => endpoint.commands.slice(commandStart)).toContain("look survey stakes");
@@ -343,10 +364,34 @@ test("idle Scene consumes authored room targets and clears private fallbacks", a
   await expect(scene.locator(".combat-target-condition")).toHaveText("badly wounded");
   await expect(scene).toContainText("Elite · bleeding");
   await expect(scene).not.toContainText("177");
+  await expect(scene.locator(".combat-token-hud-player")).toContainText("a guard");
+  await expect(scene.locator(".combat-token-hud-target")).toContainText("a guard");
+  await expect(scene).not.toContainText("Room visitor");
   if (process.env.SCENE_SCREENSHOTS)
     await scene.screenshot({
       path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-observed-${testInfo.project.name}.png`,
     });
+  endpoint.sendGmcp(
+    "Darkwind.Combat.State",
+    combatState({
+      seq: 5,
+      current_target_id: "visitor-fighter",
+      actors: [
+        { id: "self", name: "Acer", role: "self" },
+        {
+          id: "visitor-fighter",
+          name: "Room visitor",
+          role: "player",
+          occupant_id: "visitor",
+          appearance: { race: "elf" },
+          equipment: {},
+        },
+      ],
+    }),
+  );
+  await expect(scene.locator(".combat-token-hud-player")).toContainText("Acer");
+  await expect(scene.locator(".combat-token-hud-target")).toContainText("Room visitor");
+  await expect(scene.getByRole("list", { name: "Room occupants" })).toHaveCount(0);
 });
 
 test("combat victory leaves the interface clickable", async ({ page }) => {

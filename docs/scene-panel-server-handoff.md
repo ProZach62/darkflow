@@ -34,10 +34,13 @@ improve the idle Scene:
 - `Room.Info.scene` supplies time, weather, and lighting.
 - `Room.Info.exit_details` supplies typed exits.
 
-The Scene client currently uses `Room.Players` for name-only player
-silhouettes. It does not yet use the richer occupant snapshot, room looks, or
-the complete room scene metadata. Wiring those existing payloads into Scene is
-client work and does not require new server information.
+The workspace Scene uses room metadata for scenery/actions and the visible
+self occupant for public appearance/equipment. Passive NPCs, other players,
+pets, and room overflow are displayed in Isometric Room instead. Scene no
+longer adds party stand-ins from Group. Its active combat actors and threats come from
+`Darkwind.Combat.State`; darkness, unavailable views, and roster recovery
+remain authoritative. This presentation choice changes no server subscription
+or payload contract and leaves the shared room roster available to other panels.
 
 See `isometric-room-server-handoff.md` and
 `gmcp-darkwind-room-occupants.md` for those payloads.

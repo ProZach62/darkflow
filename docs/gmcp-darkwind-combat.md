@@ -300,14 +300,13 @@ a rate-limited polite live region. Reduced-motion mode removes lunges, shakes,
 flashes, moving damage numbers, and crossfades while preserving static outcome
 badges and summaries.
 
-Other players in the room stand in a band behind the scene while it is
-idle: smaller, further back, in muted colours, unarmed, facing the player,
-each named under its feet. They come from `Room.Players` and its add and
-remove messages, so an arrival fades in and a departure fades out; the
-band holds six and counts the rest as "+N". A fight clears the band and
-the idle scene brings it back. Nothing but a name is known about another
-player, so they draw as the initial-lettered silhouette; NPCs are not
-listed by any package and do not appear.
+The workspace Scene shows only the player between fights. Passive NPCs,
+other players, pets, and their overflow belong in Isometric Room, not a
+second Scene roster. Scene still uses the authoritative room self record
+for public appearance/equipment and respects darkness, unavailability, and
+snapshot recovery. Room scenery actions, exits, and the backdrop remain.
+During combat, the separate Combat roster supplies active fighters and
+threats, including NPCs, player opponents, and observed exchanges.
 
 ## Canvas Stage
 
@@ -388,17 +387,10 @@ folds any positive value into a 0 to 1 lift with a saturating curve.
 
 ### The party and auras
 
-Members of the player's `Group` whose `info.here` says they are in the room
-stand behind the player, in the player's colours, facing the fight. Unlike
-bystanders they stay while a fight is on. Each carries a health bar from
-`info.hp` and `info.maxhp`, coloured by how hurt they are, and the leader is
-starred. With room to spare, as on the idle scene where the player stands
-mid-stage, they form a rank with name captions. In a fight the player stands
-near the edge, so the rank recedes diagonally instead, each ally further
-back, higher, and smaller, without captions; the initial on each head and
-the bars carry it. At most four are drawn and the rest are counted. A party
-member is never also drawn as a bystander, and bystanders take ground the
-party is not standing on.
+The workspace Scene no longer adds party stand-ins from `Group`. Group data
+remains available to other panels; actual party combatants can still appear
+through the Combat roster. The retained canvas renderer supports legacy
+bystander/allies inputs, but the workspace Scene does not supply them.
 
 The player's `Char.Defences` show as glows on the ground under their feet:
 warm for buffs, brighter with more of them up to four, and murky for

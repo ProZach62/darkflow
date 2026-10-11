@@ -981,6 +981,7 @@ test.describe("isometric room server-contract follow-up", () => {
             name: "Observer",
             kind: "self",
             race: "human",
+            appearance: { race: "human" },
             equipment: { two_handed: 0 },
           },
           sentry,
@@ -989,17 +990,21 @@ test.describe("isometric room server-contract follow-up", () => {
       });
       const occupants = panel.getByRole("list", { name: "Room occupants" });
       await expect(panel).toBeVisible();
-      // Scene lists bystanders; Isometric Room also lists the recipient.
-      const listedCount = title === "Scene" ? 2 : 3;
-      await expect(occupants.locator("li")).toHaveCount(listedCount);
-      await expect(occupants).toContainText("Betharch");
-      await expect(occupants).toContainText("Drugon");
-      if (title === "Scene") await expect(occupants).toContainText("(bad)");
-      else
+      if (title === "Scene") {
+        await expect(occupants).toHaveCount(0);
+        await expect(panel.locator(".combat-token-hud-player")).toContainText("Observer");
+        await expect(panel.locator(".combat-hud-descriptor")).toContainText("human");
+        await expect(panel).not.toContainText("Betharch");
+        await expect(panel).not.toContainText("Drugon");
+      } else {
+        await expect(occupants.locator("li")).toHaveCount(3);
+        await expect(occupants).toContainText("Betharch");
+        await expect(occupants).toContainText("Drugon");
         await expect(panel.getByRole("img", { name: /^Betharch/ })).toHaveAttribute(
           "aria-label",
           /\(bad\)/,
         );
+      }
       await expect(panel).not.toContainText("room view is unavailable");
       endpoint.sendGmcp("Darkwind.Room.Occupants", {
         ...roster,
@@ -1012,12 +1017,23 @@ test.describe("isometric room server-contract follow-up", () => {
             equipment: { ...sentry.equipment, two_handed: 0 },
             public_state: { ...sentry.public_state, condition: "(awful)" },
           },
+          {
+            id: "self",
+            name: "Observer",
+            kind: "self",
+            appearance: { race: "elf" },
+            equipment: { two_handed: 0 },
+          },
         ],
       });
-      await expect(occupants.locator("li")).toHaveCount(listedCount);
-      await expect(occupants).toContainText("Drugon");
-      if (title === "Scene") await expect(occupants).toContainText("(awful)");
-      if (title === "Isometric Room") {
+      if (title === "Scene") {
+        await expect(occupants).toHaveCount(0);
+        await expect(panel.locator(".combat-hud-descriptor")).toContainText("elf");
+        await expect(panel).not.toContainText("Betharch");
+        await expect(panel).not.toContainText("Drugon");
+      } else {
+        await expect(occupants.locator("li")).toHaveCount(3);
+        await expect(occupants).toContainText("Drugon");
         await expect(panel).toHaveAttribute("data-room-occupants", "3");
         await expect(panel.getByRole("img", { name: /^Betharch/ })).toBeVisible();
         await expect(panel.getByRole("img", { name: /^Betharch/ })).toHaveAttribute(
