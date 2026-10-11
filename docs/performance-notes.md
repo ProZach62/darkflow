@@ -146,6 +146,133 @@ per frame. What remains while it runs is the panel's CSS animation paint
 (the water strip animates `background-position`; two pulses animate
 `border-color` and `box-shadow`), which is bounded to those elements.
 
+## The map in a large area
+
+Measured with a 70 by 70 area of 4,900 rooms sent as one `MapData2.Area`
+frame, walking four rooms a second, at normal zoom and at 20%.
+
+| Walking | Before | After |
+| --- | --- | --- |
+| Busy, normal zoom | 104% | 28-35% |
+| Script, normal zoom (15 moves) | 3,480 ms | 360-470 ms |
+| Busy, 20% zoom | 584% | 66-88% |
+| Map DOM elements at 20% zoom | 22,915 | 3,980 |
+
+1. **The world adapter copied the map on every lookup.** `getRoom` returned
+   `deepFreeze(structuredClone(room))` and `getRoomsByArea` did the same for
+   the whole area, and the renderer makes thousands of lookups a render.
+   Each retained room's frozen copy is now kept in a `WeakMap` and reused
+   until one of its top-level fields changes; both map stores replace nested
+   objects rather than editing them, so the top-level comparison is enough.
+2. **Terrain words were matched with 23 freshly built regexes per room per
+   render.** The patterns are compiled once and each environment string's
+   tokens remembered.
+3. **The marker's step animated `left` and `top`**, laying out the whole map
+   grid every frame of every step (396 layouts in 15 steps). It steps with a
+   transform again; the time-of-day tint moved to its own still element so it
+   keeps a backdrop to blend with.
+4. **Every empty cell was a `div`.** Tiles are placed with `grid-area`, so cells
+   far from any room are not emitted, and below 50% zoom connectors, door
+   ticks, and badges (under a pixel or two) are left out. The renderer writes
+   each room's button role and label instead of the panel walking every tile
+   after each render.
+5. **The terrain was repainted on every move**, since every move shifts the
+   grid. The painting covers a window four cells past the grid on each side,
+   anchored to the world; the same canvas element is carried from render to
+   render and slid into place, and only repainted when the grid nears the
+   window's edge or the rooms in it change.
+6. Grid cells are keyed by number rather than by `"x,y"` strings.
+
+Under the busy-fight load with the map open in the same area and walking
+two rooms a second, the client was about 45% busy against 26% with the map
+still, the difference being the tile DOM rebuilt on every render. That led
+to the next two changes.
+
+### Tile reuse and compositor glides
+
+7. **Tiles live at world positions and are patched, not rebuilt.** The grid
+   covers the same world-anchored window as the painted terrain (four cells
+   past the view's grid on each side), and the frame slides it. Each render
+   still builds every tile's markup, but compares it with the last render's:
+   tiles whose markup is unchanged keep their element (and with it their
+   focus, hover, and route marks), and only changed, new, or departed tiles
+   are touched. The frame, grid, marks (tint, marker, ghost), and overlays
+   (area name, level badge, Resync) are updated in place. The map rebuilds
+   with one `innerHTML` only when the window moves (every four cells), the
+   zoom or level changes, or the painted look is switched. With no live DOM
+   (the tests' stand-in body) it always builds the markup whole.
+8. **The glides run through the Web Animations API.** The camera glide, zoom
+   ease, and marker step were CSS keyframes built on custom properties,
+   which the compositor cannot run, so the frame was restyled on every frame
+   of every glide. On a page they are now `element.animate` with plain
+   values, started once at the time already spent; a render during a glide
+   leaves it running. Without reduced motion, walking cost 337 ms of style a
+   15-move run with the CSS keyframes against 89 ms with no glides at all.
+
+Old against new on the same build, alternating three runs each:
+
+| Walking, 4,900 rooms | Rebuild, CSS glides | Patch, animation API |
+| --- | --- | --- |
+| Busy, normal zoom | 51-65% | 43-47% |
+| Style, normal zoom (15 moves) | 378-457 ms | 165-190 ms |
+| Busy, 20% zoom | 89-112% | 62-70% |
+| Style, 20% zoom (10 moves) | 476-732 ms | 209-219 ms |
+| Full rebuilds per 15 moves | 15 | 3 |
+
+The terminal's virtualized renderer measures new lines with
+`getBoundingClientRect` (about 1.6% of the busy load); that is upstream's.
+
+### Living terrain, the second time
+
+The first living terrain was a masked element per water or swamp cell
+animating `background-position`, plus a blended torch per town cell: every
+one repainted on every frame, forever, and the client lagged. It came back
+built for the compositor: one masked layer per kind for the whole painted
+window, a pattern that slides by transform, and torches on three canvases
+that flicker by opacity (`map-living.js`). Measured in the 4,900-room area
+at night, alternating off and on:
+
+| | Off | On |
+| --- | --- | --- |
+| Busy at idle | 10% | 11-12% |
+| Busy walking, normal zoom | 36-39% | 53-56% |
+| Busy walking, 20% zoom | 52-59% | 61-67% |
+
+At idle the animations run on the compositor. While walking, every frame
+the main thread makes for a glide also updates the layers' animated styles,
+about 0.2 ms a frame; headless renders without a frame cap, roughly four
+times a 60 Hz display's frames, so in the desktop client the walking cost
+should be about a quarter of the difference shown. Writing the layers' size
+and visibility only when they change made no measurable difference.
+
+## Room cards, labels, and the marker
+
+Each room tile had carried a `title`: its name, pin, the rooms sharing its
+cell, a lookup per exit for those leading to another area, and its services,
+built for every room in the window on every render. The tiles now carry
+none; a card is built for the one room under the pointer
+(`map-card-core.js`). Landmark labels are drawn only below 50% zoom, at most
+40, chosen by a greedy pass over a few rectangles.
+
+The marker's ring breathes with a scale and opacity animation. Running all
+the time it cost about six points of busy time while walking (headless,
+alternating with it held still): the marker is drawn afresh on each move, so
+the animation restarted with every step. It now waits 1.2 s before it
+starts, so it runs only while the player stands still:
+
+| | Ring held still | Ring breathing when still |
+| --- | --- | --- |
+| Busy at idle | 8-11% | 13% |
+| Busy walking, normal zoom | 32-36% | 35% |
+| Busy walking, 20% zoom | 61-66% | 54-59% |
+
+Rich tiles, from 200% zoom, add a name, a note, and a row of service icons to
+every tile, but at 200% the window holds 437 tiles against 567 at 150%.
+Walking ten steps measured 32-33% busy at 200% against 30-34% at 150%. The
+painted terrain's canvas stays under its cap of 2.6 million pixels and twice
+the CSS size, so at 300% the land is drawn a little soft rather than at
+full resolution.
+
 ## Still open
 
 - `Char.Vitals` fans out to every information panel, the combat, audio,

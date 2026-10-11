@@ -17,7 +17,7 @@ export const SPRITE_KINDS = Object.freeze(['humanoid', 'beast']);
 // A sheet key is a path fragment under the sprites folder: a body kind
 // (`humanoid`), a gender and race pair (`male-scro`), or a character
 // (`characters/elyndar`). Only these shapes become URLs.
-const SHEET_KEY_PATTERN = /^(?:characters\/)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SHEET_KEY_PATTERN = /^(?:(?:characters|enemies)\/)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function spriteSlug(value) {
   return String(value === undefined || value === null ? '' : value)
@@ -37,12 +37,27 @@ export function isSheetKey(key) {
 // another race borrows: Uruk draw the Scro sheet.
 export const SPRITE_RACE_FAMILIES = Object.freeze({
   'barbarian': 'human',
+  'crannian-gnome': 'dwarf',
+  'crinos': 'ursavar',
   'darkwinder': 'human',
   'desert-nomad': 'human',
+  'dragon': 'arthok',
+  'faerie': 'elf',
   'glavian': 'human',
   'gypsy': 'human',
+  'halfling': 'human',
+  'hyperborean-gnome': 'dwarf',
+  'ice-gnoll': 'ursavar',
+  'ice-ogre': 'scro',
+  'kender': 'human',
   'northman': 'human',
+  'pixie': 'elf',
+  'sidhe': 'elf',
   'souvraeli': 'human',
+  'swamp-troll': 'arthok',
+  'sylph': 'elf',
+  'thraxian': 'scro',
+  'yugoloth': 'arthok',
   'arctic-elf': 'elf',
   'high-elf': 'elf',
   'shel-zaranite': 'elf',
@@ -58,6 +73,19 @@ export function spriteRaceFamily(race) {
   return SPRITE_RACE_FAMILIES[spriteSlug(race)] || '';
 }
 
+const ENEMY_SPRITE_PATTERNS = Object.freeze([
+  ['drake', /\b(?:dragon|drake|wyvern|wyrm|whelp)\b/],
+  ['spider', /\b(?:spider|arachnid|scorpion)\b/],
+  ['undead', /\b(?:skeleton|skeletal|zombie|undead|ghoul|wight|lich)\b/],
+  ['troll', /\b(?:troll|ogre|giant)\b/],
+]);
+
+export function enemySpriteKey(name) {
+  const text = String(name || '').toLowerCase();
+  const match = ENEMY_SPRITE_PATTERNS.find(([, pattern]) => pattern.test(text));
+  return match ? 'enemies/' + match[0] : '';
+}
+
 // Sheets to try for a figure, most specific first. Only the recipient's
 // own token gets name and race keys: an observed fighter or a target has
 // no recipient-safe identity beyond its body kind and, for players, the
@@ -66,15 +94,25 @@ export function spriteKeysFor(combatant, figure, side) {
   const keys = [];
   const own = side === 'player' && combatant && !combatant.observed;
   if (own) {
-    const name = spriteSlug(combatant.name);
-    if (name) keys.push('characters/' + name);
-    const gender = spriteSlug(combatant.gender);
     const race = spriteSlug(combatant.race);
-    if (gender && race) {
-      keys.push(gender + '-' + race);
-      const family = spriteRaceFamily(race);
-      if (family && family !== race) keys.push(gender + '-' + family);
+    if (race === 'wolf' && figure && figure.kind === 'beast') {
+      // Garou's animal form owns its complete silhouette, regardless of
+      // gender or a character sheet for the untransformed body.
+      keys.push('wolf');
+    } else {
+      const name = spriteSlug(combatant.name);
+      if (name && !combatant.appearanceKnown) keys.push('characters/' + name);
+      const gender = spriteSlug(combatant.gender);
+      if (gender && race) {
+        keys.push(gender + '-' + race);
+        const family = spriteRaceFamily(race);
+        if (family && family !== race) keys.push(gender + '-' + family);
+      }
     }
+  }
+  if (side === 'target' && combatant && combatant.isNpc && !combatant.appearanceKnown) {
+    const enemy = enemySpriteKey(combatant.name);
+    if (enemy) keys.push(enemy);
   }
   if (figure && SPRITE_KINDS.includes(figure.kind)) keys.push(figure.kind);
   return keys.filter(isSheetKey);
@@ -149,13 +187,19 @@ export function normalizeSpriteManifest(raw, kind) {
     // The art already shows the character's weapons, so the stage must not
     // draw its own on top.
     weaponsInArt: raw.weaponsInArt === true,
+    // Creature sheets can include their own complete head. Humanoid sheets
+    // retain the portrait disc unless they explicitly opt out.
+    portrait: raw.portrait !== false,
+    // Complete creature art also owns its tail or cloak silhouette.
+    secondary: raw.secondary !== false,
     cloak,
     frames,
   };
 }
 
 // Which frames to draw for a pose phase, with alphas. Sparse sheets carry
-// one frame per pose, so a blend is a short crossfade between the two.
+// one painted frame per pose, and two of them faded over each other read as
+// a see-through ghost, so a blend cuts from one to the other halfway.
 export function selectSpriteFrames(sheet, phase, easedT) {
   const idle = sheet.frames.idle;
   if (!phase) return [{ frame: idle, name: 'idle', alpha: 1 }];
@@ -166,12 +210,8 @@ export function selectSpriteFrames(sheet, phase, easedT) {
   const toName = sheet.frames[phase.to] ? phase.to : fromName;
   const to = sheet.frames[toName];
   const t = Math.max(0, Math.min(1, Number.isFinite(easedT) ? easedT : phase.t));
-  if (from === to || t >= 1) return [{ frame: to, name: toName, alpha: 1 }];
-  if (t <= 0) return [{ frame: from, name: fromName, alpha: 1 }];
-  return [
-    { frame: from, name: fromName, alpha: 1 },
-    { frame: to, name: toName, alpha: t },
-  ];
+  if (from === to || t >= 0.5) return [{ frame: to, name: toName, alpha: 1 }];
+  return [{ frame: from, name: fromName, alpha: 1 }];
 }
 
 // Destination rectangle for a frame so its ground anchor lands on

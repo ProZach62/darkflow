@@ -414,6 +414,1156 @@ test("map and room image reset across reconnect and remount after session dispos
   await expect(page.locator("[data-world-instance]")).toHaveCount(0);
 });
 
+test.describe("room combat", () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test("isometric room binds combat actors by occupant IDs without name guessing", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const clockStart = new Date();
+    await page.clock.install({ time: clockStart });
+    await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+    endpoint.sendGmcp("Room.Info", {
+      num: 101,
+      name: "Sentry courtyard",
+      environment: "city",
+      exits: {},
+    });
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "viewer", name: "Observer", kind: "self", race: "human" },
+        { id: "combat-target", name: "a sentry", kind: "npc", race: "elf" },
+        { id: "room-target", name: "a sentry", kind: "npc", race: "dwarf" },
+        { id: "named-only", name: "Lookalike", kind: "npc", race: "human" },
+      ],
+      removed: [],
+    });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
+    const actors = [
+      { id: "self", name: "Observer", role: "self", occupant_id: "viewer" },
+      // The bridge must win over both the duplicate name and a colliding ID.
+      { id: "combat-target", name: "a sentry", role: "target", occupant_id: "room-target" },
+      { id: "unlinked", name: "Lookalike", role: "participant" },
+      { id: "named-only", name: "Lookalike", role: "participant", occupant_id: "not-visible" },
+      { id: "room-target", name: "Legacy sentry", role: "participant" },
+    ];
+    const cases = [
+      { target: "combat-target", resolved: "room-target" },
+      { target: "unlinked", resolved: null },
+      { target: "named-only", resolved: null },
+      { target: "room-target", resolved: "room-target" },
+    ];
+    for (const [index, scenario] of cases.entries()) {
+      endpoint.sendGmcp("Darkwind.Combat.State", {
+        epoch: "identity-fixture",
+        encounter_id: "sentry-fight",
+        seq: index,
+        visual_enabled: true,
+        effective: true,
+        active: true,
+        current_actor_id: "self",
+        current_target_id: scenario.target,
+        actors,
+        outcome: "",
+        summary: "An exchange in the courtyard.",
+      });
+      await expect(isoRoom.locator('[data-occupant-id="viewer"]')).toHaveAttribute(
+        "data-combat-side",
+        "0",
+      );
+      await expect(isoRoom.locator('[data-occupant-id="room-target"]')).toHaveAttribute(
+        "data-combat-side",
+        scenario.resolved ? "1" : "",
+      );
+      const summary = `Courtyard exchange ${index + 1}.`;
+      endpoint.sendGmcp("Darkwind.Combat.Events", {
+        epoch: "identity-fixture",
+        encounter_id: "sentry-fight",
+        first_seq: index + 1,
+        last_seq: index + 1,
+        events: [
+          {
+            seq: index + 1,
+            kind: "attack",
+            perspective: "outgoing",
+            actor_id: "self",
+            target_id: scenario.target,
+            result: "hit",
+            damage: 37,
+            summary,
+          },
+        ],
+        overflow: { omitted: 0, hits: 0, damage: 0 },
+      });
+      // Scene's event banner confirms delivery even when the room cannot bind it.
+      await expect(page.locator(".combat-event-copy")).toContainText(summary);
+      await expect(isoRoom.locator('[data-occupant-id="combat-target"]')).not.toHaveClass(
+        /reacting/,
+      );
+      await expect(isoRoom.locator('[data-occupant-id="named-only"]')).not.toHaveClass(/reacting/);
+      if (scenario.resolved) {
+        await expect(isoRoom.locator('[data-occupant-id="room-target"]')).toHaveClass(/reacting/);
+        await expect(isoRoom.locator('[data-occupant-id="viewer"]')).toHaveClass(/attacking/);
+        await expect(isoRoom.locator(".combat-impact")).toContainText("37");
+        if (index === 0 && process.env.SCENE_SCREENSHOTS)
+          await isoRoom.screenshot({
+            path: `${process.env.SCENE_SCREENSHOTS}/isometric-identity-bound-${testInfo.project.name}.png`,
+          });
+      } else {
+        await expect(isoRoom.locator(".attacking, .reacting, .combat-impact")).toHaveCount(0);
+        if (index === 2 && process.env.SCENE_SCREENSHOTS)
+          await isoRoom.screenshot({
+            path: `${process.env.SCENE_SCREENSHOTS}/isometric-identity-unresolved-${testInfo.project.name}.png`,
+          });
+      }
+      await page.clock.fastForward(1500);
+      await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    }
+  });
+
+  test("isometric room plays V2 abilities without turning heals into weapon hits", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    const clockStart = new Date();
+    await page.clock.install({ time: clockStart });
+    await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+    endpoint.sendGmcp("Room.Info", {
+      num: 101,
+      name: "Ability courtyard",
+      area: "Fixture Town",
+      environment: "city",
+      exits: {},
+    });
+    const roster = {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "viewer", name: "Observer", kind: "self", race: "human", weapon: "long sword" },
+        { id: "combat-enemy", name: "a sentry", kind: "npc", race: "elf" },
+        { id: "room-enemy", name: "a sentry", kind: "npc", race: "dwarf" },
+        { id: "ally", name: "Healer", kind: "player", race: "elf", weapon: "long bow" },
+      ],
+      removed: [],
+    };
+    endpoint.sendGmcp("Darkwind.Room.Occupants", roster);
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
+    const state = {
+      version: 2,
+      epoch: "ability-fixture",
+      encounter_id: "courtyard-fight",
+      seq: 0,
+      visual_enabled: true,
+      effective: true,
+      active: true,
+      current_actor_id: "self",
+      current_target_id: "combat-enemy",
+      actors: [
+        { id: "self", name: "Observer", role: "self", occupant_id: "viewer" },
+        { id: "combat-enemy", name: "a sentry", role: "target", occupant_id: "room-enemy" },
+        { id: "ally", name: "Healer", role: "participant" },
+        { id: "missing", name: "a sentry", role: "participant", occupant_id: "not-visible" },
+      ],
+      outcome: "",
+      summary: "An exchange in the courtyard.",
+    };
+    endpoint.sendGmcp("Darkwind.Combat.State", state);
+    const self = isoRoom.locator('[data-occupant-id="viewer"]');
+    const enemy = isoRoom.locator('[data-occupant-id="room-enemy"]');
+    await expect(enemy).toHaveAttribute("data-combat-side", "1");
+    let seq = 0;
+    const ability = (
+      kind: "skill" | "spell" | "heal",
+      actor: string,
+      target: string,
+      result: string,
+      amount?: number,
+    ) => {
+      const eventSeq = ++seq;
+      const label = { skill: "Snap Cut", spell: "Fireball", heal: "Nanomend" }[kind];
+      const frame = {
+        version: 2,
+        epoch: state.epoch,
+        encounter_id: state.encounter_id,
+        first_seq: eventSeq,
+        last_seq: eventSeq,
+        events: [
+          {
+            seq: eventSeq,
+            kind,
+            perspective: actor === target ? "self" : actor === "self" ? "outgoing" : "observed",
+            actor_id: actor,
+            target_id: target,
+            ability_id: kind === "heal" ? "nanomend" : kind === "spell" ? "fireball" : "snap-cut",
+            ability_name: label,
+            result,
+            ...(amount === undefined ? {} : { [kind === "heal" ? "healing" : "damage"]: amount }),
+            summary: `${label} outcome ${eventSeq}: ${result}.`,
+          },
+        ],
+      };
+      endpoint.sendGmcp("Darkwind.Combat.Events", frame);
+      return frame;
+    };
+    const capture = async (name: string) => {
+      if (!process.env.SCENE_SCREENSHOTS) return;
+      await isoRoom
+        .locator(".combat-impact, .combat-projectile, .occupant")
+        .evaluateAll((nodes) => {
+          for (const node of nodes)
+            for (const animation of node.getAnimations()) {
+              animation.pause();
+              animation.currentTime = 350;
+            }
+        });
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/isometric-v2-${name}-${testInfo.project.name}.png`,
+      });
+    };
+    const finish = async () => {
+      await page.clock.fastForward(1500);
+      await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    };
+
+    const skill = ability("skill", "self", "combat-enemy", "critical", 37);
+    await expect(isoRoom.locator(".combat-impact")).toContainText("37");
+    await expect(isoRoom.locator(".combat-impact")).toContainText("Snap Cut");
+    await expect(self).toHaveClass(/attacking/);
+    await expect(enemy).toHaveClass(/reacting/);
+    await expect(isoRoom.locator('[data-occupant-id="combat-enemy"]')).not.toHaveClass(/reacting/);
+    await capture("skill");
+    await finish();
+    endpoint.sendGmcp("Darkwind.Combat.Events", skill);
+    await page.clock.fastForward(200);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+
+    ability("spell", "self", "combat-enemy", "hit");
+    await expect(isoRoom.locator(".combat-impact")).toHaveText(/^Hit\s*Fireball$/);
+    await expect(isoRoom.getByRole("status")).not.toContainText("Damage:");
+    await expect(self).toHaveClass(/casting/);
+    await expect(self).not.toHaveClass(/attacking/);
+    await expect(isoRoom.locator(".combat-projectile")).toHaveCount(1);
+    await capture("spell");
+    await finish();
+
+    ability("heal", "self", "self", "healed", 23);
+    await expect(isoRoom.locator(".combat-impact")).toHaveText(/^\+23\s*Nanomend$/);
+    await expect(isoRoom.getByRole("status")).toContainText("Healing: 23");
+    await expect(self).toHaveClass(/healing/);
+    await expect(isoRoom.locator(".attacking, .reacting, .combat-projectile")).toHaveCount(0);
+    await capture("self-heal");
+    await finish();
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    ability("heal", "ally", "self", "healed");
+    await expect(isoRoom.locator(".combat-impact")).toHaveText(/^Healed\s*Nanomend$/);
+    await expect(isoRoom.getByRole("status")).not.toContainText("Healing:");
+    await expect(isoRoom.locator(".attacking, .reacting, .combat-projectile")).toHaveCount(0);
+    await expect(self).toHaveClass(/healing/);
+    await expect
+      .poll(() => self.evaluate((node) => getComputedStyle(node).animationName))
+      .toBe("none");
+    await expect
+      .poll(() => self.locator(".figure").evaluate((node) => getComputedStyle(node).animationName))
+      .toBe("none");
+    await capture("reduced-heal");
+    await finish();
+
+    for (const kind of ["skill", "spell", "heal"] as const) {
+      ability(kind, "ally", "self", "no-effect");
+      await expect(isoRoom.locator(".combat-impact")).toContainText("No Effect");
+      await expect(isoRoom.locator(".reacting, .healing")).toHaveCount(0);
+      if (kind === "spell") await capture("no-effect");
+      await finish();
+    }
+    ability("spell", "missing", "self", "hit", 91);
+    await expect(page.locator(".combat-event-copy")).toContainText(`outcome ${seq}: hit`);
+    await expect(isoRoom.locator(".combat-impact, .combat-projectile, .casting")).toHaveCount(0);
+    await finish();
+
+    ability("heal", "self", "self", "healed", 0);
+    await expect(isoRoom.locator(".combat-impact")).toHaveText(/^\+0\s*Nanomend$/);
+    endpoint.sendGmcp("Darkwind.Combat.State", { ...state, seq, resync: true });
+    await expect(isoRoom.locator(".combat-impact, .healing")).toHaveCount(0);
+    await page.clock.fastForward(1500);
+    ability("spell", "self", "combat-enemy", "hit", 41);
+    await expect(isoRoom.locator(".combat-impact")).toContainText("41");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", { ...roster, revision: 2, dark: 1, upsert: [] });
+    await expect(isoRoom.locator(".combat-impact, .combat-projectile, .occupant")).toHaveCount(0);
+    await expect(isoRoom.getByRole("status")).not.toContainText("Fireball");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", { ...roster, revision: 3 });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
+    await finish();
+    ability("heal", "ally", "combat-enemy", "healed", 19);
+    await expect(enemy).toHaveClass(/healing/);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      revision: 4,
+      upsert: roster.upsert.filter((occupant) => occupant.id !== "room-enemy"),
+    });
+    await expect(isoRoom.locator(".combat-impact, .healing")).toHaveCount(0);
+    await finish();
+    ability("heal", "self", "self", "healed", 11);
+    await expect(isoRoom.locator(".combat-impact")).toContainText("+11");
+    endpoint.sendGmcp("Room.Info", { num: 102, name: "Empty courtyard", exits: {} });
+    await expect(isoRoom.getByRole("heading", { name: "Empty courtyard" })).toBeVisible();
+    await expect(isoRoom.locator(".combat-impact, .healing")).toHaveCount(0);
+  });
+
+  test("isometric room renders one terrain scene with services, exits, and occupants", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+
+    endpoint.sendGmcp("Room.Info", {
+      num: 101,
+      name: "Market Atrium",
+      area: "Fixture Town",
+      environment: "inside, city",
+      details: ["shop", "bank", "pub"],
+      scene: { time: "dusk", weather: "rain", lighting: "fire" },
+      looks: [
+        {
+          id: "marble-fountain",
+          name: "a marble fountain",
+          nouns: ["fountain", "water"],
+          sprite: "fountain",
+          state: "active",
+          verbs: ["drink"],
+          position: { x: 22, y: 58 },
+        },
+        {
+          id: "market-stall",
+          name: "a canvas market stall",
+          nouns: ["stall", "market"],
+          sprite: "market-stall",
+          verbs: ["browse"],
+          position: { x: 73, y: 52 },
+        },
+        {
+          id: "forge-anvil",
+          name: "a scarred blacksmith anvil",
+          nouns: ["anvil", "forge"],
+          sprite: "anvil",
+          category: "workplace",
+          position: { x: 79, y: 68 },
+        },
+        {
+          id: "old-grave",
+          name: "an old memorial stone",
+          nouns: ["memorial", "stone"],
+          sprite: "gravestone",
+          cue: "quest",
+          verbs: ["read", "search"],
+          position: { x: 14, y: 74 },
+        },
+        {
+          id: "abandoned-loot",
+          name: "a dropped leather satchel",
+          nouns: ["satchel", "loot"],
+          sprite: "loot",
+          category: "item",
+          cue: "loot",
+          verbs: ["get", "search"],
+          position: { x: 48, y: 76 },
+        },
+        {
+          id: "watch-fire",
+          name: "a watch fire",
+          nouns: ["fire", "campfire"],
+          sprite: "campfire",
+          state: "lit",
+          verbs: ["warm"],
+          position: { x: 32, y: 72 },
+        },
+      ],
+      exits: { east: 102, south: 103, north: 104, up: 105 },
+      exit_states: { east: "closed" },
+      exit_details: {
+        east: { kind: "door" },
+        south: { kind: "path", label: "Road" },
+        north: { kind: "portal", label: "Rift" },
+        up: { kind: "stairs" },
+      },
+    });
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        {
+          id: "self",
+          name: "Nacho",
+          kind: "self",
+          race: "human",
+          weapon: "long sword",
+          shield: 1,
+          armor: "plate",
+          fighting: 1,
+          engaged_with: "giant",
+        },
+        {
+          id: "alice",
+          name: "Alice",
+          kind: "player",
+          race: "elf",
+          role: "scout",
+          activity: "patrol",
+          cue: "quest",
+        },
+        {
+          id: "smith",
+          name: "a soot-streaked smith",
+          kind: "npc",
+          race: "dwarf",
+          role: "blacksmith",
+          activity: "work",
+          anchor_id: "forge-anvil",
+          weapon: "hammer",
+        },
+        {
+          id: "giant",
+          name: "a frost giant",
+          kind: "npc",
+          hostile: 1,
+          fighting: 1,
+          engaged_with: "self",
+          weapon: "long sword",
+          size: "small",
+          appearance: { size: "huge" },
+          equipment: { main_hand: "great axe" },
+          public_state: { condition: "badly wounded" },
+          level: 182,
+        },
+      ],
+      removed: [],
+    });
+
+    await expect(isoRoom).toBeVisible();
+    await expect(isoRoom).toHaveAttribute("data-room-terrain", "city");
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "4");
+    await expect(isoRoom).toHaveAttribute("data-room-buildings", "3");
+    await expect(isoRoom).toHaveAttribute("data-room-targets", "6");
+    await expect(isoRoom).toHaveAttribute("data-room-weather", "rain");
+    await expect(isoRoom).toHaveAttribute("data-room-time", "dusk");
+    await expect(isoRoom).toHaveAttribute("data-room-lighting", "fire");
+    await expect(isoRoom).toHaveAttribute("data-room-combat", "true");
+    await expect(isoRoom.getByRole("heading", { name: "Market Atrium" })).toBeVisible();
+    await expect(isoRoom.locator('.room-floor[src$="/inside.webp"]')).toBeVisible();
+    await expect(isoRoom.getByRole("img", { name: /Nacho/ })).toBeVisible();
+    await expect(isoRoom.getByRole("img", { name: /Alice/ })).toBeVisible();
+    await expect(
+      isoRoom.getByRole("img", { name: /frost giant.*level 182.*hostile/i }),
+    ).toBeVisible();
+    await expect(isoRoom.getByRole("img", { name: /frost giant.*badly wounded/i })).toHaveClass(
+      /size-huge/,
+    );
+    await expect(isoRoom.getByRole("button", { name: "Go east" })).toHaveClass(/blocked/);
+    await expect(isoRoom.getByRole("button", { name: "Go south" })).toBeVisible();
+    await expect(isoRoom.getByRole("button", { name: "Go north" })).toHaveClass(/exit-portal/);
+    await expect(isoRoom.getByRole("button", { name: "Go up" })).toHaveClass(/exit-stairs/);
+    await expect(isoRoom.getByRole("button", { name: "Look at a marble fountain" })).toBeVisible();
+    await expect(isoRoom.locator('.room-target img[src$="/fountain.webp"]')).toBeVisible();
+    await expect(isoRoom.locator('.room-target img[src$="/market-stall.webp"]')).toBeVisible();
+    await expect(isoRoom.locator('.room-target img[src$="/loot.webp"]')).toBeVisible();
+    await expect(isoRoom.locator(".weather-rain i")).toHaveCount(12);
+    await expect(isoRoom.locator(".combat-clash")).toHaveCount(0);
+    const clockStart = new Date();
+    await page.clock.install({ time: clockStart });
+    await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+    endpoint.sendGmcp("Darkwind.Combat.State", {
+      epoch: "room-combat",
+      encounter_id: "market-fight",
+      seq: 0,
+      visual_enabled: true,
+      effective: true,
+      active: true,
+      current_actor_id: "self",
+      current_target_id: "actor-giant",
+      actors: [
+        { id: "self", name: "Nacho", role: "self" },
+        { id: "actor-giant", name: "a frost giant", role: "target", occupant_id: "giant" },
+        { id: "alice", name: "Alice", role: "combatant" },
+        { id: "unseen-actor", name: "Unseen combatant", role: "combatant" },
+      ],
+      outcome: "",
+      summary: "The frost giant attacks.",
+    });
+    const attack = (seq: number, actor: string, target: string, result: string, damage?: number) =>
+      endpoint.sendGmcp("Darkwind.Combat.Events", {
+        epoch: "room-combat",
+        encounter_id: "market-fight",
+        first_seq: seq,
+        last_seq: seq,
+        events: [
+          {
+            seq,
+            kind: "attack",
+            perspective: actor === "actor-giant" ? "incoming" : "outgoing",
+            actor_id: actor,
+            target_id: target,
+            result,
+            ...(damage === undefined ? {} : { damage }),
+            summary:
+              result === "critical"
+                ? "Nacho critically strikes the frost giant."
+                : "The fighters exchange blows.",
+          },
+        ],
+        overflow: { omitted: 0, hits: 0, damage: 0 },
+      });
+    attack(1, "self", "actor-giant", "critical", 42);
+    await expect(isoRoom.locator('[data-occupant-id="self"]')).toHaveClass(/attacking/);
+    await expect(isoRoom.locator('[data-occupant-id="giant"]')).toHaveClass(/reacting/);
+    await expect(isoRoom.locator(".combat-impact")).toContainText("42");
+    await expect(isoRoom.getByRole("status")).toContainText("critically");
+    const restingLeft = await isoRoom.locator('[data-occupant-id="self"]').evaluate((node) => {
+      const animation = node.getAnimations()[0]!;
+      animation.pause();
+      animation.currentTime = 0;
+      return parseFloat(getComputedStyle(node).left);
+    });
+    const strikeLeft = await isoRoom.locator('[data-occupant-id="self"]').evaluate((node) => {
+      node.getAnimations()[0]!.currentTime = 350;
+      return parseFloat(getComputedStyle(node).left);
+    });
+    expect(strikeLeft).toBeGreaterThan(restingLeft + 20);
+    await isoRoom.locator(".combat-impact").evaluate((node) => {
+      node.getAnimations()[0]!.pause();
+      node.getAnimations()[0]!.currentTime = 350;
+    });
+    await isoRoom.screenshot({
+      path: testInfo.outputPath("room-combat.png"),
+    });
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    // Replayed events must not produce another attack.
+    attack(1, "self", "actor-giant", "critical", 42);
+    await page.clock.fastForward(200);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    await isoRoom.getByLabel("Combat focus").check();
+    await expect(isoRoom.locator(".room-stage")).toHaveClass(/combat-focus/);
+    attack(2, "actor-giant", "self", "block", 0);
+    await expect(isoRoom.locator('[data-occupant-id="self"]')).toHaveAttribute(
+      "data-result",
+      "absorb",
+    );
+    await isoRoom.locator(".combat-impact").evaluate((node) => {
+      node.getAnimations()[0]!.pause();
+      node.getAnimations()[0]!.currentTime = 350;
+    });
+    await isoRoom.screenshot({ path: testInfo.outputPath("room-combat-focus.png") });
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "delta",
+      base_revision: 1,
+      revision: 2,
+      dark: 0,
+      more: 0,
+      upsert: [
+        {
+          id: "alice",
+          name: "Alice",
+          kind: "player",
+          race: "elf",
+          weapon: "long bow",
+          fighting: 1,
+          cue: "quest",
+        },
+      ],
+      removed: [],
+    });
+    attack(3, "alice", "actor-giant", "hit", 17);
+    await expect(isoRoom.locator(".combat-projectile")).toHaveCount(1);
+    await expect(isoRoom.locator('[data-occupant-id="alice"]')).not.toHaveClass(/attacking/);
+    await isoRoom.locator(".combat-projectile, .combat-impact").evaluateAll((nodes) => {
+      for (const node of nodes) {
+        node.getAnimations()[0]!.pause();
+        node.getAnimations()[0]!.currentTime = 350;
+      }
+    });
+    await isoRoom.screenshot({ path: testInfo.outputPath("room-combat-ranged.png") });
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    attack(4, "unseen-actor", "self", "hit", 99);
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    attack(5, "self", "actor-giant", "dodge");
+    await expect(isoRoom.locator(".combat-impact")).toContainText("Dodge");
+    await expect
+      .poll(() =>
+        isoRoom
+          .locator('[data-occupant-id="self"]')
+          .evaluate((node) => getComputedStyle(node).animationName),
+      )
+      .toBe("none");
+    await isoRoom.screenshot({ path: testInfo.outputPath("room-combat-reduced.png") });
+    await page.clock.fastForward(1500);
+    await expect(isoRoom.locator(".combat-impact")).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.clock.resume();
+    await isoRoom.getByLabel("Combat focus").uncheck();
+    await expect(
+      isoRoom.locator('.occupant.activity-work[aria-label*="blacksmith"]'),
+    ).toBeVisible();
+    await expect(isoRoom.locator('.occupant img[src$="/great-axe.png"]')).toBeVisible();
+    await expect(isoRoom.locator('.occupant img[src$="/shield.png"]')).toBeVisible();
+    await expect(isoRoom.locator('[data-cue="quest"]')).toHaveCount(2);
+    await expect(isoRoom.getByRole("list", { name: "Room occupants" })).toContainText(
+      "a frost giant",
+    );
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-isometric-${testInfo.project.name}.png`,
+      });
+    await isoRoom
+      .getByRole("list", { name: "Things to look at" })
+      .getByRole("button", { name: "a marble fountain (active)", exact: true })
+      .click();
+    await expect.poll(() => endpoint.commands).toContain("look fountain");
+    await expect(isoRoom).toHaveAttribute("data-player-target", "marble-fountain");
+    await expect(isoRoom.locator(".occupant.self")).toHaveClass(/walking/);
+    await expect(
+      isoRoom.getByRole("group", { name: "Actions for a marble fountain" }),
+    ).toContainText("Drink");
+    await isoRoom.getByRole("button", { name: "Get a dropped leather satchel" }).click();
+    await expect.poll(() => endpoint.commands).toContain("get satchel");
+    await expect(isoRoom).toHaveAttribute("data-player-target", "abandoned-loot");
+
+    const clearedRoster = {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 3,
+      dark: 1,
+      more: 0,
+      upsert: [],
+      removed: [],
+    };
+    endpoint.sendGmcp("Darkwind.Room.Occupants", clearedRoster);
+    await expect(isoRoom).toContainText("too dark");
+    await expect(
+      isoRoom.locator(".occupant, .room-target, .room-building, .room-exit"),
+    ).toHaveCount(0);
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-isometric-dark-${testInfo.project.name}.png`,
+      });
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...clearedRoster,
+      revision: 4,
+      dark: 0,
+      unavailable: 1,
+    });
+    await expect(isoRoom).toContainText("room view is unavailable");
+    await expect(isoRoom.locator(".occupant, .room-target, .room-building")).toHaveCount(0);
+
+    endpoint.sendGmcp("Room.Info", {
+      num: 102,
+      name: "Eastern Forest",
+      area: "Fixture Town",
+      environment: "forest",
+      exits: { west: 101 },
+    });
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 102,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "self", name: "Nacho", kind: "self", race: "human" },
+        { id: "alice", name: "Alice", kind: "player", race: "elf" },
+      ],
+      removed: [],
+    });
+
+    await expect(isoRoom).toHaveAttribute("data-room-terrain", "forest");
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "2");
+    await expect(isoRoom).toHaveAttribute("data-room-combat", "false");
+    await expect(isoRoom.getByRole("heading", { name: "Eastern Forest" })).toBeVisible();
+    await expect(isoRoom.locator('.room-floor[src$="/forest.webp"]')).toBeVisible();
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect
+      .poll(() =>
+        isoRoom
+          .locator(".occupant")
+          .first()
+          .evaluate((node) => getComputedStyle(node).animationName),
+      )
+      .toBe("none");
+  });
+});
+
+test.describe("isometric room server-contract follow-up", () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test("terrain grows with the room window and exits stay usable at narrow panel widths", async ({
+    page,
+  }, testInfo) => {
+    const mobile = testInfo.project.name === "mobile-chromium";
+    if (!mobile) await page.setViewportSize({ width: 1600, height: 1000 });
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const panel = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    const room = {
+      num: 101,
+      name: "Forest crossroads",
+      area: "Fixture woods",
+      environment: "forest",
+      details: [],
+      scene: { time: "day", weather: "clear" },
+      looks: [{ id: "sign", name: "a weathered sign", nouns: ["sign"], sprite: "sign" }],
+      exits: { north: 102, east: 103, south: 104, west: 105, up: 106, down: 107 },
+      exit_states: { east: "locked" },
+      exit_details: { north: { kind: "portal", label: "Forest gate" }, south: { label: "Trail" } },
+    };
+    endpoint.sendGmcp("Room.Info", room);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "self", name: "Acer", kind: "self", appearance: { race: "human" } },
+        {
+          id: "guide",
+          name: "a trail guide",
+          kind: "npc",
+          activity: "patrol",
+          appearance: { race: "elf" },
+        },
+      ],
+      removed: [],
+    });
+    await expect(panel.getByRole("heading", { name: room.name })).toBeVisible();
+    await expect(panel.getByRole("img", { name: "Acer" })).toBeVisible();
+    const floor = panel.locator(".room-floor");
+    const initialWidth = (await floor.boundingBox())!.width;
+    const capture = async (name: string) => {
+      if (process.env.SCENE_SCREENSHOTS)
+        await panel.screenshot({
+          path: `${process.env.SCENE_SCREENSHOTS}/isometric-polish-${name}-${testInfo.project.name}.png`,
+        });
+    };
+    const checkExits = async () => {
+      for (const direction of Object.keys(room.exits)) {
+        const exit = panel.getByRole("button", { name: `Go ${direction}`, exact: true });
+        await expect(exit).toBeVisible();
+        expect(
+          await exit.evaluate((node) => {
+            const rect = node.getBoundingClientRect();
+            return node.contains(
+              document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+            );
+          }),
+        ).toBe(true);
+      }
+      const commandCount = endpoint.commands.length;
+      await panel.getByRole("button", { name: "Go south", exact: true }).click();
+      await expect.poll(() => endpoint.commands.slice(commandCount)).toEqual(["south"]);
+      await panel.getByRole("button", { name: "Go east", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect.poll(() => endpoint.commands.slice(commandCount)).toEqual(["south", "east"]);
+      expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    };
+    await checkExits();
+    await capture("default");
+    if (!mobile) {
+      await page.getByRole("button", { name: "Toggle left sidebar", exact: true }).click();
+      await page.getByRole("button", { name: "Toggle right sidebar", exact: true }).click();
+      const frame = page.locator(".dv-resize-container").filter({
+        has: panelDragHandle(page, "isoMap"),
+      });
+      const resize = async (width: number, height: number) => {
+        const before = (await frame.boundingBox())!;
+        const grip = frame.locator(".dv-resize-handle-bottomright");
+        const box = (await grip.boundingBox())!;
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x + width - before.width, y + height - before.height, { steps: 8 });
+        await page.mouse.up();
+        await expect
+          .poll(async () => Math.abs((await frame.boundingBox())!.width - width))
+          .toBeLessThan(24);
+      };
+      await resize(1280, 860);
+      await expect
+        .poll(async () => (await floor.boundingBox())!.width)
+        .toBeGreaterThan(initialWidth * 1.4);
+      expect((await floor.boundingBox())!.width).toBeGreaterThan(900);
+      await checkExits();
+      await capture("wide-forest");
+      endpoint.sendGmcp("Room.Info", {
+        ...room,
+        environment: "city",
+        details: ["shop", "bank", "pub"],
+        scene: { time: "dusk", weather: "clear", lighting: "fire" },
+      });
+      await expect(panel).toHaveAttribute("data-room-terrain", "city");
+      await expect(panel.getByRole("img", { name: "Bank", exact: true })).toBeVisible();
+      await checkExits();
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await expect
+        .poll(() =>
+          panel
+            .locator(".room-stage")
+            .evaluate((node) => getComputedStyle(node, "::after").animationName),
+        )
+        .toBe("none");
+      await expect
+        .poll(() =>
+          panel
+            .locator('[data-occupant-id="guide"]')
+            .evaluate((node) => getComputedStyle(node).animationName),
+        )
+        .toBe("none");
+      await capture("wide-city");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      endpoint.sendGmcp("Room.Info", {
+        ...room,
+        environment: "lake",
+        scene: { time: "night", weather: "fog" },
+      });
+      await expect(panel).toHaveAttribute("data-room-terrain", "lake");
+      await expect
+        .poll(() =>
+          panel.locator(".living-surface").evaluate((node) => getComputedStyle(node).animationName),
+        )
+        .not.toBe("none");
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await expect
+        .poll(() =>
+          panel.locator(".living-surface").evaluate((node) => getComputedStyle(node).animationName),
+        )
+        .toBe("none");
+      await checkExits();
+      await capture("wide-water");
+      await resize(390, 680);
+      endpoint.sendGmcp("Room.Info", room);
+      await expect(panel).toHaveAttribute("data-room-terrain", "forest");
+      await checkExits();
+      await capture("narrow-panel");
+    }
+  });
+
+  for (const title of ["Scene", "Isometric Room"]) {
+    test(`${title} accepts LPC equipment flags in room snapshots and deltas`, async ({
+      page,
+    }, testInfo) => {
+      const endpoint = await connect(page);
+      await togglePanel(page, title);
+      const panel =
+        title === "Scene"
+          ? page.getByRole("region", { name: "Visual combat" })
+          : page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+      const room = "1237286710177402";
+      endpoint.sendGmcp("Room.Info", {
+        num: Number(room),
+        name: "A forest road",
+        area: "Cult grounds",
+        environment: "road",
+        looks: [],
+        details: [],
+        scene: { time: "night", lighting: "lit" },
+        exits: { northwest: 102, south: 103 },
+      });
+      // Reconstruct the entry snapshot using the captured NPC equipment shape.
+      const sentry = {
+        id: "sentry",
+        name: "Betharch",
+        kind: "npc",
+        level: 220,
+        appearance: { race: "human", gender: "female", size: "medium" },
+        equipment: {
+          main_hand: "large adamantite staff",
+          off_hand: "",
+          shield: "",
+          armor: "Crimson robe",
+          helmet: "Crimson robe",
+          weapon_type: "focus",
+          weapon_style: "smash",
+          two_handed: 1,
+        },
+        public_state: { elite: 0, effects: [], condition: "(bad)" },
+      };
+      const roster = { version: 1, room, dark: 0, more: 0, removed: [] };
+      endpoint.sendGmcp("Darkwind.Room.Occupants", {
+        ...roster,
+        mode: "snapshot",
+        revision: 78,
+        upsert: [
+          {
+            id: "self",
+            name: "Observer",
+            kind: "self",
+            race: "human",
+            appearance: { race: "human" },
+            equipment: { two_handed: 0 },
+          },
+          sentry,
+          { id: "other", name: "Drugon", kind: "npc", race: "human" },
+        ],
+      });
+      const occupants = panel.getByRole("list", { name: "Room occupants" });
+      await expect(panel).toBeVisible();
+      if (title === "Scene") {
+        await expect(occupants).toHaveCount(0);
+        await expect(panel.locator(".combat-token-hud-player")).toContainText("Observer");
+        await expect(panel.locator(".combat-hud-descriptor")).toContainText("human");
+        await expect(panel).not.toContainText("Betharch");
+        await expect(panel).not.toContainText("Drugon");
+      } else {
+        await expect(occupants.locator("li")).toHaveCount(3);
+        await expect(occupants).toContainText("Betharch");
+        await expect(occupants).toContainText("Drugon");
+        await expect(panel.getByRole("img", { name: /^Betharch/ })).toHaveAttribute(
+          "aria-label",
+          /\(bad\)/,
+        );
+      }
+      await expect(panel).not.toContainText("room view is unavailable");
+      endpoint.sendGmcp("Darkwind.Room.Occupants", {
+        ...roster,
+        mode: "delta",
+        base_revision: 78,
+        revision: 79,
+        upsert: [
+          {
+            ...sentry,
+            equipment: { ...sentry.equipment, two_handed: 0 },
+            public_state: { ...sentry.public_state, condition: "(awful)" },
+          },
+          {
+            id: "self",
+            name: "Observer",
+            kind: "self",
+            appearance: { race: "elf" },
+            equipment: { two_handed: 0 },
+          },
+        ],
+      });
+      if (title === "Scene") {
+        await expect(occupants).toHaveCount(0);
+        await expect(panel.locator(".combat-hud-descriptor")).toContainText("elf");
+        await expect(panel).not.toContainText("Betharch");
+        await expect(panel).not.toContainText("Drugon");
+      } else {
+        await expect(occupants.locator("li")).toHaveCount(3);
+        await expect(occupants).toContainText("Drugon");
+        await expect(panel).toHaveAttribute("data-room-occupants", "3");
+        await expect(panel.getByRole("img", { name: /^Betharch/ })).toBeVisible();
+        await expect(panel.getByRole("img", { name: /^Betharch/ })).toHaveAttribute(
+          "aria-label",
+          /\(awful\)/,
+        );
+        await expect(panel.getByRole("img", { name: /^Drugon/ })).toBeVisible();
+      }
+      if (process.env.SCENE_SCREENSHOTS)
+        await panel.screenshot({
+          path: `${process.env.SCENE_SCREENSHOTS}/room-equipment-${title === "Scene" ? "scene" : "isometric"}-${testInfo.project.name}.png`,
+        });
+    });
+  }
+
+  test("preserves scenery identities, discovery clearing, locks, overflow, and recovery", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const isoRoom = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    endpoint.sendGmcp("Room.Info", {
+      num: 101,
+      name: "Survey clearing",
+      area: "Fixture Town",
+      environment: "forest",
+      details: [],
+      looks: [
+        {
+          id: "survey.stake",
+          name: "Survey stake",
+          nouns: ["survey stake"],
+          sprite: "sign",
+          position: { x: 20, y: 60 },
+        },
+        {
+          id: "survey-stake",
+          name: "Red stake",
+          nouns: ["red stake"],
+          sprite: "sign",
+          position: { x: 75, y: 50 },
+        },
+      ],
+      exits: { east: "closed" },
+      exit_states: { east: "locked" },
+    });
+    const roster = {
+      version: 1,
+      room: "101",
+      mode: "snapshot",
+      revision: 40,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "self", name: "Nacho", kind: "self", race: "human" },
+        {
+          id: "surveyor",
+          name: "Surveyor",
+          kind: "npc",
+          race: "human",
+          anchor_id: "survey.stake",
+          level: 40,
+          shield: 1,
+          fighting: 1,
+        },
+        { id: "warden", name: "Warden", kind: "npc", race: "elf", anchor_id: "survey-stake" },
+      ],
+      removed: [],
+    };
+    endpoint.sendGmcp("Darkwind.Room.Occupants", roster);
+    await expect(isoRoom).toHaveAttribute("data-room-targets", "2");
+    await expect(isoRoom.locator('.room-exit img[src$="/door-locked.webp"]')).toBeVisible();
+    await expect(isoRoom.getByRole("img", { name: "Warden", exact: true })).toHaveCSS("--x", "68%");
+    await expect(isoRoom.getByRole("img", { name: /^Surveyor/ })).toHaveCSS("--x", "27%");
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/isometric-followup-${testInfo.project.name}.png`,
+      });
+
+    const catalogue = isoRoom.getByRole("list", { name: "Things to look at" });
+    await catalogue.getByRole("button", { name: "Survey stake", exact: true }).click();
+    await expect.poll(() => endpoint.commands).toContain("look survey stake");
+    await expect(isoRoom).toHaveAttribute("data-player-target", "survey.stake");
+    await catalogue.getByRole("button", { name: "Red stake", exact: true }).click();
+    await expect.poll(() => endpoint.commands).toContain("look red stake");
+    await expect(isoRoom).toHaveAttribute("data-player-target", "survey-stake");
+
+    const surveyor = isoRoom.getByRole("img", { name: /^Surveyor/ });
+    await expect(surveyor).toHaveAttribute("aria-label", /level 40/);
+    await expect(surveyor.locator(".shield")).toHaveCount(1);
+    await expect(surveyor).toHaveClass(/fighting/);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      mode: "delta",
+      base_revision: 40,
+      revision: 41,
+      upsert: [
+        { id: "surveyor", name: "Surveyor", kind: "npc", race: "human", anchor_id: "survey.stake" },
+        { id: "traveller", name: "Traveller", kind: "npc", race: "elf" },
+      ],
+      removed: ["warden"],
+    });
+    await expect(isoRoom.getByRole("img", { name: "Traveller", exact: true })).toBeVisible();
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "3");
+    await expect(isoRoom.getByRole("img", { name: "Warden", exact: true })).toHaveCount(0);
+    await expect(surveyor).not.toHaveAttribute("aria-label", /level 40/);
+    await expect(surveyor.locator(".shield")).toHaveCount(0);
+    await expect(surveyor).not.toHaveClass(/fighting/);
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/isometric-delta-${testInfo.project.name}.png`,
+      });
+
+    endpoint.sendGmcp("Room.Info", { num: 101, looks: [], details: ["shop"] });
+    await expect(isoRoom).toHaveAttribute("data-room-targets", "0");
+    await expect(isoRoom.locator(".room-target")).toHaveCount(0);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      revision: 42,
+      more: 5,
+      upsert: Array.from({ length: 24 }, (_, index) => ({
+        id: `actor-${index}`,
+        name: index === 0 ? "Nacho" : `Actor ${index}`,
+        kind: index === 0 ? "self" : "npc",
+        race: "human",
+      })),
+    });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "8");
+    await expect(isoRoom).toContainText("+21 more");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      mode: "delta",
+      base_revision: 42,
+      revision: 43,
+      more: 0,
+      upsert: [{ id: "promoted", name: "Actor promoted", kind: "npc", race: "human" }],
+      removed: ["actor-1"],
+    });
+    await expect(isoRoom).toContainText("+16 more");
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "8");
+    await expect(isoRoom.getByRole("img", { name: "Actor 1", exact: true })).toHaveCount(0);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      upsert: [{ id: "stale", name: "Stale actor", kind: "npc" }],
+    });
+    // A later frame is a processing barrier: checking the old count alone
+    // could pass before the stale packet reached the client.
+    endpoint.sendGmcp("Room.Info", { num: 101, name: "Survey clearing after stale packet" });
+    await expect(isoRoom).toContainText("Survey clearing after stale packet");
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "8");
+    await expect(isoRoom).not.toContainText("Stale actor");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      mode: "delta",
+      base_revision: 39,
+      revision: 44,
+      upsert: [{ id: "bad-base", name: "Wrong base actor", kind: "npc" }],
+    });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "0");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      revision: 45,
+      upsert: [roster.upsert[0]],
+    });
+    await expect(isoRoom).toHaveAttribute("data-room-occupants", "1");
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...roster,
+      revision: 46,
+      dark: 1,
+      upsert: [],
+    });
+    await expect(isoRoom).toContainText("too dark");
+    await expect(
+      isoRoom.locator(".occupant, .room-target, .room-building, .room-exit"),
+    ).toHaveCount(0);
+    if (process.env.SCENE_SCREENSHOTS)
+      await isoRoom.screenshot({
+        path: `${process.env.SCENE_SCREENSHOTS}/isometric-followup-dark-${testInfo.project.name}.png`,
+      });
+  });
+});
+
 test("the map marks you, previews a route on hover, draws service icons, and has a legend", async ({
   page,
 }) => {
@@ -451,6 +1601,121 @@ test("the map marks you, previews a route on hover, draws service icons, and has
   await expect(legend).toContainText("Edge of the explored map");
   await page.keyboard.press("Escape");
   await expect(legend).toHaveCount(0);
+});
+
+test("living terrain gives each kind of water and swamp its own motion, and holds still with reduced motion", async ({
+  page,
+}) => {
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  const terrainRoom = (
+    id: number,
+    name: string,
+    x: number,
+    terrain: string,
+    exits: Record<string, number>,
+  ) => ({
+    ...currentRoom(id, name, x, exits),
+    env: `outside, ${terrain}`,
+  });
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    terrainRoom(105, "Open Sea", 4, "sea", { west: 104 }),
+  );
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    terrainRoom(104, "Swift River", 3, "river", { west: 103, east: 105 }),
+  );
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    terrainRoom(103, "Misty Swamp", 2, "swamp", { west: 102, east: 104 }),
+  );
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    terrainRoom(102, "Lake Shallows", 1, "lake", { west: 101, east: 103 }),
+  );
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  await expect(map.getByRole("button", { name: "Speedwalk to Open Sea" })).toBeVisible();
+  for (const kind of ["sea", "lake", "river", "swamp"]) {
+    const layer = map.locator(`.map-live-${kind}`);
+    await expect(layer).toHaveCount(1);
+    await expect
+      .poll(() =>
+        layer.evaluate((el) => !el.hidden && /blob:/.test((el as HTMLElement).style.maskImage)),
+      )
+      .toBe(true);
+    await expect(layer.locator(".map-live-pattern")).toHaveCount(2);
+    expect(
+      await layer
+        .locator(".map-live-pattern")
+        .evaluateAll((patterns) =>
+          patterns.map((pattern) => pattern.getAnimations()[0]?.playState),
+        ),
+    ).toEqual(["running", "running"]);
+  }
+
+  const riverMotion = await map.locator(".map-live-river .map-live-pattern-1").evaluate((el) => {
+    const animation = el.getAnimations()[0];
+    return {
+      duration: animation.effect?.getTiming().duration,
+      start: animation.currentTime,
+    };
+  });
+  expect(riverMotion.duration).toBe(3400);
+  await expect
+    .poll(() =>
+      map
+        .locator(".map-live-river .map-live-pattern-1")
+        .evaluate((el) => el.getAnimations()[0]?.currentTime),
+    )
+    .not.toBe(riverMotion.start);
+
+  // The preference applies at once, without waiting for a move.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(map.locator(".map-live-layer, .map-live-torches")).toHaveCount(0);
+});
+
+test("the map keeps unchanged room tiles across renders, with their focus, and patches what changed", async ({
+  page,
+}) => {
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(103, "Far Hall", 2, { west: 102 }));
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    currentRoom(102, "East Hall", 1, { west: 101, east: 103 }),
+  );
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  const farHall = map.getByRole("button", { name: "Speedwalk to Far Hall" });
+  await expect(farHall).toBeVisible();
+
+  // Tag the tile's element and give it keyboard focus, then make the map
+  // render again without changing that room.
+  await farHall.evaluate((el) => {
+    (el as HTMLElement & { keptAcrossRenders?: boolean }).keptAcrossRenders = true;
+    (el as HTMLElement).focus();
+  });
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
+  await expect(map.locator(".map-tile-player")).toHaveAttribute("data-room-id", "101");
+  await expect
+    .poll(() =>
+      farHall.evaluate((el) => ({
+        kept: !!(el as HTMLElement & { keptAcrossRenders?: boolean }).keptAcrossRenders,
+        focused: document.activeElement === el,
+      })),
+    )
+    .toEqual({ kept: true, focused: true });
+
+  // A move changes the player's old and new tiles; the map shows it either way.
+  endpoint.sendGmcp(
+    "Darkwind.MapData2.Current",
+    currentRoom(102, "East Hall", 1, { west: 101, east: 103 }),
+  );
+  await expect(map.locator(".map-tile-player")).toHaveAttribute("data-room-id", "102");
+  await expect(map.locator(".map-tile-player")).toHaveCount(1);
+  await expect(map.locator(".map-player-marker")).toHaveCount(1);
 });
 
 test("the map zooms at the pointer, shows other floors, keeps pins, and searches", async ({
@@ -533,6 +1798,85 @@ test("the map zooms at the pointer, shows other floors, keeps pins, and searches
   await expect(card).toContainText("Entering");
   await expect(card).toContainText("Saltmarsh");
   await expect(card).toHaveCount(0, { timeout: 6_000 });
+});
+
+test("the map shows a room's card on hover, faces the way you step, labels landmarks, centres on a double-click, and draws rich tiles zoomed in", async ({
+  page,
+}) => {
+  test.skip(
+    (page.viewportSize()?.width ?? Infinity) <= 700,
+    "hover cards and double-clicks are pointer interactions",
+  );
+  const endpoint = await connect(page);
+  await togglePanel(page, "Map");
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(102, "East Hall", 1, { west: 101 }),
+    details: ["shop"],
+  });
+  endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0, { east: 102 }));
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  const mapBody = map.locator(".map-body");
+  const hall = map.getByRole("button", { name: "Speedwalk to East Hall" });
+  await expect(hall).toBeVisible();
+
+  // The card: what the room is, where its exits go, and how far it is.
+  await hall.hover();
+  const card = map.getByRole("tooltip");
+  await expect(card).toContainText("East Hall");
+  await expect(card).toContainText("Shop");
+  await expect(card).toContainText("Atrium");
+  await expect(card).toContainText("1 step away");
+  await expect(map.locator(".map-tile[title]")).toHaveCount(0);
+  await expect(hall).toHaveAccessibleDescription(/East Hall.*Shop/s);
+  await page.mouse.move(1, 1);
+  await expect(card).toHaveCount(0);
+  await expect(hall).not.toHaveAttribute("aria-describedby");
+
+  // A step east: the marker faces east.
+  endpoint.sendGmcp("Darkwind.MapData2.Current", {
+    ...currentRoom(102, "East Hall", 1, { west: 101 }),
+    details: ["shop"],
+  });
+  await expect(map.locator(".map-player-facing")).toHaveAttribute("style", "rotate:90deg");
+
+  // Zoomed out past the badges, the shop is named.
+  for (let step = 0; step < 6; step++) {
+    await map.getByRole("button", { name: "Zoom map out" }).click();
+  }
+  await expect(map.locator(".map-zoom-level")).toHaveText("40%");
+  await expect(map.locator(".map-label")).toHaveText(["East Hall"]);
+
+  // A double-click on the ground centres the view there, without walking.
+  const box = (await mapBody.boundingBox())!;
+  await page.mouse.dblclick(box.x + box.width / 2 - 120, box.y + box.height / 2 - 80);
+  await expect
+    .poll(() =>
+      mapBody.evaluate((body) =>
+        // To a quarter cell: the middle of the map need not be on a whole pixel.
+        [body.dataset.mapPanX, body.dataset.mapPanY].map((pan) => Math.round(Number(pan) * 4) / 4),
+      ),
+    )
+    .toEqual([7.5, 5]);
+  await expect(map.locator(".map-panel-status")).not.toHaveText("Speedwalking");
+
+  // Starting a speedwalk brings the view back to the player.
+  await map.getByRole("button", { name: "Speedwalk to Atrium" }).click();
+  await expect(map.locator(".map-panel-status")).toHaveText("Speedwalking");
+  await expect
+    .poll(() =>
+      mapBody.evaluate((body) => [body.dataset.mapPanX ?? null, body.dataset.mapPanY ?? null]),
+    )
+    .toEqual([null, null]);
+
+  // Zoomed in to 200%, the tiles are rich: the room beside the player is
+  // named on its tile (the player's own has the marker over it).
+  await map.getByRole("button", { name: "Re-center map" }).click();
+  for (let step = 0; step < 10; step++) {
+    await map.getByRole("button", { name: "Zoom map in" }).click();
+  }
+  await expect(map.locator(".map-zoom-level")).toHaveText("200%");
+  await expect(map.locator(".map-tile-name")).toHaveText(["Atrium"]);
+  await expect(map.getByRole("button", { name: "Zoom map in" })).toBeEnabled();
 });
 
 test("map navigation and room imagery survive layout persistence without stale media", async ({

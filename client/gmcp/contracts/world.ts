@@ -1,4 +1,57 @@
 import type { MapData2RoomId, MapData2WireBoolean } from "./darkwind-map-data-v2";
+import type {
+  DarkwindCombatAppearance,
+  DarkwindCombatEquipment,
+  DarkwindCombatPublicState,
+} from "./combat";
+
+export type DarkwindRoomOccupantKind = "self" | "player" | "npc" | "pet";
+
+export interface DarkwindRoomOccupant {
+  id: string;
+  name: string;
+  kind: DarkwindRoomOccupantKind;
+  race?: string;
+  family?: string;
+  gender?: string;
+  size?: string;
+  elite?: MapData2WireBoolean;
+  boss?: MapData2WireBoolean;
+  hostile?: MapData2WireBoolean;
+  fighting?: MapData2WireBoolean;
+  hazy?: MapData2WireBoolean;
+  owner?: string;
+  level?: number;
+  role?: string;
+  activity?: string;
+  anchor_id?: string;
+  weapon?: string;
+  shield?: MapData2WireBoolean;
+  helmet?: string;
+  armor?: string;
+  faction?: string;
+  cue?: string;
+  engaged_with?: string;
+  appearance?: DarkwindCombatAppearance;
+  equipment?: Omit<DarkwindCombatEquipment, "two_handed"> & {
+    two_handed?: MapData2WireBoolean;
+  };
+  public_state?: DarkwindCombatPublicState;
+}
+
+/** Visibility-filtered living things in the viewer's current room. */
+export interface DarkwindRoomOccupants {
+  version: 1;
+  room: MapData2RoomId;
+  mode: "snapshot" | "delta";
+  base_revision?: number;
+  revision: number;
+  dark: MapData2WireBoolean;
+  unavailable?: MapData2WireBoolean;
+  more: number;
+  upsert: DarkwindRoomOccupant[];
+  removed: string[];
+}
 
 /** Darkwind.Room.Image inbound payload. */
 export interface DarkwindRoomImage {

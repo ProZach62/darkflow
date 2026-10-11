@@ -183,7 +183,11 @@ and the view settles on it; a longer jump, a new area, or reduced motion cuts
 instead. Both are CSS animations given a negative delay equal to the time
 already spent, so the several renders a single move causes carry one glide
 on rather than restarting it. A move made mid-glide starts from wherever the
-glide had got to.
+glide had got to. An arrow on the marker points the way the player last
+stepped; a jump, the stairs, or a new area keeps the old facing. Standing
+still, the marker's ring breathes slowly; the marker is drawn afresh on each
+move, and the breathing waits 1.2 s to start, so it does not run while the
+player walks.
 
 Empty cells beside known rooms are drawn as mist, the edge of the explored
 map, and a cell that an unexplored exit leads into is brighter. A room with
@@ -245,7 +249,7 @@ player there.
 Right-click a room (or press the menu key on it) to pin it as a note, quest,
 danger, loot, or home, with a short note. Pins are kept per character in
 `localStorage["darkflow-map-pins:<characterProfileId>"]`, at most 500, and
-show as a badge on the room, in its tooltip, and in the legend.
+show as a badge on the room, on its card, and in the legend.
 
 The search box (⌕) finds rooms in the area by name, by service (a shop is
 also a store, a pub an inn or tavern), and by pin kind and note; every word
@@ -261,12 +265,43 @@ direction, between dark rails. Road links are drawn in two halves, from each
 room to the midpoint, so a deck, a road, and a path each cover only their own
 room's half.
 
-With "Animate the map" on (Settings, Appearance; on by default), water
-shimmers (a river runs faster), swamp mist drifts, and at night town rooms
-show flickering torchlight above the night tint. Each is a soft CSS layer
-over a visited room's cell, started at a stable point in its cycle from the
-cell's world position so neighbours do not pulse together. Reduced motion
-leaves the map still.
+With "Animate the map" on (Settings, Appearance; on by default), the painted
+map's water shimmers, swamp mist drifts, and at night town rooms show
+flickering torchlight above the night tint. Each kind is one layer over the
+painted window, not one per room: water and mist are a patterned layer
+masked to their regions, using small copies of the painter's own region
+masks, whose pattern slides by transform; torches are painted once onto
+three canvases that flicker by opacity, each at its own pace. All of it can
+run on the compositor, and it is rebuilt only when the painted terrain is.
+Reduced motion, the setting off, or the tile look leaves the map still.
 
 Crossing into a new area shows its name as an "Entering ..." banner that
 fades after about three seconds; the area the map opens in gets none.
+
+Hovering or focusing a room shows its card beside it: the room's name, its
+terrain, its pin and note, its services, each exit with the room it leads to
+(and that room's area when it is another) and its door's state from
+`exitDoors` (a door with no exit, closed behind it, is listed too), the other
+rooms mapped to the same cell, and on the live map the steps there or "No
+known route". The card is
+built for the one room when it is hovered (`map-card-core.js`); the tiles
+carry no `title`, which had been a string per room written on every render.
+
+Below 50% zoom, where badges are left out, pinned rooms are labelled with
+their note (or name) and rooms with services with their name, as many as fit
+without overlapping (`map-labels-core.js`): pins first, then rooms in view,
+at most 40. The labels sit in the grid, which is scaled down, so their text
+is scaled up by as much to stay readable.
+
+The map zooms to 300%, and from 200% (`RICH_DETAIL_ZOOM`) each tile is rich:
+every service it offers in a row along its top (up to four), its name across
+the middle in two lines, the pin's note under that, and its door ticks grown
+into bars across the gap, an outline for an open door, a solid amber bar for
+a closed one, and a red bar with a keyhole for a locked one. The player's
+own tile, under the marker, has no name. The words, the pin badge, and the
+route's step count keep their size on screen as the tile grows. Fewer tiles
+fit at these zooms, so walking costs no more than at 150%.
+
+A double-click on the map centres the view on that point, gliding. On the
+live map a click on a room walks there, so only the ground between rooms
+takes a double-click; on the area map, rooms do too.

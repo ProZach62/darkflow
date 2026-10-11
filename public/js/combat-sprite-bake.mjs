@@ -64,7 +64,7 @@ export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale =
     const ring = material.ring;
     if (options.weapons && geo.weapon.offKind) {
       // Off-hand weapon sits behind the body.
-      stage._drawHeldWeapon(c, geo, geo.weapon.offKind, geo.weapon.offHand, geo.weapon.offDx, geo.weapon.offDy, ring, 0.85, 0.75);
+      stage._drawHeldWeapon(c, geo, geo.weapon.offKind, geo.weapon.offHand, geo.weapon.offDx, geo.weapon.offDy, ring, 0.85, 0.75, geo.weapon.offStyle);
     }
     if (style) {
       style.draw(c, geo, material);
@@ -77,7 +77,7 @@ export function bakeSpriteSheet(stage, doc, kind = 'humanoid', key = '', scale =
       stage._drawArm(c, geo, geo.arms.right, material, 1);
     }
     if (options.weapons && geo.weapon.kind !== 'bow') {
-      stage._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, ring, geo.twoHanded ? 1.2 : 1, 1);
+      stage._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, ring, geo.twoHanded ? 1.2 : 1, 1, geo.weapon.style);
     } else if (options.weapons) {
       stage._drawBow(c, geo, geo.weapon);
     }

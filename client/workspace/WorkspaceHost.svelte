@@ -34,6 +34,7 @@
   import DpsPanel from "./DpsPanel.svelte";
   import FishingPanel from "./FishingPanel.svelte";
   import IdePanel from "./IdePanel.svelte";
+  import IsoRoomPanel from "./IsoRoomPanel.svelte";
   import MapPanel from "./MapPanel.svelte";
   import RoomImagePanel from "./RoomImagePanel.svelte";
   import RoomPanel from "./RoomPanel.svelte";
@@ -128,6 +129,16 @@
       title: "Map",
       state: { mapZoom: 1 },
       placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
+    },
+    {
+      id: "isoMap",
+      kind: "isoMap",
+      title: "Isometric Room",
+      state: {},
+      placement: {
+        kind: "floating",
+        bounds: { left: 80, top: 60, width: 720, height: 560 },
+      },
     },
     {
       id: "roomImage",
@@ -317,10 +328,11 @@
     "stats",
   ];
   type DefaultRailPanelId = InformationPanelId | "room";
-  type RailPanelId = DefaultRailPanelId | "map" | "roomImage" | "roomPlaylist";
+  type RailPanelId = DefaultRailPanelId | "map" | "isoMap" | "roomImage" | "roomPlaylist";
   type RailSide = "left" | "right";
   const optionalRailPanelIds: readonly RailPanelId[] = [
     "map",
+    "isoMap",
     "roomImage",
     "roomPlaylist",
     "connection-health",
@@ -1138,6 +1150,13 @@
         canClose: () => true,
         collapsible: true,
         component: MapPanel,
+        floatable: true,
+        session,
+      },
+      isoMap: {
+        canClose: () => true,
+        collapsible: true,
+        component: IsoRoomPanel,
         floatable: true,
         session,
       },

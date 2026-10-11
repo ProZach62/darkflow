@@ -1739,16 +1739,15 @@ body.zork-only-mode #panels-menu {
 /* The player's marker is its own layer over the player's cell, so it can
    step between rooms while the camera glides after it. Both glides are CSS
    animations whose negative delay is the time already spent, so a re-render
-   mid-glide carries on rather than restarting.
-   The marker itself must not form a stacking context (no z-index, and it
-   steps by left/top rather than a transform), or the time-of-day tint in its
-   ::before would have nothing beneath it to blend with. Its parts carry the
-   z-index instead: the tint over the rooms and connectors, then the ring and
-   the figure above the tint. */
+   mid-glide carries on rather than restarting. The marker steps with a
+   transform, which costs no layout; the time-of-day tint is a separate,
+   still element (.map-tint) because a transform would give it a stacking
+   context of its own and nothing to blend with. */
 .map-player-marker {
   position: absolute;
   left: 0;
   top: 0;
+  z-index: 5;
   width: 32px;
   height: 32px;
   pointer-events: none;
@@ -1756,11 +1755,40 @@ body.zork-only-mode #panels-menu {
 .map-player-ring {
   position: absolute;
   inset: 0;
-  z-index: 5;
   box-shadow:
     0 0 0 1px #00ffff,
     0 0 8px 2px rgba(0, 255, 255, 0.95),
     0 0 16px 4px rgba(0, 190, 255, 0.55);
+}
+/* The ring breathes slowly while the player stands still: the marker is
+   drawn afresh on every move, so the delay holds it steady while walking,
+   when the breathing would only add work to every frame. Scale and
+   opacity, so the compositor runs it. */
+.map-player-ring {
+  animation: map-player-breathe 2.6s ease-in-out 1.2s infinite;
+}
+@keyframes map-player-breathe {
+  0%,
+  100% { opacity: 1; scale: 1; }
+  50% { opacity: 0.6; scale: 1.08; }
+}
+/* An arrow outside the ring points the way the player last stepped; the
+   span is turned about the cell's centre. */
+.map-player-facing {
+  position: absolute;
+  inset: -15px;
+  z-index: 1;
+}
+.map-player-facing::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  translate: -50% 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid #00ffff;
+  filter: drop-shadow(0 0 3px rgba(0, 255, 255, 0.9));
 }
 .map-player-marker::after {
   content: '';
@@ -1769,16 +1797,15 @@ body.zork-only-mode #panels-menu {
   height: 44px;
   left: 50%;
   top: 50%;
-  z-index: 6;
   background: url('/assets/tiles/player.png') center/contain no-repeat;
   transform: translate(-50%, -50%);
 }
 .map-marker-step {
-  animation: map-marker-step 180ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
+  animation: map-marker-step 180ms cubic-bezier(0.33, 1, 0.68, 1) both;
 }
 @keyframes map-marker-step {
-  from { left: var(--map-marker-x, 0px); top: var(--map-marker-y, 0px); }
-  to { left: 0; top: 0; }
+  from { translate: var(--map-marker-x, 0px) var(--map-marker-y, 0px); }
+  to { translate: 0 0; }
 }
 .map-camera-glide {
   animation: map-camera-glide 380ms cubic-bezier(0.33, 1, 0.68, 1) both;
@@ -1794,6 +1821,13 @@ body.zork-only-mode #panels-menu {
     map-zoom-glide 220ms cubic-bezier(0.33, 1, 0.68, 1) both;
 }
 @keyframes map-zoom-glide {
+  from { scale: var(--map-zoom-from, 1); }
+  to { scale: 1; }
+}
+/* The frame lives on between renders, so each new glide switches to the
+   other of a pair of identical keyframes, which makes the browser start it
+   afresh rather than carry on the last one. */
+@keyframes map-zoom-glide-b {
   from { scale: var(--map-zoom-from, 1); }
   to { scale: 1; }
 }
@@ -1862,70 +1896,64 @@ body.zork-only-mode #panels-menu {
 .map-pin-loot { color: #5cc8f2; }
 .map-pin-home { color: #7fd47a; }
 
-/* Living terrain: soft animated layers over a room's cell, reaching into the
-   gaps and fading at the edge so neighbouring cells blend. Water and mist
-   sit under the night tint; torchlight sits above it, so it glows in the
-   dark. Each cell starts at its own point in the cycle (inline delay). */
-.map-live {
+/* Living terrain (map-living.js): one masked layer per terrain kind over the
+   painted window. Two pattern planes move at different speeds for depth;
+   torches are canvases that flicker by opacity. It all runs on the compositor. */
+.map-live-layer {
   position: absolute;
-  inset: -6px;
+  left: 0;
+  top: 0;
+  overflow: hidden;
   pointer-events: none;
-  -webkit-mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
-  mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
-.map-live-water,
-.map-live-river {
-  background:
-    repeating-linear-gradient(115deg, transparent 0 7px, rgba(225, 242, 255, 0.16) 8px 9px, transparent 10px 16px);
-  background-size: 32px 32px;
-  animation: map-live-water 7s linear infinite;
+.map-live-pattern {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
 }
-.map-live-river {
-  background:
-    repeating-linear-gradient(160deg, transparent 0 5px, rgba(225, 245, 255, 0.2) 6px 7px, transparent 8px 12px);
-  background-size: 24px 24px;
-  animation-duration: 3.2s;
+.map-live-sea .map-live-pattern-1 {
+  background: repeating-linear-gradient(174deg, transparent 0 19px, rgba(218, 242, 255, 0.18) 20px 22px, transparent 23px 48px);
+  background-size: 96px 48px;
 }
-@keyframes map-live-water {
-  from { background-position: 0 0; }
-  to { background-position: 32px 16px; }
+.map-live-sea .map-live-pattern-2 {
+  background: radial-gradient(ellipse at 50% 50%, rgba(150, 220, 246, 0.14) 0 8%, transparent 10% 100%);
+  background-size: 64px 64px;
 }
-.map-live-mist {
-  background:
-    radial-gradient(circle at 35% 40%, rgba(208, 218, 198, 0.4), transparent 60%),
-    radial-gradient(circle at 70% 65%, rgba(192, 206, 186, 0.3), transparent 55%);
-  animation: map-live-mist 11s ease-in-out infinite alternate;
+.map-live-lake .map-live-pattern-1 {
+  background: radial-gradient(ellipse at 50% 50%, transparent 0 38%, rgba(232, 249, 255, 0.18) 42% 45%, transparent 49% 100%);
+  background-size: 128px 64px;
 }
-@keyframes map-live-mist {
-  from { opacity: 0.25; translate: -3px 1px; }
-  to { opacity: 0.8; translate: 3px -2px; }
+.map-live-lake .map-live-pattern-2 {
+  background: radial-gradient(ellipse at 35% 45%, rgba(214, 242, 255, 0.12) 0 7%, transparent 11% 100%);
+  background-size: 96px 96px;
 }
-.map-live-torch {
-  inset: 0;
+.map-live-river .map-live-pattern-1 {
+  background: repeating-linear-gradient(118deg, transparent 0 12px, rgba(225, 247, 255, 0.22) 13px 15px, transparent 17px 32px);
+  background-size: 96px 48px;
+}
+.map-live-river .map-live-pattern-2 {
+  background: radial-gradient(ellipse at 50% 50%, rgba(175, 229, 249, 0.18) 0 9%, transparent 12% 100%);
+  background-size: 64px 32px;
+}
+.map-live-swamp .map-live-pattern-1 {
+  background: radial-gradient(ellipse at 40% 45%, rgba(218, 225, 207, 0.32) 0 8%, rgba(200, 213, 194, 0.18) 24%, transparent 62%);
+  background-size: 160px 160px;
+}
+.map-live-swamp .map-live-pattern-2 {
+  background: radial-gradient(ellipse at 65% 60%, rgba(196, 209, 190, 0.22) 0 10%, transparent 55%);
+  background-size: 120px 120px;
+}
+.map-live-torches {
+  position: absolute;
+  left: 0;
+  top: 0;
   z-index: 5;
-  -webkit-mask-image: none;
-  mask-image: none;
-  background: radial-gradient(
-    circle at var(--torch-x, 50%) var(--torch-y, 50%),
-    rgba(255, 196, 96, 0.95) 0 1.5px,
-    rgba(255, 150, 60, 0.4) 3px,
-    transparent 9px
-  );
-  mix-blend-mode: screen;
-  animation: map-live-torch 1.7s steps(6) infinite;
-}
-@keyframes map-live-torch {
-  0% { opacity: 0.9; }
-  20% { opacity: 0.55; }
-  35% { opacity: 1; }
-  55% { opacity: 0.7; }
-  75% { opacity: 0.95; }
-  100% { opacity: 0.6; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .map-live {
-    animation: none;
-  }
+  pointer-events: none;
 }
 
 /* A room the search flew to: a brief ring so the eye finds it. */
@@ -1940,11 +1968,24 @@ body.zork-only-mode #panels-menu {
   from { translate: var(--map-cam-x, 0px) var(--map-cam-y, 0px); }
   to { translate: 0 0; }
 }
+@keyframes map-camera-glide-b {
+  from { translate: var(--map-cam-x, 0px) var(--map-cam-y, 0px); }
+  to { translate: 0 0; }
+}
 
-/* Time of day: a multiply tint over the map from the marker outward, with a
-   pool of light around the player at night. The tint sits under the ring and
-   the player's figure, which paint after it. */
-.map-player-marker.map-tinted::before {
+/* Time of day: a multiply tint over the map from the player's cell outward,
+   with a pool of light around the player at night. The element itself is
+   no stacking context (no z-index, no transform), so its ::before blends with
+   the rooms and connectors beneath; the marker paints above it. */
+.map-tint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+}
+.map-tint::before {
   content: '';
   position: absolute;
   z-index: 4;
@@ -1959,7 +2000,7 @@ body.zork-only-mode #panels-menu {
   opacity: var(--map-tint-alpha, 0);
   mix-blend-mode: multiply;
 }
-.map-player-marker.map-lit::before {
+.map-tint.map-lit::before {
   width: 220px;
   height: 220px;
 }
@@ -2045,7 +2086,35 @@ body.zork-only-mode #panels-menu {
   outline-offset: 1px;
 }
 
+/* Landmark names on the zoomed-out map. The grid is scaled down, so the
+   text is scaled up by as much to stay readable. */
+.map-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+}
+.map-label > span {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  translate: -50% 0;
+  padding: 0 calc(4px / var(--map-zoom, 1));
+  border-radius: calc(3px / var(--map-zoom, 1));
+  background: rgba(0, 0, 0, 0.74);
+  color: #e8dcc0;
+  font: 600 calc(11px / var(--map-zoom, 1)) / 1.35 var(--df-font-mono);
+  white-space: nowrap;
+}
+.map-label-pinned > span {
+  color: #ffd77a;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .map-player-ring,
   .map-marker-step,
   .map-camera-glide,
   .map-zoom-glide,
@@ -2390,6 +2459,111 @@ body.zork-only-mode #panels-menu {
   pointer-events: none;
 }
 .map-exit-in ~ .map-exit-out { right: 13px; }
+
+/* Rich tiles, from 200% zoom: every service in a row along the top, the
+   room's name across the middle with the pin's note under it, and door
+   marks grown into bars across the gap. The grid is scaled up, so the
+   words are scaled down by as much to stay at their size on screen. */
+.map-services {
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  gap: 0.5px;
+  translate: -50% 0;
+  pointer-events: none;
+}
+.map-services > .map-detail {
+  position: static;
+  transform: none;
+  font-size: 5px;
+}
+.map-services .map-detail-icon svg {
+  width: 5.5px;
+  height: 5.5px;
+}
+.map-tile-text {
+  position: absolute;
+  inset: 8px 2px 2px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(1px / var(--map-zoom, 1));
+  overflow: hidden;
+  text-align: center;
+  pointer-events: none;
+}
+.map-tile-name,
+.map-tile-note {
+  display: -webkit-box;
+  max-width: 100%;
+  padding: 0 calc(3px / var(--map-zoom, 1));
+  border-radius: calc(3px / var(--map-zoom, 1));
+  background: rgba(0, 0, 0, 0.62);
+  font: calc(10px / var(--map-zoom, 1)) / 1.2 var(--df-font-mono);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+}
+.map-tile-name {
+  color: #f0e6cc;
+  -webkit-line-clamp: 2;
+}
+.map-tile-note {
+  color: #ffd77a;
+  font-style: italic;
+  -webkit-line-clamp: 1;
+}
+/* The pin and the route's step count would grow with the tile and cover
+   its services; they keep about their 150% size on screen instead. */
+.map-tile-rich .map-pin {
+  transform-origin: top right;
+  scale: calc(1.5 / var(--map-zoom, 1));
+}
+.map-tile-rich .map-route-count {
+  transform-origin: bottom right;
+  scale: calc(1.5 / var(--map-zoom, 1));
+}
+/* An open door is an outlined gap, a closed one a solid bar, and a locked
+   one a red bar with a keyhole. */
+.map-tile-rich .map-door-n,
+.map-tile-rich .map-door-s {
+  width: 10px;
+  height: 3px;
+}
+.map-tile-rich .map-door-e,
+.map-tile-rich .map-door-w {
+  width: 3px;
+  height: 10px;
+}
+.map-tile-rich .map-door-n { bottom: calc(100% + 2.5px); }
+.map-tile-rich .map-door-s { top: calc(100% + 2.5px); }
+.map-tile-rich .map-door-e { left: calc(100% + 2.5px); }
+.map-tile-rich .map-door-w { right: calc(100% + 2.5px); }
+.map-tile-rich .map-door-ne,
+.map-tile-rich .map-door-nw,
+.map-tile-rich .map-door-se,
+.map-tile-rich .map-door-sw {
+  width: 7px;
+  height: 3px;
+}
+.map-tile-rich .map-door-state-open {
+  background: rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px rgba(120, 200, 120, 0.95);
+}
+.map-tile-rich .map-door-state-locked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 1.5px;
+  height: 1.5px;
+  margin: auto;
+  border-radius: 50%;
+  background: #2a0606;
+}
 
 /* Area name (top line) -- the zone you're in; updates as you cross areas. */
 .map-areaname {

@@ -50,6 +50,7 @@ const CANONICAL_PACKAGES = new Map<string, string>([
   ["darkwind.mapdata2.error", "Darkwind.MapData2.Error"],
   ["darkwind.mapdata2.sync", "Darkwind.MapData2.Sync"],
   ["darkwind.mapdata2.browse", "Darkwind.MapData2.Browse"],
+  ["darkwind.room.occupants", "Darkwind.Room.Occupants"],
 ]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -172,15 +173,21 @@ function normalizeRoomInfo(data: unknown): unknown {
   }
   if (isObject(out.exits)) {
     const exits: Record<string, unknown> = {};
-    const exitStates: Record<string, unknown> = {};
+    const exitStates: Record<string, unknown> = isObject(out.exit_states)
+      ? { ...out.exit_states }
+      : {};
     for (const [dir, dest] of Object.entries(out.exits)) {
       exits[dir] = dest;
-      if (typeof dest === "string" && !/^-?\d+$/.test(dest)) {
+      if (
+        typeof dest === "string" &&
+        !/^-?\d+$/.test(dest) &&
+        !Object.prototype.hasOwnProperty.call(exitStates, dir)
+      ) {
         exitStates[dir] = dest;
       }
     }
     out.exits = exits;
-    if (Object.keys(exitStates).length) {
+    if (Object.keys(exitStates).length || isObject(out.exit_states)) {
       out.exit_states = exitStates;
     }
   }

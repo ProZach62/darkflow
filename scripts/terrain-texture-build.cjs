@@ -32,7 +32,7 @@ const OUTPUT_SIZE = 256;
 const WORK_SIZE = 512;
 const WEBP_QUALITY = 0.86;
 // How many map cells one repeat of a painted texture covers.
-const TEXTURE_SPAN = 2.5;
+const TEXTURE_SPAN = 5;
 
 // Runs in the page: find the grid, cut and seam every swatch, and return
 // WebP and preview data URLs.

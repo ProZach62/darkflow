@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const {
   classifyWeapon,
+  classifyWeaponStyle,
   cleanItemName,
   equipmentProfile,
   itemSlot,
@@ -34,6 +35,15 @@ test('weapon kinds come from name keywords with earlier rows winning', () => {
   assert.equal(classifyWeapon(undefined), '');
 });
 
+test('weapon style distinguishes the requested visible silhouettes', () => {
+  assert.equal(classifyWeaponStyle('a steel sword'), 'sword');
+  assert.equal(classifyWeaponStyle('a great sword'), 'great-sword');
+  assert.equal(classifyWeaponStyle('a giant axe'), 'great-axe');
+  assert.equal(classifyWeaponStyle('a warhammer'), 'hammer');
+  assert.equal(classifyWeaponStyle('an iron maul'), 'maul');
+  assert.equal(classifyWeaponStyle('a long spear'), 'spear');
+});
+
 test('equipmentProfile reads hands, shield, and armor from the inventory list', () => {
   assert.equal(equipmentProfile(undefined), null, 'no inventory received');
   assert.equal(equipmentProfile('nope'), null);
@@ -52,6 +62,7 @@ test('equipmentProfile reads hands, shield, and armor from the inventory list', 
   ]);
   assert.equal(fighter.mainHand.kind, 'blade');
   assert.equal(fighter.mainHand.name, 'a steel sword');
+  assert.equal(fighter.mainHand.style, 'sword');
   assert.equal(fighter.offHand, null);
   assert.equal(fighter.shield, true);
   assert.equal(fighter.helmet, true);
@@ -87,5 +98,6 @@ test('equipmentProfile reads hands, shield, and armor from the inventory list', 
 
   const greatsword = equipmentProfile([{ id: 'g', name: 'a greatsword (main weapon)', attrib: 'l' }]);
   assert.equal(greatsword.mainHand.kind, 'blade');
+  assert.equal(greatsword.mainHand.style, 'great-sword');
   assert.equal(greatsword.twoHanded, true);
 });

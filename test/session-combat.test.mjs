@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createServer, isRunnableDevEnvironment } from "vite";
+import { buildCombatView } from "../public/js/combat-visual-core.mjs";
+import { resolveFigure } from "../public/js/combat-rig-core.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -142,6 +144,47 @@ test("combat snapshots carry the recipient's Char.Status and inventory for the s
   harness.reconnect("disconnected");
   assert.equal(harness.combat.getSnapshot().status, null, "a dropped connection clears the descriptor inputs");
   assert.equal(harness.combat.getSnapshot().inventory.length, 0);
+});
+
+test("public snapshots survive the session pipeline and same-sequence clearing", async (t) => {
+  const modules = await loadModules(t);
+  const harness = createHarness(modules);
+  t.after(() => harness.scope.dispose());
+  harness.reconnect("connected");
+  harness.gmcp.dispatch("Char.Status", { race: "Dragon", class: "Mage" });
+  harness.gmcp.dispatch("Char.Items.List", {
+    location: "inv", items: [{ id: "r1", name: "a staff (main weapon)", attrib: "l" }],
+  });
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ actors: [
+    { id: "self", name: "Public Acer", role: "self",
+      appearance: { race: "Pixie", size: "huge", form: "humanoid" },
+      equipment: { main_hand: "coarse edge", weapon_type: "cleaving", off_hand: "narrow point", off_hand_type: "piercing" } },
+    { id: "target", name: "Public Target", role: "target", appearance: {}, equipment: {} },
+  ] }));
+  const view = () => {
+    const snapshot = harness.combat.getSnapshot();
+    return buildCombatView(snapshot.model, snapshot);
+  };
+  assert.equal(view().player.race, "Pixie");
+  assert.equal(resolveFigure(view().player).weapon, "axe");
+  assert.equal(resolveFigure(view().player).offKind, "rapier");
+  assert.equal(resolveFigure(view().player).scale, 1.3);
+
+  // Metadata does not advance the combat event sequence. Invalid optional
+  // hints clear old hints without blocking an authoritative encounter end.
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ actors: [
+    { id: "self", name: "Public Acer", role: "self", appearance: null, equipment: [] },
+  ] }));
+  assert.equal(view().player.race, "");
+  assert.equal(resolveFigure(view().player).weapon, "claws");
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ active: 0, actors: [
+    { id: "self", name: "Public Acer", role: "self",
+      appearance: { race: "x".repeat(81), size: "giant" },
+      equipment: { main_hand: 42, weapon_type: "future-category", two_handed: "maybe" } },
+  ] }));
+  assert.equal(harness.combat.getSnapshot().model.active, false);
+  assert.deepEqual(harness.combat.getSnapshot().model.actors[0].equipment, {});
+  assert.equal(resolveFigure(view().player).weapon, "claws");
 });
 
 function framesFor(sent, packageName) {
@@ -296,13 +339,20 @@ test("combat orders batch and singular events and cancels every late beat", asyn
     encounter_id: "encounter-1",
     first_seq: 2,
     last_seq: 3,
-    events: [event(3), event(2)],
+    events: [event(2), event(3)],
     overflow: { omitted: 0, hits: 0, damage: 0 },
   });
 
   assert.equal(harness.combat.getSnapshot().model.currentEvent?.seq, 2);
   assert.equal(harness.combat.getSnapshot().model.pending[0]?.seq, 3);
-  assert.equal(timers[0].delay, modules.COMBAT_BEAT_MS);
+  // A real length: imported from the wrong module it was undefined, and
+  // every queued blow started at once.
+  assert.ok(modules.COMBAT_BEAT_MS >= 1000, "the beat is a real action length");
+  assert.equal(
+    timers[0].delay,
+    Math.round(modules.COMBAT_BEAT_MS * 0.7),
+    "with a blow waiting, the next starts before this one ends",
+  );
   timers[0].callback();
   assert.equal(harness.combat.getSnapshot().model.currentEvent?.seq, 3);
   timers[1].callback();
@@ -360,6 +410,49 @@ test("combat orders batch and singular events and cancels every late beat", asyn
   const disposed = harness.combat.getSnapshot();
   disposalBeat();
   assert.equal(harness.combat.getSnapshot(), disposed, "scope guard suppresses a disposed late timer");
+});
+
+test("V2 gaps request one resync, stale identities stay inert, and resync state recovers", async (t) => {
+  const modules = await loadModules(t);
+  const harness = createHarness(modules);
+  t.after(() => harness.scope.dispose());
+  harness.reconnect("connected");
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ version: 2 }));
+  harness.combat.setPresentationReady(true);
+  harness.sent.length = 0;
+
+  const batch = (overrides = {}) => ({
+    version: 2,
+    epoch: "combat-1",
+    encounter_id: "encounter-1",
+    first_seq: 3,
+    last_seq: 3,
+    events: [event(3)],
+    overflow: { omitted: 0, omitted_by_kind: { attack: 0, skill: 0, spell: 0, heal: 0 } },
+    ...overrides,
+  });
+  harness.gmcp.dispatch("Darkwind.Combat.Events", batch({ epoch: "stale" }));
+  assert.equal(framesFor(harness.sent, "Darkwind.Combat.Resync").length, 0,
+    "a valid stale identity is ignored before sequence testing");
+
+  harness.gmcp.dispatch("Darkwind.Combat.Events", batch());
+  harness.gmcp.dispatch("Darkwind.Combat.Events", batch());
+  harness.combat.setPresentationReady(true);
+  assert.equal(harness.combat.getSnapshot().presentationReady, false,
+    "a render callback cannot re-enable readiness while recovery is pending");
+  assert.equal(framesFor(harness.sent, "Darkwind.Combat.Resync").length, 1,
+    "repeated gap delivery cannot create an unbounded refresh loop");
+  assert.equal(harness.combat.getSnapshot().model.lastSeq, 1);
+
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ version: 2, resync: 1, seq: 3 }));
+  assert.equal(harness.combat.getSnapshot().model.lastSeq, 3, "resync retains the sequence watermark");
+  assert.equal(harness.combat.getSnapshot().model.currentEvent, null);
+  harness.combat.setPresentationReady(true);
+  assert.equal(harness.combat.getSnapshot().presentationReady, true);
+  harness.sent.length = 0;
+  harness.gmcp.dispatch("Darkwind.Combat.Events", batch({ first_seq: 5, last_seq: 5, events: [event(5)] }));
+  assert.equal(framesFor(harness.sent, "Darkwind.Combat.Resync").length, 1,
+    "an authoritative resync state re-arms bounded recovery");
 });
 
 test("combat recovery and two sessions isolate readiness, queues, reconnect, and disposal", async (t) => {

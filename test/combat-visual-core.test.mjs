@@ -9,6 +9,8 @@ import {
   reduceCombatState,
   takeNextCombatEvent,
 } from '../public/js/combat-visual-core.mjs';
+import { resolveFigure } from '../public/js/combat-rig-core.mjs';
+import { spriteKeysFor } from '../public/js/combat-sprites.mjs';
 
 function activeState(overrides = {}) {
   return {
@@ -488,4 +490,129 @@ test('inventory shapes the player equipment and observers never inherit it', () 
     ],
   }));
   assert.equal(buildCombatView(observed, { inventory: items }).player.equipment, null);
+});
+
+test('public actor snapshots replace private guesses and reach both figure paths', () => {
+  const model = reduceCombatState(createCombatVisualState(), activeState({
+    actors: [
+      {
+        id: 'self', name: 'Roster Acer', role: 'self',
+        appearance: { race: 'Pixie', size: 'huge', form: 'humanoid' },
+        equipment: { main_hand: 'coarse edge', off_hand: 'narrow point', weapon_type: 'cleaving', off_hand_type: 'piercing', weapon_style: 'slash', off_hand_style: 'thrust' },
+      },
+      { id: 'enemy-1', name: 'Roster Serpent', role: 'target', appearance: { form: 'serpent', size: 'small' }, equipment: {} },
+    ],
+  }));
+  const view = buildCombatView(model, {
+    avatar: { name: 'Stale Acer', url: 'private.png' },
+    status: { race: 'Dragon', class: 'Mage', gender: 'Female' },
+    enemy: { enemy_name: 'stale enemy', enemy_image: 'private.png', enemy_type: 'npc' },
+    inventory: [{ name: 'a staff (main weapon)', attrib: 'l' }],
+  });
+  assert.equal(view.player.name, 'Roster Acer');
+  assert.equal(view.target.name, 'Roster Serpent');
+  assert.equal(view.player.image, '');
+  assert.equal(view.player.race, 'Pixie');
+  assert.equal(view.player.guild, '', 'public appearance does not borrow private guild text');
+  assert.equal(view.target.image, '');
+  const playerFigure = resolveFigure(view.player, 'player');
+  assert.equal(playerFigure.weapon, 'axe');
+  assert.equal(playerFigure.offKind, 'rapier');
+  assert.equal(playerFigure.scale, 1.3, 'authoritative size outranks race scale');
+  const targetFigure = resolveFigure(view.target, 'target');
+  assert.equal(targetFigure.kind, 'beast');
+  assert.equal(targetFigure.scale, 0.86);
+  assert.equal(targetFigure.weapon, 'claws', 'explicit empty equipment does not reconstruct a weapon');
+});
+
+test('snapshot replacement clears rich hints while omission uses only current legacy fallbacks', () => {
+  let model = reduceCombatState(createCombatVisualState(), activeState({
+    actors: [{ id: 'self', name: 'Acer', role: 'self', appearance: { race: 'Scro' }, equipment: { main_hand: 'edge', weapon_type: 'slashing' } }],
+  }));
+  assert.equal(buildCombatView(model, { status: { race: 'Dragon' } }).player.race, 'Scro');
+  model = reduceCombatState(model, activeState({ seq: 11, actors: [{ id: 'self', name: 'Acer', role: 'self', appearance: {}, equipment: {} }] }));
+  let view = buildCombatView(model, { status: { race: 'Dragon', class: 'Mage' }, inventory: [{ name: 'a staff (main weapon)', attrib: 'l' }] });
+  assert.equal(view.player.race, '');
+  assert.equal(view.player.descriptor, '');
+  assert.equal(resolveFigure(view.player, 'player').weapon, 'claws');
+  model = reduceCombatState(model, activeState({ seq: 12, actors: [{ id: 'self', name: 'Acer', role: 'self' }] }));
+  view = buildCombatView(model, { status: { race: 'Dragon', class: 'Mage' }, inventory: [{ name: 'a staff (main weapon)', attrib: 'l' }] });
+  assert.equal(view.player.race, 'Dragon');
+  assert.equal(resolveFigure(view.player, 'player').weapon, 'staff');
+});
+
+test('authoritative clearing blocks name-based art without erasing NPC classification', () => {
+  const model = reduceCombatState(createCombatVisualState(), activeState({ actors: [
+    { id: 'self', name: 'Elyndar', role: 'self', appearance: {}, equipment: {} },
+    { id: 'enemy-1', name: 'an ash drake', role: 'target', appearance: {}, equipment: {} },
+  ] }));
+  const view = buildCombatView(model, { enemy: { enemy_name: 'an ash drake', enemy_is_npc: 1 } });
+  assert.equal(view.target.isNpc, true);
+  const target = resolveFigure(view.target, 'target');
+  assert.equal(target.kind, 'humanoid');
+  assert.deepEqual(spriteKeysFor(view.target, target, 'target'), ['humanoid']);
+  assert.deepEqual(spriteKeysFor(view.player, resolveFigure(view.player), 'player'), ['humanoid']);
+});
+
+test('passive combat uses each roster actor snapshot without recipient-private hints', () => {
+  const model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'ally-1',
+    actors: [
+      { id: 'self', name: 'Recipient', role: 'self' },
+      { id: 'ally-1', name: 'Ally', role: 'ally', appearance: { form: 'humanoid', size: 'tiny' }, equipment: { main_hand: 'focus', weapon_type: 'focus' } },
+      { id: 'enemy-1', name: 'Enemy', role: 'target', appearance: { form: 'quadruped', size: 'large' }, equipment: {} },
+    ],
+  }));
+  const view = buildCombatView(model, {
+    status: { race: 'Dragon', class: 'Ranger' }, avatar: { url: 'private.png' },
+    inventory: [{ name: 'a bow (main weapon)', attrib: 'l' }],
+    enemy: { enemy_name: 'private enemy', enemy_image: 'private-enemy.png', enemy_curhp: 1, enemy_maxhp: 2 },
+  });
+  assert.equal(view.player.image, '');
+  assert.equal(view.player.guild, '');
+  assert.equal(view.player.health.known, false);
+  assert.equal(resolveFigure(view.player, 'player').weapon, 'staff');
+  assert.equal(resolveFigure(view.target, 'target').kind, 'beast');
+  assert.equal(view.target.health.known, false);
+});
+
+test('public condition and tactical state survive normalization without private actor fields', () => {
+  const model = reduceCombatState(createCombatVisualState(), activeState({
+    current_actor_id: 'watch-1', current_target_id: 'watch-2',
+    actors: [
+      { id: 'self', name: 'Acer', role: 'self' },
+      { id: 'watch-1', name: 'a guard', role: 'participant', occupant_id: 'room-9',
+        public_state: { condition: 'slightly wounded', effects: ['bleeding'], hp: 19, buffs: ['secret'] } },
+      { id: 'watch-2', name: 'a guard', role: 'target', occupant_id: 'room-10',
+        public_state: { condition: 'badly wounded', elite: 1, boss: 0 } },
+    ],
+    position: 'ranged', preferred_position: 'melee',
+    movement: { action: 'fallback', target: 'a guard', progress: 2, required: 5, secret: 'ignored' },
+  }));
+  const view = buildCombatView(model, { vitals: { hp: 999, maxhp: 1000 } });
+  assert.equal(view.player.occupantId, 'room-9');
+  assert.equal(view.target.occupantId, 'room-10');
+  assert.equal(view.target.condition, 'badly wounded');
+  assert.equal(view.target.publicState.elite, true);
+  assert.equal(view.player.health.known, false);
+  assert.deepEqual(view.player.publicState, { condition: 'slightly wounded', effects: ['bleeding'] });
+  assert.equal(view.position, 'ranged');
+  assert.equal(view.preferredPosition, 'melee');
+  assert.deepEqual(view.movement, { action: 'fallback', target: 'a guard', progress: 2, required: 5 });
+});
+
+test('V2 omission counters retain redaction, advance sequence, and ignore repeated batches', () => {
+  let model = reduceCombatState(createCombatVisualState(), activeState({ version: 2 }));
+  const packet = { version: 2, epoch: 'connection-a', encounter_id: 'encounter-a',
+    first_seq: 11, last_seq: 12, events: [], overflow: { omitted: 2,
+      omitted_by_kind: { attack: 0, skill: 1, spell: 0, heal: 1 } } };
+  model = reduceCombatEvents(model, packet);
+  assert.equal(model.lastSeq, 12);
+  assert.equal(model.overflow.omittedByKind.heal, 1);
+  assert.equal(Object.hasOwn(model.overflow, 'damage'), false);
+  assert.equal(Object.hasOwn(model.overflow, 'healing'), false);
+  assert.equal(reduceCombatEvents(model, packet), model);
+  const recovered = reduceCombatState(model, activeState({ version: 2, resync: 1, seq: 12 }));
+  assert.equal(recovered.lastSeq, 12);
+  assert.equal(recovered.presentationReset, model.presentationReset + 1);
 });

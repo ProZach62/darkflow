@@ -240,6 +240,20 @@ test('canvas stage renders the DOM overlay with escaped names and accessible hea
   assert.ok(createdImages.some((img) => img.src === 'https://media.example/acer.jpg'), 'avatar requested');
 });
 
+test("each side's header shows the fighter's picture in a square before the name", () => {
+  const body = bodyElement();
+  mountRenderer(body).render({
+    model: combatModel(),
+    vitals: { hp: 78, maxhp: 100 },
+    enemy: { enemy_name: 'a drake', enemy_curhp: 41, enemy_maxhp: 100, enemy_is_npc: 1 },
+    avatar: {},
+  });
+  const html = deepHtml(body);
+  const squares = html.match(/<span class="combat-hud-portrait" aria-hidden="true" style="background-image:[^"]*"><\/span><span/g) || [];
+  assert.equal(squares.length, 2, 'one square per side, right before the name');
+  assert.match(html, /generic-monster\.png/, 'an unpictured monster falls back to the monster art');
+});
+
 test('re-rendering reuses the same canvas and plays each event once', () => {
   const body = bodyElement();
   let model = combatModel();
@@ -275,7 +289,8 @@ test('re-rendering reuses the same canvas and plays each event once', () => {
   assert.equal(stage._actions.length, 1, 'repeated publishes of the same beat do not replay it');
   assert.match(deepHtml(body), /You critically hit a drake for 42 damage\./);
 
-  runFrame(1100);
+  // Past contact (a fifth of the 1.4 s blow), when the number shows.
+  runFrame(1600);
   assert.ok(stage.frames > framesBefore, 'a frame was drawn after the event');
   assert.ok(canvas.drawLog.some(([name]) => name === 'fillText' || name === 'strokeText'),
     'damage number drawn on the canvas');
@@ -357,6 +372,7 @@ test('status descriptor shows under the player name and its portrait loads befor
 
 test('inventory equipment reaches the stage figure', () => {
   const body = bodyElement();
+  createdImages.length = 0;
   mountRenderer(body).render({
     model: combatModel({ encounter_id: 'encounter-gear' }),
     vitals: { hp: 50, maxhp: 100 },
@@ -379,6 +395,23 @@ test('inventory equipment reaches the stage figure', () => {
   runFrame(4000);
   // Only the strapped shield rotates the context; ground shadows draw ellipses too.
   assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield drawn on the left forearm');
+  const sword = stage._images.get('/assets/sprites/weapons/sword.png')?.img;
+  const shield = stage._images.get('/assets/sprites/weapons/shield.png')?.img;
+  assert.ok(sword, 'generated sword requested for the wielded blade');
+  assert.ok(shield, 'generated shield requested for the equipped shield');
+  sword.finishLoading();
+  shield.finishLoading();
+  canvas.drawLog.length = 0;
+  stage._drawHeldWeapon(stage.ctx, { unit: 40 }, 'blade', { x: 120, y: 80 }, 1, 0, '#fff', 1, 1, 'sword');
+  stage._drawShieldArm(stage.ctx, {
+    unit: 40,
+    arms: { left: { elbow: { x: 80, y: 80 }, hand: { x: 100, y: 100 } } },
+  }, '#fff');
+  const painted = canvas.drawLog
+    .filter(([name]) => name === 'drawImage')
+    .map(([, args]) => args[0] && args[0].src);
+  assert.ok(painted.includes('/assets/sprites/weapons/sword.png'), 'loaded sword painting replaces the vector fallback');
+  assert.ok(painted.includes('/assets/sprites/weapons/shield.png'), 'loaded shield painting replaces the vector fallback');
 });
 
 test('a humanoid sprite sheet replaces the body and overlays keep drawing', async () => {
@@ -423,6 +456,36 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
   assert.ok(spriteDraws.length >= 1, 'sheet frame drawn with a source rectangle');
   assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield still drawn over the sprite');
   fetchManifest = null;
+});
+
+test('public helmets overlay painted heads and clearing removes the overlay', async (t) => {
+  fetchManifest = {
+    version: 1, kind: 'humanoid', image: '/assets/sprites/humanoid.png',
+    frameWidth: 256, frameHeight: 256, unit: 64,
+    anchor: { x: 128, y: 232 }, facing: 'right', portrait: false,
+    frames: { idle: { x: 0, y: 0, anchors: { head: { x: 128, y: 60, r: 20 } } } },
+  };
+  t.after(() => { fetchManifest = null; });
+  const body = bodyElement();
+  createdImages.length = 0;
+  const renderer = mountRenderer(body);
+  const snapshot = (equipment) => ({ model: combatModel({ actors: [
+    { id: 'self', name: 'Public fighter', role: 'self', appearance: {}, equipment },
+    { id: 'target-1', name: 'Target', role: 'target', appearance: {}, equipment: {} },
+  ] }) });
+  renderer.render(snapshot({ helmet: 'iron helm' }));
+  const stage = renderer.stage;
+  runFrame(5200);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  createdImages.find(img => img.src.startsWith('/assets/sprites/humanoid.png?v=')).finishLoading();
+  let helmets = 0;
+  stage._drawHelmet = () => { helmets++; };
+  runFrame(5300);
+  assert.equal(helmets, 1, 'painted head does not suppress the equipped helmet');
+  renderer.render(snapshot({}));
+  helmets = 0;
+  runFrame(5400);
+  assert.equal(helmets, 0, 'cleared snapshot removes the helmet');
 });
 
 test('a pixelated sheet is drawn with image smoothing off', async () => {
@@ -845,4 +908,84 @@ test('streak chips show during a fight and a summary card follows the outcome', 
   assert.match(html, /<dt>Accuracy<\/dt><dd>100%<\/dd>/);
   assert.match(html, /<dt>Best streak<\/dt><dd>\u00d73<\/dd>/);
   assert.doesNotMatch(html, /combat-streak-chip/, 'the live chips are gone once it is over');
+});
+
+test('authoritative idle occupants keep duplicate names and clear without fades or private fallbacks', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  const data = {
+    model: combatModel({ active: 0 }),
+    vitals: { hp: 77, maxhp: 100 },
+    status: { name: 'Acer', race: 'human' },
+    room: { name: 'Landing', looks: [{ id: 'stakes', name: 'Survey stakes', nouns: ['survey stakes'] }],
+      exits: { north: 102 }, exit_states: { north: 'locked' } },
+    occupants: [{ id: 'one', name: 'a guard', kind: 'npc', appearance: {}, equipment: {},
+      public_state: { condition: 'badly wounded' } }, { id: 'two', name: 'a guard', kind: 'npc' }],
+    allies: [{ name: 'a guard', leader: false, hpPct: 99 }],
+    auras: { buffs: 5, debuffs: 2 },
+  };
+  renderer.render(data);
+  assert.deepEqual(renderer.stage._bystanders.map((actor) => actor.key), ['one', 'two']);
+  assert.deepEqual(renderer.stage._allies, [], 'party names must not deduplicate or reveal private HP on public actors');
+  assert.match(deepHtml(body), /data-scene-command="look survey stakes"/);
+  assert.match(deepHtml(body), /Go north \(locked\)/);
+  const canvas = findCanvas(body);
+  renderer.render({ ...data, occupantsMore: 2 });
+  canvas.drawLog.length = 0;
+  runFrame(1000);
+  assert.ok(canvas.drawLog.some(([name, args]) => name === 'fillText' && args[0] === '+2'));
+  renderer.render({ ...data, model: combatModel(), occupantsMore: 2 });
+  canvas.drawLog.length = 0;
+  runFrame(1100);
+  assert.ok(!canvas.drawLog.some(([name, args]) => name === 'fillText' && args[0] === '+2'),
+    'idle occupant overflow must not overlap the combat HUD');
+  renderer.render({ ...data, occupants: [data.occupants[1]] });
+  assert.deepEqual(renderer.stage._bystanders.map((actor) => actor.key), ['two']);
+  renderer.render({ ...data, occupantsDark: true, occupantsMore: 19 });
+  assert.deepEqual(renderer.stage._bystanders, []);
+  assert.equal(renderer.stage._bystanderMore, 0);
+  assert.equal(renderer.stage._auras, null);
+  assert.doesNotMatch(deepHtml(body), /a guard|Acer|data-scene-command/);
+  renderer.render({ ...data, occupantsUnavailable: true });
+  assert.match(deepHtml(body), /room view is unavailable/);
+  assert.doesNotMatch(deepHtml(body), /a guard|Acer|data-scene-command/);
+  renderer.dispose();
+});
+
+test('V2 healing labels, number placement, and same-encounter resync clear delayed presentation', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  let model = reduceCombatEvents(combatModel({ version: 2 }), {
+    version: 2, epoch: 'epoch-1', encounter_id: 'encounter-1', first_seq: 5, last_seq: 5,
+    events: [{ seq: 5, kind: 'heal', perspective: 'self', actor_id: 'self', target_id: 'self',
+      ability_id: 'street-samurai.nanomend', ability_name: 'Nanomend',
+      result: 'healed', healing: 27, summary: 'You restore 27 health.' }],
+  });
+  model = takeNextCombatEvent(model).state;
+  renderer.render({ model: { ...model, reducedMotion: true }, vitals: { hp: 77, maxhp: 100 } });
+  assert.match(deepHtml(body), /Nanomend.*Healed.*27 healing/);
+  assert.doesNotMatch(deepHtml(body), /undefined/i);
+  const canvas = findCanvas(body);
+  canvas.drawLog.length = 0;
+  runFrame(1400);
+  assert.ok(canvas.drawLog.some(([name, args]) => name === 'fillText' && args[0] === '+27'));
+  assert.ok(!canvas.drawLog.some(([name, args]) => name === 'fillText' && args[0] === 'HEALED'),
+    'healing number must not overlap a result badge');
+  renderer.stage._soundTimers.add(setTimeout(() => assert.fail('stale sound fired'), 1000));
+  model = reduceCombatState(model, { version: 2, resync: 1, epoch: 'epoch-1',
+    encounter_id: 'encounter-1', seq: 5, visual_enabled: 1, effective: 1, active: 1,
+    current_actor_id: 'self', current_target_id: 'target-1',
+    actors: [{ id: 'self', name: 'Acer', role: 'self' }, { id: 'target-1', name: 'drake', role: 'target' }] });
+  renderer.render({ model });
+  assert.equal(renderer.stage._actions.length, 0);
+  assert.equal(renderer.stage._soundTimers.size, 0);
+  model = reduceCombatEvents(model, { epoch: 'epoch-1', encounter_id: 'encounter-1',
+    first_seq: 6, last_seq: 6, events: [{ seq: 6, kind: 'spell', perspective: 'outgoing',
+      actor_id: 'self', target_id: 'target-1', ability_id: 'mage.fireball', ability_name: 'Fireball',
+      result: 'no-effect', summary: 'Fireball has no effect.' }] });
+  model = takeNextCombatEvent(model).state;
+  renderer.render({ model });
+  assert.match(deepHtml(body), /Fireball.*No effect/);
+  assert.doesNotMatch(deepHtml(body), /undefined/i);
+  renderer.dispose();
 });

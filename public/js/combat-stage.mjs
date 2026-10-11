@@ -48,6 +48,13 @@ import {
   selectSpriteFrames,
   spriteKeysFor,
 } from './combat-sprites.mjs';
+import {
+  WEAPON_SPRITES,
+  placeShieldSprite,
+  placeWeaponSprite,
+  weaponSpriteFor,
+} from './combat-weapon-sprites.mjs';
+import { publicActorHints, publicEquipmentProfile } from './combat-visual-core.mjs';
 
 const MAX_CONCURRENT_ACTIONS = 3;
 // Body unit for the procedural figures, as a fraction of the stage radius.
@@ -124,7 +131,9 @@ function hexToRgb(hex) {
 const PIXEL_BUDGET = 2_200_000;
 const STATS_WINDOW_MS = 5000;
 const GLOW_SPRITE_LIMIT = 24;
-const PORTRAIT_SPRITE_LIMIT = 8;
+// The rig's head is sized for the portrait it used to carry; a plain head
+// reads better a little smaller.
+const HEAD_SCALE = 0.82;
 function bucketRadius(radius) {
   return Math.max(4, Math.round(radius / 4) * 4);
 }
@@ -192,7 +201,6 @@ export function createCombatStage(doc, options = {}) {
     _restFrameSkip: false,
     _hasSize: false,
     _glowSprites: new Map(),
-    _portraitSprites: new Map(),
     _spriteSurfaces: true,
     // Rolling draw cost: a smoothed per-frame draw time and the worst frame
     // of the last few seconds. Shown on the canvas when stats are enabled
@@ -210,6 +218,7 @@ export function createCombatStage(doc, options = {}) {
     _encounterState: null,
     _lowHealthState: null,
     _encounterKey: '',
+    _presentationReset: 0,
     _view: null,
     _reducedMotion: false,
     _backdrop: resolveStageBackdrop(null),
@@ -297,9 +306,13 @@ export function createCombatStage(doc, options = {}) {
     update(view, sources = {}) {
       if (this.destroyed || !view) return;
       const key = String(view.epoch || '') + ':' + String(view.encounterId || '');
+      if (key !== this._encounterKey || view.presentationReset !== this._presentationReset) {
+        this._actions = [];
+        this._clearSoundTimers();
+        this._presentationReset = view.presentationReset;
+      }
       if (key !== this._encounterKey) {
         this._encounterKey = key;
-        this._actions = [];
         this._playedSeqs.clear();
       }
       this._view = view;
@@ -313,6 +326,7 @@ export function createCombatStage(doc, options = {}) {
       if (alert.cue) this._cueSound(alert.cue);
       const scene = sources.scene && typeof sources.scene === 'object' ? sources.scene : {};
       this._sceneIdle = scene.idle !== undefined ? !!scene.idle : !view.active;
+      this._sceneHidden = this._sceneIdle && (scene.dark || scene.unavailable);
       if (!this._sceneIdle) this._sceneActions = [];
       this._backdrop = resolveStageBackdrop(sources.room, sources.roomImage);
       this._ambience = sceneAmbience(sources.ambience, this._backdrop.terrain);
@@ -322,9 +336,10 @@ export function createCombatStage(doc, options = {}) {
       this._playerFallback = fallbackList(sources.playerFallback);
       this._targetFallback = fallbackList(sources.targetFallback);
       // Allies first: a party member is not also shown as a bystander.
-      this._setAllies(sources.allies);
-      this._setBystanders(sources.players);
-      this._auras = sources.auras && typeof sources.auras === 'object' ? sources.auras : null;
+      if (this._sceneHidden || Array.isArray(sources.occupants)) this._allies = [];
+      else this._setAllies(sources.allies);
+      this._setBystanders(sources.occupants, sources.players, sources.occupantsMore, this._sceneHidden);
+      this._auras = !this._sceneHidden && sources.auras && typeof sources.auras === 'object' ? sources.auras : null;
       this._ensureImage(view.player.image, this._playerFallback);
       this._ensureImage(view.target.image, this._targetFallback);
       this._pruneImages([
@@ -411,7 +426,6 @@ export function createCombatStage(doc, options = {}) {
       }
       this._images.clear();
       this._glowSprites.clear();
-      this._portraitSprites.clear();
       if (element.parentNode && typeof element.parentNode.removeChild === 'function') {
         element.parentNode.removeChild(element);
       }
@@ -664,6 +678,12 @@ export function createCombatStage(doc, options = {}) {
         c.translate(-cx, -cy);
       }
       this._drawBackdrop(c, layout);
+      if (this._sceneHidden) {
+        c.fillStyle = 'rgba(3, 7, 11, 0.8)';
+        c.fillRect(0, 0, w, h);
+        c.restore();
+        return;
+      }
       const tokens = this._tokenPositions(layout, samples, t, scene);
       this._drawGround(c, layout, tokens);
       this._drawBystanders(c, layout, t);
@@ -874,27 +894,6 @@ export function createCombatStage(doc, options = {}) {
     // The portrait disc at the size it is drawn, so a fight does not
     // downscale a full-resolution portrait every frame. Keyed by image and
     // radius bucket; the disc is cropped the way the live draw was.
-    _portraitSprite(img, radius) {
-      const bucket = bucketRadius(radius);
-      const dpr = this._dpr;
-      const key = (img.src || '') + '|' + bucket + '|' + dpr;
-      const cached = this._portraitSprites.get(key);
-      if (cached && cached.img === img) return cached;
-      const size = bucket * 2;
-      const surface = this._offscreen(size * dpr, size * dpr);
-      if (!surface) return null;
-      const g = surface.ctx;
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const scale = Math.max(size / img.naturalWidth, size / img.naturalHeight);
-      const drawW = img.naturalWidth * scale;
-      const drawH = img.naturalHeight * scale;
-      g.drawImage(img, bucket - drawW / 2, -(drawH - size) * 0.3, drawW, drawH);
-      if (this._portraitSprites.size >= PORTRAIT_SPRITE_LIMIT) this._portraitSprites.clear();
-      const sprite = { canvas: surface.canvas, img, size };
-      this._portraitSprites.set(key, sprite);
-      return sprite;
-    },
-
     // The static part of the backdrop at device resolution, rebuilt only when
     // the art, the canvas size, or the pixel ratio changes. null when this
     // environment cannot make an offscreen canvas, in which case the caller
@@ -1094,22 +1093,38 @@ export function createCombatStage(doc, options = {}) {
       c.restore();
     },
 
-    _setBystanders(players) {
+    _setBystanders(occupants, players, serverMore = 0, dark = false) {
+      if (dark) {
+        // Visibility loss is authoritative: do not fade old names through darkness.
+        this._bystanders = [];
+        this._bystanderMore = 0;
+        return;
+      }
       const seen = new Set();
       const next = [];
-      for (const player of Array.isArray(players) ? players : []) {
+      const authoritative = Array.isArray(occupants);
+      const roster = authoritative ? occupants.filter((item) => item && item.kind !== 'self') : players;
+      let received = 0;
+      for (const player of Array.isArray(roster) ? roster : []) {
         const name = player && typeof player.name === 'string' ? player.name.trim() : '';
-        if (!name || seen.has(name)) continue;
-        if (this._allies.some((ally) => ally.want && ally.key === name.toLowerCase())) continue;
-        seen.add(name);
+        const key = authoritative ? String(player.id || '') : name;
+        if (!name || !key || seen.has(key)) continue;
+        received += 1;
+        if (next.length >= 8) continue;
+        if (!authoritative && this._allies.some((ally) => ally.want && ally.key === name.toLowerCase())) continue;
+        seen.add(key);
         const label = player.fullname && typeof player.fullname === 'string' && player.fullname.trim()
           ? player.fullname.trim()
           : name;
-        const existing = this._bystanders.find((entry) => entry.name === name);
-        next.push(existing ? { ...existing, label, want: 1 } : { name, label, presence: 0, want: 1 });
+        const condition = player.public_state && typeof player.public_state.condition === 'string'
+          ? player.public_state.condition.trim() : '';
+        const existing = this._bystanders.find((entry) => entry.key === key);
+        const fresh = { key, name, label, condition, occupant: player, presence: 0, want: 1 };
+        next.push(existing ? { ...existing, ...fresh, presence: existing.presence } : fresh);
       }
-      for (const entry of this._bystanders) {
-        if (!seen.has(entry.name) && entry.presence > 0) next.push({ ...entry, want: 0 });
+      this._bystanderMore = Math.max(0, Number(serverMore) || 0) + Math.max(0, received - 8);
+      if (!authoritative) for (const entry of this._bystanders) {
+        if (!seen.has(entry.key) && entry.presence > 0) next.push({ ...entry, want: 0 });
       }
       this._bystanders = next;
     },
@@ -1141,7 +1156,7 @@ export function createCombatStage(doc, options = {}) {
 
     _drawBystanders(c, layout, t) {
       const visible = this._bystanders.filter((entry) => entry.presence > 0);
-      if (!visible.length) return;
+      if (!visible.length && !this._bystanderMore) return;
       // The party has first call on the ground behind the player.
       const allies = this._allies.filter((entry) => entry.presence > 0);
       const taken = allies.length ? allyLayout(layout, allies.length).spots.map((spot) => spot.x) : [];
@@ -1153,14 +1168,15 @@ export function createCombatStage(doc, options = {}) {
         if (!(look.alpha > 0.002)) return;
         this._drawBystander(c, entry, spot, band, unit, look, t, index, layout.player.x);
       });
-      if (band.overflow > 0) {
+      const overflow = this._sceneIdle ? band.overflow + (this._bystanderMore || 0) : 0;
+      if (overflow > 0) {
         c.save();
         c.globalAlpha = 0.75;
         c.fillStyle = rgba(this._palette.text, 0.7);
         c.font = '600 ' + Math.round(band.radius * 0.5) + 'px "Segoe UI", system-ui, sans-serif';
         c.textAlign = 'right';
         c.textBaseline = 'alphabetic';
-        c.fillText('+' + band.overflow, layout.width - band.radius * 0.6, band.groundY + band.radius * 0.5);
+        c.fillText('+' + overflow, layout.width - 12, 24);
         c.restore();
       }
     },
@@ -1169,15 +1185,16 @@ export function createCombatStage(doc, options = {}) {
     // player, with a name under its feet. No portrait is known for other
     // players, so the head is the initial-lettered silhouette.
     _drawBystander(c, entry, spot, band, unit, look, t, index, playerX, options = {}) {
-      const base = resolveFigure({ name: entry.label }, 'player');
+      const publicEquipment = entry.occupant && entry.occupant.equipment;
+      const equipment = publicEquipment ? publicEquipmentProfile(publicEquipment) : null;
+      const base = resolveFigure({
+        name: entry.label,
+        ...(publicActorHints(entry.occupant) || {}),
+        equipment,
+      }, entry.occupant && entry.occupant.kind === 'npc' ? 'target' : 'player');
       const figure = {
         ...base,
-        weapon: 'none',
-        offKind: '',
-        shield: false,
-        helmet: false,
-        armor: false,
-        twoHanded: false,
+        ...(publicEquipment ? {} : { weapon: 'none', offKind: '', shield: false, helmet: false, armor: false, twoHanded: false }),
         caster: false,
         facing: options.facing || (spot.x <= playerX ? 1 : -1),
       };
@@ -1210,11 +1227,29 @@ export function createCombatStage(doc, options = {}) {
       this._drawNeck(c, geo, material);
       this._drawSilhouette(c, { x: geo.head.x, y: geo.head.y }, geo.head.r, { name: entry.label }, material.ring);
       this._drawArm(c, geo, geo.arms.right, material, 1);
+      if (geo.helmet) this._drawHelmet(c, geo.head, geo.facing);
+      if (figure.weapon === 'bow') this._drawBow(c, geo, geo.weapon);
+      else {
+        this._drawOffHand(c, geo, material);
+        if (figure.weapon !== 'none') this._drawHeldWeapon(c, geo, geo.weapon.kind,
+          geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, material.ring,
+          geo.twoHanded ? 1.2 : 1, 1, geo.weapon.style);
+      }
       c.fillStyle = rgba(this._palette.text, 0.78);
       c.font = '600 ' + Math.max(9, Math.round(band.radius * 0.4)) + 'px "Segoe UI", system-ui, sans-serif';
       c.textAlign = 'center';
       c.textBaseline = 'alphabetic';
-      c.fillText(options.caption || entry.name, spot.x, groundLine + band.radius * 0.55);
+      const maxLabelWidth = Math.max(24, this._width * 0.32);
+      const labelX = (text) => {
+        const half = Math.min(maxLabelWidth, c.measureText(text).width) / 2;
+        return Math.max(half + 8, Math.min(this._width - half - 8, spot.x));
+      };
+      const caption = options.caption || entry.name;
+      c.fillText(caption, labelX(caption), groundLine + band.radius * 0.55, maxLabelWidth);
+      if (entry.condition) {
+        c.font = Math.max(9, Math.round(band.radius * 0.35)) + 'px "Segoe UI", system-ui, sans-serif';
+        c.fillText(entry.condition, labelX(entry.condition), groundLine + band.radius * 1.1, maxLabelWidth);
+      }
       if (typeof options.hpPct === 'number') {
         // A small health bar over an ally's head.
         const barW = band.radius * 1.5;
@@ -1342,12 +1377,15 @@ export function createCombatStage(doc, options = {}) {
         this._drawLeg(c, geo, geo.legs.front, material, 1);
         this._drawNeck(c, geo, material);
       }
-      this._drawHead(c, head, side, combatant, material.ring, isActor, flashMix);
+      // The drawn figure and a sheet without painted heads get a plain head;
+      // the fighter's picture is in the header, beside the name.
+      const drawsHead = !sprite || sprite.sheet.portrait !== false;
+      if (drawsHead) this._drawHead(c, head, material, isActor, flashMix);
       if (geo.helmet) this._drawHelmet(c, head, geo.facing);
       if (!sprite) this._drawArm(c, geo, geo.arms.right, material, 1);
       if (!weaponsInArt && figure.weapon !== 'bow') {
         if (smear) this._drawSmear(c, figure, joints, phase, token, groundLine, unit, material, smear);
-        this._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, material.ring, geo.twoHanded ? 1.2 : 1, 1);
+        this._drawHeldWeapon(c, geo, geo.weapon.kind, geo.weapon.hand, geo.weapon.dx, geo.weapon.dy, material.ring, geo.twoHanded ? 1.2 : 1, 1, geo.weapon.style);
       }
       c.restore();
     },
@@ -1382,8 +1420,8 @@ export function createCombatStage(doc, options = {}) {
       };
       // Cloak and tail are live overlays (spring-lagged), so a baked sheet
       // leaves them out and they draw here behind the body.
-      if (geo.tail && sheet.rigAligned) this._drawTail(c, geo, material, secondary);
-      if (geo.cloak && sheet.rigAligned && sheet.cloak !== false) {
+      if (sheet.secondary && geo.tail && sheet.rigAligned) this._drawTail(c, geo, material, secondary);
+      if (sheet.secondary && geo.cloak && sheet.rigAligned && sheet.cloak !== false) {
         this._drawCloak(c, geo, material, secondary, typeof sheet.cloak === 'string' ? sheet.cloak : '');
       }
       if (flashMix > 0 && this._tintCanvas !== false) {
@@ -1737,7 +1775,7 @@ export function createCombatStage(doc, options = {}) {
         const ghostJoints = resolvePose({ ...smear, t: ghostT }, this._lastFrameAt, { reducedMotion: false });
         const ghost = figureGeometry(figure, ghostJoints, token.x, groundLine, unit, { baseX: token.baseX });
         c.globalAlpha = 0.12 + fraction * 0.16;
-        this._drawHeldWeapon(c, ghost, ghost.weapon.kind, ghost.weapon.hand, ghost.weapon.dx, ghost.weapon.dy, material.ring, ghost.twoHanded ? 1.2 : 1, 0.6);
+        this._drawHeldWeapon(c, ghost, ghost.weapon.kind, ghost.weapon.hand, ghost.weapon.dx, ghost.weapon.dy, material.ring, ghost.twoHanded ? 1.2 : 1, 0.6, ghost.weapon.style);
       }
       c.restore();
       void joints;
@@ -1748,12 +1786,30 @@ export function createCombatStage(doc, options = {}) {
       const w = geo.weapon;
       if (geo.shield) this._drawShieldArm(c, geo, material.ring);
       else if (w.offKind && w.offKind !== 'bow') {
-        this._drawHeldWeapon(c, geo, w.offKind, w.offHand, w.offDx, w.offDy, material.ring, 0.85, 0.75);
+        this._drawHeldWeapon(c, geo, w.offKind, w.offHand, w.offDx, w.offDy, material.ring, 0.85, 0.75, w.offStyle);
       }
     },
 
-    // One-handed weapon shapes, all drawn from the hand along (dx, dy).
-    _drawHeldWeapon(c, geo, kind, hand, dx, dy, ringColor, size, depth) {
+    // Weapon shapes, all drawn from the hand along (dx, dy). `style`
+    // distinguishes paintings that share one animation family. The vector
+    // shapes remain as the loading and error fallback.
+    _drawHeldWeapon(c, geo, kind, hand, dx, dy, ringColor, size, depth, style = '') {
+      const sprite = weaponSpriteFor(kind, style);
+      if (sprite) {
+        this._ensureImage(sprite.image);
+        const image = this._imageFor(sprite.image);
+        const placed = image ? placeWeaponSprite(sprite, hand, dx, dy, geo.unit, size) : null;
+        if (placed) {
+          c.save();
+          c.globalAlpha *= depth;
+          c.imageSmoothingEnabled = true;
+          c.translate(placed.x, placed.y);
+          c.rotate(placed.angle);
+          c.drawImage(image, placed.offsetX, placed.offsetY, placed.width, placed.height);
+          c.restore();
+          return;
+        }
+      }
       const u = geo.unit * size;
       const tip = (length) => ({ x: hand.x + dx * u * length, y: hand.y + dy * u * length });
       const across = (point, length) => ({ x: point.x - dy * u * length, y: point.y + dx * u * length });
@@ -1763,8 +1819,8 @@ export function createCombatStage(doc, options = {}) {
       c.lineJoin = 'round';
       c.globalAlpha *= depth;
       if (kind === 'blade' || kind === 'knife' || kind === 'rapier') {
-        const length = kind === 'knife' ? 0.55 : (kind === 'rapier' ? 1.3 : 1.2);
-        const width = u * (kind === 'knife' ? 0.09 : (kind === 'rapier' ? 0.06 : 0.13));
+        const length = style === 'great-sword' ? 1.65 : (kind === 'knife' ? 0.55 : (kind === 'rapier' ? 1.3 : 1.2));
+        const width = u * (style === 'great-sword' ? 0.2 : (kind === 'knife' ? 0.09 : (kind === 'rapier' ? 0.06 : 0.13)));
         const end = tip(length);
         const base = tip(0.08);
         // Blade as a tapered polygon with a bright edge.
@@ -1816,8 +1872,9 @@ export function createCombatStage(doc, options = {}) {
       } else if (kind === 'axe' || kind === 'blunt') {
         c.lineWidth = Math.max(3, u * 0.1);
         c.strokeStyle = '#6d5232';
-        const butt = tip(-0.25);
-        const end = tip(kind === 'axe' ? 0.95 : 0.85);
+        const heavy = style === 'great-axe' || style === 'maul';
+        const butt = tip(heavy ? -0.42 : -0.25);
+        const end = tip(kind === 'axe' ? (heavy ? 1.3 : 0.95) : (heavy ? 1.18 : 0.9));
         c.beginPath();
         c.moveTo(butt.x, butt.y);
         c.lineTo(end.x, end.y);
@@ -1826,10 +1883,10 @@ export function createCombatStage(doc, options = {}) {
         c.strokeStyle = outline;
         c.lineWidth = 1.2;
         if (kind === 'axe') {
-          const neck = tip(0.7);
-          const edgeA = across(tip(1.02), 0.4);
-          const edgeB = across(tip(0.45), 0.34);
-          const edgeMid = across(tip(0.74), 0.5);
+          const neck = tip(heavy ? 1.02 : 0.7);
+          const edgeA = across(tip(heavy ? 1.42 : 1.02), heavy ? 0.52 : 0.4);
+          const edgeB = across(tip(heavy ? 0.72 : 0.45), heavy ? 0.43 : 0.34);
+          const edgeMid = across(tip(heavy ? 1.08 : 0.74), heavy ? 0.64 : 0.5);
           c.beginPath();
           c.moveTo(neck.x, neck.y);
           c.lineTo(edgeB.x, edgeB.y);
@@ -1837,15 +1894,36 @@ export function createCombatStage(doc, options = {}) {
           c.closePath();
           c.fill();
           c.stroke();
+          if (heavy) {
+            const backA = across(tip(1.34), -0.42);
+            const backB = across(tip(0.78), -0.34);
+            c.beginPath();
+            c.moveTo(neck.x, neck.y);
+            c.lineTo(backB.x, backB.y);
+            c.lineTo(backA.x, backA.y);
+            c.closePath();
+            c.fill();
+            c.stroke();
+          }
         } else {
-          const head = tip(0.85);
+          const head = tip(heavy ? 1.18 : 0.9);
+          const halfLength = heavy ? 0.42 : 0.28;
+          const halfWidth = heavy ? 0.3 : 0.2;
+          const a = across(tip((heavy ? 1.18 : 0.9) - halfWidth), halfLength);
+          const b = across(tip((heavy ? 1.18 : 0.9) + halfWidth), halfLength);
+          const d = across(tip((heavy ? 1.18 : 0.9) - halfWidth), -halfLength);
+          const e = across(tip((heavy ? 1.18 : 0.9) + halfWidth), -halfLength);
           c.beginPath();
-          c.arc(head.x, head.y, u * 0.19, 0, Math.PI * 2);
+          c.moveTo(a.x, a.y);
+          c.lineTo(b.x, b.y);
+          c.lineTo(e.x, e.y);
+          c.lineTo(d.x, d.y);
+          c.closePath();
           c.fill();
           c.stroke();
           c.fillStyle = '#eef2f5';
           c.beginPath();
-          c.arc(head.x - u * 0.05, head.y - u * 0.06, u * 0.06, 0, Math.PI * 2);
+          c.arc(head.x - dx * u * 0.08 - dy * u * halfLength * 0.55, head.y - dy * u * 0.08 + dx * u * halfLength * 0.55, u * 0.06, 0, Math.PI * 2);
           c.fill();
         }
       } else if (kind === 'polearm') {
@@ -1943,13 +2021,25 @@ export function createCombatStage(doc, options = {}) {
       c.restore();
     },
 
-    // Shield strapped to the left forearm, following its angle.
+    // A compact kite shield strapped to the left forearm.
     _drawShieldArm(c, geo, ringColor) {
       const u = geo.unit;
       const arm = geo.arms.left;
       const angle = Math.atan2(arm.hand.y - arm.elbow.y, arm.hand.x - arm.elbow.x);
       const cx = (arm.hand.x + arm.elbow.x) / 2;
       const cy = (arm.hand.y + arm.elbow.y) / 2;
+      this._ensureImage(WEAPON_SPRITES.shield.image);
+      const image = this._imageFor(WEAPON_SPRITES.shield.image);
+      const placed = image ? placeShieldSprite({ x: cx, y: cy }, u) : null;
+      if (placed) {
+        c.save();
+        c.imageSmoothingEnabled = true;
+        c.translate(placed.x, placed.y);
+        c.rotate(angle);
+        c.drawImage(image, placed.offsetX, placed.offsetY, placed.width, placed.height);
+        c.restore();
+        return;
+      }
       c.save();
       c.translate(cx, cy);
       c.rotate(angle);
@@ -1957,13 +2047,21 @@ export function createCombatStage(doc, options = {}) {
       c.strokeStyle = '#07090c';
       c.lineWidth = 1.5;
       c.beginPath();
-      c.ellipse(0, 0, u * 0.52, u * 0.38, 0, 0, Math.PI * 2);
+      c.moveTo(-u * 0.46, -u * 0.38);
+      c.quadraticCurveTo(0, -u * 0.55, u * 0.46, -u * 0.38);
+      c.lineTo(u * 0.34, u * 0.22);
+      c.lineTo(0, u * 0.56);
+      c.lineTo(-u * 0.34, u * 0.22);
+      c.closePath();
       c.fill();
       c.stroke();
       c.strokeStyle = rgba(ringColor, 0.9);
       c.lineWidth = Math.max(2, u * 0.06);
       c.beginPath();
-      c.ellipse(0, 0, u * 0.42, u * 0.29, 0, 0, Math.PI * 2);
+      c.moveTo(0, -u * 0.4);
+      c.lineTo(0, u * 0.43);
+      c.moveTo(-u * 0.32, -u * 0.22);
+      c.lineTo(u * 0.32, -u * 0.22);
       c.stroke();
       c.fillStyle = '#b3bcc4';
       c.beginPath();
@@ -1993,52 +2091,24 @@ export function createCombatStage(doc, options = {}) {
       c.restore();
     },
 
-    _drawHead(c, head, side, combatant, ringColor, isActor, flashMix) {
-      const radius = head.r;
-      const fallback = side === 'player' ? this._playerFallback : this._targetFallback;
-      const img = this._imageFor(combatant.image, fallback);
+    // A plain head in the figure's skin, lit from the upper left. The side
+    // acting glows faintly in its team colour, as the portrait ring did.
+    _drawHead(c, head, material, isActor, flashMix) {
+      const r = head.r * HEAD_SCALE;
       const x = head.x;
       const y = head.y;
       c.save();
-      this._drawGlow(c, x, y, radius * 1.6, ringColor, isActor ? 0.34 : 0.16, 0.7 / 1.6);
-
-      c.save();
+      if (isActor) this._drawGlow(c, x, y, r * 1.7, material.ring, 0.3, 0.7 / 1.7);
+      const skin = flashMix > 0 ? this._flashMix(material.skin, flashMix) : material.skin;
+      const shade = c.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.15, x, y, r);
+      shade.addColorStop(0, skin);
+      shade.addColorStop(1, material.skinShade);
+      c.fillStyle = shade;
       c.beginPath();
-      c.arc(x, y, radius, 0, Math.PI * 2);
-      c.closePath();
-      c.clip();
-      c.fillStyle = side === 'player' ? '#07131a' : '#180d0b';
-      c.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-      if (img && img.naturalWidth > 0) {
-        const portrait = this._portraitSprite(img, radius);
-        if (portrait) {
-          c.drawImage(portrait.canvas, x - radius, y - radius, radius * 2, radius * 2);
-        } else {
-          const scale = Math.max((radius * 2) / img.naturalWidth, (radius * 2) / img.naturalHeight);
-          const drawW = img.naturalWidth * scale;
-          const drawH = img.naturalHeight * scale;
-          c.drawImage(img, x - drawW / 2, y - radius - (drawH - radius * 2) * 0.3, drawW, drawH);
-        }
-      } else {
-        this._drawSilhouette(c, { x, y }, radius, combatant, ringColor);
-      }
-      if (flashMix > 0) {
-        c.fillStyle = 'rgba(255, 244, 230, ' + (0.42 * flashMix) + ')';
-        c.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-      }
-      c.restore();
-
-      // The ring's soft edge used to be a shadowBlur, which rasterises a
-      // blur every frame; a wider translucent stroke underneath reads the
-      // same at token size and costs a second arc.
-      const ringWidth = Math.max(2, radius * 0.1);
-      c.beginPath();
-      c.arc(x, y, radius, 0, Math.PI * 2);
-      c.lineWidth = ringWidth + (isActor ? radius * 0.3 : radius * 0.12);
-      c.strokeStyle = rgba(ringColor, isActor ? 0.28 : 0.18);
-      c.stroke();
-      c.lineWidth = ringWidth;
-      c.strokeStyle = rgba(ringColor, 0.95);
+      c.arc(x, y, r, 0, Math.PI * 2);
+      c.fill();
+      c.lineWidth = Math.max(1.5, r * 0.09);
+      c.strokeStyle = '#07090c';
       c.stroke();
       c.restore();
     },
@@ -2243,7 +2313,7 @@ export function createCombatStage(doc, options = {}) {
 
     _drawBadge(c, layout, token, badge, number) {
       // Landed hits let the number speak; other results get a label.
-      if ((badge.result === 'hit' || badge.result === 'critical') && number) return;
+      if ((badge.result === 'hit' || badge.result === 'critical' || badge.result === 'healed') && number) return;
       const radius = layout.radius;
       const label = RESULT_BADGES[badge.result] || String(badge.result).toUpperCase();
       c.save();
@@ -2276,11 +2346,11 @@ export function createCombatStage(doc, options = {}) {
       c.textBaseline = 'alphabetic';
       c.lineWidth = Math.max(3, size * 0.12);
       c.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-      c.strokeText(String(number.value), token.x, y);
-      c.fillStyle = number.side === 'player' ? this._palette.danger : number.tint;
+      c.strokeText((number.healing ? '+' : '') + String(number.value), token.x, y);
+      c.fillStyle = number.healing ? number.tint : (number.side === 'player' ? this._palette.danger : number.tint);
       c.shadowColor = rgba(number.tint, 0.6);
       c.shadowBlur = size * 0.4;
-      c.fillText(String(number.value), token.x, y);
+      c.fillText((number.healing ? '+' : '') + String(number.value), token.x, y);
       c.restore();
     },
   };

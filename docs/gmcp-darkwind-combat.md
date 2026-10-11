@@ -1,10 +1,12 @@
 # Darkwind.Combat GMCP Protocol
 
-`Darkwind.Combat 1` carries recipient-safe combat presentation data for
+`Darkwind.Combat 2` carries recipient-safe combat presentation data for
 Darkflow's visual Combat pane. It complements the standard `Char` packages; it
 does not replace combat authority or provide a second set of hit points.
 
-The client advertises `Darkwind.Combat 1` only when the visual combat manager
+The client advertises `Darkwind.Combat 2`; servers that send unversioned State
+and Events payloads continue to use the V1 attack-only contract unchanged.
+Presentation readiness is still advertised only when the visual combat manager
 and renderer are available. The server does not advertise this package back to
 the client.
 
@@ -84,10 +86,92 @@ State is a recoverable snapshot, not an animation command:
 | `outcome`           | Empty while active; final values may include `victory`, `defeat`, `fled`, `target-lost`, or `disconnected`.                                                      |
 | `summary`           | Short accessible lifecycle summary.                                                                                                                              |
 
+Each actor may additionally carry these recipient-safe, additive objects:
+
+```json
+{
+  "id": "actor-2",
+  "name": "an ash drake",
+  "role": "target",
+  "appearance": {
+    "race": "drake",
+    "family": "dragonkin",
+    "gender": "unknown",
+    "size": "large",
+    "form": "quadruped"
+  },
+  "equipment": {
+    "main_hand": "a coarse cleaving weapon",
+    "off_hand": "",
+    "shield": "",
+    "helmet": "",
+    "armor": "scaled armor",
+    "weapon_type": "cleaving",
+    "off_hand_type": "piercing",
+    "weapon_style": "slash",
+    "off_hand_style": "thrust",
+    "two_handed": false
+  }
+}
+```
+
+`appearance` permits only `race`, `family`, `gender`, `size`, and `form`.
+Each is text of at most 80 characters; `size`, when present, is one of `tiny`,
+`small`, `medium`, `large`, or `huge`. `form` is the character-authoritative
+transformation `body_plan`, not an NPC guess. The client recognizes humanoid,
+quadruped/beast, and serpent presentation families and uses a safe generic
+figure for other values. V1 does not carry portrait or sprite URLs.
+
+`equipment` permits 80-character labels for `main_hand`, `off_hand`, `shield`,
+`helmet`, and `armor`. An empty label authoritatively means that slot has no
+visible equipment. `weapon_type` and `off_hand_type` are coarse server-derived
+categories: `focus`, `missile`, `polearm`, `cleaving`, `crushing`, `piercing`,
+or `slashing`. `weapon_style` and `off_hand_style` are `slash`, `thrust`, or
+`smash`. `two_handed` is an optional boolean (wire values `0` and `1` are also
+accepted). These fields do not identify an exact weapon.
+
+Invalid optional hint fields are discarded, and an invalid optional object
+becomes `{}`. They must not reject an otherwise valid lifecycle State or retain
+earlier hints. Core actor identity and sequence validation remains strict.
+
+Object presence is significant. If an object is absent, a legacy client may
+use the existing recipient-private `Char.Status`, `Char.Enemy`, or `Char.Items`
+fallback for the recipient's own fight. An explicit `{}` says that category is
+authoritatively unavailable and clears earlier hints; the client must not
+reconstruct it from names, guild defaults, inventory keywords, NPC status, or
+other private snapshots. Every State replaces the prior actor roster, so later
+omission removes earlier rich metadata rather than retaining it. Actor roster
+names outrank potentially stale `Char.Enemy` names when public metadata is
+present. Legacy own-fight snapshots retain the existing `Char.Enemy` name
+fallback. NPC classification still comes from `Char.Enemy` for the recipient's
+own fight; it must not override an authoritative public form or clearing.
+
+The objects contain public presentation data for that actor only. This makes
+them safe for passive observed fights, where each staged actor uses its own
+metadata. An observer must never fill gaps with the recipient's descriptors,
+equipment, HP, avatar, enemy art, or enemy HP. Unknown/redacted hints receive a
+generic figure; appearance presence alone, and NPC identity alone when public
+appearance is present, do not imply beast form.
+
 In observed group combat, the server may update `current_actor_id` as another
 player acts against the same right-side focus without changing
 `encounter_id`. This preserves pane position, history, and manual-close state
 instead of presenting every group swing as a new encounter.
+
+Actors may carry `public_state`: optional `condition`, `elite`, `boss`, and up to
+14 public `effects` labels. These are already observable monster-text hints,
+not exact HP or private registered buffs. Empty objects clear earlier public
+state. Optional `occupant_id` bridges an actor to an accepted current-room
+occupant ID; never join actors by name or retain the bridge after visibility
+loss. The validator and retained visual model discard unrelated public-state
+keys, including private HP fields.
+
+State also retains the existing tactical `position` and `preferred_position`
+(`melee` or `ranged`) and bounded `movement` fields: `action`, `target`,
+nonnegative integer `progress`, and `required`. These remain tactical labels;
+they are not stage coordinates. The Scene displays the recipient's position
+and movement progress while combat is presented. When idle, it returns to the
+recipient's room identity rather than leaving an observed combatant as self.
 
 When `current_actor_id` is `self`, `Char.Vitals` remains authoritative for
 player HP, `Char.Enemy` remains authoritative for the current target's HP,
@@ -102,6 +186,35 @@ Additional actor entries are compact context or threat indicators, not a
 private-stat feed.
 
 ## `Darkwind.Combat.Events`
+
+V2 Events and State payloads carry `"version": 2`; an absent version selects
+V1. V2 adds `skill`, `spell`, and `heal` alongside `attack`. Skills and spells
+require bounded public `ability_id` and `ability_name` labels (96 characters,
+never object paths), use `hit`, `critical`, or `no-effect`, and may expose
+nonnegative `damage`. Heals require the same ability labels, use `healed` or
+`no-effect`, may expose nonnegative `healing`, and may use `perspective: "self"`.
+Hidden or missing numbers remain absent and are never converted to zero.
+
+V2 overflow is `{omitted, omitted_by_kind}` with all four kind counters and
+optional authorized `damage` and `healing` totals. V1 retains
+`{omitted,hits,damage}`. Attack diagnostics and visibility remain governed by
+the existing permissions.
+
+The client accounts each accepted sequence before animation queue decisions.
+Outgoing attack, skill, and spell damage contributes to DPS; only attacks
+enter weapon hit/critical denominators, and healing never contributes. A V2
+State with `resync: true` clears current and queued playback without replaying
+or recounting same-epoch sequences. A sequence gap, unknown kind, or unknown
+actor requests a bounded fresh State and disables readiness; duplicate frames
+only advance nothing and do not disturb valid readiness.
+
+Isometric Room also consumes the current accepted V2 event, resolving actors
+only to visible room occupants. It shows generic skill/spell/heal cues and
+public ability/result labels, preserves omitted numbers, supports self-heals,
+and clears in-flight effects on resync. It does not alter Scene readiness,
+text suppression, or DPS accounting. See
+`isometric-room-server-handoff.md` for the room presentation and acceptance
+boundary.
 
 Events are transient and arrive in ordered, bounded batches:
 
@@ -120,6 +233,7 @@ Events are transient and arrive in ordered, bounded batches:
       "target_id": "actor-2",
       "result": "critical",
       "damage": 42,
+      "pre_mitigation_damage": 45,
       "absorbed": 3,
       "summary": "You critically hit an ash drake for 42 damage."
     }
@@ -133,8 +247,12 @@ Events are transient and arrive in ordered, bounded batches:
 ```
 
 Version 1 uses `kind: "attack"` and the results `hit`, `critical`, `miss`,
-`dodge`, and `absorb`. `perspective` is `outgoing`, `incoming`, or
-`observed`. Numeric fields and numeric wording are omitted when the player's
+`dodge`, `absorb`, and `block`. `perspective` is `outgoing`, `incoming`, or
+`observed`. `damage` is the final applied damage for that attack. The optional
+`pre_mitigation_damage` field, and `absorbed` on a landed hit, require
+sufficient Battle Sense fidelity. Fully absorbed and blocked attacks may carry
+`damage: 0` and their total mitigation in `absorbed` whenever damage numbers
+are enabled. Numeric fields and numeric wording are omitted when the player's
 existing `combatbrief damage` toggle is off.
 
 Darkflow rejects events from an older epoch or encounter, ignores duplicate or
@@ -190,14 +308,13 @@ a rate-limited polite live region. Reduced-motion mode removes lunges, shakes,
 flashes, moving damage numbers, and crossfades while preserving static outcome
 badges and summaries.
 
-Other players in the room stand in a band behind the scene while it is
-idle: smaller, further back, in muted colours, unarmed, facing the player,
-each named under its feet. They come from `Room.Players` and its add and
-remove messages, so an arrival fades in and a departure fades out; the
-band holds six and counts the rest as "+N". A fight clears the band and
-the idle scene brings it back. Nothing but a name is known about another
-player, so they draw as the initial-lettered silhouette; NPCs are not
-listed by any package and do not appear.
+The workspace Scene shows only the player between fights. Passive NPCs,
+other players, pets, and their overflow belong in Isometric Room, not a
+second Scene roster. Scene still uses the authoritative room self record
+for public appearance/equipment and respects darkness, unavailability, and
+snapshot recovery. Room scenery actions, exits, and the backdrop remain.
+During combat, the separate Combat roster supplies active fighters and
+threats, including NPCs, player opponents, and observed exchanges.
 
 ## Canvas Stage
 
@@ -213,13 +330,14 @@ and result badges are drawn on the canvas; names, health bars, condition text,
 the current exchange, threats, history, and the live region stay in the DOM so
 the accessibility contract above is unchanged.
 
-The figures are drawn from a pose rig rather than image assets. The player's
-wielded and worn items from `Char.Items` shape the figure: the main-hand
+The figures are drawn from a pose rig rather than image assets. Public actor
+appearance and equipment from State shape the figure when present. On legacy
+packets, the player's wielded and worn items from `Char.Items` shape it: the main-hand
 item's name picks the weapon (blade, knife, axe, blunt, polearm, staff, bow,
 or bare hands when nothing is wielded), an off-hand item is drawn in the
 left hand, a shield rides the left forearm, head armor draws a helmet, and
 body armor thickens the torso. Weapon kind is a keyword heuristic over the
-item name because the protocol carries no weapon type; an unrecognized name,
+item name; an unrecognized name,
 or no inventory yet, falls back to the guild's weapon. Race scales the body,
 and NPC targets use a hunched beast form. Each event blends the actor
 through windup and strike poses and the victim through recoil, dodge, or guard
@@ -277,17 +395,10 @@ folds any positive value into a 0 to 1 lift with a saturating curve.
 
 ### The party and auras
 
-Members of the player's `Group` whose `info.here` says they are in the room
-stand behind the player, in the player's colours, facing the fight. Unlike
-bystanders they stay while a fight is on. Each carries a health bar from
-`info.hp` and `info.maxhp`, coloured by how hurt they are, and the leader is
-starred. With room to spare, as on the idle scene where the player stands
-mid-stage, they form a rank with name captions. In a fight the player stands
-near the edge, so the rank recedes diagonally instead, each ally further
-back, higher, and smaller, without captions; the initial on each head and
-the bars carry it. At most four are drawn and the rest are counted. A party
-member is never also drawn as a bystander, and bystanders take ground the
-party is not standing on.
+The workspace Scene no longer adds party stand-ins from `Group`. Group data
+remains available to other panels; actual party combatants can still appear
+through the Combat roster. The retained canvas renderer supports legacy
+bystander/allies inputs, but the workspace Scene does not supply them.
 
 The player's `Char.Defences` show as glows on the ground under their feet:
 warm for buffs, brighter with more of them up to four, and murky for

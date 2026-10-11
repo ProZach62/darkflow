@@ -21,7 +21,6 @@
     bossSightings,
     hasBossTag,
     matchesBossSighting,
-    partyAllies,
     summarizeAuras,
   } = combatStageCore;
 
@@ -69,7 +68,12 @@
     const ambienceInput = (): { stage: string; moonLight: number } | null => {
       if (!sceneSettings.sceneDayNight) return null;
       const sky = activeSession.information.getSnapshot().sky;
-      if (!sky) return null;
+      if (!sky) {
+        const time = activeSession.world.getSnapshot().room?.scene?.time;
+        return typeof time === "string"
+          ? { stage: time === "dusk" ? "twilight" : time, moonLight: 0 }
+          : null;
+      }
       return {
         stage: String(skyCurrentState(sky).stage),
         moonLight: Number(sky.moon_light) || 0,
@@ -78,11 +82,6 @@
     const ambienceKey = (): string => {
       const ambience = ambienceInput();
       return ambience ? ambience.stage + ":" + ambience.moonLight : "";
-    };
-    // Party members who are in the room stand behind the player.
-    const alliesInput = (): Array<{ name: string; leader: boolean; hpPct: number | null }> => {
-      const information = activeSession.information.getSnapshot();
-      return partyAllies(information.group, information.status?.name ?? "");
     };
     // When each defence entry was first seen, so its countdown can be followed
     // without the server resending it. Entries are replaced, never mutated.
@@ -105,22 +104,7 @@
       return [dps.active ? 1 : 0, dps.encounter.swings, dps.encounter.damage].join(":");
     };
     // Everything the Scene shows beyond the fight itself, as one comparable key.
-    const sceneKey = (): string =>
-      ambienceKey() +
-      "|" +
-      alliesInput()
-        .map(
-          (ally) =>
-            ally.name +
-            (ally.leader ? "*" : "") +
-            ":" +
-            (ally.hpPct === null ? "" : Math.round(ally.hpPct / 5)),
-        )
-        .join(",") +
-      "|" +
-      aurasInput().key +
-      "|" +
-      dpsKey();
+    const sceneKey = (): string => ambienceKey() + "|" + aurasInput().key + "|" + dpsKey();
     // The game tags its bosses with "(BOSS)" in the name. These are the
     // untagged enemies this character has starred as bosses too, by bossKey.
     const bossStorageKey = "darkflow-scene-bosses:" + activeSession.characterProfileId;
@@ -168,6 +152,7 @@
     const renderer = createCombatStageRenderer(body, {
       onSound: playSceneSound,
       onToggleBoss: toggleBoss,
+      onSceneCommand: (command: string) => activeSession.terminal.sendCommand(command),
     });
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const syncReducedMotion = (): void => {
@@ -215,10 +200,18 @@
             // showing, and the terrain tile otherwise.
             room: world.room,
             roomImage: roomImageUrl(world),
-            // Other players in the room, drawn as bystanders on the idle scene.
-            players: world.players,
+            // Isometric Room owns passive occupants; Scene keeps public self
+            // appearance and the separate active combat roster.
+            players: [],
+            occupants: world.occupantsAuthoritative
+              ? world.occupants.filter((occupant) => occupant.kind === "self")
+              : null,
+            occupantsMore: 0,
+            occupantsDark: world.occupantsDark,
+            occupantsUnavailable:
+              world.occupantsUnavailable || (world.occupantsAuthoritative && !world.occupantsReady),
             ambience: ambienceInput(),
-            allies: alliesInput(),
+            allies: [],
             auras: aurasInput(),
             dps: dpsInput(),
             boss: {
@@ -251,7 +244,21 @@
       renderer.playActivity(activity.latest);
     });
     const worldKey = (world: SessionWorldSnapshot): string =>
-      backdropKey(world) + "|" + world.players.map((player) => player.name).join(",");
+      backdropKey(world) +
+      "|" +
+      JSON.stringify([
+        world.room?.looks,
+        world.room?.details,
+        world.room?.exits,
+        world.room?.exit_states,
+        world.room?.exit_details,
+        world.room?.scene,
+        world.occupantsAuthoritative,
+        world.occupantsReady,
+        world.occupantsDark,
+        world.occupantsUnavailable,
+        world.occupants.filter((occupant) => occupant.kind === "self"),
+      ]);
     let lastBackdropKey = worldKey(activeSession.world.getSnapshot());
     const unsubscribeWorld = activeSession.world.subscribe((world) => {
       const key = worldKey(world);

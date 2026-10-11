@@ -122,6 +122,18 @@ Then play them with any category indicator:
   play_sound(player, "alert", "bosses/dragon-roar")
   loop_sound(player, "ambient", "areas/tavern-music.mp3", "room-music")
 
+Area Sounds: Hel (Asgard)
+-------------------------
+  areas/hel/hela-cackle.mp3    - Hela's cackle, the first time a player enters
+  areas/hel/hunt-horn.mp3      - The horn of Hela's hunt
+  areas/hel/hunt-heartbeat.mp3 - Frantic heartbeat loop while the hunt is in the
+                                 next room (seamless, 160 bpm)
+
+All three are CC0, from OpenGameArt and Wikimedia Commons: "Evil Cackle Laugh 1"
+by Nocturnal_Vanguard (AuraVoice), "Hunting horn tone" by Alon-De-Lon, and
+"Heartbeat sounds" by bart. Each was edited: trimmed, pitched, given reverb or
+echo, and levelled. The heartbeat was rebuilt at 160 bpm.
+
 Notes
 -----
 - Sound files should be reasonably small (under 500KB recommended)

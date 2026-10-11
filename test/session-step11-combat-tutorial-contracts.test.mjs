@@ -64,6 +64,49 @@ function combatEvent(seq, overrides = {}) {
   };
 }
 
+test("Combat V2 validates mixed abilities, hidden numbers, and overflow by kind", async (t) => {
+  const contracts = await loadContracts(t);
+  const frame = {
+    version: 2,
+    epoch: "connection-7",
+    encounter_id: "encounter-12",
+    first_seq: 18,
+    last_seq: 21,
+    events: [
+      combatEvent(18, { damage: 13, pre_mitigation_damage: 29 }),
+      combatEvent(19, { kind: "skill", ability_id: "hamstring", ability_name: "Hamstring", result: "no-effect", damage: undefined }),
+      combatEvent(20, { kind: "spell", ability_id: "ember", ability_name: "Ember", result: "critical", damage: 31 }),
+      combatEvent(21, { kind: "heal", perspective: "self", actor_id: "self", target_id: "self",
+        ability_id: "renew", ability_name: "Renew", result: "healed", damage: undefined, absorbed: undefined, healing: 999999 }),
+    ],
+    overflow: { omitted: 0, omitted_by_kind: { attack: 0, skill: 0, spell: 0, heal: 0 }, damage: 0, healing: 0 },
+  };
+  delete frame.events[1].damage;
+  delete frame.events[3].damage;
+  delete frame.events[3].absorbed;
+  const normalized = contracts.normalizeDarkwindCombatEvents(frame);
+  assert.equal(normalized.version, 2);
+  assert.equal(Object.hasOwn(normalized.events[1], "damage"), false, "hidden damage stays absent");
+  assert.equal(normalized.events[3].healing, 999999);
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame,
+    overflow: { ...frame.overflow, omitted: 1 },
+  }), null, "overflow kind counts must sum to omitted");
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame,
+    events: [frame.events[1], frame.events[0], frame.events[2], frame.events[3]],
+  }), null, "events must be ordered and contiguous after overflow");
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame,
+    events: frame.events.slice(1), first_seq: 18,
+    overflow: { omitted: 1, omitted_by_kind: { attack: 1, skill: 0, spell: 0, heal: 0 } },
+  })?.events[0].seq, 19, "overflow accounts for the leading sequence span");
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame, events: [
+    combatEvent(18, { kind: "heal", perspective: "self", actor_id: "self", target_id: "other",
+      ability_id: "renew", ability_name: "Renew", result: "healed", damage: undefined, absorbed: undefined }),
+  ], first_seq: 18, last_seq: 18 }), null, "self heals require matching actor and target");
+  assert.equal(contracts.normalizeDarkwindCombatEvents({ ...frame, events: [
+    combatEvent(18, { kind: "spell", ability_id: "/guilds/mage/fireball", ability_name: "Fireball" }),
+  ], first_seq: 18, last_seq: 18 }), null, "ability IDs are labels, not paths");
+});
+
 function tutorialState(overrides = {}) {
   return {
     epoch: "acer:1722109500",
@@ -95,6 +138,20 @@ function tutorialState(overrides = {}) {
 test("Step 11 Combat and Tutorial contracts bound and clean every direction", async (t) => {
   const contracts = await loadContracts(t);
 
+  await t.test("retains only public actor state and bounded tactical movement", () => {
+    const state = contracts.normalizeDarkwindCombatState(combatState({
+      position: "ranged", preferred_position: "melee",
+      movement: { action: "fallback", target: "a guard", progress: 2, required: 5, object: "/private" },
+      actors: [{ id: "target", name: "a guard", role: "target", occupant_id: "room-3",
+        public_state: { condition: "badly wounded", elite: 1, boss: 0, effects: ["bleeding"], hp: 32 } }],
+    }));
+    assert.deepEqual(state.actors[0], { id: "target", name: "a guard", role: "target", occupant_id: "room-3",
+      public_state: { condition: "badly wounded", elite: true, boss: false, effects: ["bleeding"] } });
+    assert.equal(state.position, "ranged");
+    assert.equal(state.preferred_position, "melee");
+    assert.deepEqual(state.movement, { action: "fallback", target: "a guard", progress: 2, required: 5 });
+  });
+
   await t.test("normalizes live Combat State, Events, and singular Event shapes", () => {
     const state = contracts.normalizeDarkwindCombatState(combatState());
     assert.deepEqual(state, {
@@ -125,6 +182,25 @@ test("Step 11 Combat and Tutorial contracts bound and clean every direction", as
     });
     assert.equal(batch.events[0].damage, 12);
     assert.deepEqual(batch.overflow, { omitted: 0, hits: 0, damage: 0 });
+    const blocked = contracts.normalizeDarkwindCombatEvents({
+      epoch: "connection-7",
+      encounter_id: "encounter-12",
+      first_seq: 19,
+      last_seq: 19,
+      events: [
+        combatEvent(19, {
+          result: "block",
+          damage: 0,
+          pre_mitigation_damage: 45,
+          absorbed: 45,
+        }),
+      ],
+      overflow: { omitted: 0, hits: 0, damage: 0 },
+    });
+    assert.deepEqual(blocked.events[0], {
+      ...combatEvent(19, { result: "block", damage: 0, absorbed: 45 }),
+      pre_mitigation_damage: 45,
+    });
     assert.deepEqual(
       contracts.normalizeDarkwindCombatEvent({
         epoch: "connection-7",
@@ -135,6 +211,57 @@ test("Step 11 Combat and Tutorial contracts bound and clean every direction", as
       { epoch: "connection-7", encounter_id: "encounter-12", ...combatEvent(19), damage: 12 },
     );
     assert.equal(contracts.DARKWIND_COMBAT_RESYNC, undefined);
+  });
+
+  await t.test("carries only bounded public actor snapshots through validation", () => {
+    const state = contracts.normalizeDarkwindCombatState(combatState({
+      actors: [{
+        id: "self",
+        name: "Roster Name",
+        role: "self",
+        appearance: {
+          race: "Scro\u0007",
+          family: "Orc",
+          gender: "male",
+          size: "LARGE",
+          form: "humanoid",
+          portrait_url: "https://private.invalid/me.png",
+          hp: 99,
+        },
+        equipment: {
+          main_hand: "coarse weapon",
+          off_hand: "narrow weapon",
+          weapon_type: "cleaving",
+          off_hand_type: "piercing",
+          weapon_style: "slash",
+          off_hand_style: "thrust",
+          two_handed: 0,
+          inventory: [{ private: true }],
+        },
+        private_path: "/players/secret",
+      }],
+    }));
+    assert.deepEqual(state.actors[0], {
+      id: "self",
+      name: "Roster Name",
+      role: "self",
+      appearance: { race: "Scro", family: "Orc", gender: "male", size: "large", form: "humanoid" },
+      equipment: {
+        main_hand: "coarse weapon",
+        off_hand: "narrow weapon",
+        weapon_type: "cleaving",
+        off_hand_type: "piercing",
+        weapon_style: "slash",
+        off_hand_style: "thrust",
+        two_handed: false,
+      },
+    });
+    assert.deepEqual(contracts.normalizeDarkwindCombatState(combatState({
+      actors: [{ id: "self", name: "A", role: "self", appearance: { race: "x".repeat(81) } }],
+    })).actors[0].appearance, {});
+    assert.deepEqual(contracts.normalizeDarkwindCombatState(combatState({
+      actors: [{ id: "self", name: "A", role: "self", equipment: { weapon_type: "secret-sword" } }],
+    })).actors[0].equipment, {});
   });
 
   await t.test("caps Combat rows before ignoring malformed excess", () => {
@@ -153,11 +280,12 @@ test("Step 11 Combat and Tutorial contracts bound and clean every direction", as
       epoch: "connection-7",
       encounter_id: "encounter-12",
       first_seq: 1,
-      last_seq: 12,
-      events: [...Array.from({ length: 12 }, (_, index) => combatEvent(index + 1)), null],
+      last_seq: 13,
+      events: [...Array.from({ length: 12 }, (_, index) => combatEvent(index + 2)), null],
       overflow: { omitted: 1, hits: 1, damage: 2 },
     });
     assert.equal(events.events.length, 12);
+    assert.equal(contracts.normalizeDarkwindCombatState(combatState({ version: 1 })).version, undefined);
   });
 
   await t.test("rejects malformed, non-finite, and oversized retained Combat fields", () => {

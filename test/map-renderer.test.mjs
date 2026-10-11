@@ -25,6 +25,7 @@ globalThis.Audio = class { play() { return Promise.resolve(); } addEventListener
 
 const { renderMap } = await import('../public/js/map-renderer.js');
 const v2 = await import('../public/js/map-data-v2.js');
+const { mapRoomCard } = await import('../public/js/map-card-core.js');
 const { gmcp } = await import('../public/js/gmcp.js');
 // The model now sends sync requests on its own (login/baseline reconciliation);
 // stub the transport so tests never touch the real socket plumbing.
@@ -146,7 +147,11 @@ test('map overscan does not enlarge the frame layout box', () => {
   assert.deepEqual(debug.viewport, { width: 7, height: 5 });
   assert.deepEqual(debug.grid, { width: 11, height: 9 });
   assert.ok(body.innerHTML.includes('class="map-grid-frame" style="width:272px;height:192px'));
-  assert.ok(body.innerHTML.includes('class="map-grid" style="left:-80px;top:-80px'));
+  // The grid covers a window four cells past the view's grid on each side,
+  // anchored to the world (x from -12, y from -8 here), and sits offset so
+  // the frame shows the view: (gridX + overscan - anchor) cells of 40px.
+  assert.ok(body.innerHTML.includes('class="map-grid" style="left:-360px;top:-240px'));
+  assert.ok(body.innerHTML.includes('grid-template-columns:repeat(19,32px);grid-template-rows:repeat(17,32px)'));
 });
 
 test('content-sized map frames stabilize instead of growing on resize rerenders', () => {
@@ -243,7 +248,8 @@ test('exits to a different zone render as stubs, not connectors', () => {
   assert.ok(out.includes('map-stub-e map-stub-area"'),
     'cross-zone east exit -> area-boundary stub');
   assert.ok(!out.includes('map-conn-e"'), 'cross-zone exit must not be a connector');
-  assert.ok(out.includes('east -&gt; ZoneB'), 'tooltip names the destination zone');
+  assert.deepEqual(mapRoomCard(v2.getRoom('ZoneA:edge'), v2).exits,
+    [{ dir: 'east', to: 'Other Gate', area: 'ZoneB', door: null }], 'the room card names the destination zone');
 });
 
 // ── Diagonal exits + per-tile indicators ─────────────────────────────────────
@@ -453,7 +459,7 @@ test('doors render state-colored ticks, even with no exit behind them', () => {
     'closed up-door renders a tinted up glyph despite no up exit');
 });
 
-test('room details render a feature badge and tooltip list', () => {
+test('room details render a feature badge, and the room card lists them', () => {
   const area = 'DetailLand';
   const out = renderWithRooms(area, [
     { id: area + ':A', name: 'General Store', area, env: 'city',
@@ -461,7 +467,7 @@ test('room details render a feature badge and tooltip list', () => {
       details: ['shop', 'bank'] },
   ]);
   assert.ok(out.includes('map-detail map-detail-icon map-detail-shop"><svg'), 'shop badge is the drawn shop icon');
-  assert.ok(out.includes('[shop, bank]'), 'tooltip lists every detail');
+  assert.deepEqual(mapRoomCard(v2.getRoom(area + ':A'), v2).services, ['Shop', 'Bank'], 'the card lists every detail');
 });
 
 test('browse mode renders a catalog area with no player marker', () => {

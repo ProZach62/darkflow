@@ -101,7 +101,10 @@ test("the DPS runtime tallies outgoing swings from the session bus and publishes
   harness.gmcp.dispatch("Darkwind.Combat.State", state());
   harness.gmcp.dispatch(
     "Darkwind.Combat.Events",
-    events([swing(1, { damage: 400 }), swing(2, { result: "critical", damage: 600 })]),
+    events([
+      swing(1, { damage: 400, pre_mitigation_damage: 475, absorbed: 75 }),
+      swing(2, { result: "critical", damage: 600 }),
+    ]),
   );
   clock.now += 10_000;
 
@@ -109,6 +112,8 @@ test("the DPS runtime tallies outgoing swings from the session bus and publishes
   assert.equal(snapshot.active, true);
   assert.equal(snapshot.targetName, "an ash drake");
   assert.equal(snapshot.encounter.damage, 1000);
+  assert.equal(snapshot.encounter.absorbed, 75);
+  assert.equal(snapshot.encounter.bestHit, 600, "DPS uses final damage, not pre-mitigation damage");
   assert.equal(snapshot.encounter.crits, 1);
   assert.equal(Object.isFrozen(snapshot), true);
   assert.equal(Object.isFrozen(snapshot.history), true);
@@ -127,6 +132,21 @@ test("the DPS runtime tallies outgoing swings from the session bus and publishes
     events([swing(4, { perspective: "incoming", actor_id: "actor-2", target_id: "self", damage: 999 })]),
   );
   assert.equal(harness.dps.getSnapshot().encounter.damage, 1050);
+
+  harness.gmcp.dispatch(
+    "Darkwind.Combat.Events",
+    events([
+      swing(5, {
+        result: "block",
+        damage: 0,
+        pre_mitigation_damage: 125,
+        absorbed: 125,
+      }),
+    ]),
+  );
+  assert.equal(harness.dps.getSnapshot().encounter.damage, 1050);
+  assert.equal(harness.dps.getSnapshot().encounter.absorbed, 200);
+  assert.equal(harness.dps.getSnapshot().encounter.swings, 4, "a block remains an outgoing swing");
 });
 
 test("a disconnect closes the live fight, a reset clears the session, and disposal stops publishing", async (t) => {
@@ -158,4 +178,37 @@ test("a disconnect closes the live fight, a reset clears the session, and dispos
   const before = published;
   harness.dps.resetSession();
   assert.equal(published, before, "a disposed runtime publishes nothing");
+});
+
+test("V2 pilots tally damage, not heals or malformed actors, and resync preserves totals", async (t) => {
+  const modules = await loadModules(t);
+  const harness = createHarness(modules, { now: 1_000_000 });
+  t.after(() => harness.scope.dispose());
+  harness.reconnect("connected");
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ version: 2, seq: 0 }));
+  const send = (seq, overrides) => harness.gmcp.dispatch("Darkwind.Combat.Event", {
+    version: 2, epoch: "connection-7", encounter_id: "encounter-12", ...swing(seq, overrides),
+  });
+  send(1, { damage: 10 });
+  send(2, { kind: "skill", ability_id: "street-samurai.snapcut", ability_name: "Snap Cut", damage: 18 });
+  send(3, { kind: "spell", ability_id: "mage.fireball", ability_name: "Fireball", result: "critical", damage: 42 });
+  // Omitted numeric data must be truly absent, rather than undefined on the wire.
+  harness.gmcp.dispatch("Darkwind.Combat.Event", { version: 2, epoch: "connection-7",
+    encounter_id: "encounter-12", seq: 4, kind: "heal", ability_id: "street-samurai.nanomend",
+    ability_name: "Nanomend", perspective: "self", actor_id: "self", target_id: "self",
+    result: "healed", healing: 27, summary: "You restore 27 health." });
+  send(5, { kind: "spell", ability_id: "mage.fireball", ability_name: "Fireball", actor_id: "unknown", damage: 999 });
+  let snapshot = harness.dps.getSnapshot();
+  assert.equal(snapshot.encounter.damage, 70);
+  assert.equal(snapshot.encounter.swings, 1);
+  assert.equal(snapshot.encounter.hits, 1);
+  assert.equal(snapshot.encounter.crits, 0);
+  harness.gmcp.dispatch("Darkwind.Combat.State", state({ version: 2, resync: 1, seq: 7 }));
+  send(6, { damage: 999 });
+  assert.equal(harness.dps.getSnapshot().encounter.damage, 70,
+    "resync advances the watermark without erasing existing accounting");
+  send(8, { damage: 11 });
+  snapshot = harness.dps.getSnapshot();
+  assert.equal(snapshot.encounter.damage, 81);
+  assert.equal(snapshot.encounter.swings, 2);
 });

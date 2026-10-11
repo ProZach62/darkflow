@@ -137,7 +137,6 @@ export const fishingManager = {
       scopedGmcp.on(PKG.ESCAPED, (data) => this._onEscaped(data));
       scopedGmcp.on(PKG.ART, (data) => this._onArt(data));
       scopedGmcp.on(PKG.END, (data) => this._onEnd(data));
-
       fishingAuto.attach(this);
       const closeHandler = () => {
         fishingAuto.notifyManualInput();

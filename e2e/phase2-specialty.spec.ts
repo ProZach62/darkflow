@@ -212,6 +212,188 @@ async function disposeSession(page: Page): Promise<void> {
   });
 }
 
+test("idle Scene consumes authored room targets and clears private fallbacks", async ({
+  page,
+}, testInfo) => {
+  const endpoint = await connect(page);
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState());
+  const scene = page.getByRole("region", { name: "Visual combat" });
+  await expect(scene).toBeVisible();
+  endpoint.sendGmcp("Room.Info", {
+    num: 101,
+    name: "Blue Maw Landing",
+    environment: "underground",
+    looks: [
+      { id: "stakes", name: "Survey stakes", nouns: ["survey stakes", "stakes"], sprite: "sign" },
+      { id: "ladder", name: "Fixed ladder", nouns: ["fixed ladder", "ladder"] },
+    ],
+    details: [],
+    exits: { north: 102 },
+    exit_states: { north: "locked" },
+    exit_details: { north: { kind: "door", label: "North gate" } },
+    scene: { time: "night", lighting: "lit" },
+  });
+  endpoint.sendGmcp("Char.Status", { name: "Acer", race: "human" });
+  endpoint.sendGmcp("Room.Players", [{ name: "Legacy visitor" }]);
+  endpoint.sendGmcp("Group", {
+    leader: "Party ally",
+    members: [
+      { name: "Acer", info: { here: "yes", hp: 100, maxhp: 100 } },
+      { name: "Party ally", info: { here: "yes", hp: 40, maxhp: 100 } },
+    ],
+  });
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState({ active: 0, seq: 2 }));
+  await expect(scene).toHaveClass(/combat-scene-idle/);
+  await expect(scene.locator(".combat-token-hud-player")).toContainText("Acer");
+  await expect(scene.getByRole("list", { name: "Room occupants" })).toHaveCount(0);
+  if (process.env.SCENE_SCREENSHOTS)
+    await scene.screenshot({
+      path: `${process.env.SCENE_SCREENSHOTS}/scene-self-only-legacy-${testInfo.project.name}.png`,
+    });
+  const roster = {
+    version: 1,
+    room: 101,
+    mode: "snapshot",
+    revision: 1,
+    dark: 0,
+    more: 2,
+    upsert: [
+      { id: "recipient", name: "Acer", kind: "self", appearance: { race: "human" }, equipment: {} },
+      {
+        id: "guard-one",
+        name: "a guard",
+        kind: "npc",
+        appearance: { race: "dwarf" },
+        equipment: { main_hand: "a steel axe", weapon_type: "cleaving" },
+        public_state: { condition: "badly wounded" },
+      },
+      {
+        id: "guard-two",
+        name: "a guard",
+        kind: "npc",
+        appearance: { race: "elf", gender: "female" },
+        equipment: {},
+      },
+      { id: "visitor", name: "Room visitor", kind: "player", appearance: { race: "elf" } },
+    ],
+    removed: [],
+  };
+  endpoint.sendGmcp("Darkwind.Room.Occupants", roster);
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState({ active: 0, seq: 3 }));
+  await expect(scene).toHaveClass(/combat-scene-idle/);
+  await expect(scene.getByRole("button", { name: "Look at Survey stakes" })).toBeVisible();
+  await expect(
+    scene.getByRole("button", { name: "Go North gate (locked)", exact: true }),
+  ).toBeVisible();
+  await expect(scene.getByRole("list", { name: "Room occupants" })).toHaveCount(0);
+  await expect(scene.locator(".combat-token-hud-player")).toContainText("Acer");
+  await expect(scene.locator(".combat-token-hud-target")).toHaveCount(0);
+  await expect(scene).not.toContainText("a guard");
+  await expect(scene).not.toContainText("Room visitor");
+  const commandStart = endpoint.commands.length;
+  await scene.getByRole("button", { name: "Look at Survey stakes" }).click();
+  await expect.poll(() => endpoint.commands.slice(commandStart)).toContain("look survey stakes");
+  await scene.getByRole("button", { name: "Go North gate (locked)", exact: true }).click();
+  await expect.poll(() => endpoint.commands.slice(commandStart)).toContain("north");
+  if (process.env.SCENE_SCREENSHOTS)
+    await scene.screenshot({
+      path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-${testInfo.project.name}.png`,
+    });
+  endpoint.sendGmcp("Darkwind.Room.Occupants", {
+    ...roster,
+    revision: 2,
+    dark: 1,
+    more: 0,
+    upsert: [],
+  });
+  await expect(scene).toContainText("too dark");
+  await expect(scene.locator("[data-scene-command], .combat-token-hud")).toHaveCount(0);
+  await expect(scene).not.toContainText("a guard");
+  if (process.env.SCENE_SCREENSHOTS)
+    await scene.screenshot({
+      path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-dark-${testInfo.project.name}.png`,
+    });
+  endpoint.sendGmcp("Darkwind.Room.Occupants", {
+    ...roster,
+    revision: 3,
+    dark: 0,
+    unavailable: 1,
+    more: 0,
+    upsert: [],
+  });
+  await expect(scene).toContainText("room view is unavailable");
+  await expect(scene.locator("[data-scene-command], .combat-token-hud")).toHaveCount(0);
+  endpoint.sendGmcp("Darkwind.Room.Occupants", { ...roster, revision: 4 });
+  await expect(scene.getByRole("button", { name: "Look at Fixed ladder" })).toBeVisible();
+  endpoint.sendGmcp("Char.Vitals", { hp: 177, maxhp: 200 });
+  endpoint.sendGmcp(
+    "Darkwind.Combat.State",
+    combatState({
+      seq: 4,
+      current_actor_id: "watch-one",
+      current_target_id: "watch-two",
+      position: "ranged",
+      preferred_position: "melee",
+      movement: { action: "fallback", progress: 2, required: 5 },
+      actors: [
+        { id: "self", name: "Acer", role: "self" },
+        {
+          id: "watch-one",
+          name: "a guard",
+          role: "participant",
+          appearance: { race: "dwarf" },
+          equipment: {},
+          occupant_id: "guard-one",
+        },
+        {
+          id: "watch-two",
+          name: "a guard",
+          role: "target",
+          appearance: { race: "elf" },
+          equipment: {},
+          occupant_id: "guard-two",
+          public_state: { condition: "badly wounded", elite: 1, effects: ["bleeding"] },
+        },
+      ],
+    }),
+  );
+  await expect(scene).not.toHaveClass(/combat-scene-idle/);
+  await expect(scene).toContainText("Position: ranged");
+  await expect(scene).toContainText("fallback 2/5");
+  await expect(scene.locator(".combat-target-condition")).toBeVisible();
+  await expect(scene.locator(".combat-target-condition")).toHaveText("badly wounded");
+  await expect(scene).toContainText("Elite · bleeding");
+  await expect(scene).not.toContainText("177");
+  await expect(scene.locator(".combat-token-hud-player")).toContainText("a guard");
+  await expect(scene.locator(".combat-token-hud-target")).toContainText("a guard");
+  await expect(scene).not.toContainText("Room visitor");
+  if (process.env.SCENE_SCREENSHOTS)
+    await scene.screenshot({
+      path: `${process.env.SCENE_SCREENSHOTS}/scene-panel-observed-${testInfo.project.name}.png`,
+    });
+  endpoint.sendGmcp(
+    "Darkwind.Combat.State",
+    combatState({
+      seq: 5,
+      current_target_id: "visitor-fighter",
+      actors: [
+        { id: "self", name: "Acer", role: "self" },
+        {
+          id: "visitor-fighter",
+          name: "Room visitor",
+          role: "player",
+          occupant_id: "visitor",
+          appearance: { race: "elf" },
+          equipment: {},
+        },
+      ],
+    }),
+  );
+  await expect(scene.locator(".combat-token-hud-player")).toContainText("Acer");
+  await expect(scene.locator(".combat-token-hud-target")).toContainText("Room visitor");
+  await expect(scene.getByRole("list", { name: "Room occupants" })).toHaveCount(0);
+});
+
 test("combat victory leaves the interface clickable", async ({ page }) => {
   const endpoint = await connect(page);
   await page.waitForTimeout(100);
@@ -465,7 +647,8 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   await expect(combat.locator(".combat-current-event")).toContainText("Hit 3.", {
     timeout: 2_000,
   });
-  await page.waitForTimeout(500);
+  // Past the last blow's beat (1.4 s), so the pane is at rest.
+  await page.waitForTimeout(1_600);
   const stableCombat = await combat.textContent();
   endpoint.sendGmcp("Darkwind.Combat.Event", {
     epoch: "old-combat",

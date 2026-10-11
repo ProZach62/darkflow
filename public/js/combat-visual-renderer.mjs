@@ -8,6 +8,8 @@ export const RESULT_LABELS = {
   miss: "Miss",
   dodge: "Dodged",
   absorb: "Absorbed",
+  healed: "Healed",
+  "no-effect": "No effect",
 };
 
 const PERSPECTIVE_LABELS = {
@@ -132,13 +134,14 @@ function artHtml(side, combatant, loadedImages, failedImages, event, impactSide)
 
 export function eventLabel(event) {
   if (!event) return "Awaiting the next exchange";
+  const ability = event.abilityName ? event.abilityName + " \u2022 " : "";
   const perspectiveLabels = PERSPECTIVE_LABELS[event.perspective];
-  let label =
-    (perspectiveLabels && perspectiveLabels[event.result]) ||
-    RESULT_LABELS[event.result] ||
-    "Exchange";
+  let label = ability + ((perspectiveLabels && perspectiveLabels[event.result]) ||
+    RESULT_LABELS[event.result] || "Exchange");
   if (Object.prototype.hasOwnProperty.call(event, "damage")) {
     label += " \u2022 " + formatInt(event.damage) + " damage";
+  } else if (Object.prototype.hasOwnProperty.call(event, "healing")) {
+    label += " \u2022 " + formatInt(event.healing) + " healing";
   } else if (event.result === "absorb" && Object.prototype.hasOwnProperty.call(event, "absorbed")) {
     label += " \u2022 " + formatInt(event.absorbed) + " absorbed";
   }

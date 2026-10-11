@@ -101,6 +101,22 @@ test('only outgoing swings count toward damage', () => {
   assert.equal(state.lastSeq, 3);
 });
 
+test('V2 abilities add DPS without changing weapon accuracy and heals never add DPS', () => {
+  let state = openEncounter();
+  state = reduceDpsEvents(state, eventFrame([
+    swing(1, { damage: 37, pre_mitigation_damage: 91 }),
+    swing(2, { kind: 'skill', ability_id: 'hamstring', ability_name: 'Hamstring', damage: 23 }),
+    swing(3, { kind: 'spell', ability_id: 'ember', ability_name: 'Ember', result: 'critical', damage: 41 }),
+    swing(4, { kind: 'heal', ability_id: 'mend', ability_name: 'Mend', result: 'healed',
+      perspective: 'self', target_id: 'self', healing: 999999 }),
+  ], { version: 2 }), NOW);
+  assert.equal(state.encounter.damage, 101, 'uses mitigated damage, not pre-mitigation damage');
+  assert.equal(state.encounter.swings, 1, 'only attacks enter the weapon denominator');
+  assert.equal(state.encounter.hits, 1);
+  assert.equal(state.encounter.crits, 0, 'spell criticals do not enter weapon critical rate');
+  assert.equal(state.lastSeq, 4, 'the heal is watermarked despite not contributing damage');
+});
+
 test('duplicate and out-of-order sequences are ignored', () => {
   let state = openEncounter();
   state = reduceDpsEvents(state, eventFrame([swing(1), swing(2)]), NOW);
@@ -340,6 +356,23 @@ test('damage numbers seen once clear the missing-numbers hint', () => {
   let state = openEncounter();
   state = reduceDpsEvents(state, eventFrame([swing(1, { damage: 10 })]), NOW);
   assert.equal(selectDpsView(state, NOW).missingDamageNumbers, false);
+});
+
+test('hidden ability damage stays unknown alongside visible damage, but explicit zero is known', () => {
+  const ability = (seq, fields = {}) => ({ seq, kind: 'spell', perspective: 'outgoing',
+    result: 'hit', ability_id: 'mage.fireball', ability_name: 'Fireball', ...fields });
+  let state = openEncounter();
+  state = reduceDpsEvents(state, eventFrame([ability(1)]), NOW);
+  assert.equal(selectDpsView(state, NOW).missingDamageNumbers, true);
+  state = reduceDpsEvents(state, eventFrame([swing(2, { damage: 23 })]), NOW + 1000);
+  assert.equal(selectDpsView(state, NOW + 1000).missingDamageNumbers, true,
+    'a later visible hit cannot fill in missing ability damage');
+  assert.equal(state.encounter.damage, 23);
+  state = reduceDpsState(state, stateFrame({ encounter_id: 'encounter-13' }), NOW + 2000);
+  state = reduceDpsEvents(state, eventFrame([ability(1, { damage: 0 })],
+    { encounter_id: 'encounter-13' }), NOW + 2000);
+  assert.equal(selectDpsView(state, NOW + 2000).missingDamageNumbers, false,
+    'a new encounter resets the warning and zero is not missing');
 });
 
 test('a fight that has only missed is not mistaken for missing numbers', () => {

@@ -3,13 +3,59 @@ export const DARKWIND_COMBAT_EVENT_LIMIT = 12;
 
 export type DarkwindCombatWireBoolean = boolean | 0 | 1;
 
+export type DarkwindCombatSize = "tiny" | "small" | "medium" | "large" | "huge";
+export type DarkwindCombatWeaponType =
+  "focus" | "missile" | "polearm" | "cleaving" | "crushing" | "piercing" | "slashing";
+export type DarkwindCombatWeaponStyle = "slash" | "thrust" | "smash";
+
+export interface DarkwindCombatAppearance {
+  race?: string;
+  family?: string;
+  gender?: string;
+  size?: DarkwindCombatSize;
+  form?: string;
+}
+
+export interface DarkwindCombatEquipment {
+  main_hand?: string;
+  off_hand?: string;
+  shield?: string;
+  helmet?: string;
+  armor?: string;
+  weapon_type?: DarkwindCombatWeaponType;
+  off_hand_type?: DarkwindCombatWeaponType;
+  weapon_style?: DarkwindCombatWeaponStyle;
+  off_hand_style?: DarkwindCombatWeaponStyle;
+  two_handed?: boolean;
+}
+
+export interface DarkwindCombatPublicState {
+  condition?: string;
+  elite?: DarkwindCombatWireBoolean;
+  boss?: DarkwindCombatWireBoolean;
+  effects?: string[];
+}
+
+export interface DarkwindCombatMovement {
+  action?: string;
+  target?: string;
+  progress?: number;
+  required?: number;
+}
+
 export interface DarkwindCombatActor {
   id: string;
   name: string;
   role: string;
+  appearance?: DarkwindCombatAppearance;
+  equipment?: DarkwindCombatEquipment;
+  public_state?: DarkwindCombatPublicState;
+  occupant_id?: string;
 }
 
 export interface DarkwindCombatState {
+  version?: 2;
+  resync?: boolean;
   epoch: string;
   encounter_id: string;
   seq: number;
@@ -21,30 +67,49 @@ export interface DarkwindCombatState {
   actors: DarkwindCombatActor[];
   outcome: string;
   summary: string;
+  position?: "melee" | "ranged";
+  preferred_position?: "melee" | "ranged";
+  movement?: DarkwindCombatMovement;
 }
 
-export type DarkwindCombatResult = "absorb" | "critical" | "dodge" | "hit" | "miss";
-export type DarkwindCombatPerspective = "incoming" | "observed" | "outgoing";
+export type DarkwindCombatAttackResult = "absorb" | "block" | "critical" | "dodge" | "hit" | "miss";
+export type DarkwindCombatAbilityResult = "critical" | "hit" | "no-effect";
+export type DarkwindCombatResult =
+  DarkwindCombatAttackResult | DarkwindCombatAbilityResult | "healed";
+export type DarkwindCombatPerspective = "incoming" | "observed" | "outgoing" | "self";
 
 export interface DarkwindCombatEvent {
   seq: number;
-  kind: "attack";
+  kind: "attack" | "skill" | "spell" | "heal";
   perspective: DarkwindCombatPerspective;
   actor_id: string;
   target_id: string;
   result: DarkwindCombatResult;
   damage?: number;
+  pre_mitigation_damage?: number;
   absorbed?: number;
+  healing?: number;
+  ability_id?: string;
+  ability_name?: string;
   summary: string;
 }
 
-export interface DarkwindCombatOverflow {
+export interface DarkwindCombatOverflowV1 {
   omitted: number;
   hits: number;
   damage: number;
 }
 
+export interface DarkwindCombatOverflowV2 {
+  omitted: number;
+  omitted_by_kind: { attack: number; skill: number; spell: number; heal: number };
+  damage?: number;
+  healing?: number;
+}
+export type DarkwindCombatOverflow = DarkwindCombatOverflowV1 | DarkwindCombatOverflowV2;
+
 export interface DarkwindCombatEvents {
+  version?: 2;
   epoch: string;
   encounter_id: string;
   first_seq: number;
@@ -55,6 +120,7 @@ export interface DarkwindCombatEvents {
 
 /** Compatibility shape for the retained singular Darkwind.Combat.Event package. */
 export interface DarkwindCombatEventMessage extends DarkwindCombatEvent {
+  version?: 2;
   epoch: string;
   encounter_id: string;
 }
@@ -110,6 +176,11 @@ export function extractDarkwindCombatStateFields(input: unknown): NamedFields | 
     actors: Array.isArray(value.actors) ? value.actors.slice(0, DARKWIND_COMBAT_ACTOR_LIMIT) : [],
     outcome: value.outcome,
     summary: value.summary,
+    position: value.position,
+    preferred_position: value.preferred_position,
+    movement: value.movement,
+    version: value.version,
+    resync: value.resync,
   };
 }
 
@@ -119,7 +190,98 @@ function normalizeActor(input: unknown): DarkwindCombatActor | null {
   const id = text(value.id, 96);
   const name = text(value.name, 120);
   const role = text(value.role ?? "participant", 32);
-  return id && name && role ? { id, name, role: role.toLowerCase() } : null;
+  if (!id || !name || !role) return null;
+  const actor: DarkwindCombatActor = { id, name, role: role.toLowerCase() };
+  if (own(value, "appearance")) {
+    actor.appearance = normalizeAppearance(value.appearance) ?? {};
+  }
+  if (own(value, "equipment")) {
+    actor.equipment = normalizeEquipment(value.equipment) ?? {};
+  }
+  if (own(value, "public_state")) actor.public_state = normalizePublicState(value.public_state);
+  const occupantId = text(value.occupant_id, 96);
+  if (occupantId) actor.occupant_id = occupantId;
+  return actor;
+}
+
+function normalizePublicState(input: unknown): DarkwindCombatPublicState {
+  const value = record(input);
+  if (!value) return {};
+  const result: DarkwindCombatPublicState = {};
+  const condition = text(value.condition, 80, true);
+  if (condition !== null) result.condition = condition;
+  for (const field of ["elite", "boss"] as const) {
+    const flag = protocolBoolean(value[field]);
+    if (flag !== null) result[field] = flag;
+  }
+  if (Array.isArray(value.effects))
+    result.effects = value.effects
+      .slice(0, 14)
+      .map((effect) => text(effect, 32))
+      .filter((effect): effect is string => effect !== null);
+  return result;
+}
+
+function normalizeMovement(input: unknown): DarkwindCombatMovement {
+  const value = record(input);
+  if (!value) return {};
+  const result: DarkwindCombatMovement = {};
+  for (const field of ["action", "target"] as const) {
+    const label = text(value[field], 80, true);
+    if (label !== null) result[field] = label;
+  }
+  for (const field of ["progress", "required"] as const) {
+    const count = integer(value[field]);
+    if (count !== null) result[field] = count;
+  }
+  return result;
+}
+
+function normalizeAppearance(input: unknown): DarkwindCombatAppearance | null {
+  const value = record(input);
+  if (!value) return null;
+  const result: DarkwindCombatAppearance = {};
+  for (const field of ["race", "family", "gender", "form"] as const) {
+    if (!own(value, field)) continue;
+    const normalized = text(value[field], 80, true);
+    if (normalized === null) continue;
+    result[field] = normalized;
+  }
+  if (own(value, "size")) {
+    const size = text(value.size, 80, true)?.toLowerCase();
+    if (size && ["tiny", "small", "medium", "large", "huge"].includes(size))
+      result.size = size as DarkwindCombatSize;
+  }
+  return result;
+}
+
+function normalizeEquipment(input: unknown): DarkwindCombatEquipment | null {
+  const value = record(input);
+  if (!value) return null;
+  const result: DarkwindCombatEquipment = {};
+  for (const field of ["main_hand", "off_hand", "shield", "helmet", "armor"] as const) {
+    if (!own(value, field)) continue;
+    const normalized = text(value[field], 80, true);
+    if (normalized === null) continue;
+    result[field] = normalized;
+  }
+  const enums = {
+    weapon_type: ["focus", "missile", "polearm", "cleaving", "crushing", "piercing", "slashing"],
+    off_hand_type: ["focus", "missile", "polearm", "cleaving", "crushing", "piercing", "slashing"],
+    weapon_style: ["slash", "thrust", "smash"],
+    off_hand_style: ["slash", "thrust", "smash"],
+  } as const;
+  for (const field of Object.keys(enums) as (keyof typeof enums)[]) {
+    if (!own(value, field)) continue;
+    const normalized = text(value[field], 24)?.toLowerCase();
+    if (!normalized || !(enums[field] as readonly string[]).includes(normalized)) continue;
+    result[field] = normalized as never;
+  }
+  if (own(value, "two_handed")) {
+    const normalized = protocolBoolean(value.two_handed);
+    if (normalized !== null) result.two_handed = normalized;
+  }
+  return result;
 }
 
 /** Returns a clean, bounded Combat State or null for malformed retained fields. */
@@ -136,6 +298,8 @@ export function normalizeDarkwindCombatState(input: unknown): DarkwindCombatStat
   const currentTargetId = text(value.current_target_id ?? "", 96, true);
   const outcome = text(value.outcome ?? "", 48, true);
   const summary = text(value.summary ?? "", 320, true);
+  const version = value.version === undefined ? undefined : integer(value.version);
+  const resync = value.resync === undefined ? undefined : protocolBoolean(value.resync);
   if (
     !epoch ||
     encounterId === null ||
@@ -147,7 +311,9 @@ export function normalizeDarkwindCombatState(input: unknown): DarkwindCombatStat
     currentTargetId === null ||
     outcome === null ||
     summary === null ||
-    (active && !encounterId)
+    (active && !encounterId) ||
+    (version !== undefined && version !== 1 && version !== 2) ||
+    resync === null
   )
     return null;
 
@@ -169,10 +335,19 @@ export function normalizeDarkwindCombatState(input: unknown): DarkwindCombatStat
     actors,
     outcome: outcome.toLowerCase(),
     summary,
+    ...(version === 2 ? { version: 2 as const } : {}),
+    ...(resync === undefined ? {} : { resync }),
+    ...(["melee", "ranged"].includes(String(value.position))
+      ? { position: value.position as "melee" | "ranged" }
+      : {}),
+    ...(["melee", "ranged"].includes(String(value.preferred_position))
+      ? { preferred_position: value.preferred_position as "melee" | "ranged" }
+      : {}),
+    ...(value.movement !== undefined ? { movement: normalizeMovement(value.movement) } : {}),
   };
 }
 
-function normalizeEventRow(input: unknown): DarkwindCombatEvent | null {
+function normalizeEventRow(input: unknown, version = 1): DarkwindCombatEvent | null {
   const value = record(input);
   if (!value) return null;
   const seq = integer(value.seq);
@@ -185,11 +360,20 @@ function normalizeEventRow(input: unknown): DarkwindCombatEvent | null {
   if (
     seq === null ||
     seq < 1 ||
-    kind !== "attack" ||
-    !["incoming", "observed", "outgoing"].includes(perspective ?? "") ||
+    !(version === 2 ? ["attack", "skill", "spell", "heal"] : ["attack"]).includes(kind ?? "") ||
+    !["incoming", "observed", "outgoing", ...(version === 2 ? ["self"] : [])].includes(
+      perspective ?? "",
+    ) ||
     !actorId ||
     !targetId ||
-    !["absorb", "critical", "dodge", "hit", "miss"].includes(result ?? "") ||
+    (perspective === "self" && (kind !== "heal" || actorId !== targetId)) ||
+    !(
+      (kind === "attack" &&
+        ["absorb", "block", "critical", "dodge", "hit", "miss"].includes(result ?? "")) ||
+      ((kind === "skill" || kind === "spell") &&
+        ["hit", "critical", "no-effect"].includes(result ?? "")) ||
+      (kind === "heal" && ["healed", "no-effect"].includes(result ?? ""))
+    ) ||
     summary === null
   )
     return null;
@@ -203,16 +387,59 @@ function normalizeEventRow(input: unknown): DarkwindCombatEvent | null {
     result: result as DarkwindCombatResult,
     summary,
   };
-  for (const field of ["damage", "absorbed"] as const) {
+  if (kind !== "attack") {
+    const abilityId = text(value.ability_id, 96);
+    const abilityName = text(value.ability_name, 96);
+    if (!abilityId || !abilityName || /[\\/]/.test(abilityId)) return null;
+    event.ability_id = abilityId;
+    event.ability_name = abilityName;
+  }
+  for (const field of ["damage", "pre_mitigation_damage", "absorbed"] as const) {
     if (!own(value, field)) continue;
     const amount = integer(value[field]);
     if (amount === null) return null;
     event[field] = amount;
   }
+  if (kind === "heal" && own(value, "healing")) {
+    const amount = integer(value.healing);
+    if (amount === null) return null;
+    event.healing = amount;
+  } else if (kind !== "heal" && own(value, "healing")) return null;
+  if (
+    kind === "heal" &&
+    (own(value, "damage") || own(value, "pre_mitigation_damage") || own(value, "absorbed"))
+  )
+    return null;
   return event;
 }
 
-function normalizeOverflow(input: unknown): DarkwindCombatOverflow | null {
+function normalizeOverflow(input: unknown, version: number): DarkwindCombatOverflow | null {
+  if (version === 2) {
+    if (input === undefined)
+      return { omitted: 0, omitted_by_kind: { attack: 0, skill: 0, spell: 0, heal: 0 } };
+    const value = record(input);
+    const byKind = value && record(value.omitted_by_kind);
+    const omitted = value && integer(value.omitted);
+    if (!value || !byKind || omitted === null) return null;
+    const counts = {
+      attack: integer(byKind.attack),
+      skill: integer(byKind.skill),
+      spell: integer(byKind.spell),
+      heal: integer(byKind.heal),
+    };
+    if (Object.values(counts).some((count) => count === null)) return null;
+    const result: DarkwindCombatOverflowV2 = {
+      omitted,
+      omitted_by_kind: counts as DarkwindCombatOverflowV2["omitted_by_kind"],
+    };
+    for (const field of ["damage", "healing"] as const) {
+      if (!own(value, field)) continue;
+      const amount = integer(value[field]);
+      if (amount === null) return null;
+      result[field] = amount;
+    }
+    return result;
+  }
   if (input === undefined) return { omitted: 0, hits: 0, damage: 0 };
   const value = record(input);
   if (!value) return null;
@@ -233,6 +460,7 @@ export function extractDarkwindCombatEventsFields(input: unknown): NamedFields |
     last_seq: value.last_seq,
     events: value.events.slice(0, DARKWIND_COMBAT_EVENT_LIMIT),
     overflow: value.overflow,
+    version: value.version,
   };
 }
 
@@ -244,7 +472,9 @@ export function normalizeDarkwindCombatEvents(input: unknown): DarkwindCombatEve
   const encounterId = text(value.encounter_id, 128);
   const firstSeq = integer(value.first_seq);
   const lastSeq = integer(value.last_seq);
-  const overflow = normalizeOverflow(value.overflow);
+  const version = value.version === undefined ? 1 : integer(value.version);
+  if (version !== 1 && version !== 2) return null;
+  const overflow = normalizeOverflow(value.overflow, version);
   if (
     !epoch ||
     !encounterId ||
@@ -258,10 +488,25 @@ export function normalizeDarkwindCombatEvents(input: unknown): DarkwindCombatEve
 
   const events: DarkwindCombatEvent[] = [];
   for (const raw of value.events as unknown[]) {
-    const event = normalizeEventRow(raw);
+    const event = normalizeEventRow(raw, version);
     if (!event || event.seq < firstSeq || event.seq > lastSeq) return null;
     events.push(event);
   }
+  const omitted = overflow.omitted;
+  const omittedKindTotal =
+    version === 2
+      ? Object.values((overflow as DarkwindCombatOverflowV2).omitted_by_kind).reduce(
+          (sum, count) => sum + count,
+          0,
+        )
+      : omitted;
+  if (
+    version === 2 &&
+    (omittedKindTotal !== omitted ||
+      lastSeq - firstSeq + 1 !== omitted + events.length ||
+      events.some((event, index) => event.seq !== firstSeq + omitted + index))
+  )
+    return null;
   return {
     epoch,
     encounter_id: encounterId,
@@ -269,6 +514,7 @@ export function normalizeDarkwindCombatEvents(input: unknown): DarkwindCombatEve
     last_seq: lastSeq,
     events,
     overflow,
+    ...(version === 2 ? { version: 2 as const } : {}),
   };
 }
 
@@ -286,8 +532,15 @@ export function extractDarkwindCombatEventFields(input: unknown): NamedFields | 
     target_id: value.target_id,
     result: value.result,
     ...(own(value, "damage") ? { damage: value.damage } : {}),
+    ...(own(value, "pre_mitigation_damage")
+      ? { pre_mitigation_damage: value.pre_mitigation_damage }
+      : {}),
     ...(own(value, "absorbed") ? { absorbed: value.absorbed } : {}),
     summary: value.summary,
+    version: value.version,
+    ability_id: value.ability_id,
+    ability_name: value.ability_name,
+    ...(own(value, "healing") ? { healing: value.healing } : {}),
   };
 }
 
@@ -297,6 +550,15 @@ export function normalizeDarkwindCombatEvent(input: unknown): DarkwindCombatEven
   if (!value) return null;
   const epoch = text(value.epoch, 128);
   const encounterId = text(value.encounter_id, 128);
-  const event = normalizeEventRow(value);
-  return epoch && encounterId && event ? { epoch, encounter_id: encounterId, ...event } : null;
+  const version = value.version === undefined ? 1 : integer(value.version);
+  if (version !== 1 && version !== 2) return null;
+  const event = normalizeEventRow(value, version);
+  return epoch && encounterId && event
+    ? {
+        epoch,
+        encounter_id: encounterId,
+        ...(version === 2 ? { version: 2 as const } : {}),
+        ...event,
+      }
+    : null;
 }
