@@ -1125,6 +1125,159 @@ test.describe("room combat", () => {
 test.describe("isometric room server-contract follow-up", () => {
   test.use({ deviceScaleFactor: 2 });
 
+  test("terrain grows with the room window and exits stay usable at narrow panel widths", async ({
+    page,
+  }, testInfo) => {
+    const mobile = testInfo.project.name === "mobile-chromium";
+    if (!mobile) await page.setViewportSize({ width: 1600, height: 1000 });
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const panel = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    const room = {
+      num: 101,
+      name: "Forest crossroads",
+      area: "Fixture woods",
+      environment: "forest",
+      details: [],
+      scene: { time: "day", weather: "clear" },
+      looks: [{ id: "sign", name: "a weathered sign", nouns: ["sign"], sprite: "sign" }],
+      exits: { north: 102, east: 103, south: 104, west: 105, up: 106, down: 107 },
+      exit_states: { east: "locked" },
+      exit_details: { north: { kind: "portal", label: "Forest gate" }, south: { label: "Trail" } },
+    };
+    endpoint.sendGmcp("Room.Info", room);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 1,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "self", name: "Acer", kind: "self", appearance: { race: "human" } },
+        {
+          id: "guide",
+          name: "a trail guide",
+          kind: "npc",
+          activity: "patrol",
+          appearance: { race: "elf" },
+        },
+      ],
+      removed: [],
+    });
+    await expect(panel.getByRole("heading", { name: room.name })).toBeVisible();
+    await expect(panel.getByRole("img", { name: "Acer" })).toBeVisible();
+    const floor = panel.locator(".room-floor");
+    const initialWidth = (await floor.boundingBox())!.width;
+    const capture = async (name: string) => {
+      if (process.env.SCENE_SCREENSHOTS)
+        await panel.screenshot({
+          path: `${process.env.SCENE_SCREENSHOTS}/isometric-polish-${name}-${testInfo.project.name}.png`,
+        });
+    };
+    const checkExits = async () => {
+      for (const direction of Object.keys(room.exits)) {
+        const exit = panel.getByRole("button", { name: `Go ${direction}`, exact: true });
+        await expect(exit).toBeVisible();
+        expect(
+          await exit.evaluate((node) => {
+            const rect = node.getBoundingClientRect();
+            return node.contains(
+              document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+            );
+          }),
+        ).toBe(true);
+      }
+      const commandCount = endpoint.commands.length;
+      await panel.getByRole("button", { name: "Go south", exact: true }).click();
+      await expect.poll(() => endpoint.commands.slice(commandCount)).toEqual(["south"]);
+      await panel.getByRole("button", { name: "Go east", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect.poll(() => endpoint.commands.slice(commandCount)).toEqual(["south", "east"]);
+      expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    };
+    await checkExits();
+    await capture("default");
+    if (!mobile) {
+      await page.getByRole("button", { name: "Toggle left sidebar", exact: true }).click();
+      await page.getByRole("button", { name: "Toggle right sidebar", exact: true }).click();
+      const frame = page.locator(".dv-resize-container").filter({
+        has: panelDragHandle(page, "isoMap"),
+      });
+      const resize = async (width: number, height: number) => {
+        const before = (await frame.boundingBox())!;
+        const grip = frame.locator(".dv-resize-handle-bottomright");
+        const box = (await grip.boundingBox())!;
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x + width - before.width, y + height - before.height, { steps: 8 });
+        await page.mouse.up();
+        await expect
+          .poll(async () => Math.abs((await frame.boundingBox())!.width - width))
+          .toBeLessThan(24);
+      };
+      await resize(1280, 860);
+      await expect
+        .poll(async () => (await floor.boundingBox())!.width)
+        .toBeGreaterThan(initialWidth * 1.4);
+      expect((await floor.boundingBox())!.width).toBeGreaterThan(900);
+      await checkExits();
+      await capture("wide-forest");
+      endpoint.sendGmcp("Room.Info", {
+        ...room,
+        environment: "city",
+        details: ["shop", "bank", "pub"],
+        scene: { time: "dusk", weather: "clear", lighting: "fire" },
+      });
+      await expect(panel).toHaveAttribute("data-room-terrain", "city");
+      await expect(panel.getByRole("img", { name: "Bank", exact: true })).toBeVisible();
+      await checkExits();
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await expect
+        .poll(() =>
+          panel
+            .locator(".room-stage")
+            .evaluate((node) => getComputedStyle(node, "::after").animationName),
+        )
+        .toBe("none");
+      await expect
+        .poll(() =>
+          panel
+            .locator('[data-occupant-id="guide"]')
+            .evaluate((node) => getComputedStyle(node).animationName),
+        )
+        .toBe("none");
+      await capture("wide-city");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      endpoint.sendGmcp("Room.Info", {
+        ...room,
+        environment: "lake",
+        scene: { time: "night", weather: "fog" },
+      });
+      await expect(panel).toHaveAttribute("data-room-terrain", "lake");
+      await expect
+        .poll(() =>
+          panel.locator(".living-surface").evaluate((node) => getComputedStyle(node).animationName),
+        )
+        .not.toBe("none");
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await expect
+        .poll(() =>
+          panel.locator(".living-surface").evaluate((node) => getComputedStyle(node).animationName),
+        )
+        .toBe("none");
+      await checkExits();
+      await capture("wide-water");
+      await resize(390, 680);
+      endpoint.sendGmcp("Room.Info", room);
+      await expect(panel).toHaveAttribute("data-room-terrain", "forest");
+      await checkExits();
+      await capture("narrow-panel");
+    }
+  });
+
   for (const title of ["Scene", "Isometric Room"]) {
     test(`${title} accepts LPC equipment flags in room snapshots and deltas`, async ({
       page,

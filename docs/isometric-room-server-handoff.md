@@ -170,6 +170,35 @@ Existing `Room.Info` fields continue to provide the rest of the scene:
 Known building tags currently include `bank`, `guild`, `house`, `post`,
 `post-office`, `pub`, `ruins`, `shop`, `temple`, and `tower`.
 
+### Responsive client presentation
+
+The floor, scenery, occupants, exits, weather, and combat effects share a
+centered 1.8:1 scene frame fitted to both dimensions of the room panel. The
+floor is no longer capped at 768 display pixels while actors continue moving
+across the whole window. Header and footer wrapping follows the panel's own
+width, including a narrow floating panel on a wide desktop. Long room facts
+scroll rather than consuming the whole scene.
+
+Directions use rectangular labels, with any authored label beneath the
+direction. Ordinary paths have no decorative ovals. Door, gate, stair, cave,
+and portal art sits separately above its control; only a portal keeps an oval
+effect. Front-edge controls are offset away from occupant labels and remain
+above the occupants for pointer hit-testing. Commands and server visibility
+rules are unchanged. Reduced-motion preferences stop water, swamp, fire,
+weather, portal, occupant, and combat animation.
+
+The twelve floor WebPs retain the original terrain art, with atlas residue
+removed and consistent transparent margins. Their source is the original
+1536x1024, four-column/three-row atlas from the
+[art-production thread](https://ampcode.com/threads/T-01a0fe7e-6df1-75f4-80e9-f84066c7caea).
+To reproduce the extraction: crop 384x341 cells (342 high for the final row),
+keep each cell's largest eight-connected alpha component above 16, expand its
+mask by two pixels while preserving the source alpha, crop to its bounds,
+resize to 752x368 using Lanczos, and center it with an eight-pixel transparent
+margin in a lossless 768x384 WebP. Check all twelve over light and dark
+backgrounds for detached pixels, halos, or clipping. This cleanup does not add
+native-resolution detail to the original artwork.
+
 ## Visible Players, NPCs, and Pets
 
 Darkwind sends `Darkwind.Room.Occupants 1` after room entry/subscription and

@@ -59,6 +59,7 @@
 
   interface SceneExit {
     direction: string;
+    directionLabel: string;
     label: string;
     x: number;
     y: number;
@@ -467,6 +468,7 @@
         return {
           direction,
           ...position,
+          directionLabel: position.label,
           label: roomExitDetails[direction]?.label || position.label,
           door: roomSceneDoorSprite(rawDoor) as string | null,
           kind: roomSceneExitKind(direction, roomExitDetails[direction]) as string,
@@ -545,207 +547,216 @@
         class:combat-focus={focusCombat && combatActive}
         aria-label={`Isometric view of ${room.name}`}
       >
-        <div class="stage-haze"></div>
-        <img
-          class="room-floor"
-          src={`/assets/iso/rooms/${texture}.webp`}
-          alt=""
-          draggable="false"
-        />
-        <div class="living-surface" aria-hidden="true"></div>
-        <div class={`weather-layer weather-${atmosphere.weather}`} aria-hidden="true">
-          {#each Array(12) as _, index (index)}<i style={`--particle:${index}`}></i>{/each}
-        </div>
-        {#if beat && !snapshot.occupantsDark && occupants.some((occupant) => occupant.id === beat?.actor) && occupants.some((occupant) => occupant.id === beat?.target)}
-          {#key beat.seq}
-            {@const targetIndex = occupants.findIndex((occupant) => occupant.id === beat?.target)}
-            {@const actorIndex = occupants.findIndex((occupant) => occupant.id === beat?.actor)}
-            {@const targetPosition = combatPosition(occupants[targetIndex]!, targetIndex)}
-            {@const actorPosition = combatPosition(occupants[actorIndex]!, actorIndex)}
-            <div
-              class={`combat-impact kind-${beat.kind} result-${beat.result}`}
-              style={`left:${targetPosition.x}%;top:${targetPosition.y - (beat.abilityName ? 24 : 15)}%`}
-              aria-hidden="true"
-            >
-              {beat.result === "healed"
-                ? beat.healing !== undefined
-                  ? `+${beat.healing}`
-                  : "Healed"
-                : beat.result === "hit" || beat.result === "critical"
-                  ? (beat.damage ?? "Hit")
-                  : detailLabel(beat.result)}
-              {#if beat.result === "critical"}<small>Critical</small>{/if}
-              {#if beat.abilityName}<small>{beat.abilityName}</small>{/if}
-            </div>
-            {#if beat.ranged}
+        <div class="room-world">
+          <div class="stage-haze"></div>
+          <img
+            class="room-floor"
+            src={`/assets/iso/rooms/${texture}.webp`}
+            alt=""
+            draggable="false"
+          />
+          <div class="living-surface" aria-hidden="true"></div>
+          <div class={`weather-layer weather-${atmosphere.weather}`} aria-hidden="true">
+            {#each Array(12) as _, index (index)}<i style={`--particle:${index}`}></i>{/each}
+          </div>
+          {#if beat && !snapshot.occupantsDark && occupants.some((occupant) => occupant.id === beat?.actor) && occupants.some((occupant) => occupant.id === beat?.target)}
+            {#key beat.seq}
+              {@const targetIndex = occupants.findIndex((occupant) => occupant.id === beat?.target)}
+              {@const actorIndex = occupants.findIndex((occupant) => occupant.id === beat?.actor)}
+              {@const targetPosition = combatPosition(occupants[targetIndex]!, targetIndex)}
+              {@const actorPosition = combatPosition(occupants[actorIndex]!, actorIndex)}
               <div
-                class={`combat-projectile kind-${beat.kind}`}
-                style={`--from-x:${actorPosition.x}%;--from-y:${actorPosition.y - 12}%;--to-x:${targetPosition.x}%;--to-y:${targetPosition.y - 12}%`}
+                class={`combat-impact kind-${beat.kind} result-${beat.result}`}
+                style={`left:${targetPosition.x}%;top:${targetPosition.y - (beat.abilityName ? 24 : 15)}%`}
                 aria-hidden="true"
-              ></div>
-            {/if}
-          {/key}
-        {/if}
-
-        {#each buildings as building (building.detail)}
-          <div
-            class="building"
-            style={`--x:${building.x}%;--y:${building.y}%`}
-            title={detailLabel(building.detail)}
-          >
-            <img
-              src={`/assets/iso/buildings/${building.sprite}.webp`}
-              alt={detailLabel(building.detail)}
-              draggable="false"
-            />
-          </div>
-        {/each}
-
-        {#each targets as target (target.id)}
-          <button
-            class={`room-target state-${target.state || "normal"} category-${target.category || "scenery"}`}
-            class:prop={target.propSprite}
-            class:selected={selectedTargetId === target.id}
-            style={`--x:${target.x}%;--y:${target.y}%;--depth:${Math.round(20 + target.y)}`}
-            type="button"
-            aria-label={`Look at ${target.name}`}
-            title={`Look at ${target.name}`}
-            aria-pressed={selectedTargetId === target.id}
-            data-cue={target.cue ?? ""}
-            onclick={() => sendTargetAction(target, "look")}
-          >
-            {#if target.propSprite}
-              <img src={`/assets/iso/props/${target.propSprite}.webp`} alt="" draggable="false" />
-            {:else}
-              <span aria-hidden="true">i</span>
-            {/if}
-            {#if target.state}<small>{detailLabel(target.state)}</small>{/if}
-          </button>
-        {/each}
-
-        {#if selectedTarget}
-          <div
-            class="target-actions"
-            style={`--x:${selectedTarget.x}%;--y:${selectedTarget.y}%`}
-            role="group"
-            aria-label={`Actions for ${selectedTarget.name}`}
-          >
-            <strong>{selectedTarget.name}</strong>
-            {#each targetVerbs(selectedTarget) as verb (verb)}
-              <button type="button" onclick={() => sendTargetAction(selectedTarget, verb)}>
-                {detailLabel(verb)}
-              </button>
-            {/each}
-          </div>
-        {/if}
-
-        {#each exits as exit (exit.direction)}
-          <button
-            class={`room-exit exit-${exit.kind}`}
-            class:blocked={exit.blocked}
-            style={`--x:${exit.x}%;--y:${exit.y}%`}
-            type="button"
-            aria-label={`Go ${exit.direction}`}
-            title={exit.blocked
-              ? `${detailLabel(exit.direction)} (${exit.door?.slice(5)})`
-              : detailLabel(exit.direction)}
-            onclick={() => activeSession.terminal.sendCommand(exit.direction)}
-          >
-            {#if exit.door}
-              <img src={`/assets/iso/buildings/${exit.door}.webp`} alt="" draggable="false" />
-            {:else if exit.kind === "stairs"}
-              <img src="/assets/iso/buildings/stairs.webp" alt="" draggable="false" />
-            {:else if exit.kind === "gate"}
-              <img src="/assets/iso/props/gate.webp" alt="" draggable="false" />
-            {:else if exit.kind === "cave"}
-              <img src="/assets/iso/props/rubble.webp" alt="" draggable="false" />
-            {:else}
-              <i aria-hidden="true"></i>
-            {/if}
-            <span>{exit.label}</span>
-          </button>
-        {/each}
-
-        {#if snapshot.occupantsDark}
-          <div class="dark-room-message">It is too dark to make anyone out.</div>
-        {:else if snapshot.occupantsUnavailable}
-          <div class="dark-room-message">The room view is unavailable.</div>
-        {:else}
-          {#each occupants as occupant, index (occupant.id)}
-            {@const home = combatPosition(occupant, index)}
-            {@const position = occupant.kind === "self" && playerTarget ? playerTarget : home}
-            {@const opponentIndex = occupants.findIndex(
-              (candidate) => candidate.id === beat?.target,
-            )}
-            {@const opponentPosition =
-              opponentIndex >= 0 ? combatPosition(occupants[opponentIndex]!, opponentIndex) : home}
-            {#key beat?.actor === occupant.id || beat?.target === occupant.id ? beat.seq : 0}
-              <div
-                class={`occupant activity-${occupant.activity || "idle"} size-${sceneToken(occupant.size || "medium")}`}
-                class:self={occupant.kind === "self"}
-                class:walking={occupant.kind === "self" && playerTarget}
-                class:hostile={occupant.hostile}
-                class:fighting={occupant.fighting}
-                class:anchored={occupant.anchor_id}
-                class:attacking={beat?.actor === occupant.id &&
-                  (beat.kind === "skill" || (beat.kind === "attack" && !beat.ranged))}
-                class:casting={beat?.actor === occupant.id && beat.kind === "spell"}
-                class:healing={beat?.target === occupant.id &&
-                  beat.kind === "heal" &&
-                  beat.result === "healed"}
-                class:reacting={beat?.target === occupant.id &&
-                  beat.kind !== "heal" &&
-                  beat.result !== "no-effect"}
-                class:ranked={formation.has(occupant.id)}
-                data-result={beat?.target === occupant.id ? beat.result : ""}
-                data-combat-kind={beat?.actor === occupant.id || beat?.target === occupant.id
-                  ? beat.kind
-                  : ""}
-                data-occupant-id={occupant.id}
-                data-combat-side={formation.get(occupant.id)?.side ?? ""}
-                style={`--x:${position.x}%;--y:${position.y}%;--strike-x:${(opponentPosition.x - home.x) * (beat?.kind === "skill" ? 0.25 : 0.5)}%;--strike-y:${(opponentPosition.y - home.y) * (beat?.kind === "skill" ? 0.25 : 0.5)}%;--delay:${index * -0.31}s;--depth:${100 + Math.round(position.y)};--label-shift:${index % 2 ? -10 : 10}px`}
-                title={occupantLabel(occupant)}
-                aria-label={occupantLabel(occupant)}
-                data-engaged-with={occupant.engaged_with ?? ""}
-                data-cue={occupant.cue ?? ""}
-                role="img"
               >
-                <img
-                  class="figure"
-                  src={`/assets/iso/characters/${roomSceneOccupantSprite(occupant)}.webp`}
-                  alt=""
-                  draggable="false"
-                />
-                {#if occupant.weaponSprite}
-                  <img
-                    class="equipment weapon"
-                    src={`/assets/sprites/weapons/${occupant.weaponSprite}.png`}
-                    alt=""
-                    draggable="false"
-                  />
-                {/if}
-                {#if occupant.shield}
-                  <img
-                    class="equipment shield"
-                    src="/assets/sprites/weapons/shield.png"
-                    alt=""
-                    draggable="false"
-                  />
-                {/if}
-                <span>
-                  {occupant.name}{occupant.cue ? ` - ${detailLabel(occupant.cue)}` : ""}
-                </span>
-                {#if occupant.role || occupant.activity || occupant.helmet || occupant.armor}
-                  <em>
-                    {[occupant.role, occupant.activity, occupant.helmet, occupant.armor]
-                      .filter(Boolean)
-                      .join(" / ")}
-                  </em>
-                {/if}
+                {beat.result === "healed"
+                  ? beat.healing !== undefined
+                    ? `+${beat.healing}`
+                    : "Healed"
+                  : beat.result === "hit" || beat.result === "critical"
+                    ? (beat.damage ?? "Hit")
+                    : detailLabel(beat.result)}
+                {#if beat.result === "critical"}<small>Critical</small>{/if}
+                {#if beat.abilityName}<small>{beat.abilityName}</small>{/if}
               </div>
+              {#if beat.ranged}
+                <div
+                  class={`combat-projectile kind-${beat.kind}`}
+                  style={`--from-x:${actorPosition.x}%;--from-y:${actorPosition.y - 12}%;--to-x:${targetPosition.x}%;--to-y:${targetPosition.y - 12}%`}
+                  aria-hidden="true"
+                ></div>
+              {/if}
             {/key}
+          {/if}
+
+          {#each buildings as building (building.detail)}
+            <div
+              class="building"
+              style={`--x:${building.x}%;--y:${building.y}%`}
+              title={detailLabel(building.detail)}
+            >
+              <img
+                src={`/assets/iso/buildings/${building.sprite}.webp`}
+                alt={detailLabel(building.detail)}
+                draggable="false"
+              />
+            </div>
           {/each}
-        {/if}
+
+          {#each targets as target (target.id)}
+            <button
+              class={`room-target state-${target.state || "normal"} category-${target.category || "scenery"}`}
+              class:prop={target.propSprite}
+              class:selected={selectedTargetId === target.id}
+              style={`--x:${target.x}%;--y:${target.y}%;--depth:${Math.round(20 + target.y)}`}
+              type="button"
+              aria-label={`Look at ${target.name}`}
+              title={`Look at ${target.name}`}
+              aria-pressed={selectedTargetId === target.id}
+              data-cue={target.cue ?? ""}
+              onclick={() => sendTargetAction(target, "look")}
+            >
+              {#if target.propSprite}
+                <img src={`/assets/iso/props/${target.propSprite}.webp`} alt="" draggable="false" />
+              {:else}
+                <span aria-hidden="true">i</span>
+              {/if}
+              {#if target.state}<small>{detailLabel(target.state)}</small>{/if}
+            </button>
+          {/each}
+
+          {#if selectedTarget}
+            <div
+              class="target-actions"
+              style={`--x:${selectedTarget.x}%;--y:${selectedTarget.y}%`}
+              role="group"
+              aria-label={`Actions for ${selectedTarget.name}`}
+            >
+              <strong>{selectedTarget.name}</strong>
+              {#each targetVerbs(selectedTarget) as verb (verb)}
+                <button type="button" onclick={() => sendTargetAction(selectedTarget, verb)}>
+                  {detailLabel(verb)}
+                </button>
+              {/each}
+            </div>
+          {/if}
+
+          {#each exits as exit (exit.direction)}
+            <button
+              class={`room-exit exit-${exit.kind}`}
+              class:blocked={exit.blocked}
+              style={`--x:${exit.x}%;--y:${exit.y + (exit.y >= 60 ? 14 : 0)}%`}
+              type="button"
+              aria-label={`Go ${exit.direction}`}
+              title={exit.blocked
+                ? `${detailLabel(exit.direction)} (${exit.door?.slice(5)})`
+                : detailLabel(exit.direction)}
+              onclick={() => activeSession.terminal.sendCommand(exit.direction)}
+            >
+              <span class="exit-art" aria-hidden="true">
+                {#if exit.door}
+                  <img src={`/assets/iso/buildings/${exit.door}.webp`} alt="" draggable="false" />
+                {:else if exit.kind === "stairs"}
+                  <img src="/assets/iso/buildings/stairs.webp" alt="" draggable="false" />
+                {:else if exit.kind === "gate"}
+                  <img src="/assets/iso/props/gate.webp" alt="" draggable="false" />
+                {:else if exit.kind === "cave"}
+                  <img src="/assets/iso/props/rubble.webp" alt="" draggable="false" />
+                {:else if exit.kind === "portal"}
+                  <i></i>
+                {/if}
+              </span>
+              <span class="exit-label">
+                {exit.directionLabel}
+                {#if exit.label !== exit.directionLabel}<small>{exit.label}</small>{/if}
+              </span>
+            </button>
+          {/each}
+
+          {#if snapshot.occupantsDark}
+            <div class="dark-room-message">It is too dark to make anyone out.</div>
+          {:else if snapshot.occupantsUnavailable}
+            <div class="dark-room-message">The room view is unavailable.</div>
+          {:else}
+            {#each occupants as occupant, index (occupant.id)}
+              {@const home = combatPosition(occupant, index)}
+              {@const position = occupant.kind === "self" && playerTarget ? playerTarget : home}
+              {@const opponentIndex = occupants.findIndex(
+                (candidate) => candidate.id === beat?.target,
+              )}
+              {@const opponentPosition =
+                opponentIndex >= 0
+                  ? combatPosition(occupants[opponentIndex]!, opponentIndex)
+                  : home}
+              {#key beat?.actor === occupant.id || beat?.target === occupant.id ? beat.seq : 0}
+                <div
+                  class={`occupant activity-${occupant.activity || "idle"} size-${sceneToken(occupant.size || "medium")}`}
+                  class:self={occupant.kind === "self"}
+                  class:walking={occupant.kind === "self" && playerTarget}
+                  class:hostile={occupant.hostile}
+                  class:fighting={occupant.fighting}
+                  class:anchored={occupant.anchor_id}
+                  class:attacking={beat?.actor === occupant.id &&
+                    (beat.kind === "skill" || (beat.kind === "attack" && !beat.ranged))}
+                  class:casting={beat?.actor === occupant.id && beat.kind === "spell"}
+                  class:healing={beat?.target === occupant.id &&
+                    beat.kind === "heal" &&
+                    beat.result === "healed"}
+                  class:reacting={beat?.target === occupant.id &&
+                    beat.kind !== "heal" &&
+                    beat.result !== "no-effect"}
+                  class:ranked={formation.has(occupant.id)}
+                  data-result={beat?.target === occupant.id ? beat.result : ""}
+                  data-combat-kind={beat?.actor === occupant.id || beat?.target === occupant.id
+                    ? beat.kind
+                    : ""}
+                  data-occupant-id={occupant.id}
+                  data-combat-side={formation.get(occupant.id)?.side ?? ""}
+                  style={`--x:${position.x}%;--y:${position.y}%;--strike-x:${(opponentPosition.x - home.x) * (beat?.kind === "skill" ? 0.25 : 0.5)}%;--strike-y:${(opponentPosition.y - home.y) * (beat?.kind === "skill" ? 0.25 : 0.5)}%;--delay:${index * -0.31}s;--depth:${100 + Math.round(position.y)};--label-shift:${index % 2 ? -10 : 10}px`}
+                  title={occupantLabel(occupant)}
+                  aria-label={occupantLabel(occupant)}
+                  data-engaged-with={occupant.engaged_with ?? ""}
+                  data-cue={occupant.cue ?? ""}
+                  role="img"
+                >
+                  <img
+                    class="figure"
+                    src={`/assets/iso/characters/${roomSceneOccupantSprite(occupant)}.webp`}
+                    alt=""
+                    draggable="false"
+                  />
+                  {#if occupant.weaponSprite}
+                    <img
+                      class="equipment weapon"
+                      src={`/assets/sprites/weapons/${occupant.weaponSprite}.png`}
+                      alt=""
+                      draggable="false"
+                    />
+                  {/if}
+                  {#if occupant.shield}
+                    <img
+                      class="equipment shield"
+                      src="/assets/sprites/weapons/shield.png"
+                      alt=""
+                      draggable="false"
+                    />
+                  {/if}
+                  <span>
+                    {occupant.name}{occupant.cue ? ` - ${detailLabel(occupant.cue)}` : ""}
+                  </span>
+                  {#if occupant.role || occupant.activity || occupant.helmet || occupant.armor}
+                    <em>
+                      {[occupant.role, occupant.activity, occupant.helmet, occupant.armor]
+                        .filter(Boolean)
+                        .join(" / ")}
+                    </em>
+                  {/if}
+                </div>
+              {/key}
+            {/each}
+          {/if}
+        </div>
       </div>
     {/key}
 
@@ -826,6 +837,7 @@
     box-sizing: border-box;
     display: grid;
     grid-template-rows: auto minmax(230px, 1fr) auto;
+    container: iso-room / inline-size;
     min-width: 0;
     min-height: 100%;
     overflow: hidden;
@@ -843,6 +855,10 @@
     gap: 1rem;
     padding: 0.65rem 0.85rem 0.45rem;
     background: linear-gradient(180deg, rgb(8 12 17 / 92%), rgb(8 12 17 / 30%));
+  }
+
+  header > div:first-child {
+    min-width: 0;
   }
 
   h2,
@@ -881,12 +897,37 @@
     gap: 0.3rem;
   }
 
+  .scene-labels label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--df-muted, #8b949e);
+    font-size: calc(11px * var(--pane-font-scale, 1));
+    white-space: nowrap;
+  }
+
+  .scene-labels input {
+    margin: 0;
+    accent-color: #8ed8ff;
+  }
+
   .room-stage {
     position: relative;
+    container-type: size;
     min-height: 0;
     overflow: hidden;
     isolation: isolate;
     animation: scene-enter 260ms ease-out both;
+  }
+
+  .room-world {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(100cqw, 180cqh);
+    aspect-ratio: 1.8;
+    container-type: inline-size;
+    transform: translate(-50%, -50%);
   }
 
   .room-stage::after {
@@ -927,11 +968,10 @@
     z-index: 1;
     top: 50%;
     left: 50%;
-    width: min(94%, 768px);
-    max-height: 88%;
-    object-fit: contain;
+    width: 100%;
+    height: auto;
     filter: drop-shadow(0 18px 22px rgb(0 0 0 / 55%));
-    transform: translate(-50%, -48%);
+    transform: translate(-50%, -50%);
     user-select: none;
   }
 
@@ -949,7 +989,7 @@
     z-index: 2;
     top: 46%;
     left: 50%;
-    width: min(58%, 430px);
+    width: 58%;
     aspect-ratio: 3 / 1;
     border-radius: 50%;
     opacity: 0;
@@ -975,9 +1015,9 @@
   .weather-rain i {
     display: block;
     top: -18%;
-    width: 2px;
-    height: 20%;
-    background: linear-gradient(transparent, rgb(190 227 248 / 76%));
+    width: 1px;
+    height: 14%;
+    background: linear-gradient(transparent, rgb(190 227 248 / 40%));
     transform: rotate(13deg);
     animation: weather-fall 1.1s linear infinite;
   }
@@ -986,7 +1026,7 @@
     background: repeating-linear-gradient(
       102deg,
       transparent 0 42px,
-      rgb(190 227 248 / 18%) 43px 45px,
+      rgb(190 227 248 / 6%) 43px 44px,
       transparent 46px 84px
     );
     animation: rain-sheet 1.2s linear infinite;
@@ -1055,7 +1095,7 @@
 
   .building {
     z-index: 5;
-    width: clamp(84px, 21%, 150px);
+    width: clamp(54px, 21%, 250px);
     pointer-events: none;
   }
 
@@ -1075,7 +1115,7 @@
   }
 
   .room-target.prop {
-    width: clamp(58px, 12%, 92px);
+    width: clamp(36px, 12%, 144px);
     height: auto;
     border: 0;
     border-radius: 0;
@@ -1084,11 +1124,11 @@
   }
 
   .room-target.category-item {
-    width: clamp(46px, 8%, 64px);
+    width: clamp(30px, 8%, 96px);
   }
 
   .room-target.category-workplace {
-    width: clamp(54px, 10%, 78px);
+    width: clamp(34px, 10%, 120px);
   }
 
   .room-target img {
@@ -1199,19 +1239,19 @@
   }
 
   .room-exit {
-    z-index: 8;
+    z-index: 210;
     display: grid;
     width: auto;
-    min-width: 32px;
-    height: 28px;
+    min-width: 36px;
+    min-height: 28px;
     place-items: center;
-    padding: 0 5px;
+    padding: 5px 8px;
     border: 1px solid rgb(230 219 174 / 42%);
-    border-radius: 50%;
-    background: rgb(8 12 17 / 78%);
+    border-radius: 5px;
+    background: rgb(8 12 17 / 92%);
     color: #e8ddb6;
     font:
-      700 10px/1 ui-monospace,
+      700 clamp(10px, 1.2cqw, 13px)/1.2 ui-monospace,
       monospace;
     cursor: pointer;
     transform: translate(-50%, -50%);
@@ -1231,43 +1271,46 @@
     color: #eeb3a0;
   }
 
-  .room-exit img {
+  .exit-label {
+    position: relative;
+  }
+
+  .exit-label small {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.85em;
+    font-weight: 400;
+  }
+
+  .exit-art {
     position: absolute;
-    bottom: 12px;
+    bottom: calc(100% + 8px);
     left: 50%;
-    width: 55px;
+    width: clamp(30px, 8cqw, 80px);
     transform: translateX(-50%);
     pointer-events: none;
   }
 
-  .room-exit > i {
-    position: absolute;
-    bottom: 6px;
-    left: 50%;
-    width: 68px;
-    height: 17px;
-    border: 1px solid rgb(213 197 147 / 28%);
-    border-radius: 50%;
-    background: linear-gradient(90deg, transparent, rgb(171 143 89 / 38%), transparent);
-    transform: translateX(-50%) rotate(-8deg);
-    pointer-events: none;
+  .exit-art img {
+    display: block;
+    width: 100%;
   }
 
-  .room-exit.exit-portal > i {
-    bottom: 5px;
-    width: 44px;
-    height: 70px;
-    border: 3px solid rgb(129 114 255 / 68%);
+  .exit-portal .exit-art i {
+    display: block;
+    width: 65%;
+    aspect-ratio: 3 / 5;
+    margin: auto;
+    border: 2px solid rgb(129 114 255 / 68%);
     border-radius: 50%;
     background: radial-gradient(ellipse, rgb(91 65 203 / 60%), transparent 62%);
     filter: drop-shadow(0 0 8px rgb(108 91 255 / 80%));
-    transform: translateX(-50%);
     animation: portal-pulse 2.2s ease-in-out infinite;
   }
 
   .occupant {
     z-index: var(--depth);
-    width: clamp(46px, 10%, 76px);
+    width: clamp(30px, 10%, 112px);
     transform: translate(-50%, -88%);
     animation: occupant-idle 2.8s ease-in-out var(--delay) infinite;
     transition:
@@ -1503,7 +1546,7 @@
 
   .occupant.activity-sit,
   .occupant.activity-sleep {
-    width: clamp(40px, 8%, 64px);
+    width: clamp(26px, 8%, 96px);
     transform: translate(-50%, -72%) scaleY(0.82);
   }
 
@@ -1515,7 +1558,7 @@
 
   .occupant.size-huge,
   .occupant.size-gigantic {
-    width: clamp(48px, 8%, 62px);
+    width: clamp(32px, 8%, 96px);
   }
 
   .occupant .equipment {
@@ -1592,6 +1635,8 @@
 
   footer {
     z-index: 20;
+    max-height: 14rem;
+    overflow: auto;
     padding: 0.45rem 0.7rem 0.6rem;
     border-top: 1px solid rgb(255 255 255 / 7%);
     background: rgb(7 10 14 / 88%);
@@ -1791,9 +1836,14 @@
     }
   }
 
-  @media (max-width: 520px) {
-    .iso-room-panel {
-      grid-template-rows: auto minmax(210px, 1fr) auto;
+  @container iso-room (max-width: 520px) {
+    header {
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .scene-labels {
+      justify-content: flex-start;
     }
 
     .room-facts {
@@ -1803,25 +1853,25 @@
     .occupants-summary {
       grid-column: 1 / -1;
     }
-
-    .building {
-      width: clamp(64px, 20%, 104px);
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .room-stage,
+    .room-stage.lighting-fire::after,
     .occupant,
+    .occupant.activity-patrol,
+    .occupant.activity-wander,
+    .occupant.activity-work,
     .occupant.attacking,
     .occupant.reacting,
     .occupant.reacting[data-result="dodge"],
     .occupant.healing .figure,
-    .living-surface,
+    .room-stage .living-surface,
     .weather-layer i,
     .weather-layer,
     .combat-impact,
     .combat-projectile,
-    .room-exit.exit-portal > i {
+    .exit-portal .exit-art i {
       animation: none;
     }
 
