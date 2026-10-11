@@ -5,15 +5,15 @@ import {
   formatInt,
   renderVitalBar,
   vitalBarColor,
-  heatVitalBarColor,
   reserveVitalBarColor,
   restedVitalsView,
+  heatVitalBarColor,
   guildVitalItemHtml,
   skyRecomputeMoon,
 } from './core-information-panel-renderers.mjs';
 
 // Re-exported so existing renderer tests keep importing them from this module.
-export { escHtml, renderVitalBar, vitalBarColor, heatVitalBarColor, reserveVitalBarColor, restedVitalsView, guildVitalItemHtml, skyRecomputeMoon };
+export { escHtml, renderVitalBar, vitalBarColor, reserveVitalBarColor, restedVitalsView, heatVitalBarColor, guildVitalItemHtml, skyRecomputeMoon };
 import { gmcp } from './gmcp.js';
 import { renderMap } from './map-renderer.js';
 import { wireMapPan } from './map-pan.js';
@@ -29,7 +29,7 @@ import {
   isImageFileUrl,
   openImagePreviewPane,
 } from './image-preview.js';
-import { createCombatVisualRenderer } from './combat-visual-renderer.mjs';
+import { createCombatStageRenderer } from './combat-stage-renderer.mjs';
 import { renderDpsPanel } from './dps-panel-renderer.mjs';
 import {
   NPC_FALLBACK_IMAGE,
@@ -383,18 +383,18 @@ export function updateCyberwareModalImage(id, url) {
 }
 
 export const panelRenderers = {
+  dps(bodyEl, data) {
+    renderDpsPanel(bodyEl, data, {
+      onReset: () => document.dispatchEvent(new CustomEvent('dw:dps-reset')),
+    });
+  },
+
   roomPlaylist(bodyEl, data) {
     roomPlaylistManager.attachPanel(bodyEl, data);
   },
 
   fishing(bodyEl) {
     fishingManager.render(bodyEl);
-  },
-
-  dps(bodyEl, data) {
-    renderDpsPanel(bodyEl, data, {
-      onReset: () => document.dispatchEvent(new CustomEvent('dw:dps-reset')),
-    });
   },
 
   roomImage(bodyEl, data) {
@@ -487,7 +487,7 @@ export const panelRenderers = {
   enemy(bodyEl, data) {
     if (data && data.combatVisual && data.model) {
       if (!bodyEl._combatVisualRenderer) {
-        bodyEl._combatVisualRenderer = createCombatVisualRenderer(bodyEl);
+        bodyEl._combatVisualRenderer = createCombatStageRenderer(bodyEl);
       }
       bodyEl._combatVisualRenderer.render(data);
       return;
