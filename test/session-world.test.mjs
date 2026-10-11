@@ -262,6 +262,50 @@ test("room image tokens follow merged Room.Info identity and playlist Open alone
   scope.dispose();
 });
 
+test("room occupants accept LPC equipment flags in snapshots and replacement deltas", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, scope, world } = createWorld(modules);
+  const roomId = "1237286710177402";
+  bus.dispatch("Room.Info", { num: Number(roomId), name: "A forest road", exits: {} });
+  const self = { id: "self", name: "Observer", kind: "self", appearance: { race: "wolf", size: "medium" } };
+  const sentry = {
+    id: "sentry", name: "Betharch, the cult sentry", kind: "npc", level: 220,
+    appearance: { race: "human", gender: "female", size: "medium" },
+    equipment: { main_hand: "large adamantite staff", off_hand: "", shield: "",
+      armor: "Crimson robe", helmet: "Crimson robe", weapon_type: "focus", weapon_style: "smash" },
+    public_state: { elite: 0, effects: [], condition: "(bad)" },
+  };
+  const envelope = { version: 1, room: roomId, dark: 0, more: 0, removed: [] };
+  // The server emits 0/1; boolean flags remain compatible with other producers.
+  const flags = [1, 0, true, false];
+  for (const [index, flag] of flags.entries()) {
+    bus.dispatch("Darkwind.Room.Occupants", {
+      ...envelope, mode: index === 0 ? "snapshot" : "delta", revision: 70 + index,
+      ...(index > 0 ? { base_revision: 69 + index } : {}),
+      upsert: [...(index === 0 ? [self] : []),
+        { ...sentry, equipment: { ...sentry.equipment, two_handed: flag } }],
+    });
+    const snapshot = world.getSnapshot();
+    assert.equal(snapshot.occupantsReady, true, `equipment flag ${JSON.stringify(flag)} rejected the roster`);
+    assert.deepEqual(snapshot.occupants.map(({ id }) => id), ["self", "sentry"]);
+    assert.equal(snapshot.occupants[1].equipment.two_handed, flag);
+    assert.equal(snapshot.occupants[1].equipment.main_hand, "large adamantite staff");
+  }
+  // Reject non-boolean numbers without replacing the accepted roster/baseline.
+  bus.dispatch("Darkwind.Room.Occupants", {
+    ...envelope, mode: "delta", base_revision: 73, revision: 74,
+    upsert: [{ ...sentry, equipment: { ...sentry.equipment, two_handed: 2 } }],
+  });
+  assert.equal(world.getSnapshot().occupants[1].equipment.two_handed, false);
+  bus.dispatch("Darkwind.Room.Occupants", {
+    ...envelope, mode: "delta", base_revision: 73, revision: 74,
+    upsert: [{ ...sentry, equipment: { main_hand: "", shield: "" } }],
+  });
+  assert.equal(world.getSnapshot().occupantsReady, true);
+  assert.deepEqual(world.getSnapshot().occupants[1].equipment, { main_hand: "", shield: "" });
+  scope.dispose();
+});
+
 test("room occupants apply revisioned snapshots and deltas without leaking stale rooms", async (t) => {
   const modules = await loadModules(t);
   const { bus, eventBus, sent, scope, world } = createWorld(modules);

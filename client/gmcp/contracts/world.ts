@@ -33,7 +33,9 @@ export interface DarkwindRoomOccupant {
   cue?: string;
   engaged_with?: string;
   appearance?: DarkwindCombatAppearance;
-  equipment?: DarkwindCombatEquipment;
+  equipment?: Omit<DarkwindCombatEquipment, "two_handed"> & {
+    two_handed?: MapData2WireBoolean;
+  };
   public_state?: DarkwindCombatPublicState;
 }
 

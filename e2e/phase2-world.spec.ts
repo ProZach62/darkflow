@@ -815,6 +815,109 @@ test.describe("room combat", () => {
 test.describe("isometric room server-contract follow-up", () => {
   test.use({ deviceScaleFactor: 2 });
 
+  for (const title of ["Scene", "Isometric Room"]) {
+    test(`${title} accepts LPC equipment flags in room snapshots and deltas`, async ({
+      page,
+    }, testInfo) => {
+      const endpoint = await connect(page);
+      await togglePanel(page, title);
+      const panel =
+        title === "Scene"
+          ? page.getByRole("region", { name: "Visual combat" })
+          : page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+      const room = "1237286710177402";
+      endpoint.sendGmcp("Room.Info", {
+        num: Number(room),
+        name: "A forest road",
+        area: "Cult grounds",
+        environment: "road",
+        looks: [],
+        details: [],
+        scene: { time: "night", lighting: "lit" },
+        exits: { northwest: 102, south: 103 },
+      });
+      // Reconstruct the entry snapshot using the captured NPC equipment shape.
+      const sentry = {
+        id: "sentry",
+        name: "Betharch",
+        kind: "npc",
+        level: 220,
+        appearance: { race: "human", gender: "female", size: "medium" },
+        equipment: {
+          main_hand: "large adamantite staff",
+          off_hand: "",
+          shield: "",
+          armor: "Crimson robe",
+          helmet: "Crimson robe",
+          weapon_type: "focus",
+          weapon_style: "smash",
+          two_handed: 1,
+        },
+        public_state: { elite: 0, effects: [], condition: "(bad)" },
+      };
+      const roster = { version: 1, room, dark: 0, more: 0, removed: [] };
+      endpoint.sendGmcp("Darkwind.Room.Occupants", {
+        ...roster,
+        mode: "snapshot",
+        revision: 78,
+        upsert: [
+          {
+            id: "self",
+            name: "Observer",
+            kind: "self",
+            race: "human",
+            equipment: { two_handed: 0 },
+          },
+          sentry,
+          { id: "other", name: "Drugon", kind: "npc", race: "human" },
+        ],
+      });
+      const occupants = panel.getByRole("list", { name: "Room occupants" });
+      await expect(panel).toBeVisible();
+      // Scene lists bystanders; Isometric Room also lists the recipient.
+      const listedCount = title === "Scene" ? 2 : 3;
+      await expect(occupants.locator("li")).toHaveCount(listedCount);
+      await expect(occupants).toContainText("Betharch");
+      await expect(occupants).toContainText("Drugon");
+      if (title === "Scene") await expect(occupants).toContainText("(bad)");
+      else
+        await expect(panel.getByRole("img", { name: /^Betharch/ })).toHaveAttribute(
+          "aria-label",
+          /\(bad\)/,
+        );
+      await expect(panel).not.toContainText("room view is unavailable");
+      endpoint.sendGmcp("Darkwind.Room.Occupants", {
+        ...roster,
+        mode: "delta",
+        base_revision: 78,
+        revision: 79,
+        upsert: [
+          {
+            ...sentry,
+            equipment: { ...sentry.equipment, two_handed: 0 },
+            public_state: { ...sentry.public_state, condition: "(awful)" },
+          },
+        ],
+      });
+      await expect(occupants.locator("li")).toHaveCount(listedCount);
+      await expect(occupants).toContainText("Drugon");
+      if (title === "Scene") await expect(occupants).toContainText("(awful)");
+      if (title === "Isometric Room") {
+        await expect(panel).toHaveAttribute("data-room-occupants", "3");
+        await expect(panel.getByRole("img", { name: /^Betharch/ })).toBeVisible();
+        await expect(panel.getByRole("img", { name: /^Betharch/ })).toHaveAttribute(
+          "aria-label",
+          /\(awful\)/,
+        );
+        await expect(panel.getByRole("img", { name: /^Drugon/ })).toBeVisible();
+      }
+      if (process.env.SCENE_SCREENSHOTS)
+        await panel.screenshot({
+          path: `${process.env.SCENE_SCREENSHOTS}/room-equipment-${title === "Scene" ? "scene" : "isometric"}-${testInfo.project.name}.png`,
+        });
+    });
+  }
+
   test("preserves scenery identities, discovery clearing, locks, overflow, and recovery", async ({
     page,
   }, testInfo) => {

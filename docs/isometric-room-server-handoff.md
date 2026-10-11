@@ -253,6 +253,27 @@ not a guarantee that each actor supplies every field.
 | `engaged_with`    | No       | Stable ID of the occupant's current combat opponent.                    |
 
 Wire booleans may be JSON booleans or LPC-compatible `0` and `1` values.
+This includes nested `equipment.two_handed`, not just top-level occupant flags.
+Other numeric values are invalid. Combat frames normalize these equipment
+flags before validation; room rosters accept their wire values directly.
+
+### Equipment interoperability fix (2026-10-11)
+
+A reported blank Scene/Isometric Room exposed a client contract mismatch:
+Darkwind emits `equipment.two_handed: 0`/`1`, but the room roster reused a
+boolean-only normalized Combat equipment type. One such NPC caused validation
+to reject the entire snapshot or delta. Scene's unavailable message can also
+mean that its authoritative roster has no accepted baseline; it does not prove
+that the server sent `unavailable: 1`.
+
+The client fix permits booleans and `0`/`1` specifically for room
+equipment, retaining the normalized Combat contract. A regression reproduced
+the numeric-flag rejection before the fix and accepts snapshots/replacement
+deltas afterward, including invalid-value rejection and optional-field removal.
+Desktop and 390px Chromium fixtures verify both panels retain the NPCs and
+apply condition updates through numeric-flag deltas. Screenshots were inspected.
+The diagnostic capture contains numeric-flag deltas but not the entry snapshot;
+fixture reproduction does not establish the complete production failure sequence.
 
 ### Snapshot and delta lifecycle
 
