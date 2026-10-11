@@ -124,67 +124,16 @@ export function vitalBarColor(pct) {
   return '#f85149';
 }
 
-export function reserveVitalBarColor(pct) {
-  if (pct <= 0) return '#6e7681';
-  if (pct >= 100) return '#79c0ff';
-  return '#58a6ff';
-}
-
-function formatRestedDuration(seconds) {
-  let remaining = Math.max(0, Math.floor(Number(seconds) || 0));
-  const days = Math.floor(remaining / 86400);
-  remaining %= 86400;
-  const hours = Math.floor(remaining / 3600);
-  remaining %= 3600;
-  const minutes = Math.floor(remaining / 60);
-  const parts = [];
-  if (days) parts.push(days + 'd');
-  if (hours) parts.push(hours + 'h');
-  if (!days && minutes) parts.push(minutes + 'm');
-  return parts.join(' ') || 'less than 1m';
-}
-
-export function restedVitalsView(data) {
-  if (!data || !Object.prototype.hasOwnProperty.call(data, 'rested') ||
-      !Object.prototype.hasOwnProperty.call(data, 'rested_max')) return null;
-  const rawMaximum = Number(data.rested_max);
-  const rawCurrent = Number(data.rested);
-  if (!Number.isFinite(rawMaximum) || rawMaximum <= 0) return null;
-  const maximum = Math.floor(rawMaximum);
-  if (maximum < 1) return null;
-  const current = Math.max(0, Math.min(maximum,
-    Number.isFinite(rawCurrent) ? Math.floor(rawCurrent) : 0));
-  const bonus = Math.max(0, Math.floor(Number(data.rested_bonus_pct) || 0));
-  const accrual = Math.max(0, Math.floor(Number(data.rested_accrual_pct_per_hour) || 0));
-  const secondsToCap = Math.max(0, Math.floor(Number(data.rested_seconds_to_cap) || 0));
-  const tier = String(data.rested_tier || '').trim().toLowerCase();
-  let state = 'Active';
-  if (current < 1) state = 'Inactive';
-  else if (current >= maximum) state = 'Full';
-  else if (bonus > 0) state = '+' + bonus + '% active';
-  const titleParts = [];
-  if (current < 1) titleParts.push('No rested combat XP bonus is currently banked.');
-  else if (bonus > 0) titleParts.push('Grants +' + bonus + '% combat XP while the bank remains.');
-  else titleParts.push('Rested combat XP is active while the bank remains.');
-  if (tier === 'hearth' || tier === 'road') {
-    titleParts.push('Last rest: ' + (tier === 'hearth' ? 'Hearth.' : 'Road.'));
-  }
-  if (accrual > 0) titleParts.push('Accrues ' + accrual + '% of a level per offline hour at this rest tier.');
-  if (current >= maximum) titleParts.push('Rested XP bank is full.');
-  else if (secondsToCap > 0) titleParts.push('Full after ' + formatRestedDuration(secondsToCap) + ' offline.');
-  return {
-    current,
-    maximum,
-    display: formatInt(current) + ' / ' + formatInt(maximum) + ' \u00b7 ' + state,
-    title: titleParts.join(' '),
-    ariaValueText: formatInt(current) + ' of ' + formatInt(maximum) + ' rested XP. ' + state + '.',
-  };
-}
-
 function inverseVitalBarColor(pct) {
   if (pct > 60) return '#f85149';
   if (pct > 30) return '#d29922';
   return '#3fb950';
+}
+
+export function reserveVitalBarColor(pct) {
+  if (pct <= 0) return '#6e7681';
+  if (pct >= 100) return '#79c0ff';
+  return '#58a6ff';
 }
 
 export function heatVitalBarColor(pct) {
@@ -297,6 +246,59 @@ export function renderVitalBar(bodyEl, label, cur, max, opts = {}) {
 function removeVitalBar(bodyEl, label, opts = {}) {
   const row = bodyEl.querySelector('.' + vitalBarClass(opts.id || label));
   if (row) row.remove();
+}
+
+function formatRestedDuration(seconds) {
+  let remaining = Math.max(0, Math.floor(Number(seconds) || 0));
+  const days = Math.floor(remaining / 86400);
+  remaining %= 86400;
+  const hours = Math.floor(remaining / 3600);
+  remaining %= 3600;
+  const minutes = Math.floor(remaining / 60);
+  const parts = [];
+  if (days) parts.push(days + 'd');
+  if (hours) parts.push(hours + 'h');
+  if (!days && minutes) parts.push(minutes + 'm');
+  return parts.join(' ') || 'less than 1m';
+}
+
+export function restedVitalsView(data) {
+  if (!data || !Object.prototype.hasOwnProperty.call(data, 'rested') ||
+      !Object.prototype.hasOwnProperty.call(data, 'rested_max')) return null;
+  const rawMaximum = Number(data.rested_max);
+  const rawCurrent = Number(data.rested);
+  if (!Number.isFinite(rawMaximum) || rawMaximum <= 0) return null;
+  const maximum = Math.floor(rawMaximum);
+  if (maximum < 1) return null;
+  const current = Math.max(0, Math.min(maximum,
+    Number.isFinite(rawCurrent) ? Math.floor(rawCurrent) : 0));
+  const bonus = Math.max(0, Math.floor(Number(data.rested_bonus_pct) || 0));
+  const accrual = Math.max(0, Math.floor(Number(data.rested_accrual_pct_per_hour) || 0));
+  const secondsToCap = Math.max(0, Math.floor(Number(data.rested_seconds_to_cap) || 0));
+  const tier = String(data.rested_tier || '').trim().toLowerCase();
+  let state = 'Active';
+  if (current < 1) state = 'Inactive';
+  else if (current >= maximum) state = 'Full';
+  else if (bonus > 0) state = '+' + bonus + '% active';
+  const titleParts = [];
+  if (current < 1) titleParts.push('No rested combat XP bonus is currently banked.');
+  else if (bonus > 0) titleParts.push('Grants +' + bonus + '% combat XP while the bank remains.');
+  else titleParts.push('Rested combat XP is active while the bank remains.');
+  if (tier === 'hearth' || tier === 'road') {
+    titleParts.push('Last rest: ' + (tier === 'hearth' ? 'Hearth.' : 'Road.'));
+  }
+  if (accrual > 0) {
+    titleParts.push('Accrues ' + accrual + '% of a level per offline hour at this rest tier.');
+  }
+  if (current >= maximum) titleParts.push('Rested XP bank is full.');
+  else if (secondsToCap > 0) titleParts.push('Full after ' + formatRestedDuration(secondsToCap) + ' offline.');
+  return {
+    current,
+    maximum,
+    display: formatInt(current) + ' / ' + formatInt(maximum) + ' \u00b7 ' + state,
+    title: titleParts.join(' '),
+    ariaValueText: formatInt(current) + ' of ' + formatInt(maximum) + ' rested XP. ' + state + '.',
+  };
 }
 
 const GUILD_VITAL_SEVERITIES = { ok: true, warn: true, danger: true };
