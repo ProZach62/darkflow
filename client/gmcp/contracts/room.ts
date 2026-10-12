@@ -23,6 +23,7 @@ export interface RoomScene {
   layout?: {
     floor?:
       | "inside"
+      | "timber"
       | "city"
       | "forest"
       | "plains"
