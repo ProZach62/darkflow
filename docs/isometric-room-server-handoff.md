@@ -265,17 +265,61 @@ above the occupants for pointer hit-testing. Commands and server visibility
 rules are unchanged. Reduced-motion preferences stop water, swamp, fire,
 weather, portal, occupant, and combat animation.
 
-The twelve floor WebPs retain the original terrain art, with atlas residue
-removed and consistent transparent margins. Their source is the original
-1536x1024, four-column/three-row atlas from the
+### Higher-resolution terrain refresh (local, 2026-10-12)
+
+The twelve floor WebPs are individual redrawings rather than enlarged atlas
+cells. Stable material keys, paths, the flat diamond footprint, and the scene
+layout remain unchanged. No server fields, scenery registrations, or gameplay
+objects are added by the artwork. Forest uses small leaf litter and a quiet
+center to keep occupants distinguishable on narrow panels.
+
+Outputs are 1536x768 with 16-pixel clear margins, replacing 768x384 files whose
+native atlas detail was approximately 350 pixels wide. The individual source
+floors contain at least 1400 pixels of material width. RGB uses WebP quality 90,
+method 6, with full-quality alpha; each encoded floor stays below 700 KB. Only
+the current floor is requested by the existing image element.
+
+Generation references were the earlier material floor, the new pack's painted
+style, and existing building/character art. Prompts required a single flat
+2:1 diamond, restrained material colors, an open walking center, transparent
+exterior, and no buildings, characters, labels, slab sides, or exterior shadow.
+Forest was refined after phone rendering showed oversized leaves competing
+with characters. Ground vegetation and stones are decorative texture, not
+advertised interaction targets.
+
+Download original PNGs with `amp files get <URL> -o <file>`; attachment URLs
+require authentication. Preserve these source images when revising the pack:
+
+| Material | Generated source |
+| -------- | ---------------- |
+| city | [PNG](https://ampcode.com/user-content/attachments/dc3252bdabfa55540ed82af239057718e99b459cbd71eedb5f915433c241f465-file.png) |
+| inside | [PNG](https://ampcode.com/user-content/attachments/0bdc413db5714bd1a7da4d142ac490ed1ada25796fed336e12ed5bd1cf98eebc-file.png) |
+| forest | [Refined PNG](https://ampcode.com/user-content/attachments/47f182236cb24e4c516ab0c07462396822fdadc06e32f7faca26d34a84e32a86-file.png) |
+| plains | [PNG](https://ampcode.com/user-content/attachments/2b320985a6180606b3f48b7b3afcc2f33b024c79af97c11a452f3d707316b17e-file.png) |
+| desert | [PNG](https://ampcode.com/user-content/attachments/63c42681674e2c0a9d4f00469b5869cff9243cffcf07dca68f5b3857a3faf0d1-file.png) |
+| mountain | [PNG](https://ampcode.com/user-content/attachments/6ef53a401e7f7dbd31393e563d078132267a5c171a79308ec16893c2c4d49249-file.png) |
+| arctic | [PNG](https://ampcode.com/user-content/attachments/13471ef6e7e0a2bf2f090f9c2da7bf5fe504cb85d0337b0359d9ac152d34331e-file.png) |
+| beach | [PNG](https://ampcode.com/user-content/attachments/ef1ff28748344eb9a051ac59682a8c3e5d9ea444c17752083d9096a7f703d4d3-file.png) |
+| river | [PNG](https://ampcode.com/user-content/attachments/0d54924157df0cf1d9308a9acdbb5bae2c4522bb34069d12aeb269918e29963f-file.png) |
+| lake | [PNG](https://ampcode.com/user-content/attachments/6945934017a2e8e57b994724532d3d58d1fe3e20aaeb1920b538791644373274-file.png) |
+| swamp | [PNG](https://ampcode.com/user-content/attachments/1aecca51d7e35efb5b413c84e034f493defd5408b22c35ed607c37828b4f8d21-file.png) |
+| underground | [PNG](https://ampcode.com/user-content/attachments/25714880700921b367c97383b92dbea6f444a19504426163faa7d0fdaf884bcb-file.png) |
+
+Preparation: find the largest eight-connected component of alpha above 180,
+fill mask holes, dilate the mask twice with the default four-connected cross,
+and soften it with a 0.5-pixel Gaussian. Limit original alpha by that mask,
+crop to nonzero alpha bounds, resize with Lanczos to 1504x736, and center in
+1536x768 with 16-pixel margins. This removes faint generated exterior glow
+while retaining an antialiased edge. Reread the encoded files to check matching
+dimensions, transparent borders, a single connected footprint above alpha 16,
+and the size budget. Inspect all materials over light and dark backgrounds,
+then render representative wide, default, night/water, and narrow rooms with
+real sprites and navigation controls. Browser fixtures are not live acceptance.
+
+The previous floors came from the 1536x1024, four-column/three-row atlas in the
 [art-production thread](https://ampcode.com/threads/T-01a0fe7e-6df1-75f4-80e9-f84066c7caea).
-To reproduce the extraction: crop 384x341 cells (342 high for the final row),
-keep each cell's largest eight-connected alpha component above 16, expand its
-mask by two pixels while preserving the source alpha, crop to its bounds,
-resize to 752x368 using Lanczos, and center it with an eight-pixel transparent
-margin in a lossless 768x384 WebP. Check all twelve over light and dark
-backgrounds for detached pixels, halos, or clipping. This cleanup does not add
-native-resolution detail to the original artwork.
+Their cleanup removed residue but could not add native detail. The new sources
+replace that resolution bottleneck without changing the renderer.
 
 ## Visible Players, NPCs, and Pets
 
@@ -587,8 +631,9 @@ Chromium fixture checks and 86 client regression tests pass. Lint, formatting,
 Svelte checking and the production build pass. Full TypeScript checking retains
 the unrelated committed map-test `HTMLElement | SVGElement.hidden` error.
 
-New art, server coordinates, new verbs, loose-loot serialization, global
-targeting and map/save migrations remain out of scope.
+Beyond the separately requested terrain-art refresh, new occupant/ability art,
+server coordinates, new verbs, loose-loot serialization, global targeting and
+map/save migrations remain out of scope.
 
 ## Possible Later Extensions
 
