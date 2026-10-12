@@ -1,5 +1,55 @@
 # Isometric Room Server Handoff
 
+## Authored layout: client increment (2026-10-12)
+
+Optional `Room.Info.scene.layout` now supports room structure. This is client
+support, not a claim that Darkwind emits these fields or that any live rooms
+have been authored. Send `scene: {}` to clear an existing layout; a supplied
+scene without layout restores the legacy terrain floor. Same-room partial
+Room.Info updates omitting scene retain it. Room changes do not retain it.
+Darkness/unavailable occupant state hides authored
+geometry along with scenery. The server must also filter it for the viewer.
+
+```json
+{
+  "scene": {
+    "layout": {
+      "floor": "inside",
+      "walls": "timber",
+      "surfaces": []
+    }
+  },
+  "looks": [
+    {"id":"table","name":"a tavern table","nouns":["table"],"sprite":"table","position":{"x":28,"y":59}}
+  ]
+}
+```
+
+- `floor`: `inside`, `city`, `forest`, `plains`, `swamp`, `underground`,
+  `desert`, `beach`, `arctic`, `mountain`, `lake`, or `river`.
+- `walls`: optional `stone` or `timber`; draws two rear cutaway walls, leaving
+  the front open. Omit outdoors. Floor and wall materials select shipped art,
+  not server URLs. This is decorative geometry, not collision/pathfinding.
+- `surfaces`: up to eight polygons, each with a unique stable `id`, `material`
+  (`path`, `road`, `river`, `lake`, `swamp`), and 3-12 `points` (`{x,y}`).
+  Coordinates are finite percentages 0-100 in the same room-world frame used
+  by look positions, not world-map coordinates. Polygons are clipped to the
+  floor and painted in array order beneath props and people. Invalid entries
+  are omitted; unknown floor/wall hints retain legacy defaults.
+- Reuse `looks.position` for furniture/trees and occupant `anchor_id` for
+  people beside them; there is no separate layout prop roster.
+
+For a forest clearing, set `floor: "forest"`, omit walls, and author a path:
+
+```json
+{"id":"trail","material":"path","points":[{"x":5,"y":51},{"x":21,"y":42},{"x":96,"y":58},{"x":81,"y":67}]}
+```
+
+For a swamp, set `floor: "swamp"` and use `material: "lake"` for a pool
+polygon, with reeds and dead trees in `looks`. For a stone hall, use
+`floor: "inside"`, `walls: "stone"`, and anchored statues/benches.
+The examples are authoring starting points, not registered server rooms.
+
 ## Delivery status (2026-10-07)
 
 Darkwind now implements recipient-filtered `Room.Info` and negotiated

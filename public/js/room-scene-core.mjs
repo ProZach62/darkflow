@@ -80,6 +80,27 @@ const OCCUPANT_POSITIONS = Object.freeze([
   { x: 78, y: 69 },
 ]);
 
+// Authored geometry uses the same room-world percentage coordinates as looks.
+// No server-provided asset paths or CSS are accepted.
+export function roomSceneLayout(layout = {}) {
+  const floor = Object.values(TERRAIN_TEXTURES).includes(layout?.floor) ? layout.floor : null;
+  const walls = ['stone', 'timber'].includes(layout?.walls) ? layout.walls : null;
+  const materials = { path: 'path', road: 'road', river: 'river', lake: 'lake', swamp: 'swamp' };
+  const ids = new Set();
+  const surfaces = [];
+  for (const surface of (Array.isArray(layout?.surfaces) ? layout.surfaces.slice(0, 8) : [])) {
+    if (!surface || typeof surface.id !== 'string' || !surface.id.trim() || ids.has(surface.id)) continue;
+    if (!Object.hasOwn(materials, surface.material) || !Array.isArray(surface.points)) continue;
+    if (surface.points.length < 3 || surface.points.length > 12) continue;
+    if (!surface.points.every((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y)
+      && point.x >= 0 && point.x <= 100 && point.y >= 0 && point.y <= 100)) continue;
+    ids.add(surface.id);
+    surfaces.push({ id: surface.id, material: surface.material,
+      points: surface.points.map(({ x, y }) => `${x},${y}`).join(' ') });
+  }
+  return { floor, walls, surfaces };
+}
+
 const BUILDING_POSITIONS = Object.freeze([
   { x: 28, y: 49 },
   { x: 50, y: 44 },
