@@ -42,12 +42,14 @@ passes. Missing capability, stale or absent readiness, screenreader mode,
 channel filters, queue failure, reconnect, and the operator kill switch all
 fail open to the existing terminal text.
 
-To bootstrap a hidden pane without creating a readiness deadlock, the server
+To bootstrap a closed pane without creating a readiness deadlock, the server
 may send an active State with `visual_enabled: true` and `effective: false`.
 Darkflow opens the pane without stealing command focus, sends
 `combatPane: true`, and requests a Resync. The swing that triggered that
 bootstrap still appears as terminal text; suppression can begin only after the
-fresh readiness update succeeds.
+fresh readiness update succeeds. An existing pane on an inactive tab stays
+hidden and continues advertising `combatPane: false` until the player selects
+it; combat State does not activate or relocate it.
 
 ## `Darkwind.Combat.State`
 
@@ -290,9 +292,12 @@ exchange line, threats, and history appear below. When the encounter ends the
 opponent leaves the stage, the outcome lingers under the scene, and the panel
 stays open for the next fight. A fight opens the panel if it is closed, under
 Room Image when that panel is in the grid and to the right of the terminal
-otherwise, without stealing command focus. Closing it during combat restores
-server text fallback without changing the saved character preference; closing
-it between fights simply hides the scene.
+otherwise, without stealing command focus. If the panel is already open,
+combat does not change its selected tab, placement, or floating-window stacking
+order: a Scene behind another panel or on an inactive tab stays there until
+the player brings it forward. Closing it during combat restores server text
+fallback without changing the saved character preference; closing it between
+fights simply hides the scene.
 
 Between fights the scene also acts out what the player does: a `look` (or
 `l`, `glance`) command makes the figure glance left and right and shade its
