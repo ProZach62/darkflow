@@ -9,6 +9,7 @@ import {
   roomSceneDoorSprite,
   roomSceneExitKind,
   roomSceneExitPosition,
+  roomSceneLayout,
   roomSceneOccupantPosition,
   roomSceneOccupantSprite,
   roomScenePropSprite,
@@ -28,6 +29,18 @@ test('room scenes choose a focused floor texture from compound terrain', () => {
   assert.equal(roomSceneTexture('jungle'), 'forest');
   assert.equal(roomSceneTexture('sea'), 'lake');
   assert.equal(roomSceneTexture('unknown'), 'plains');
+});
+
+test('authored room layouts accept bounded geometry and reject asset paths and malformed surfaces', () => {
+  const valid = { id: 'stream', material: 'river', points: [{ x: 8, y: 31 }, { x: 73, y: 44 }, { x: 52, y: 82 }] };
+  assert.deepEqual(roomSceneLayout({ floor: 'forest', walls: 'stone', surfaces: [valid, valid,
+    { ...valid, id: 'outside', points: [{ x: -1, y: 31 }, { x: 73, y: 44 }, { x: 52, y: 82 }] },
+    { ...valid, id: 'url', material: '../secret' }, { ...valid, id: 'short', points: [{ x: 0, y: 0 }] }] }),
+  { floor: 'forest', walls: 'stone', surfaces: [{ id: 'stream', material: 'river', points: '8,31 73,44 52,82' }] });
+  assert.deepEqual(roomSceneLayout({ floor: '../secret', walls: 'glass', surfaces: {} }),
+    { floor: null, walls: null, surfaces: [] });
+  assert.deepEqual(roomSceneLayout(null), { floor: null, walls: null, surfaces: [] });
+  assert.equal(roomSceneLayout({ surfaces: Array.from({ length: 9 }, (_, index) => ({ ...valid, id: String(index) })) }).surfaces.length, 8);
 });
 
 test('room scene details select available building art', () => {
