@@ -155,6 +155,15 @@ equipment, HP, avatar, enemy art, or enemy HP. Unknown/redacted hints receive a
 generic figure; appearance presence alone, and NPC identity alone when public
 appearance is present, do not imply beast form.
 
+The Scene uses public race/family/gender for both fighter slots, including
+observed fights. Known creature races select bundled creature art and a body
+default only when no explicit form overrides them. Playable Dragon's public
+dragon family retains its humanoid family art rather than NPC drake art.
+Missing/unspecified gender uses male sheet artwork as a visual default without
+inventing public gender. Unknown races fall through to public family art and
+then generic art; explicit redaction never enables name-based guesses. See
+[`combat-sprites.md`](combat-sprites.md) for the bounded artwork mappings.
+
 In observed group combat, the server may update `current_actor_id` as another
 player acts against the same right-side focus without changing
 `encounter_id`. This preserves pane position, history, and manual-close state

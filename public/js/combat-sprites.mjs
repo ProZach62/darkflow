@@ -51,6 +51,7 @@ export const SPRITE_RACE_FAMILIES = Object.freeze({
   'ice-ogre': 'scro',
   'kender': 'human',
   'northman': 'human',
+  'orc': 'scro',
   'pixie': 'elf',
   'sidhe': 'elf',
   'souvraeli': 'human',
@@ -76,6 +77,10 @@ export function spriteRaceFamily(race) {
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
   ['drake', /\b(?:dragon|drake|wyvern|wyrm|whelp)\b/],
   ['spider', /\b(?:spider|arachnid|scorpion)\b/],
+  ['rat', /\b(?:rat|rodent|mouse)\b/],
+  ['bat', /\bbat\b/],
+  ['bear', /\bbear\b/],
+  ['golem', /\bgolem\b/],
   ['undead', /\b(?:skeleton|skeletal|zombie|undead|ghoul|wight|lich)\b/],
   ['troll', /\b(?:troll|ogre|giant)\b/],
 ]);
@@ -86,27 +91,28 @@ export function enemySpriteKey(name) {
   return match ? 'enemies/' + match[0] : '';
 }
 
-// Sheets to try for a figure, most specific first. Only the recipient's
-// own token gets name and race keys: an observed fighter or a target has
-// no recipient-safe identity beyond its body kind and, for players, the
-// name shown in the roster.
+// Public appearance selects race art for any fighter. Character-name art
+// remains a recipient-only legacy fallback, never a replacement for redaction.
 export function spriteKeysFor(combatant, figure, side) {
   const keys = [];
   const own = side === 'player' && combatant && !combatant.observed;
-  if (own) {
+  if (combatant && (own || combatant.appearanceKnown)) {
     const race = spriteSlug(combatant.race);
-    if (race === 'wolf' && figure && figure.kind === 'beast') {
-      // Garou's animal form owns its complete silhouette, regardless of
-      // gender or a character sheet for the untransformed body.
-      keys.push('wolf');
+    if (figure && figure.archetype) {
+      keys.push(figure.archetype === 'wolf' ? 'wolf' : 'enemies/' + figure.archetype);
     } else {
       const name = spriteSlug(combatant.name);
-      if (name && !combatant.appearanceKnown) keys.push('characters/' + name);
-      const gender = spriteSlug(combatant.gender);
-      if (gender && race) {
-        keys.push(gender + '-' + race);
-        const family = spriteRaceFamily(race);
+      if (own && name && !combatant.appearanceKnown) keys.push('characters/' + name);
+      const form = spriteSlug(combatant.form);
+      if (figure && figure.kind === 'humanoid' && (!form || form === 'humanoid')) {
+        // A visual fallback only: this does not invent a public gender hint.
+        const declaredGender = spriteSlug(combatant.gender);
+        const gender = declaredGender === 'female' ? 'female' : 'male';
+        if (race) keys.push(gender + '-' + race);
+        const family = spriteSlug(combatant.family);
         if (family && family !== race) keys.push(gender + '-' + family);
+        const shared = spriteRaceFamily(family || race);
+        if (shared && shared !== race && shared !== family) keys.push(gender + '-' + shared);
       }
     }
   }

@@ -135,7 +135,7 @@ test('the library loads a sheet once, caches failures, and reports readiness', a
   assert.equal(offline.status('humanoid'), 'unavailable');
 });
 
-test('sheet keys go from character to race to kind, and only for the recipient', () => {
+test('sheet keys use public race hints for any fighter but private identity only for the recipient', () => {
   const figure = { kind: 'humanoid' };
   assert.deepEqual(spriteKeysFor({ name: 'Grash Ironjaw', gender: 'Male', race: 'Scro' }, figure, 'player'),
     ['characters/grash-ironjaw', 'male-scro', 'humanoid']);
@@ -156,13 +156,17 @@ test('sheet keys go from character to race to kind, and only for the recipient',
   assert.deepEqual(spriteKeysFor({ name: 'Pip', gender: 'male', race: 'Kender' }, figure, 'player'),
     ['characters/pip', 'male-kender', 'male-human', 'humanoid']);
   assert.deepEqual(spriteKeysFor({ name: 'Bryn', race: 'High Elf' }, figure, 'player'),
-    ['characters/bryn', 'humanoid'], 'no gender means no race key');
+    ['characters/bryn', 'male-high-elf', 'male-elf', 'humanoid'], 'unspecified gender uses a visual default');
   assert.deepEqual(spriteKeysFor({ name: 'Bryn', gender: 'male', race: 'Scro' }, figure, 'target'),
-    ['humanoid'], 'targets only get the body kind');
+    ['humanoid'], 'legacy targets cannot borrow private identity');
+  assert.deepEqual(spriteKeysFor({ name: 'Bryn', gender: 'female', race: 'Scro', appearanceKnown: true }, figure, 'target'),
+    ['female-scro', 'humanoid'], 'targets use their own public race and gender');
   assert.deepEqual(spriteKeysFor({ name: 'an ash drake', isNpc: true }, { kind: 'beast' }, 'target'),
     ['enemies/drake', 'beast'], 'recognized NPC names select an enemy archetype before the fallback');
   assert.deepEqual(spriteKeysFor({ name: 'Bryn', gender: 'male', race: 'Scro', observed: true }, figure, 'player'),
-    ['humanoid'], 'an observed fighter never gets identity keys');
+    ['humanoid'], 'an observed fighter cannot borrow private identity');
+  assert.deepEqual(spriteKeysFor({ name: 'Bryn', race: 'Unlisted', family: 'Elf', appearanceKnown: true, observed: true }, figure, 'player'),
+    ['male-unlisted', 'male-elf', 'humanoid'], 'observed fighters use explicit public family and a visual gender default');
   assert.deepEqual(spriteKeysFor({ name: '../../x', gender: '..', race: 'Scro' }, { kind: 'beast' }, 'player'),
     ['characters/x', 'beast'], 'names and races are slugged before becoming keys');
   assert.equal(isSheetKey('characters/grash'), true);
@@ -172,7 +176,7 @@ test('sheet keys go from character to race to kind, and only for the recipient',
   assert.equal(isSheetKey('characters/'), false);
 });
 
-test('the recipient Wolf uses gender-neutral animal art without changing observed or Crinos sheets', () => {
+test('public Wolf forms use gender-neutral animal art without changing legacy observed or Crinos sheets', () => {
   for (const gender of ['male', 'female', undefined]) {
     const wolf = { name: 'Acer', race: 'Wolf', gender };
     const figure = resolveFigure(wolf);
@@ -180,11 +184,53 @@ test('the recipient Wolf uses gender-neutral animal art without changing observe
     assert.deepEqual(spriteKeysFor({ ...wolf, appearanceKnown: true }, figure, 'player'), ['wolf', 'beast']);
     assert.deepEqual(spriteKeysFor({ ...wolf, observed: true }, figure, 'player'), ['beast']);
     assert.deepEqual(spriteKeysFor(wolf, figure, 'target'), ['beast']);
+    assert.deepEqual(spriteKeysFor({ ...wolf, appearanceKnown: true, observed: true }, figure, 'player'), ['wolf', 'beast']);
+    assert.deepEqual(spriteKeysFor({ ...wolf, appearanceKnown: true }, figure, 'target'), ['wolf', 'beast']);
   }
   const humanoid = { race: 'wolf', gender: 'female', form: 'humanoid', appearanceKnown: true };
   assert.deepEqual(spriteKeysFor(humanoid, resolveFigure(humanoid), 'player'), ['female-wolf', 'humanoid']);
   const crinos = { race: 'crinos', gender: 'male', appearanceKnown: true };
   assert.deepEqual(spriteKeysFor(crinos, resolveFigure(crinos), 'player'), ['male-crinos', 'male-ursavar', 'humanoid']);
+});
+
+test('public creature races choose bundled art without name guesses or stale humanoid forms', () => {
+  for (const [race, key, kind] of [
+    ['dragon', 'enemies/drake', 'beast'],
+    ['spider', 'enemies/spider', 'beast'],
+    ['skeleton', 'enemies/undead', 'humanoid'],
+    ['troll', 'enemies/troll', 'humanoid'],
+    ['orc', 'male-orc', 'humanoid'],
+    ['rat', 'enemies/rat', 'beast'],
+    ['rodent', 'enemies/rat', 'beast'],
+    ['mouse', 'enemies/rat', 'beast'],
+    ['bat', 'enemies/bat', 'beast'],
+    ['bear', 'enemies/bear', 'beast'],
+    ['golem', 'enemies/golem', 'humanoid'],
+  ]) {
+    const fighter = { name: 'a misleading ash drake', race, appearanceKnown: true, equipment: {} };
+    for (const side of ['player', 'target']) {
+      const figure = resolveFigure(fighter, side);
+      assert.equal(figure.kind, kind, race);
+      assert.equal(spriteKeysFor({ ...fighter, observed: true }, figure, side)[0], key, race);
+    }
+  }
+  const dragon = { race: 'Dragon', family: 'dragon', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(dragon, resolveFigure(dragon, 'target'), 'target'),
+    ['male-dragon', 'male-arthok', 'humanoid'], 'playable Dragon family keeps humanoid art');
+  const transformed = { race: 'human', family: 'human', gender: 'female', form: 'quadruped', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(transformed, resolveFigure(transformed), 'player'), ['beast'],
+    'explicit animal form must not reuse humanoid race art');
+  const explicit = { race: 'dragon', form: 'humanoid', appearanceKnown: true };
+  assert.equal(resolveFigure(explicit, 'target').kind, 'humanoid');
+  assert.deepEqual(spriteKeysFor(explicit, resolveFigure(explicit, 'target'), 'target'),
+    ['male-dragon', 'male-arthok', 'humanoid']);
+  const unknownForm = { race: 'dragon', form: 'mist', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(unknownForm, resolveFigure(unknownForm, 'target'), 'target'), ['humanoid'],
+    'unknown explicit forms use generic art instead of the base race');
+  const orc = { race: 'orc', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(orc, resolveFigure(orc, 'target'), 'target'), ['male-orc', 'male-scro', 'humanoid']);
+  assert.deepEqual(spriteKeysFor({ name: 'an ash drake', appearanceKnown: true }, resolveFigure({ appearanceKnown: true }), 'target'),
+    ['humanoid'], 'redaction does not recover creature identity from a name');
 });
 
 test('every playable race resolves to a shipped sheet or a shared archetype', () => {
@@ -207,6 +253,11 @@ test('every playable race resolves to a shipped sheet or a shared archetype', ()
 test('enemy names map to distinct shipped archetypes', () => {
   assert.equal(enemySpriteKey('an ash drake'), 'enemies/drake');
   assert.equal(enemySpriteKey('a giant venom spider'), 'enemies/spider');
+  assert.equal(enemySpriteKey('a giant plague rat'), 'enemies/rat');
+  assert.equal(enemySpriteKey('a cave bat'), 'enemies/bat');
+  assert.equal(enemySpriteKey('a brown bear'), 'enemies/bear');
+  assert.equal(enemySpriteKey('a stone golem'), 'enemies/golem');
+  assert.equal(enemySpriteKey('a standard bearer'), '');
   assert.equal(enemySpriteKey('the skeletal knight'), 'enemies/undead');
   assert.equal(enemySpriteKey('a swamp troll'), 'enemies/troll');
   assert.equal(enemySpriteKey('Aurora'), '');

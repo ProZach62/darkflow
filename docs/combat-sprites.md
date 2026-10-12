@@ -15,31 +15,50 @@ to the next candidate, and finally to the rig.
 
 ## Lookup order
 
-For the recipient's own fighter the stage tries, most specific first:
+Every fighter, including targets and observed participants, uses its own
+public `appearance` when supplied. An explicit empty object is authoritative
+redaction: it selects only generic body art, never name or private-data guesses.
+Without public appearance, recipient-private race and character sheets remain
+available only for the recipient's own fighter in their own fight.
 
-Garou's quadruped Wolf form uses the shared `wolf` sheet before the body-kind
-fallback, regardless of gender. It does not reuse a character's humanoid
-sheet. A Wolf race with no explicit form uses beast geometry; an explicit
-form remains authoritative. This suppresses stale humanoid equipment during
-transformation. Crinos and Ursavar keep their existing humanoid sheets.
+Public creature races select shared art before the body-kind fallback:
+Wolf uses `wolf`; rat/rodent/mouse use `enemies/rat`; bat uses `enemies/bat`;
+bear uses `enemies/bear`; golem uses `enemies/golem`;
+dragon/drake/wyvern/wyrm use `enemies/drake`;
+spider/arachnid/scorpion use `enemies/spider`; skeleton/zombie/undead/ghoul/
+wight/lich use `enemies/undead`; troll/ogre/giant use `enemies/troll`.
+Wolf, rat, bat, bear, drake, and spider profiles use beast geometry, while
+golem, undead, and troll profiles use humanoid geometry. An explicit form outranks these race defaults;
+an incompatible or unknown form does not reuse the creature sheet. Other
+unknown races use the explicit public family, when supplied, then generic art.
 
-For other forms:
+Garou's quadruped Wolf form uses gender-neutral art and suppresses stale
+humanoid equipment. Crinos and Ursavar keep their humanoid sheets. Playable
+Dragon's public `race: "dragon", family: "dragon"` retains the Arthok-family
+humanoid fallback unless an explicit form overrides it; an NPC dragon without
+that family uses drake art.
 
-1. `characters/<name>` where the name is the character name lowercased with
-   runs of non-alphanumerics replaced by `-` (`characters/grash-ironjaw`).
-2. `<gender>-<race>` from `Char.Status`, slugged the same way (`male-scro`).
-3. `<gender>-<family>` when the race belongs to a family in
-   `SPRITE_RACE_FAMILIES`. Every playable race maps to shipped art. Human
+For humanoid forms the stage tries, most specific first:
+
+1. `characters/<name>` only for the legacy recipient case above. The name is
+   lowercased with non-alphanumeric runs replaced by `-` (`characters/grash-ironjaw`).
+2. `<gender>-<race>`, slugged the same way (`male-scro`). Female uses female
+   art; absent or unspecified gender uses male art as a visual default only,
+   without adding a gender to the public snapshot.
+3. `<gender>-<family>` from the explicit public family, then the shared
+   family in `SPRITE_RACE_FAMILIES`. Every playable race maps to shipped art. Human
    cultures and smallfolk share `human`; elven and fae races share `elf`;
    dwarves and gnomes share `dwarf`; Crinos and Ice Gnoll share `ursavar`; and
-   the larger monstrous races share `scro` or `arthok`. A race-specific
-   sheet still wins whenever one exists.
+   the larger monstrous races share `scro` or `arthok`. NPC Orc shares Scro.
+   A race-specific sheet still wins whenever one exists.
 4. The body kind, `humanoid` or `beast`.
 
-NPC targets first match their display name to a bundled enemy archetype:
-drake/dragon, spider/arachnid, skeleton/undead, or troll/ogre. Unmatched NPCs
-use `beast`. Observed players only get the body kind. Every candidate is
-requested, so a more specific sheet that finishes loading later takes over
+Only legacy NPC targets without public appearance match their display name:
+drake/dragon, spider/arachnid, rat/rodent/mouse, bat, bear, golem,
+skeleton/undead, or troll/ogre. Specific new species precede broad legacy
+matches such as "giant", so a giant rat is not drawn as a troll. Unmatched NPCs
+use `beast`. Observed fighters without public appearance get only generic art.
+Every candidate is requested, so a more specific sheet that finishes loading later takes over
 on the next frame. A character, race, or enemy sheet must still declare
 `kind` as `humanoid` or `beast`.
 
@@ -57,6 +76,21 @@ components rather than fixed grid crops, then normalized with one shared
 scale and grounded before assembly. This preserves paws, ears, and tails
 that cross a source cell boundary. The sheet owns its complete head, claws,
 and tail (`weaponsInArt: true`, `portrait: false`, `secondary: false`).
+
+### Additional enemy artwork
+
+Rat, bat, bear, and stone golem use the same transparent nine-pose layout as
+Wolf: idle/windup/maul, whiff/recoil/dodge, and guard/cast/look. Each sheet is
+1536 x 1536 with 512-pixel frames, unit 128, and ground anchor (200, 464).
+They use Wolf's painted style, whole-silhouette alpha extraction, one shared
+scale per species, and the repository's frame assembler. Cast is a natural
+squeal/shriek/roar or golem gesture, without baked spell effects.
+
+The sheets own their complete heads and natural attacks, with no procedural
+weapon, portrait, or secondary tail/cloak overlays. Bear is a natural
+quadruped, not the humanoid Ursavar sheet. Golem is an unarmed stone construct.
+Broad races such as reptile, elemental, and plant are intentionally not mapped
+to these species; neither is a redacted appearance inferred from its name.
 
 ## Manifest
 
