@@ -40,6 +40,7 @@ test('authored room layouts accept bounded geometry and reject asset paths and m
   assert.deepEqual(roomSceneLayout({ floor: '../secret', walls: 'glass', surfaces: {} }),
     { floor: null, walls: null, surfaces: [] });
   assert.deepEqual(roomSceneLayout(null), { floor: null, walls: null, surfaces: [] });
+  assert.equal(roomSceneLayout({ floor: 'timber' }).floor, 'timber');
   assert.equal(roomSceneLayout({ surfaces: Array.from({ length: 9 }, (_, index) => ({ ...valid, id: String(index) })) }).surfaces.length, 8);
 });
 
@@ -58,6 +59,11 @@ test('room scene occupants select stable art and bounded positions', () => {
   assert.deepEqual(roomSceneOccupantPosition(0), { x: 50, y: 62 });
   assert.deepEqual(roomSceneOccupantPosition(8), roomSceneOccupantPosition(0));
   assert.notDeepEqual(roomSceneBuildingPosition(0), roomSceneBuildingPosition(1));
+  const bar = { id: 'counter', sprite: 'bar', x: 64, y: 49 };
+  assert.equal(roomScenePropSprite(bar), 'bar');
+  assert.equal(roomScenePropSprite({ sprite: 'hearth' }), 'hearth');
+  assert.deepEqual(roomSceneOccupantPosition(0, { kind: 'npc', activity: 'serving', anchor_id: 'counter' }, [bar]), { x: 58, y: 32 });
+  assert.deepEqual(roomSceneOccupantPosition(0, { kind: 'player', anchor_id: 'counter' }, [bar]), { x: 57, y: 52 });
 });
 
 test('room scene exits expose positions and door art without inventing directions', () => {

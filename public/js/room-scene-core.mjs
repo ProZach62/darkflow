@@ -15,6 +15,7 @@ const BUILDING_SPRITES = Object.freeze({
 const PROP_SPRITES = new Set([
   'altar',
   'anvil',
+  'bar',
   'barrels',
   'bed',
   'bench',
@@ -30,6 +31,7 @@ const PROP_SPRITES = new Set([
   'fountain',
   'gate',
   'gravestone',
+  'hearth',
   'loot',
   'market-stall',
   'mushrooms',
@@ -83,7 +85,7 @@ const OCCUPANT_POSITIONS = Object.freeze([
 // Authored geometry uses the same room-world percentage coordinates as looks.
 // No server-provided asset paths or CSS are accepted.
 export function roomSceneLayout(layout = {}) {
-  const floor = Object.values(TERRAIN_TEXTURES).includes(layout?.floor) ? layout.floor : null;
+  const floor = [...Object.values(TERRAIN_TEXTURES), 'timber'].includes(layout?.floor) ? layout.floor : null;
   const walls = ['stone', 'timber'].includes(layout?.walls) ? layout.walls : null;
   const materials = { path: 'path', road: 'road', river: 'river', lake: 'lake', swamp: 'swamp' };
   const ids = new Set();
@@ -316,6 +318,9 @@ export function roomSceneOccupantPosition(index, occupant = {}, targets = []) {
   const anchor = String(occupant.anchor_id ?? '').trim();
   const target = anchor ? targets.find((candidate) => candidate.id === anchor) : null;
   if (target && Number.isFinite(target.x) && Number.isFinite(target.y)) {
+    if (target.sprite === 'bar' && occupant.kind === 'npc' && occupant.activity === 'serving') {
+      return { x: Math.max(10, target.x - 6), y: Math.max(24, target.y - 17) };
+    }
     const side = target.x > 68 ? -1 : target.x < 32 ? 1 : occupant.kind === 'npc' ? 1 : -1;
     return { x: Math.max(10, Math.min(90, target.x + side * 7)), y: Math.max(24, Math.min(80, target.y + 3)) };
   }

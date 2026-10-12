@@ -25,7 +25,7 @@ geometry along with scenery. The server must also filter it for the viewer.
 }
 ```
 
-- `floor`: `inside`, `city`, `forest`, `plains`, `swamp`, `underground`,
+- `floor`: `inside`, `timber`, `city`, `forest`, `plains`, `swamp`, `underground`,
   `desert`, `beach`, `arctic`, `mountain`, `lake`, or `river`.
 - `walls`: optional `stone` or `timber`; draws two rear cutaway walls, leaving
   the front open. Omit outdoors. Floor and wall materials select shipped art,
@@ -49,6 +49,32 @@ For a swamp, set `floor: "swamp"` and use `material: "lake"` for a pool
 polygon, with reeds and dead trees in `looks`. For a stone hall, use
 `floor: "inside"`, `walls: "stone"`, and anchored statues/benches.
 The examples are authoring starting points, not registered server rooms.
+
+### Furnished tavern preview
+
+`e2e/fixtures/tavern-room.ts` provides the Copper Lantern authoring fixture:
+oak floors and rear walls, a serving counter, lit hearth, ale casks, a rug,
+two tables, chairs, and a south street entrance. Nothing is populated by room
+name or terrain alone; each object still comes from visible `looks` entries.
+New prop hints are `bar` and `hearth`. A visible NPC with `activity: "serving"`
+anchored to a `bar` stands behind its counter; other occupants retain the
+ordinary anchor placement. Rugs render below feet, while solid furniture and
+people share floor-depth ordering. The fixture's nouns are test data, not a
+promise that production room parsers support them.
+
+For the server, send `scene.layout: {floor: "timber", walls: "timber"}` and
+reuse the fixture's existing `looks.position` and occupant `anchor_id` fields.
+The fixture is not sent to live sessions by the client.
+
+Tavern artwork was generated with Painter using the existing table as the
+prop style/camera reference. The 1024-square oak material is projected onto
+each wall; its source was affine-projected onto a transparent 1536x768 floor
+with vertices (768,16), (1520,384), (768,752), and (16,384), matching the
+existing padded 2:1 footprint at double resolution. Bar/hearth alpha bounds
+were cropped using alpha >16, original alpha preserved, resized to 600/360px
+content width, and padded by 8px. Props were checked over light and dark
+backgrounds. No runtime image generation, external asset URLs, or new
+dependencies are required.
 
 ## Delivery status (2026-10-07)
 
@@ -173,6 +199,7 @@ for these `sprite` values:
 
 - `altar`
 - `anvil`
+- `bar`
 - `barrels`
 - `bed`
 - `bench`
@@ -188,6 +215,7 @@ for these `sprite` values:
 - `fountain`
 - `gate`
 - `gravestone`
+- `hearth`
 - `loot`
 - `market-stall`
 - `mushrooms`
