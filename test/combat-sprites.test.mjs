@@ -242,6 +242,10 @@ test('public creature races choose bundled art without name guesses or stale hum
     ['bat', 'enemies/bat', 'beast'],
     ['bear', 'enemies/bear', 'beast'],
     ['golem', 'enemies/golem', 'humanoid'],
+    ['goblin', 'enemies/goblin', 'humanoid'],
+    ['kobold', 'enemies/kobold', 'humanoid'],
+    ['minotaur', 'enemies/minotaur', 'humanoid'],
+    ['gargoyle', 'enemies/gargoyle', 'humanoid'],
   ]) {
     const fighter = { name: 'a misleading ash drake', race, appearanceKnown: true, equipment: {} };
     for (const side of ['player', 'target']) {
@@ -278,6 +282,27 @@ test('public creature races choose bundled art without name guesses or stale hum
     ['humanoid'], 'redaction does not recover creature identity from a name');
 });
 
+test('armed monster sheets cover attacks without overriding redaction or explicit forms', () => {
+  for (const race of ['goblin', 'kobold', 'minotaur', 'gargoyle']) {
+    const key = 'enemies/' + race;
+    const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + key + '.json', import.meta.url))), 'humanoid');
+    assert.ok(sheet, race + ' ships a valid sheet');
+    assert.ok(existsSync(new URL('../public' + sheet.image, import.meta.url)), race + ' image is shipped');
+    assert.equal(sheet.weaponsInArt, false, race + ' accepts runtime equipment');
+    for (const pose of ['idle', 'windup', 'strike', 'maul', 'thrust', 'chop', 'loose', 'guard', 'cast', 'recoil', 'whiff', 'dodge', 'look']) {
+      const [selected] = selectSpriteFrames(sheet, { from: pose, to: pose }, 1);
+      assert.equal(selected.name, pose, race + ' animates ' + pose);
+      assert.ok(selected.frame.anchors.hand && selected.frame.anchors.offHand, race + ' has hand anchors for ' + pose);
+    }
+    const redacted = { name: 'a giant ' + race, isNpc: true, appearanceKnown: true };
+    assert.deepEqual(spriteKeysFor(redacted, resolveFigure(redacted, 'target'), 'target'), ['humanoid'], race + ' does not bypass redaction');
+    const transformed = { ...redacted, race, form: 'quadruped' };
+    assert.deepEqual(spriteKeysFor(transformed, resolveFigure(transformed, 'target'), 'target'), ['beast'], race + ' respects incompatible explicit forms');
+    const legacy = { name: 'a giant ' + race, isNpc: true };
+    assert.equal(spriteKeysFor(legacy, resolveFigure(legacy, 'target'), 'target')[0], key, race + ' supports legacy NPC names');
+  }
+});
+
 test('every playable race resolves to a shipped sheet or a shared archetype', () => {
   const races = [
     'arctic-elf', 'barbarian', 'crannian-gnome', 'crinos', 'darkwinder', 'desert-dwarf',
@@ -301,6 +326,11 @@ test('enemy names map to distinct shipped archetypes', () => {
   assert.equal(enemySpriteKey('a cave bat'), 'enemies/bat');
   assert.equal(enemySpriteKey('a brown bear'), 'enemies/bear');
   assert.equal(enemySpriteKey('a stone golem'), 'enemies/golem');
+  assert.equal(enemySpriteKey('a reed goblin warden'), 'enemies/goblin');
+  assert.equal(enemySpriteKey('a smelly little kobold'), 'enemies/kobold');
+  assert.equal(enemySpriteKey('a giant minotaur'), 'enemies/minotaur');
+  assert.equal(enemySpriteKey('a stone gargoyle'), 'enemies/gargoyle');
+  assert.equal(enemySpriteKey('goblinfish'), '');
   assert.equal(enemySpriteKey('a standard bearer'), '');
   assert.equal(enemySpriteKey('the skeletal knight'), 'enemies/undead');
   assert.equal(enemySpriteKey('a swamp troll'), 'enemies/troll');

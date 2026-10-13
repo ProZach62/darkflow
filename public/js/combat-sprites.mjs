@@ -2,7 +2,7 @@
 //
 // A sheet replaces the procedural body of one figure kind (humanoid, beast)
 // with one image frame per pose name from combat-rig-core.mjs. Weapons,
-// shield, helmet, and the portrait head keep drawing on top, so equipment
+// shield, and the portrait head keep drawing on top, so equipment
 // and identity still work with any art. See docs/combat-sprites.md for the
 // manifest format an artist authors against.
 //
@@ -87,6 +87,10 @@ const ENEMY_SPRITE_PATTERNS = Object.freeze([
   ['bat', /\bbat\b/],
   ['bear', /\bbear\b/],
   ['golem', /\bgolem\b/],
+  ['goblin', /\bgoblin\b/],
+  ['kobold', /\bkobold\b/],
+  ['minotaur', /\bminotaur\b/],
+  ['gargoyle', /\bgargoyle\b/],
   ['undead', /\b(?:skeleton|skeletal|zombie|undead|ghoul|wight|lich)\b/],
   ['troll', /\b(?:troll|ogre|giant)\b/],
 ]);
@@ -177,7 +181,7 @@ export function normalizeSpriteManifest(raw, kind) {
     if (x < 0 || y < 0) continue;
     const anchors = {};
     if (frame.anchors && typeof frame.anchors === 'object') {
-      for (const key of ['head', 'neck', 'hand', 'offHand', 'cloak']) {
+      for (const key of ['head', 'neck', 'hand', 'offHand', 'offElbow', 'cloak']) {
         const p = point(frame.anchors[key]);
         if (p) anchors[key] = p;
       }

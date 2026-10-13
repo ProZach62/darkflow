@@ -28,8 +28,10 @@ bear uses `enemies/bear`; golem uses `enemies/golem`;
 dragon/drake/wyvern/wyrm use `enemies/drake`;
 spider/arachnid/scorpion use `enemies/spider`; skeleton/zombie/undead/ghoul/
 wight/lich use `enemies/undead`; troll/ogre/giant use `enemies/troll`.
+Goblin, kobold, minotaur, and gargoyle each use their own `enemies/<race>` sheet.
 Wolf, rat, bat, bear, drake, and spider profiles use beast geometry, while
-golem, undead, and troll profiles use humanoid geometry. An explicit form outranks these race defaults;
+golem, undead, troll, goblin, kobold, minotaur, and gargoyle profiles use
+humanoid geometry. An explicit form outranks these race defaults;
 an incompatible or unknown form does not reuse the creature sheet. Other
 unknown races use the explicit public family, when supplied, then generic art.
 
@@ -65,7 +67,8 @@ For humanoid forms the stage tries, most specific first:
 
 Only legacy NPC targets without public appearance match their display name:
 drake/dragon, spider/arachnid, rat/rodent/mouse, bat, bear, golem,
-skeleton/undead, or troll/ogre. Specific new species precede broad legacy
+skeleton/undead, troll/ogre, goblin, kobold, minotaur, or gargoyle.
+Specific species precede broad legacy
 matches such as "giant", so a giant rat is not drawn as a troll. Unmatched NPCs
 use `beast`. Observed fighters without public appearance get only generic art.
 Every candidate is requested, so a more specific sheet that finishes loading later takes over
@@ -101,6 +104,22 @@ weapon, portrait, or secondary tail/cloak overlays. Bear is a natural
 quadruped, not the humanoid Ursavar sheet. Golem is an unarmed stone construct.
 Broad races such as reptile, elemental, and plant are intentionally not mapped
 to these species; neither is a redacted appearance inferred from its name.
+
+Goblin, kobold, minotaur, and gargoyle add unarmed humanoid bodies under
+`enemies/`, using the Crinos sheet as the painterly style reference. Goblin is
+green and ragged; kobold is a small rust-scaled reptilian; minotaur is a brown
+bull-headed humanoid; gargoyle is gray stone with folded wings and a tail.
+These are shared race silhouettes, not portraits of individual named NPCs.
+Each transparent 1536 x 1536 sheet paints idle/windup/strike,
+whiff/recoil/dodge, and guard/cast/look. Attack aliases cover maul, thrust,
+chop, and loose, with draw/raise reusing windup. Whole-silhouette alpha
+extraction, one shared scale per species, and pelvis/ground alignment keep
+horns, tails, wings, and crouches intact. Hand-placed head, neck, hand, and
+off-hand elbow anchors support runtime weapons and shields (`weaponsInArt: false`);
+the art owns its head, clothing, wings, and tail (`portrait: false`,
+`secondary: false`). Public race/family hints select these sheets, but broad
+labels such as reptile or construct do not. Explicit forms and appearance
+redaction retain priority, and existing player-race sheets are unchanged.
 
 ### Additional player-race artwork
 
@@ -181,6 +200,7 @@ hand-drawn art, so supply them.
 | `neck` | Where the neck meets the shoulders; retained attachment metadata. |
 | `hand` | Weapon hand. The main-hand weapon is drawn from here. |
 | `offHand` | Off-hand item or shield. |
+| `offElbow` | Optional painted off-hand elbow. Together with `offHand`, positions and angles the forearm-mounted shield; older sheets retain the rig elbow. |
 | `cloak` | Top of the cloak at the back shoulder. Omit if the art already includes a cloak. |
 
 ### Poses

@@ -426,7 +426,7 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
     facing: 'right',
     rigAligned: false,
     frames: {
-      idle: { x: 0, y: 0, anchors: { head: { x: 128, y: 60, r: 20 }, hand: { x: 150, y: 150 }, offHand: { x: 100, y: 150 } } },
+      idle: { x: 0, y: 0, anchors: { head: { x: 128, y: 60, r: 20 }, hand: { x: 150, y: 150 }, offHand: { x: 100, y: 150 }, offElbow: { x: 80, y: 120 } } },
       strike: { x: 256, y: 0, anchors: { head: { x: 140, y: 64, r: 20 }, hand: { x: 200, y: 120 } } },
     },
   };
@@ -455,6 +455,14 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
   const spriteDraws = canvas.drawLog.filter(([name, args]) => name === 'drawImage' && args.length === 9);
   assert.ok(spriteDraws.length >= 1, 'sheet frame drawn with a source rectangle');
   assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield still drawn over the sprite');
+  const [, bodyDraw] = spriteDraws[0];
+  const shieldX = bodyDraw[5] + bodyDraw[7] * 90 / 256;
+  const shieldY = bodyDraw[6] + bodyDraw[8] * 135 / 256;
+  assert.ok(canvas.drawLog.some(([name, args]) => name === 'translate'
+    && Math.abs(args[0] - shieldX) < 1e-9 && Math.abs(args[1] - shieldY) < 1e-9),
+    'shield sits midway between the painted elbow and hand');
+  assert.ok(canvas.drawLog.some(([name, args]) => name === 'rotate'
+    && Math.abs(args[0] - Math.atan2(30, 20)) < 1e-9), 'shield follows the painted forearm angle');
   fetchManifest = null;
 });
 

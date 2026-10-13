@@ -1357,6 +1357,7 @@ export function createCombatStage(doc, options = {}) {
           head = placed.head || geo.head;
           if (placed.hand) geo.weapon.hand = placed.hand;
           if (placed.offHand) { geo.weapon.offHand = placed.offHand; geo.arms.left.hand = placed.offHand; }
+          if (placed.offElbow) geo.arms.left.elbow = placed.offElbow;
         }
       } else {
         // Far side first: rear leg, cloak or tail, far arm, then torso, near
@@ -1446,11 +1447,12 @@ export function createCombatStage(doc, options = {}) {
       // Overlay anchors: the target frame's anchors when the art supplies
       // them, otherwise the rig's own geometry (correct for baked sheets).
       const primary = frames[frames.length - 1].frame;
-      const result = { head: null, hand: null, offHand: null };
+      const result = { head: null, hand: null, offHand: null, offElbow: null };
       if (!sheet.rigAligned) {
         if (primary.anchors.head) result.head = anchorToStage(placement, primary.anchors.head);
         if (primary.anchors.hand) result.hand = anchorToStage(placement, primary.anchors.hand);
         if (primary.anchors.offHand) result.offHand = anchorToStage(placement, primary.anchors.offHand);
+        if (primary.anchors.offElbow) result.offElbow = anchorToStage(placement, primary.anchors.offElbow);
       }
       return result;
     },
