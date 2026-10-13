@@ -403,6 +403,37 @@ not a guarantee that each actor supplies every field.
 | `cue`             | No       | `quest` or `objective` marker.                                          |
 | `engaged_with`    | No       | Stable ID of the occupant's current combat opponent.                    |
 
+### Player race artwork
+
+The isometric room now has exact-race sprites for `ice gnoll`, `thraxian`,
+`zymari`, `faerie`, `pixie`, `sylph`, and `sidhe`. The six non-Zymari races
+have male/female variants; Zymari uses shared fungal artwork. Missing gender
+uses the existing male-art default. These hints use public `appearance.race`
+and `appearance.gender` (or the compatible top-level fields), with canonical
+race taking precedence over family artwork. Names alone do not select these
+new races. Missing/cleared appearance returns to the ordinary fallback;
+no extra server fields or sprite URLs are required.
+
+Sidhe no longer shares elf artwork. Race help establishes its moth-like wings,
+Pixie's silk-like wings, Sylph's nearly transparent wings, Thraxian's small
+vestigial wings, Ice Gnoll's humanoid/hyena body, and Zymari's community of
+caps and mycelial threads. Faerie/Pixie/Sidhe artwork is smaller than the
+normal humanoid silhouette; Sylph keeps human-like proportions. Palettes,
+wing outlines where unspecified, and travel clothing are artistic choices,
+not additional lore or representations of equipped gear.
+
+Source references are `codebase/secure/include/race.h`,
+`codebase/public/docs/helpdir/race/{ice_gnoll,zymari,faerie,pixie,sidhe}`, and
+`codebase/public/docs/race/{thraxian,sylph}` on Darkwind's `PZ-bonanza` branch.
+Painter generated six two-column gender atlases and one Zymari cutout using
+the existing human/elf room sprites as style references. Extractions retain
+the central connected alpha >16 silhouette plus a 2px safety fringe,
+preserving original alpha (including Sylph membranes). Each lossless WebP is
+384x384 with a centered foot baseline at y=352 and transparent outer borders;
+normal silhouettes fit 336px height, diminutive fae fit 270px. Both light/dark
+alpha contact sheets and actual room renders were inspected. These are room
+sprites, not Combat panel animation sheets.
+
 Wire booleans may be JSON booleans or LPC-compatible `0` and `1` values.
 This includes nested `equipment.two_handed`, not just top-level occupant flags.
 Other numeric values are invalid. Combat frames normalize these equipment

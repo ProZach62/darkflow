@@ -1126,6 +1126,102 @@ test.describe("room combat", () => {
 test.describe("isometric room server-contract follow-up", () => {
   test.use({ deviceScaleFactor: 2 });
 
+  test("player race sprites render both genders and clear when appearance is obscured", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const panel = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    endpoint.sendGmcp("Room.Info", {
+      num: 601,
+      name: "Player race gathering",
+      area: "Sprite preview",
+      environment: "inside",
+      looks: [],
+      details: [],
+      exits: {},
+      scene: { layout: { floor: "timber", walls: "timber" } },
+    });
+    const races = [
+      { race: "ice gnoll", sprite: "ice-gnoll", family: "gnoll" },
+      { race: "thraxian", sprite: "thraxian", family: "draconian" },
+      { race: "zymari", sprite: "zymari", family: "fungus" },
+      { race: "faerie", sprite: "faerie", family: "faerie" },
+      { race: "pixie", sprite: "pixie", family: "faerie" },
+      { race: "sylph", sprite: "sylph", family: "faerie" },
+      { race: "sidhe", sprite: "sidhe", family: "faerie" },
+    ];
+    for (const [index, gender] of ["male", "female"].entries()) {
+      endpoint.sendGmcp("Darkwind.Room.Occupants", {
+        version: 1,
+        room: 601,
+        mode: "snapshot",
+        revision: index + 1,
+        dark: 0,
+        more: 0,
+        upsert: races.map(({ race, family }, row) => ({
+          id: `race-${row}`,
+          name: race,
+          kind: row === 0 ? "self" : "player",
+          appearance: { race, family, gender },
+        })),
+        removed: [],
+      });
+      for (const [row, race] of races.entries()) {
+        const sprite = race.sprite === "zymari" ? "zymari" : `${race.sprite}-${gender}`;
+        await expect(panel.locator(`[data-occupant-id="race-${row}"] .figure`)).toHaveAttribute(
+          "src",
+          `/assets/iso/characters/${sprite}.webp`,
+        );
+      }
+      await expect
+        .poll(() =>
+          panel
+            .locator(".figure")
+            .evaluateAll((images) =>
+              images.every(
+                (image) =>
+                  (image as HTMLImageElement).complete &&
+                  (image as HTMLImageElement).naturalWidth > 0,
+              ),
+            ),
+        )
+        .toBe(true);
+      if (process.env.SCENE_SCREENSHOTS)
+        await panel.screenshot({
+          path: `${process.env.SCENE_SCREENSHOTS}/room-races-${gender}-${testInfo.project.name}.png`,
+        });
+    }
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 601,
+      mode: "delta",
+      base_revision: 2,
+      revision: 3,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "race-6", name: "an indistinct presence", kind: "npc", hazy: 1, appearance: {} },
+      ],
+      removed: [],
+    });
+    await expect(panel.locator('[data-occupant-id="race-6"] .figure')).toHaveAttribute(
+      "src",
+      "/assets/iso/characters/humanoid.webp",
+    );
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 601,
+      mode: "snapshot",
+      revision: 4,
+      dark: 1,
+      more: 0,
+      upsert: [],
+      removed: [],
+    });
+    await expect(panel.locator(".occupant")).toHaveCount(0);
+  });
+
   test("furnished tavern keeps scenery interactive and respects reduced motion and visibility", async ({
     page,
   }, testInfo) => {
