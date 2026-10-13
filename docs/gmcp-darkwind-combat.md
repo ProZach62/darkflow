@@ -353,8 +353,9 @@ appearance and equipment from State shape the figure when present. On legacy
 packets, the player's wielded and worn items from `Char.Items` shape it: the main-hand
 item's name picks the weapon (blade, knife, axe, blunt, polearm, staff, bow,
 or bare hands when nothing is wielded), an off-hand item is drawn in the
-left hand, a shield rides the left forearm, head armor draws a helmet, and
-body armor thickens the torso. Weapon kind is a keyword heuristic over the
+left hand, a shield rides the left forearm, and body armor thickens the torso.
+Head armor remains equipment metadata but does not draw a helmet overlay.
+Weapon kind is a keyword heuristic over the
 item name; an unrecognized name,
 or no inventory yet, falls back to the guild's weapon. Race scales the body,
 and NPC targets use a hunched beast form. Each event blends the actor
@@ -374,7 +375,7 @@ the figures at rest.
 
 When a sprite sheet is shipped for a figure kind (see
 [combat-sprites.md](combat-sprites.md)), it replaces the procedural body
-while weapons, shield, helmet, cloak, and the portrait head keep drawing on
+while weapons, shield, cloak, and the portrait head keep drawing on
 top. A missing or invalid sheet falls back to the rig.
 
 The stage plays each accepted event once, keyed by `seq` within the epoch and

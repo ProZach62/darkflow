@@ -1227,7 +1227,6 @@ export function createCombatStage(doc, options = {}) {
       this._drawNeck(c, geo, material);
       this._drawSilhouette(c, { x: geo.head.x, y: geo.head.y }, geo.head.r, { name: entry.label }, material.ring);
       this._drawArm(c, geo, geo.arms.right, material, 1);
-      if (geo.helmet) this._drawHelmet(c, geo.head, geo.facing);
       if (figure.weapon === 'bow') this._drawBow(c, geo, geo.weapon);
       else {
         this._drawOffHand(c, geo, material);
@@ -1381,7 +1380,6 @@ export function createCombatStage(doc, options = {}) {
       // the fighter's picture is in the header, beside the name.
       const drawsHead = !sprite || sprite.sheet.portrait !== false;
       if (drawsHead) this._drawHead(c, head, material, isActor, flashMix);
-      if (geo.helmet) this._drawHelmet(c, head, geo.facing);
       if (!sprite) this._drawArm(c, geo, geo.arms.right, material, 1);
       if (!weaponsInArt && figure.weapon !== 'bow') {
         if (smear) this._drawSmear(c, figure, joints, phase, token, groundLine, unit, material, smear);
@@ -2067,27 +2065,6 @@ export function createCombatStage(doc, options = {}) {
       c.beginPath();
       c.arc(0, 0, u * 0.11, 0, Math.PI * 2);
       c.fill();
-      c.restore();
-    },
-
-    // Helmet cap over the portrait disc.
-    _drawHelmet(c, head, facing) {
-      const r = head.r;
-      c.save();
-      c.lineCap = 'round';
-      c.lineWidth = Math.max(4, r * 0.3);
-      c.strokeStyle = '#07090c';
-      c.beginPath();
-      c.arc(head.x, head.y, r * 1.02, Math.PI * 1.1, Math.PI * 1.9);
-      c.stroke();
-      c.lineWidth = Math.max(3, r * 0.22);
-      c.strokeStyle = '#b3bcc4';
-      c.stroke();
-      c.lineWidth = Math.max(2, r * 0.1);
-      c.beginPath();
-      c.moveTo(head.x + facing * r * 0.05, head.y - r * 0.95);
-      c.lineTo(head.x + facing * r * 0.05, head.y - r * 0.35);
-      c.stroke();
       c.restore();
     },
 

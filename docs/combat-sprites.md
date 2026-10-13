@@ -6,8 +6,9 @@ the procedural rig in `combat-rig-core.mjs` otherwise. Generated transparent
 paintings in `public/assets/sprites/weapons/` supply sword, axe, hammer,
 shield, spear, great sword, great axe, and maul overlays. Their grip metadata
 lives in `combat-weapon-sprites.mjs`; the original vector silhouettes remain
-as loading and error fallbacks. Helmet, cloak, and the portrait head also draw
-on top, so equipment and identity work with any character art.
+as loading and error fallbacks. Cloak and portrait-head overlays also draw
+when enabled by the sheet. Helmet equipment remains in the profile, but the
+Scene does not draw a separate helmet cap over the character's head.
 
 Sheets live in `public/assets/sprites/` as a PNG plus a manifest with the
 same base name. A missing or invalid sheet costs one request and falls back
@@ -127,8 +128,7 @@ Unlike complete natural-creature sheets, these bodies are unarmed and keep
 equipment overlays enabled (`weaponsInArt: false`). Manually placed head,
 neck, main-hand, and off-hand anchors support equipment on either facing side.
 Some rear palms are occluded in strike/whiff artwork; their attachment points
-are inferred at the tucked hand location. Helmets on nonhuman snouts and
-fungal caps are approximate. The sheets own heads, tails, and clothes
+are inferred at the tucked hand location. The sheets own heads, tails, and clothes
 (`portrait: false`, `secondary: false`, `rigAligned: false`). Explicit
 non-humanoid or unknown forms never reuse these base humanoid race sheets.
 
@@ -178,7 +178,7 @@ hand-drawn art, so supply them.
 | Anchor | Used for |
 | --- | --- |
 | `head` | Center and radius of the portrait disc. The art should leave the head area empty or draw a neutral back-of-head shape underneath. |
-| `neck` | Where the neck meets the shoulders, for the helmet and for scaling the disc. |
+| `neck` | Where the neck meets the shoulders; retained attachment metadata. |
 | `hand` | Weapon hand. The main-hand weapon is drawn from here. |
 | `offHand` | Off-hand item or shield. |
 | `cloak` | Top of the cloak at the back shoulder. Omit if the art already includes a cloak. |
