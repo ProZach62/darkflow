@@ -297,6 +297,13 @@ export function roomSceneBuildingSprite(detail) {
 }
 
 export function roomSceneOccupantSprite(occupant = {}) {
+  const race = spriteWord(occupant.race);
+  const gender = spriteWord(occupant.gender);
+  const suffix = gender === 'female' || gender === 'woman' ? 'female' : 'male';
+  if (race === 'zymari') return 'zymari';
+  if (['ice-gnoll', 'thraxian', 'faerie', 'pixie', 'sylph', 'sidhe'].includes(race)) {
+    return `${race}-${suffix}`;
+  }
   const description = [occupant.race, occupant.family, occupant.name]
     .map(spriteWord)
     .filter(Boolean)
@@ -305,11 +312,9 @@ export function roomSceneOccupantSprite(occupant = {}) {
   if (description.includes('ursavar')) return 'ursavar';
   if (description.includes('ice-ogre') || description.includes('frost-giant')) return 'ice-ogre';
 
-  const gender = spriteWord(occupant.gender);
-  const suffix = gender === 'female' || gender === 'woman' ? 'female' : 'male';
   if (description.includes('scro') || description.includes('orc')) return `scro-${suffix}`;
   if (description.includes('dwarf') || description.includes('duergar')) return `dwarf-${suffix}`;
-  if (description.includes('elf') || description.includes('sidhe')) return `elf-${suffix}`;
+  if (description.includes('elf')) return `elf-${suffix}`;
   if (description.includes('human') || description.includes('northman')) return `human-${suffix}`;
   return 'humanoid';
 }

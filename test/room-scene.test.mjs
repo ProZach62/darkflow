@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -72,6 +73,23 @@ test('room scene exits expose positions and door art without inventing direction
   assert.equal(roomSceneDoorSprite(3), 'door-locked');
   assert.equal(roomSceneDoorSprite('closed'), 'door-closed');
   assert.equal(roomSceneDoorSprite(null), null);
+});
+
+test('new player races select shipped art before family fallbacks, without guessing from names', () => {
+  for (const [race, stem] of [['Ice Gnoll', 'ice-gnoll'], ['Thraxian', 'thraxian'],
+    ['Faerie', 'faerie'], ['Pixie', 'pixie'], ['Sylph', 'sylph'], ['Sidhe', 'sidhe']]) {
+    for (const gender of ['male', 'female']) {
+      const expected = `${stem}-${gender}`;
+      assert.equal(roomSceneOccupantSprite({ race, family: 'elf', gender }), expected);
+      assert.ok(existsSync(new URL(`../public/assets/iso/characters/${expected}.webp`, import.meta.url)));
+    }
+    assert.equal(roomSceneOccupantSprite({ name: race }), 'humanoid');
+  }
+  for (const gender of ['male', 'female']) assert.equal(roomSceneOccupantSprite({ race: 'zymari', gender }), 'zymari');
+  assert.ok(existsSync(new URL('../public/assets/iso/characters/zymari.webp', import.meta.url)));
+  assert.equal(roomSceneOccupantSprite({ race: 'sylph', gender: 'woman' }), 'sylph-female');
+  assert.equal(roomSceneOccupantSprite({ race: 'faerie' }), 'faerie-male');
+  assert.equal(roomSceneOccupantSprite({ name: 'an indistinct presence' }), 'humanoid');
 });
 
 test('room scene catalogue prefers structured looks and maps familiar nouns to prop art', () => {
