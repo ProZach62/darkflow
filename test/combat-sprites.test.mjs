@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolveFigure } from '../public/js/combat-rig-core.mjs';
 
 const {
@@ -176,7 +177,7 @@ test('sheet keys use public race hints for any fighter but private identity only
   assert.equal(isSheetKey('characters/'), false);
 });
 
-test('public Wolf forms use gender-neutral animal art without changing legacy observed or Crinos sheets', () => {
+test('public Wolf forms use gender-neutral animal art without changing legacy observed forms', () => {
   for (const gender of ['male', 'female', undefined]) {
     const wolf = { name: 'Acer', race: 'Wolf', gender };
     const figure = resolveFigure(wolf);
@@ -190,7 +191,42 @@ test('public Wolf forms use gender-neutral animal art without changing legacy ob
   const humanoid = { race: 'wolf', gender: 'female', form: 'humanoid', appearanceKnown: true };
   assert.deepEqual(spriteKeysFor(humanoid, resolveFigure(humanoid), 'player'), ['female-wolf', 'humanoid']);
   const crinos = { race: 'crinos', gender: 'male', appearanceKnown: true };
-  assert.deepEqual(spriteKeysFor(crinos, resolveFigure(crinos), 'player'), ['male-crinos', 'male-ursavar', 'humanoid']);
+  assert.deepEqual(spriteKeysFor(crinos, resolveFigure(crinos), 'player'), ['male-crinos', 'crinos', 'male-ursavar', 'humanoid']);
+});
+
+test('dedicated neutral race sheets outrank biological families for own and observed fighters', () => {
+  for (const [race, family] of [
+    ['Crannian Gnome', 'gnome'], ['Hyperborean Gnome', 'gnome'],
+    ['Ice Gnoll', 'gnoll'], ['Thraxian', 'draconian'], ['Vaelkar', 'draconian'],
+    ['Crinos', 'lycanthrope'], ['Reedstalker', 'draconian'], ['Boneback', 'draconian'],
+    ['Miura', 'feline'], ['Zymari', 'fungus'],
+  ]) {
+    const key = race.toLowerCase().replaceAll(' ', '-');
+    for (const gender of ['male', 'female', undefined]) {
+      for (const side of ['player', 'target']) {
+        const fighter = { race, family, gender, appearanceKnown: true, observed: side === 'target', equipment: {} };
+        const figure = resolveFigure(fighter, side);
+        const keys = spriteKeysFor(fighter, figure, side);
+        const selected = keys.find(candidate => existsSync(new URL('../public/assets/sprites/' + candidate + '.json', import.meta.url)));
+        assert.equal(selected, key, race + ' uses its dedicated art');
+        assert.equal(keys[0], (gender === 'female' ? 'female-' : 'male-') + key, 'gender-specific art still has priority');
+        const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + selected + '.json', import.meta.url))), figure.kind);
+        assert.ok(sheet, race + ' manifest matches the figure');
+        assert.ok(existsSync(new URL('../public' + sheet.image, import.meta.url)), race + ' image is shipped');
+        assert.equal(sheet.weaponsInArt, false, 'player equipment overlays remain enabled');
+      }
+    }
+    for (const form of ['quadruped', 'mist']) {
+      const fighter = { race, family, appearanceKnown: true, form };
+      assert.ok(!spriteKeysFor(fighter, resolveFigure(fighter), 'player').includes(key), 'incompatible forms do not reuse base race art');
+    }
+  }
+  const swampTroll = { race: 'Swamp Troll', family: 'troll', gender: 'female', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(swampTroll, resolveFigure(swampTroll), 'player'),
+    ['female-swamp-troll', 'female-arthok', 'female-troll', 'humanoid'], 'player race mapping outranks NPC family art');
+  const yugoloth = { race: 'yugoloth', family: 'human', gender: 'male', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(yugoloth, resolveFigure(yugoloth), 'target'),
+    ['male-yugoloth', 'male-arthok', 'male-human', 'humanoid'], 'race-specific shared art precedes a broader public family');
 });
 
 test('public creature races choose bundled art without name guesses or stale humanoid forms', () => {
@@ -221,7 +257,7 @@ test('public creature races choose bundled art without name guesses or stale hum
   for (const side of ['player', 'target']) {
     const fighter = { ...iceOgre, observed: side === 'target' };
     assert.deepEqual(spriteKeysFor(fighter, resolveFigure(fighter, side), side),
-      ['male-ice-ogre', 'male-ogre', 'humanoid'], 'Ice Ogre race art outranks generic Ogre family art');
+      ['male-ice-ogre', 'male-scro', 'male-ogre', 'humanoid'], 'Ice Ogre race art outranks generic Ogre family art');
   }
   const ogre = { race: 'ogre', isNpc: true, appearanceKnown: true };
   assert.deepEqual(spriteKeysFor(ogre, resolveFigure(ogre, 'target'), 'target'),
@@ -249,13 +285,12 @@ test('every playable race resolves to a shipped sheet or a shared archetype', ()
     'hyperborean-gnome', 'ice-gnoll', 'ice-ogre', 'kender', 'northman', 'pixie',
     'rift-duergar', 'scro', 'shel-zaranite', 'sidhe', 'silver-elf', 'souvraeli',
     'stone-dwarf', 'swamp-troll', 'sylph', 'thraxian', 'uruk', 'wayfarian', 'wolf',
-    'yugoloth', 'arthok', 'ursavar',
+    'yugoloth', 'arthok', 'ursavar', 'vaelkar', 'reedstalker', 'boneback', 'miura', 'zymari',
   ];
-  const shipped = new Set(['arthok', 'dwarf', 'elf', 'human', 'scro', 'ursavar', 'wolf']);
   for (const race of races) {
     const combatant = { gender: 'female', race };
     const keys = spriteKeysFor(combatant, resolveFigure(combatant), 'player');
-    assert.ok(keys.some((key) => shipped.has(key.replace(/^female-/, ''))), race + ' has art coverage');
+    assert.ok(keys.some(key => key !== 'humanoid' && existsSync(new URL('../public/assets/sprites/' + key + '.json', import.meta.url))), race + ' has non-generic art coverage');
   }
 });
 

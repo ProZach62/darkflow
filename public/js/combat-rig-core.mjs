@@ -138,8 +138,9 @@ const CREATURE_RACES = Object.freeze({
   lich: ['humanoid', 'undead'],
   troll: ['humanoid', 'troll'],
   ogre: ['humanoid', 'troll'],
-  // Ice Ogre has its own humanoid sheet; its Ogre family must not replace it.
+  // Named player races keep humanoid race/family art, not generic NPC art.
   'ice-ogre': ['humanoid', ''],
+  'swamp-troll': ['humanoid', ''],
   giant: ['humanoid', 'troll'],
 });
 

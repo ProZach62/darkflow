@@ -74,6 +74,12 @@ export function spriteRaceFamily(race) {
   return SPRITE_RACE_FAMILIES[spriteSlug(race)] || '';
 }
 
+// Dedicated body art shared by every gender, before broader family sheets.
+const NEUTRAL_RACE_SPRITES = Object.freeze([
+  'crannian-gnome', 'hyperborean-gnome', 'ice-gnoll', 'thraxian', 'vaelkar',
+  'crinos', 'reedstalker', 'boneback', 'miura', 'zymari',
+]);
+
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
   ['drake', /\b(?:dragon|drake|wyvern|wyrm|whelp)\b/],
   ['spider', /\b(?:spider|arachnid|scorpion)\b/],
@@ -109,10 +115,12 @@ export function spriteKeysFor(combatant, figure, side) {
         const declaredGender = spriteSlug(combatant.gender);
         const gender = declaredGender === 'female' ? 'female' : 'male';
         if (race) keys.push(gender + '-' + race);
+        if (NEUTRAL_RACE_SPRITES.includes(race)) keys.push(race);
         const family = spriteSlug(combatant.family);
+        // A race's curated art family outranks its broader biological family.
+        const shared = spriteRaceFamily(race) || spriteRaceFamily(family);
+        if (shared && shared !== race) keys.push(gender + '-' + shared);
         if (family && family !== race) keys.push(gender + '-' + family);
-        const shared = spriteRaceFamily(family || race);
-        if (shared && shared !== race && shared !== family) keys.push(gender + '-' + shared);
       }
     }
   }
@@ -121,7 +129,7 @@ export function spriteKeysFor(combatant, figure, side) {
     if (enemy) keys.push(enemy);
   }
   if (figure && SPRITE_KINDS.includes(figure.kind)) keys.push(figure.kind);
-  return keys.filter(isSheetKey);
+  return [...new Set(keys.filter(isSheetKey))];
 }
 
 function finite(value, fallback) {

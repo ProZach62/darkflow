@@ -39,7 +39,8 @@ humanoid fallback unless an explicit form overrides it; an NPC dragon without
 that family uses drake art.
 Ice Ogre's public `race: "ice ogre", family: "ogre"` keeps its race-specific
 humanoid sheet instead of the generic Ogre family's troll art. Ordinary Ogre
-NPCs still use `enemies/troll`.
+NPCs still use `enemies/troll`. Swamp Troll similarly keeps its humanoid
+Arthok art fallback rather than the generic Troll family's NPC sheet.
 
 For humanoid forms the stage tries, most specific first:
 
@@ -48,13 +49,18 @@ For humanoid forms the stage tries, most specific first:
 2. `<gender>-<race>`, slugged the same way (`male-scro`). Female uses female
    art; absent or unspecified gender uses male art as a visual default only,
    without adding a gender to the public snapshot.
-3. `<gender>-<family>` from the explicit public family, then the shared
-   family in `SPRITE_RACE_FAMILIES`. Every playable race maps to shipped art. Human
-   cultures and smallfolk share `human`; elven and fae races share `elf`;
-   dwarves and gnomes share `dwarf`; Crinos and Ice Gnoll share `ursavar`; and
-   the larger monstrous races share `scro` or `arthok`. NPC Orc shares Scro.
-   A race-specific sheet still wins whenever one exists.
-4. The body kind, `humanoid` or `beast`.
+3. Dedicated gender-neutral `<race>` art when registered in
+   `NEUTRAL_RACE_SPRITES`. This uses the same body sheet for every gender,
+   without adding or changing the actor's public gender.
+4. `<gender>-<shared>` from the race's curated `SPRITE_RACE_FAMILIES` entry.
+   A race's intended artwork family precedes its broader biological family:
+   Gnomes can fall back to Dwarf, Ice Gnoll and Crinos to Ursavar, Thraxian
+   to Scro, and Swamp Troll and Yugoloth to Arthok.
+5. `<gender>-<family>` from the explicit public family. If the race has no
+   curated entry, a curated entry for that public family is tried first.
+   Unknown races can still borrow public family art; absent hints do not
+   permit private identity guesses.
+6. The body kind, `humanoid` or `beast`. Duplicate candidates are removed.
 
 Only legacy NPC targets without public appearance match their display name:
 drake/dragon, spider/arachnid, rat/rodent/mouse, bat, bear, golem,
@@ -94,6 +100,37 @@ weapon, portrait, or secondary tail/cloak overlays. Bear is a natural
 quadruped, not the humanoid Ursavar sheet. Golem is an unarmed stone construct.
 Broad races such as reptile, elemental, and plant are intentionally not mapped
 to these species; neither is a redacted appearance inferred from its name.
+
+### Additional player-race artwork
+
+Ten dedicated gender-neutral humanoid sheets cover Crannian Gnome,
+Hyperborean Gnome, Ice Gnoll, Thraxian, Vaelkar, Crinos, Reedstalker, Boneback,
+Miura, and Zymari. Each PNG/JSON pair uses the slugged race name at the
+sprites root. Gender-specific sheets, if supplied later, retain priority.
+
+Their identities follow the existing portraits and live race/guild help:
+earthy Crannian and blue-clothed northern Gnomes; spotted hyena-humanoid Ice
+Gnoll; small-winged Thraxian; wingless scaled Vaelkar; upright wolfman Crinos;
+tailed predatory Reedstalker; upright turtle-headed, shell-backed Boneback;
+upright feline Miura; and a person-shaped colony of caps and mycelial threads
+for Zymari. Colors, clothing, reptile subtype, and Miura coat are representative
+art choices, not claims about every character's customized appearance.
+
+These use the existing painted style, whole-alpha-component extraction, one
+shared scale per sheet, and the frame assembler. Geometry is 1536 x 1536,
+nine 512-pixel cells, unit 128, ground anchor (200, 464), facing right.
+Painted poses are idle/windup/strike, whiff/recoil/dodge, guard/cast/look.
+Maul, thrust, chop, and loose reuse strike; raise and draw reuse windup.
+These are shared action illustrations, not bespoke sword/bow animations.
+
+Unlike complete natural-creature sheets, these bodies are unarmed and keep
+equipment overlays enabled (`weaponsInArt: false`). Manually placed head,
+neck, main-hand, and off-hand anchors support equipment on either facing side.
+Some rear palms are occluded in strike/whiff artwork; their attachment points
+are inferred at the tucked hand location. Helmets on nonhuman snouts and
+fungal caps are approximate. The sheets own heads, tails, and clothes
+(`portrait: false`, `secondary: false`, `rigAligned: false`). Explicit
+non-humanoid or unknown forms never reuse these base humanoid race sheets.
 
 ## Manifest
 

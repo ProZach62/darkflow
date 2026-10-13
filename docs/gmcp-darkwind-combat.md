@@ -159,8 +159,12 @@ The Scene uses public race/family/gender for both fighter slots, including
 observed fights. Known creature races select bundled creature art and a body
 default only when no explicit form overrides them. Playable Dragon's public
 dragon family retains its humanoid family art rather than NPC drake art.
-Missing/unspecified gender uses male sheet artwork as a visual default without
-inventing public gender. Unknown races fall through to public family art and
+Dedicated humanoid race art, including gender-neutral sheets, precedes shared
+family art. The race's curated artwork family outranks its broader public
+biological family; named player Ice Ogre and Swamp Troll do not select generic
+NPC Ogre/Troll art. Gender-specific sheets remain first, with missing gender
+using male artwork as a visual default without inventing public gender.
+Unknown races fall through to public family art and
 then generic art; explicit redaction never enables name-based guesses. See
 [`combat-sprites.md`](combat-sprites.md) for the bounded artwork mappings.
 
