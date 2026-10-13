@@ -138,6 +138,8 @@ const CREATURE_RACES = Object.freeze({
   lich: ['humanoid', 'undead'],
   troll: ['humanoid', 'troll'],
   ogre: ['humanoid', 'troll'],
+  // Ice Ogre has its own humanoid sheet; its Ogre family must not replace it.
+  'ice-ogre': ['humanoid', ''],
   giant: ['humanoid', 'troll'],
 });
 

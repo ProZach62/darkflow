@@ -217,6 +217,15 @@ test('public creature races choose bundled art without name guesses or stale hum
   const dragon = { race: 'Dragon', family: 'dragon', appearanceKnown: true };
   assert.deepEqual(spriteKeysFor(dragon, resolveFigure(dragon, 'target'), 'target'),
     ['male-dragon', 'male-arthok', 'humanoid'], 'playable Dragon family keeps humanoid art');
+  const iceOgre = { race: 'Ice Ogre', family: 'ogre', gender: 'male', appearanceKnown: true };
+  for (const side of ['player', 'target']) {
+    const fighter = { ...iceOgre, observed: side === 'target' };
+    assert.deepEqual(spriteKeysFor(fighter, resolveFigure(fighter, side), side),
+      ['male-ice-ogre', 'male-ogre', 'humanoid'], 'Ice Ogre race art outranks generic Ogre family art');
+  }
+  const ogre = { race: 'ogre', isNpc: true, appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(ogre, resolveFigure(ogre, 'target'), 'target'),
+    ['enemies/troll', 'humanoid'], 'ordinary Ogre NPCs keep their enemy art');
   const transformed = { race: 'human', family: 'human', gender: 'female', form: 'quadruped', appearanceKnown: true };
   assert.deepEqual(spriteKeysFor(transformed, resolveFigure(transformed), 'player'), ['beast'],
     'explicit animal form must not reuse humanoid race art');

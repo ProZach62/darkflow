@@ -37,6 +37,9 @@ humanoid equipment. Crinos and Ursavar keep their humanoid sheets. Playable
 Dragon's public `race: "dragon", family: "dragon"` retains the Arthok-family
 humanoid fallback unless an explicit form overrides it; an NPC dragon without
 that family uses drake art.
+Ice Ogre's public `race: "ice ogre", family: "ogre"` keeps its race-specific
+humanoid sheet instead of the generic Ogre family's troll art. Ordinary Ogre
+NPCs still use `enemies/troll`.
 
 For humanoid forms the stage tries, most specific first:
 
