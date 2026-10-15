@@ -241,6 +241,14 @@ test('public creature races choose bundled art without name guesses or stale hum
     ['mouse', 'enemies/rat', 'beast'],
     ['bat', 'enemies/bat', 'beast'],
     ['bear', 'enemies/bear', 'beast'],
+    ['boar', 'enemies/boar', 'beast'],
+    ['Wild Boar', 'enemies/boar', 'beast'],
+    ['snake', 'enemies/serpent', 'beast'],
+    ['serpent', 'enemies/serpent', 'beast'],
+    ['crab', 'enemies/crab', 'beast'],
+    ['Giant Crab', 'enemies/crab', 'beast'],
+    ['crocodile', 'enemies/crocodile', 'beast'],
+    ['alligator', 'enemies/crocodile', 'beast'],
     ['golem', 'enemies/golem', 'humanoid'],
     ['goblin', 'enemies/goblin', 'humanoid'],
     ['kobold', 'enemies/kobold', 'humanoid'],
@@ -303,6 +311,36 @@ test('armed monster sheets cover attacks without overriding redaction or explici
   }
 });
 
+test('natural beasts ship nine attack poses without bypassing public appearance', () => {
+  for (const race of ['boar', 'serpent', 'crab', 'crocodile']) {
+    const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/enemies/' + race + '.json', import.meta.url))), 'beast');
+    assert.ok(sheet, race + ' ships a valid beast sheet');
+    const image = readFileSync(new URL('../public' + sheet.image, import.meta.url));
+    const width = image.readUInt32BE(16);
+    const height = image.readUInt32BE(20);
+    assert.equal(sheet.weaponsInArt, true, race + ' owns its natural attacks');
+    assert.equal(sheet.portrait, false);
+    assert.equal(sheet.secondary, false);
+    for (const pose of ['idle', 'windup', 'maul', 'whiff', 'recoil', 'dodge', 'guard', 'cast', 'look']) {
+      const [selected] = selectSpriteFrames(sheet, { from: pose, to: pose }, 1);
+      assert.equal(selected.name, pose, race + ' animates ' + pose);
+      assert.ok(selected.frame.x + sheet.frameWidth <= width && selected.frame.y + sheet.frameHeight <= height);
+    }
+    const redacted = { name: 'a giant ' + race, isNpc: true, appearanceKnown: true };
+    assert.deepEqual(spriteKeysFor(redacted, resolveFigure(redacted, 'target'), 'target'), ['humanoid']);
+    const transformed = { ...redacted, race, form: 'mist' };
+    assert.deepEqual(spriteKeysFor(transformed, resolveFigure(transformed, 'target'), 'target'), ['humanoid']);
+    const family = { ...redacted, family: race };
+    assert.equal(spriteKeysFor(family, resolveFigure(family, 'target'), 'target')[0], 'enemies/' + race);
+    const legacy = { name: redacted.name, isNpc: true };
+    assert.equal(spriteKeysFor(legacy, resolveFigure(legacy, 'target'), 'target')[0], 'enemies/' + race);
+  }
+  for (const family of ['animal', 'reptile', 'crustacean']) {
+    const fighter = { family, appearanceKnown: true, name: 'a giant crab', isNpc: true };
+    assert.deepEqual(spriteKeysFor(fighter, resolveFigure(fighter, 'target'), 'target'), ['male-' + family, 'humanoid']);
+  }
+});
+
 test('every playable race resolves to a shipped sheet or a shared archetype', () => {
   const races = [
     'arctic-elf', 'barbarian', 'crannian-gnome', 'crinos', 'darkwinder', 'desert-dwarf',
@@ -325,6 +363,13 @@ test('enemy names map to distinct shipped archetypes', () => {
   assert.equal(enemySpriteKey('a giant plague rat'), 'enemies/rat');
   assert.equal(enemySpriteKey('a cave bat'), 'enemies/bat');
   assert.equal(enemySpriteKey('a brown bear'), 'enemies/bear');
+  assert.equal(enemySpriteKey('a giant wild boar'), 'enemies/boar');
+  assert.equal(enemySpriteKey('a giant marsh snake'), 'enemies/serpent');
+  assert.equal(enemySpriteKey('a giant serpent'), 'enemies/serpent');
+  assert.equal(enemySpriteKey('a giant crab'), 'enemies/crab');
+  assert.equal(enemySpriteKey('a giant crocodile'), 'enemies/crocodile');
+  assert.equal(enemySpriteKey('a giant alligator'), 'enemies/crocodile');
+  assert.equal(enemySpriteKey('crabapple'), '');
   assert.equal(enemySpriteKey('a stone golem'), 'enemies/golem');
   assert.equal(enemySpriteKey('a reed goblin warden'), 'enemies/goblin');
   assert.equal(enemySpriteKey('a smelly little kobold'), 'enemies/kobold');

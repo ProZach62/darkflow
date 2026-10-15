@@ -25,13 +25,15 @@ available only for the recipient's own fighter in their own fight.
 Public creature races select shared art before the body-kind fallback:
 Wolf uses `wolf`; rat/rodent/mouse use `enemies/rat`; bat uses `enemies/bat`;
 bear uses `enemies/bear`; golem uses `enemies/golem`;
+boar/wild-boar use `enemies/boar`; snake/serpent use `enemies/serpent`;
+crab/giant-crab use `enemies/crab`; crocodile/alligator use `enemies/crocodile`;
 dragon/drake/wyvern/wyrm use `enemies/drake`;
 spider/arachnid/scorpion use `enemies/spider`; skeleton/zombie/undead/ghoul/
 wight/lich use `enemies/undead`; troll/ogre/giant use `enemies/troll`.
 Goblin, kobold, minotaur, and gargoyle each use their own `enemies/<race>` sheet.
-Wolf, rat, bat, bear, drake, and spider profiles use beast geometry, while
-golem, undead, troll, goblin, kobold, minotaur, and gargoyle profiles use
-humanoid geometry. An explicit form outranks these race defaults;
+Wolf, rat, bat, bear, boar, serpent, crab, crocodile, drake, and spider profiles
+use beast geometry, while golem, undead, troll, goblin, kobold, minotaur, and
+gargoyle profiles use humanoid geometry. An explicit form outranks these race defaults;
 an incompatible or unknown form does not reuse the creature sheet. Other
 unknown races use the explicit public family, when supplied, then generic art.
 
@@ -67,7 +69,8 @@ For humanoid forms the stage tries, most specific first:
 
 Only legacy NPC targets without public appearance match their display name:
 drake/dragon, spider/arachnid, rat/rodent/mouse, bat, bear, golem,
-skeleton/undead, troll/ogre, goblin, kobold, minotaur, or gargoyle.
+skeleton/undead, troll/ogre, goblin, kobold, minotaur, gargoyle, boar,
+snake/serpent, crab, or crocodile/alligator.
 Specific species precede broad legacy
 matches such as "giant", so a giant rat is not drawn as a troll. Unmatched NPCs
 use `beast`. Observed fighters without public appearance get only generic art.
@@ -92,12 +95,18 @@ and tail (`weaponsInArt: true`, `portrait: false`, `secondary: false`).
 
 ### Additional enemy artwork
 
-Rat, bat, bear, and stone golem use the same transparent nine-pose layout as
-Wolf: idle/windup/maul, whiff/recoil/dodge, and guard/cast/look. Each sheet is
+Rat, bat, bear, boar, serpent, giant crab, crocodile, and stone golem use the
+same transparent nine-pose layout as Wolf: idle/windup/maul,
+whiff/recoil/dodge, and guard/cast/look. Each sheet is
 1536 x 1536 with 512-pixel frames, unit 128, and ground anchor (200, 464).
 They use Wolf's painted style, whole-silhouette alpha extraction, one shared
 scale per species, and the repository's frame assembler. Cast is a natural
 squeal/shriek/roar or golem gesture, without baked spell effects.
+
+Boar charges with its tusks; serpent lunges from a coil; giant crab snaps
+its pincers; crocodile lunges with open jaws. Their cast poses are natural
+threat displays. Snake shares serpent art and alligator shares crocodile art;
+broad reptile or crustacean families do not imply either specific species.
 
 The sheets own their complete heads and natural attacks, with no procedural
 weapon, portrait, or secondary tail/cloak overlays. Bear is a natural
