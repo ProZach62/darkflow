@@ -384,6 +384,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['gravemarch-span', 'golem', ['Gravemarch span', 'the Gravemarch Span']],
     ['obsidian-thane', 'giant', ['Obsidian thane', 'the Obsidian Thane']],
     ['parallax-queen', 'construct', ['The Parallax Queen']],
+    ['cragjaw', 'reptile', ['Cragjaw', 'Cragjaw, First Hunger']],
+    ['rattleback', 'reptile', ['Rattleback', 'Rattleback Gnashmother']],
+    ['echoing-drop-stalker', 'reptile', ['Echoing drop stalker', 'an echoing drop stalker']],
+    ['black-vent-ancient', 'dragon', ['Black vent ancient', 'the Black Vent Ancient']],
+    ['hollow-antler', 'spirit', ['Hollow Antler', 'the Hollow Antler']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -403,7 +408,7 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen'].includes(key);
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker'].includes(key);
     const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
@@ -510,6 +515,22 @@ test('named boss art requires an exact visible label and public race, without ov
     const observed = { ...fighter, appearanceKnown: true, isNpc: true };
     const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
     assert.ok(!['rabbit-of-caerbannog', 'volcano-heart', 'gravemarch-span', 'obsidian-thane', 'parallax-queen'].some((key) => keys.includes('enemies/' + key)), 'generic shorts and inferred races retain fallback art: ' + JSON.stringify(fighter));
+  }
+  for (const fighter of [
+    { name: 'gnasher', race: 'reptile' },
+    { name: 'brood-mother', race: 'reptile' },
+    { name: 'stalker', race: 'reptile' },
+    { name: 'wyrm', race: 'dragon' },
+    { name: 'antler', race: 'spirit' },
+    { name: 'Cragjaw', race: 'dragon' },
+    { name: 'Rattleback', race: 'beast' },
+    { name: 'Echoing drop stalker', race: 'lizard' },
+    { name: 'Black vent ancient', race: 'reptile' },
+    { name: 'Hollow Antler', race: 'treant' },
+  ]) {
+    const observed = { ...fighter, appearanceKnown: true, isNpc: true };
+    const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
+    assert.ok(!['cragjaw', 'rattleback', 'echoing-drop-stalker', 'black-vent-ancient', 'hollow-antler'].some((key) => keys.includes('enemies/' + key)), 'shared descriptions and inferred species do not identify a boss: ' + JSON.stringify(fighter));
   }
 });
 

@@ -124,6 +124,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'gravemarch-span', race: 'golem', names: ['gravemarch span'] },
   { key: 'obsidian-thane', race: 'giant', names: ['obsidian thane'] },
   { key: 'parallax-queen', race: 'construct', names: ['parallax queen'] },
+  { key: 'cragjaw', race: 'reptile', names: ['cragjaw', 'cragjaw, first hunger'] },
+  { key: 'rattleback', race: 'reptile', names: ['rattleback', 'rattleback gnashmother'] },
+  { key: 'echoing-drop-stalker', race: 'reptile', names: ['echoing drop stalker'] },
+  { key: 'black-vent-ancient', race: 'dragon', names: ['black vent ancient'] },
+  { key: 'hollow-antler', race: 'spirit', names: ['hollow antler'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

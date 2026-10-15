@@ -180,6 +180,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `gravemarch-span` | Gravemarch span; the Gravemarch Span; golem | `domains/highway/areas/blackmouth_pass/monsters/gravemarch_span.c`: huge neuter hunched bridge-warden of fitted basalt plates |
 | `obsidian-thane` | Obsidian thane; the Obsidian Thane; giant | `domains/highway/areas/blackmouth_pass/monsters/obsidian_thane.c`: huge male basalt giant, crown grown from skull, chest laws carved in dust-filled letters |
 | `parallax-queen` | The Parallax Queen; construct | `planets/tekal/areas/parallax_hive/monsters/parallax_queen.c`: huge neuter insect-shaped machine, ceramic mandibles, charged needles, solvent ducts and contained quantum core |
+| `cragjaw` | Cragjaw; Cragjaw, First Hunger; reptile | `domains/highway/areas/blackmouth_pass/monsters/cragjaw_first_hunger.c`: huge male black-scaled fault predator, wedge skull and exceptionally long teeth |
+| `rattleback` | Rattleback; Rattleback Gnashmother; reptile | `domains/highway/areas/blackmouth_pass/monsters/rattleback_gnashmother.c`: huge female brood-mother, rows of loose black spinal plates and a plated tail |
+| `echoing-drop-stalker` | Echoing drop stalker; an echoing drop stalker; reptile | `domains/highway/areas/blackmouth_pass/monsters/echoing_drop_stalker.c`: huge neuter vertical-stone climber whose throat repeats vanished prey's sounds |
+| `black-vent-ancient` | Black vent ancient; the Black Vent Ancient; dragon | `domains/highway/areas/blackmouth_pass/monsters/black_vent_ancient.c`: huge neuter heat-drinking wyrm, matte lightless scales and fireless teeth |
+| `hollow-antler` | Hollow Antler; the Hollow Antler; spirit | `domains/darkwind/areas/syldenith_heartroot_descent/monsters/hollow_antler.c`: large wound spirit, root-bone limbs, empty antler rack, red sap and founder-stone core |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -318,6 +323,23 @@ ends are included; suspension anchors belong to the room, not the body
 atlas. Its equipped crown/afterimage-corona aura variants are not baked into
 the chassis, avoiding a false claim about which variant is available.
 Other rabbits, golems, giants and constructs retain existing generic art.
+
+Cragjaw, Rattleback, Echoing Drop Stalker, Black Vent Ancient, and Hollow
+Antler add nine-pose bodies from their authored boss definitions. The three
+reptiles use quadrupedal interpretations: Cragjaw's wedge skull and long
+teeth, Rattleback's loose spinal plates and plated tail, and the Stalker's
+spread gripping toes and resonant throat distinguish their silhouettes.
+Limb counts, eye colours, body proportions and the Stalker's slate palette
+are art choices, not new public appearance hints. The Stalker has one mouth;
+its phase name does not imply multiple physical mouths. The Ancient's
+wingless long-necked body is likewise an interpretation; its plates remain
+matte, without a glowing furnace or fire breath. Hollow Antler is a hollow
+root-bone biped surrounding an exposed stone core, with red sap rather than
+blood. Its stance is artistic, no gender is inferred, and it is not depicted
+as a normal deer or an ancient forest deity. None has painted reward gear:
+tooth/amulet drops, wyrmscale armour/spear and stone-sap gauntlets are rewards,
+not authored equipped items. Exact public Combat and room labels plus race
+select the sheets; generic gnashers, stalkers, wyrms and treants are unchanged.
 
 ### Additional player-race artwork
 
