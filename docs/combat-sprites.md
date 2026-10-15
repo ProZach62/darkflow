@@ -175,6 +175,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `regrowth-mass` | Regrowth mass; a regrowth mass; reptile | `domains/highway/areas/blackmouth_pass/monsters/regrowth_mass.c`: huge neuter living heap of scale, tooth and meat, regrowing jaws and knitting flesh |
 | `bankbreaker` | Bankbreaker; Bankbreaker, the root-burrowing beast; animal | `domains/talamh_darag/areas/redroot_ringfort/monsters/burrower.c`: huge neuter digging beast, clay lodged in old hide ridges, one foreclaw worn shorter than the other |
 | `nhal-serev` | Nhal Serev; Nhal Serev, the Rimebound Archlich; undead | `domains/dramasa/areas/rimevault/monsters/nhal_serev.c`: medium preserved floating sorcerer, broken ancient ice shell, blue skull fire and orbiting spell fragments |
+| `rabbit-of-caerbannog` | Rabbit of Caerbannog; fiend | `domains/hyperborea/areas/crystal_tower/monsters/rabbit_of_caerbannog.c`: small white rabbit, immaculate fur, glowing red eyes and unnaturally fine sharp incisors |
+| `volcano-heart` | Volcano Heart; the Volcano Heart; elemental | `domains/darkwind/areas/qazaash/rainbow4/monsters/volcano_heart.c`: huge elemental figure, molten core enclosed in black stone slabs, red-lit fractures |
+| `gravemarch-span` | Gravemarch span; the Gravemarch Span; golem | `domains/highway/areas/blackmouth_pass/monsters/gravemarch_span.c`: huge neuter hunched bridge-warden of fitted basalt plates |
+| `obsidian-thane` | Obsidian thane; the Obsidian Thane; giant | `domains/highway/areas/blackmouth_pass/monsters/obsidian_thane.c`: huge male basalt giant, crown grown from skull, chest laws carved in dust-filled letters |
+| `parallax-queen` | The Parallax Queen; construct | `planets/tekal/areas/parallax_hive/monsters/parallax_queen.c`: huge neuter insect-shaped machine, ceramic mandibles, charged needles, solvent ducts and contained quantum core |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -293,6 +298,26 @@ equipped and do not appear on their bodies. Broad fish, animal, reptile and
 undead labels retain generic fallbacks; only exact public name/race pairs
 select these sheets. Mintohdar remains deferred until its required eight-arm
 anatomy can be reproduced consistently across poses.
+
+Rabbit of Caerbannog, Volcano Heart, Gravemarch Span, Obsidian Thane, and
+the Parallax Queen add nine-pose bodies using the authored sources above.
+Caerbannog's generic room short `a rabbit` deliberately does not select its
+sheet, even with race `fiend`; Combat's distinctive `Rabbit of Caerbannog`
+does. Its larger sheet unit keeps the painted rabbit small beside a human,
+in addition to the server's small-size hint. No reward carrot juice or
+grenade is painted on its body.
+Volcano Heart stays in its banked black-stone/red-core form, with no reward
+heartblade or invented gender. Gravemarch Span and Obsidian Thane have no
+painted reward shields or greaves. The Thane's crown is grown anatomy rather
+than equipped armour, and the chest marks suggest dust-filled laws without
+inventing readable text. Volcano Heart's rocky facial features and exact
+limb shapes, and the Span's block hands and plate layout, are art choices.
+The Parallax Queen's six-legged layout, metal palette and blue core are
+artistic interpretations of its insect-shaped chassis. Only attached cable
+ends are included; suspension anchors belong to the room, not the body
+atlas. Its equipped crown/afterimage-corona aura variants are not baked into
+the chassis, avoiding a false claim about which variant is available.
+Other rabbits, golems, giants and constructs retain existing generic art.
 
 ### Additional player-race artwork
 

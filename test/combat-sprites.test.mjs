@@ -379,6 +379,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['regrowth-mass', 'reptile', ['Regrowth mass', 'a regrowth mass']],
     ['bankbreaker', 'animal', ['Bankbreaker', 'Bankbreaker, the root-burrowing beast']],
     ['nhal-serev', 'undead', ['Nhal Serev', 'Nhal Serev, the Rimebound Archlich']],
+    ['rabbit-of-caerbannog', 'fiend', ['Rabbit of Caerbannog']],
+    ['volcano-heart', 'elemental', ['Volcano Heart', 'the Volcano Heart']],
+    ['gravemarch-span', 'golem', ['Gravemarch span', 'the Gravemarch Span']],
+    ['obsidian-thane', 'giant', ['Obsidian thane', 'the Obsidian Thane']],
+    ['parallax-queen', 'construct', ['The Parallax Queen']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -398,7 +403,7 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker'].includes(key);
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen'].includes(key);
     const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
@@ -489,6 +494,22 @@ test('named boss art requires an exact visible label and public race, without ov
     const observed = { ...fighter, appearanceKnown: true, isNpc: true };
     const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
     assert.ok(!['white-shark', 'ruby-dragon', 'regrowth-mass', 'bankbreaker', 'nhal-serev'].some((key) => keys.includes('enemies/' + key)), 'broad labels and inferred species do not identify a boss: ' + JSON.stringify(fighter));
+  }
+  for (const fighter of [
+    { name: 'a rabbit', race: 'fiend' },
+    { name: 'Rabbit of Caerbannog', race: 'rabbit' },
+    { name: 'elemental', race: 'elemental' },
+    { name: 'Volcano Heart', race: 'golem' },
+    { name: 'bridge warden', race: 'golem' },
+    { name: 'Gravemarch span', race: 'construct' },
+    { name: 'giant', race: 'giant' },
+    { name: 'Obsidian thane', race: 'golem' },
+    { name: 'queen', race: 'construct' },
+    { name: 'The Parallax Queen', race: 'insect' },
+  ]) {
+    const observed = { ...fighter, appearanceKnown: true, isNpc: true };
+    const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
+    assert.ok(!['rabbit-of-caerbannog', 'volcano-heart', 'gravemarch-span', 'obsidian-thane', 'parallax-queen'].some((key) => keys.includes('enemies/' + key)), 'generic shorts and inferred races retain fallback art: ' + JSON.stringify(fighter));
   }
 });
 

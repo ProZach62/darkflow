@@ -119,6 +119,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'regrowth-mass', race: 'reptile', names: ['regrowth mass'] },
   { key: 'bankbreaker', race: 'animal', names: ['bankbreaker', 'bankbreaker, the root-burrowing beast'] },
   { key: 'nhal-serev', race: 'undead', names: ['nhal serev', 'nhal serev, the rimebound archlich'] },
+  { key: 'rabbit-of-caerbannog', race: 'fiend', names: ['rabbit of caerbannog'] },
+  { key: 'volcano-heart', race: 'elemental', names: ['volcano heart'] },
+  { key: 'gravemarch-span', race: 'golem', names: ['gravemarch span'] },
+  { key: 'obsidian-thane', race: 'giant', names: ['obsidian thane'] },
+  { key: 'parallax-queen', race: 'construct', names: ['parallax queen'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
