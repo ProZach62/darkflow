@@ -215,6 +215,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `midgard-serpent` | The Midgard Serpent; reptile | `domains/hyperborea/areas/asgard/quest/serpent.c`: salt-crusted grey-green world-serpent |
 | `knot-chewer` | Knot Chewer; gnoll | `domains/hyperborea/areas/knucklebone_road/monsters/knot_chewer.c`: aged female gnoll, silver muzzle, patched hide coat and red cords |
 | `umberhulk-matriarch` | Matriarch; the umberhulk matriarch; ogre | `domains/hyperborea/areas/asgard/monsters/nidavellir/hulk_matriarch.c`: pitted mossy carapace, four eyes and crushing mandibles |
+| `tree-spirit` | tree spirit; spirit | `domains/underworld/areas/gcity/monster/tspirit.c`: huge female shimmering water-energy mass, not a wooden treant |
+| `giant-grubber` | A giant grubber; invertebrate | `domains/underworld/areas/underdark/mobs/grubber2.c`: pale grey worm with hundreds of tiny feet |
+| `tunnelworm` | A giant, blundering worm; invertebrate | `domains/underworld/areas/underdark/mobs/tunnelworm.c`: eyeless grey worm with long mouth-talons |
+| `squiggoth` | squiggoth; fiend | `domains/underworld/areas/orcnewbie/mobs/squigc.c`: mammoth-sized blue-tinged mount with pointed ears |
+| `bone-goliath` | Bone Goliath; demon | `domains/underworld/areas/demon_plain/monster/bonegoliath.c`: humanoid aggregate of clean white skulls and long bones |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -445,6 +450,16 @@ Jaw reward or shield; tally bones and coat are prose details. Charnel's eight
 tentacles were visually checked in idle/maul/cast only, not all nine poses;
 Knot Chewer's seven closures are partially occluded. Full-pose anatomy review
 remains outstanding where upload quota prevented inspection.
+
+Tree Spirit's abstract upright water-energy body has empty gripping tendrils
+for its limited blood Oak lance. It is not a bark humanoid. Per-pose anchors
+include a shared visible grip in dodge where the second tendril is occluded.
+Grubber and Tunnelworm require their room labels and invertebrate race;
+legacy copies omit race. Generic Worm remains ambiguous. Width-capped
+coiling preserves complete bodies, with tiny feet only on Grubber. Squiggoth's
+quadruped stance is artistic; no saddle, rider or death-gold earring is added.
+Bone Goliath replaces the colliding Queen Worm identity. Its white bones are
+body material; its aura and death coins are not held equipment.
 
 ### Additional player-race artwork
 

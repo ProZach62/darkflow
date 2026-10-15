@@ -159,6 +159,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'midgard-serpent', race: 'reptile', names: ['midgard serpent'] },
   { key: 'knot-chewer', race: 'gnoll', names: ['knot chewer'] },
   { key: 'umberhulk-matriarch', race: 'ogre', names: ['matriarch', 'umberhulk matriarch'] },
+  { key: 'tree-spirit', race: 'spirit', names: ['tree spirit'] },
+  { key: 'giant-grubber', race: 'invertebrate', names: ['giant grubber'] },
+  { key: 'tunnelworm', race: 'invertebrate', names: ['giant, blundering worm'] },
+  { key: 'squiggoth', race: 'fiend', names: ['squiggoth'] },
+  { key: 'bone-goliath', race: 'demon', names: ['bone goliath'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
