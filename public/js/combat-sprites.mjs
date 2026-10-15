@@ -154,6 +154,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'mud-golem-king', race: 'golem', names: ['king of the mud golems'] },
   { key: 'iron-golem', race: 'golem', names: ['huge iron golem'] },
   { key: 'uncrowned-witness', race: 'spirit', names: ['uncrowned witness'] },
+  { key: 'nidhug', race: 'dragon', names: ['nidhug'] },
+  { key: 'charnel-crawler', race: 'insect', names: ['charnel crawler'] },
+  { key: 'midgard-serpent', race: 'reptile', names: ['midgard serpent'] },
+  { key: 'knot-chewer', race: 'gnoll', names: ['knot chewer'] },
+  { key: 'umberhulk-matriarch', race: 'ogre', names: ['matriarch', 'umberhulk matriarch'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

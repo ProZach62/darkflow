@@ -210,6 +210,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `mud-golem-king` | The King of the Mud Golems; golem | `domains/darkwind/areas/mound/npc/mud_king.c`: gem-studded amorphous mud blob |
 | `iron-golem` | A huge iron golem; golem | `domains/darkwind/areas/syldenith/monsters/igolem.c`: fifteen-foot iron body, two huge fists |
 | `uncrowned-witness` | the Uncrowned Witness; spirit | `domains/darkwind/areas/syldenith_founding_scar/monsters/uncrowned_witness.c`: absence outlined by a crown-shaped gap and five gifts |
+| `nidhug` | Nidhug; dragon | `domains/hyperborea/areas/asgard/monsters/odinspalace/nidhug.c`: ancient black-scaled smoking dragon |
+| `charnel-crawler` | the Charnel Crawler; insect | `domains/hyperborea/areas/asgard/monsters/valhalla/charnel_crawler.c`: green carrion crawler, black tendrils, eight pale tentacles |
+| `midgard-serpent` | The Midgard Serpent; reptile | `domains/hyperborea/areas/asgard/quest/serpent.c`: salt-crusted grey-green world-serpent |
+| `knot-chewer` | Knot Chewer; gnoll | `domains/hyperborea/areas/knucklebone_road/monsters/knot_chewer.c`: aged female gnoll, silver muzzle, patched hide coat and red cords |
+| `umberhulk-matriarch` | Matriarch; the umberhulk matriarch; ogre | `domains/hyperborea/areas/asgard/monsters/nidavellir/hulk_matriarch.c`: pitted mossy carapace, four eyes and crushing mandibles |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -431,6 +436,15 @@ unique ball and chain when available; ape-bat anatomy uses beast geometry.
 Witness's crown-shaped negative space and abstract gifts are integral body
 interpretations, not a worn crown or reward mantle. No sheet depicts later
 regeneration, heated-core or transformation phases.
+
+Nidhug's historical copy describes the same World Ash dragon. Charnel Crawler
+and Midgard Serpent exclude generic Crawler and Serpent identities. Coiled
+serpent scale is necessarily stylized; it has no legs. Matriarch's ogre race
+does not replace its authored beetle-like carapace. Knot Chewer has no equipped
+Jaw reward or shield; tally bones and coat are prose details. Charnel's eight
+tentacles were visually checked in idle/maul/cast only, not all nine poses;
+Knot Chewer's seven closures are partially occluded. Full-pose anatomy review
+remains outstanding where upload quota prevented inspection.
 
 ### Additional player-race artwork
 

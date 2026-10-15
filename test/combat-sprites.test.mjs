@@ -414,6 +414,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['mud-golem-king', 'golem', ['The King of the Mud Golems']],
     ['iron-golem', 'golem', ['A huge iron golem']],
     ['uncrowned-witness', 'spirit', ['the Uncrowned Witness']],
+    ['nidhug', 'dragon', ['Nidhug']],
+    ['charnel-crawler', 'insect', ['the Charnel Crawler']],
+    ['midgard-serpent', 'reptile', ['The Midgard Serpent']],
+    ['knot-chewer', 'gnoll', ['Knot Chewer']],
+    ['umberhulk-matriarch', 'ogre', ['Matriarch', 'the umberhulk matriarch']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -433,7 +438,7 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker', 'warg-leader', 'ghost-of-varg', 'red-scree-lurker', 'ninth-mile-marker', 'last-breath-herald', 'tarrasque-mountain-eater', 'batrachiarch', 'mud-golem-king'].includes(key);
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker', 'warg-leader', 'ghost-of-varg', 'red-scree-lurker', 'ninth-mile-marker', 'last-breath-herald', 'tarrasque-mountain-eater', 'batrachiarch', 'mud-golem-king', 'charnel-crawler', 'midgard-serpent'].includes(key);
     const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
