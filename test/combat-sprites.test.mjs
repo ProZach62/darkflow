@@ -439,6 +439,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['prince-morgran', 'undead', ['Morgran', 'Prince Morgran the Crownless']],
     ['argent-marshal', 'construct', ['Argent Marshal', 'the Argent Marshal, Last Command of Rhuddlan']],
     ['chairheir-aurex', 'undead', ['Chairheir Aurex', 'Chairheir Aurex Vellum, the Seventh Firstborn']],
+    ['emperor-kalix', 'human', ['Kalix', 'emperor Kalix']],
+    ['ravidel', 'demon', ['Ravidel', 'Ravidel, Ancient Archmage of Fire']],
+    ['kzoth', 'human', ['Kzoth, highpriest of Qazaash']],
+    ['asmodai', 'spirit', ['Asmodai', 'Asmodai--Spirit of Evil']],
+    ['dothka', 'demon', ['Dothka']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -458,14 +463,14 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker', 'warg-leader', 'ghost-of-varg', 'red-scree-lurker', 'ninth-mile-marker', 'last-breath-herald', 'tarrasque-mountain-eater', 'batrachiarch', 'mud-golem-king', 'charnel-crawler', 'midgard-serpent', 'giant-grubber', 'tunnelworm', 'squiggoth', 'unus', 'ul-qathra', 'sphinx', 'purple-worm'].includes(key);
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker', 'warg-leader', 'ghost-of-varg', 'red-scree-lurker', 'ninth-mile-marker', 'last-breath-herald', 'tarrasque-mountain-eater', 'batrachiarch', 'mud-golem-king', 'charnel-crawler', 'midgard-serpent', 'giant-grubber', 'tunnelworm', 'squiggoth', 'unus', 'ul-qathra', 'sphinx', 'purple-worm', 'dothka'].includes(key);
     const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
     const image = readFileSync(new URL('../public' + sheet.image, import.meta.url));
     assert.equal(sheet.portrait, false);
     assert.equal(sheet.secondary, false);
-    const armed = ['gravewatch-penitent', 'bandit-king', 'aralith', 'sayf-al-murr', 'batrachiarch', 'tree-spirit', 'curator-halvek', 'thera-runemistress'].includes(key);
+    const armed = ['gravewatch-penitent', 'bandit-king', 'aralith', 'sayf-al-murr', 'batrachiarch', 'tree-spirit', 'curator-halvek', 'thera-runemistress', 'emperor-kalix', 'asmodai', 'dothka'].includes(key);
     assert.equal(sheet.weaponsInArt, !armed, 'armed bosses retain server equipment overlays');
     const poses = ['idle', 'windup', 'maul', 'whiff', 'recoil', 'dodge', 'guard', 'cast', 'look'];
     if (kind === 'humanoid' || beastBodyOverride) poses.push('strike', 'thrust', 'chop');
@@ -478,6 +483,22 @@ test('named boss art requires an exact visible label and public race, without ov
       if (armed) assert.ok(selected.frame.anchors.hand, 'weapon follows the painted hand');
       if (key === 'bandit-king') assert.ok(selected.frame.anchors.offHand && selected.frame.anchors.offElbow, 'shield follows the painted arm');
     }
+  }
+  for (const [name, race, rejected] of [
+    ['Dragon', 'dragon', 'emerald-dragon'],
+    ['Golem', 'golem', 'mud-golem-king'],
+    ['Golem', 'golem', 'iron-golem'],
+    ['Crawler', 'insect', 'charnel-crawler'],
+    ['Serpent', 'reptile', 'midgard-serpent'],
+    ['Worm', 'invertebrate', 'giant-grubber'],
+    ['Worm', 'invertebrate', 'tunnelworm'],
+    ['Veyra', 'undead', 'saint-veyra'],
+    ['Kzoth', 'human', 'kzoth'],
+    ['Ravidel', 'human', 'ravidel'],
+    ['Myriasic', 'elf', 'myriasic'],
+  ]) {
+    const fighter = { name, race, isNpc: true, appearanceKnown: true };
+    assert.ok(!spriteKeysFor(fighter, resolveFigure(fighter, 'target'), 'target').includes('enemies/' + rejected), 'shared public identity retains fallback art: ' + name + '/' + race);
   }
   const ambiguous = { name: 'Wyrm (BOSS)', race: 'dragon', appearanceKnown: true, isNpc: true };
   assert.equal(spriteKeysFor(ambiguous, resolveFigure(ambiguous, 'target'), 'target')[0], 'enemies/drake', 'other Wyrm actors share the same public base name and race');

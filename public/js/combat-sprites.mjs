@@ -179,6 +179,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'prince-morgran', race: 'undead', names: ['morgran', 'prince morgran the crownless'] },
   { key: 'argent-marshal', race: 'construct', names: ['argent marshal', 'argent marshal, last command of rhuddlan'] },
   { key: 'chairheir-aurex', race: 'undead', names: ['chairheir aurex', 'chairheir aurex vellum, the seventh firstborn'] },
+  { key: 'emperor-kalix', race: 'human', names: ['kalix', 'emperor kalix'] },
+  { key: 'ravidel', race: 'demon', names: ['ravidel', 'ravidel, ancient archmage of fire'] },
+  { key: 'kzoth', race: 'human', names: ['kzoth, highpriest of qazaash'] },
+  { key: 'asmodai', race: 'spirit', names: ['asmodai', 'asmodai--spirit of evil'] },
+  { key: 'dothka', race: 'demon', names: ['dothka'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

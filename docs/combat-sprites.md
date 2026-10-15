@@ -235,6 +235,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `prince-morgran` | Morgran; Prince Morgran the Crownless; undead | `domains/underworld/areas/hollow_crown_bastion/monsters/prince_morgran.c`: black-steel broken-regalia armour, bare brow |
 | `argent-marshal` | Argent Marshal; the Argent Marshal, Last Command of Rhuddlan; construct | `domains/underworld/areas/rhuddlan/crescent_bastion/monsters/argent_marshal.c`: empty silver-chased plate, cable tendons, cold crescent within helm |
 | `chairheir-aurex` | Chairheir Aurex; Chairheir Aurex Vellum, the Seventh Firstborn; undead | `domains/underworld/areas/house_of_preferment/monsters/chairheir_aurex.c`: golden chair on black conduits, seven birthrights above brow |
+| `emperor-kalix` | Kalix; emperor Kalix; human | `domains/darkwind/areas/sheritym/monsters/kalix.c`: dark brown hair, green eyes, mithril mail and yellow-to-black breeches |
+| `ravidel` | Ravidel; Ravidel, Ancient Archmage of Fire; demon | `domains/darkwind/areas/qazaash/rift/obj/ravidel.c`: thin human-looking man, black hair, blue eyes, dark red sigilled robes |
+| `kzoth` | Kzoth, highpriest of Qazaash; human | `domains/darkwind/areas/qazaash/temple/obj/highpriest.c`: priest in night-blue spider-silk robes |
+| `asmodai` | Asmodai; Asmodai--Spirit of Evil; spirit | `domains/highway/areas/nadorhaun/monsters/asmodai.c`: scaly octopus-headed biped, small wings, hind claws, ebony leather |
+| `dothka` | Dothka; demon | `domains/highway/areas/nadorhaun/monsters/dothka.c`: white-haired ebony-skinned drow torso above eight spider legs |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -500,6 +505,38 @@ nascent bodies rather than additional actors. Morgran has no crown or axe;
 Argent's plate is its empty body rather than a worn reward cuirass. Aurex's
 seven brow marks are subdued at Scene scale, not equally legible in every
 pose. All five are unarmed: death drops do not establish encounter equipment.
+
+Kalix, Asmodai and Dothka have empty-hand body art with runtime saber or
+longsword overlays, including Dothka's beast-kind spider body. Kalix selects
+the mithril-shirt variant rather than stacking its fallback gambeson. Asmodai
+keeps its tentacled anatomy rather than inheriting dremora anatomy from gear;
+Soul Edge is an optional shortsword replacement, not a greatsword. Ravidel
+requires demon race, never the separate human staff-bearing copies. Kzoth
+requires the distinctive temple room label; bare Kzoth/human collides with
+an invasion NPC. His key and bloodjewel are carried, not worn or held gear.
+No crowns, reward props or later phase transformations are added.
+
+### Bulk artwork delivery status (October 2026)
+
+The requested 55-addition run delivered 45 registered sheets in nine local
+batches of five, bringing the named-boss catalogue from 55 to 100. It stopped
+short of the requested 110 because the artwork/media service exhausted its
+monthly 1.5 GiB upload allowance (reported reset November 1, 2026, 00:00 UTC).
+No generic recolors or placeholder sheets count toward this total.
+
+Two more pairs, Vaelkor the Unquiet and Devil Prince, are prepared in the
+separate artwork handoff but not registered or counted. They need Scene
+integration, including Devil Prince's actual shield. Eight have no generated
+art: Golden Dragon, Ivory Dragon, Grinmaw the Hollow Troll, Xuarlam, Orchard
+That Dreams, Vosk Armory Jailer, Orrun the Oath-Prisoner, and Zartan King
+Beneath the Road. Completing these two batches would reach the requested 110;
+do not start additional bosses beyond them.
+
+All 45 integrated sheets passed alpha/bounds/manifest checks and dedicated
+idle/attack draw checks through the real browser Scene fixture. Final rendered
+visual review and some full-pose anatomy/equipment placement checks remain
+incomplete because media inspection hit the same quota. Numeric and draw
+checks must not be presented as full visual approval or live-server testing.
 
 ### Additional player-race artwork
 
