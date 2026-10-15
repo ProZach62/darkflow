@@ -205,6 +205,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `jeweled-dragon` | jeweled dragon; dragon | `domains/kerei/areas/4dragons/mobs/dragon.c`: golden wings and gemstone-bladed tail |
 | `faerie-dragon` | huge faerie dragon; dragon | `domains/kerei/areas/faerie/monster/faeriedragon.c`: full-sized green and silver dragon |
 | `white-wyrm` | White Wyrm; huge white wyrm; dragon | `domains/kerei/areas/temple/monster/boss.c`: eyeless limbless white serpent with two short horns |
+| `tarrasque-mountain-eater` | Tarrasque; the Tarrasque, Mountain-Eater; reptile | `domains/highway/areas/blackmouth_pass/monsters/tarrasque_mountain_eater.c`: huge fortress-eater with overlapping natural armour |
+| `batrachiarch` | Batrachiarch; Arch-Demon Batrachiarch; demon | `domains/darkwind/areas/garden/monsters/batrachiarch.c`: huge hairy ape-bat with broad wings and pale yellow eyes |
+| `mud-golem-king` | The King of the Mud Golems; golem | `domains/darkwind/areas/mound/npc/mud_king.c`: gem-studded amorphous mud blob |
+| `iron-golem` | A huge iron golem; golem | `domains/darkwind/areas/syldenith/monsters/igolem.c`: fifteen-foot iron body, two huge fists |
+| `uncrowned-witness` | the Uncrowned Witness; spirit | `domains/darkwind/areas/syldenith_founding_scar/monsters/uncrowned_witness.c`: absence outlined by a crown-shaped gap and five gifts |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -417,6 +422,15 @@ conditional unique scimitar is omitted from this baseline body. Wings, limb
 proportions and scale shading are artistic where unspecified. White Wyrm's
 ivory horns have red base cuffs, not eyes or limbs. Width-capped common scale
 preserves complete anatomy instead of forcing long bodies to humanoid height.
+
+Tarrasque replaces Jabberwocky, whose detached head shares its normalized
+name/race. Mud King and Iron Golem require distinctive room labels, never
+generic Golem. Their gems and iron fists are body details, not reward gear.
+Batrachiarch's empty hands retain runtime overlays for its genuinely equipped
+unique ball and chain when available; ape-bat anatomy uses beast geometry.
+Witness's crown-shaped negative space and abstract gifts are integral body
+interpretations, not a worn crown or reward mantle. No sheet depicts later
+regeneration, heated-core or transformation phases.
 
 ### Additional player-race artwork
 

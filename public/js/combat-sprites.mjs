@@ -149,6 +149,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'jeweled-dragon', race: 'dragon', names: ['jeweled dragon'] },
   { key: 'faerie-dragon', race: 'dragon', names: ['huge faerie dragon'] },
   { key: 'white-wyrm', race: 'dragon', names: ['white wyrm', 'huge white wyrm'] },
+  { key: 'tarrasque-mountain-eater', race: 'reptile', names: ['tarrasque', 'tarrasque, mountain-eater'] },
+  { key: 'batrachiarch', race: 'demon', names: ['batrachiarch', 'arch-demon batrachiarch'] },
+  { key: 'mud-golem-king', race: 'golem', names: ['king of the mud golems'] },
+  { key: 'iron-golem', race: 'golem', names: ['huge iron golem'] },
+  { key: 'uncrowned-witness', race: 'spirit', names: ['uncrowned witness'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
