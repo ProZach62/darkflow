@@ -359,6 +359,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['furnace-king', 'elemental', ['The Furnace King']],
     ['thaloryn', 'beast', ['Thaloryn', 'Thaloryn, the Unmoored Leviathan']],
     ['greg-director', 'human', ['Greg, Director of Security']],
+    ['aralith', 'gargoyle', ['Aralith', 'Aralith the Nature Mage']],
+    ['sayf-al-murr', 'human', ['Sayf al-Murr', 'Sayf al-Murr, the salt baron']],
+    ['waternix', 'faerie', ['Waternix', 'each-uisge']],
+    ['gaean-warden', 'spirit', ['Gaean warden', "a Warden of Gaea's Vigil", "the Warden of Gaea's Vigil"]],
+    ['astral-colossus', 'construct', ['Astral Colossus', 'The Astral Colossus']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -378,16 +383,16 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const kind = ['dragon', 'beast'].includes(race) ? 'beast' : 'humanoid';
+    const kind = ['dragon', 'beast'].includes(race) || key === 'waternix' ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
     const image = readFileSync(new URL('../public' + sheet.image, import.meta.url));
     assert.equal(sheet.portrait, false);
     assert.equal(sheet.secondary, false);
-    const armed = ['gravewatch-penitent', 'bandit-king'].includes(key);
+    const armed = ['gravewatch-penitent', 'bandit-king', 'aralith', 'sayf-al-murr'].includes(key);
     assert.equal(sheet.weaponsInArt, !armed, 'armed bosses retain server equipment overlays');
     const poses = ['idle', 'windup', 'maul', 'whiff', 'recoil', 'dodge', 'guard', 'cast', 'look'];
-    if (kind === 'humanoid') poses.push('strike', 'thrust', 'chop');
+    if (kind === 'humanoid' || key === 'waternix') poses.push('strike', 'thrust', 'chop');
     if (armed) poses.push('raise');
     for (const pose of poses) {
       const [selected] = selectSpriteFrames(sheet, { from: pose, to: pose }, 1);
@@ -412,6 +417,18 @@ test('named boss art requires an exact visible label and public race, without ov
     const observed = { ...fighter, appearanceKnown: true, isNpc: true };
     const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
     assert.ok(!keys.includes('enemies/greg-director') && !keys.includes('enemies/carrion-queen') && !keys.includes('enemies/drowned-dryad'), 'shared aliases and inferred races do not identify a boss: ' + JSON.stringify(fighter));
+  }
+  for (const fighter of [
+    { name: 'a woodland faerie', race: 'faerie' },
+    { name: 'horse', race: 'faerie' },
+    { name: 'each-uisge', race: 'elf' },
+    { name: 'nature mage', race: 'gargoyle' },
+    { name: 'warden', race: 'spirit' },
+    { name: 'Astral Colossus', race: 'giant' },
+  ]) {
+    const observed = { ...fighter, appearanceKnown: true, isNpc: true };
+    const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
+    assert.ok(!keys.includes('enemies/waternix') && !keys.includes('enemies/aralith') && !keys.includes('enemies/gaean-warden') && !keys.includes('enemies/astral-colossus'), 'generic aliases and unrelated faeries retain their own art: ' + JSON.stringify(fighter));
   }
 });
 

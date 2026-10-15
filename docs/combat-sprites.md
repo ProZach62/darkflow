@@ -155,6 +155,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `furnace-king` | The Furnace King; elemental | `planets/markas/areas/rainbow_abyss/monsters/furnace_king.c`: huge male ruler of fused iron and fire; reward crown/cuirass are not explicitly equipped |
 | `thaloryn` | Thaloryn; Thaloryn, the Unmoored Leviathan; beast | `planets/markas/areas/rainbow_abyss/monsters/thaloryn.c`: huge male blue-black creature in a suspended sea; finned/coiled marine anatomy is an artistic interpretation, not an authored species |
 | `greg-director` | Greg, Director of Security; human | `planets/tekal/areas/emerald_spire/level3/monsters/greg.c`: medium male human, fitted dark coat concealing cybernetics, equipped steel restraint gauntlet |
+| `aralith` | Aralith; Aralith the Nature Mage; gargoyle | `domains/kerei/areas/garset/npc/aralith.c`: large female malachite gargoyle, bronze eyes, ivory horns, moss and vines, ruby robe with silver trim; equipped ash quarterstaff |
+| `sayf-al-murr` | Sayf al-Murr; Sayf al-Murr, the salt baron; human | `domains/souvrael/areas/ulqathra/monsters/baron.c`: large heavy smiling man in salt-white silk, rings on every finger; equipped gilded sabre |
+| `waternix` | Waternix; each-uisge; faerie | `domains/islands/areas/briton/monsters/waternix.c`: large male black stallion, dripping coat and glowing red eyes; no rider or equipment |
+| `gaean-warden` | Gaean warden; Warden of Gaea's Vigil; spirit | `domains/underworld/areas/eternal_darkness/monsters/gaean_warden.c`: large female spirit of leaf-shadow and riverstone, calm old face, bare feet with living roots |
+| `astral-colossus` | Astral Colossus; construct | `planets/markas/areas/rainbow_abyss/monsters/astral_colossus.c`: huge male giant of drifting stone; carried starblade is not equipped |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -181,6 +186,12 @@ and `harpy` aliases do not select either queen's art. Carrion Queen requires
 the actual public race `bird`, not an inferred `harpy` race. No generic bird
 or elemental classification is added just to support these named sheets.
 
+Waternix's actual public name is `each-uisge`. A separate ordinary monster at
+`players/redbear/area/monsters/waternix.c` shares that name, race, and black
+stallion description, so both may use this artwork without assigning boss
+status. The named sheet supplies a complete horse body despite the public
+`faerie` race; unrelated faeries keep their existing humanoid fallback.
+
 Each transparent 1536 x 1536 sheet has nine painted 512-pixel poses in the
 same idle/windup/maul, whiff/recoil/dodge, guard/cast/look layout. Humanoid
 strike/thrust/chop aliases reuse the attack frame without duplicating pixels.
@@ -204,6 +215,14 @@ his unequipped reward items, and Thaloryn does not wield his reward polearm.
 Greg's coat and restraint gauntlet are painted into his body; no unique-only
 retaliatory vanes, desk, or surveillance scenery are assumed. His facial
 features and the Dryad's hair colour are artistic choices, not server facts.
+Aralith and Sayf also use empty-handed bodies with per-pose hand grips for
+server-controlled equipment. Aralith's quarterstaff currently projects as
+`polearm`/`smash`, which the existing client resolves to hammer artwork; this
+batch does not change shared weapon selection. Sayf's ledger is not held gear.
+Waternix owns its natural hoof attacks. The Warden remains a barefoot woman,
+not a tree creature, and the Colossus does not wield its unequipped starblade.
+The Colossus's boulder limbs and small joint gaps are artistic interpretations
+of drifting stone, not additional server appearance hints.
 
 ### Additional player-race artwork
 

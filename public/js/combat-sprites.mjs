@@ -99,6 +99,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'furnace-king', race: 'elemental', names: ['furnace king'] },
   { key: 'thaloryn', race: 'beast', names: ['thaloryn', 'thaloryn, the unmoored leviathan'] },
   { key: 'greg-director', race: 'human', names: ['greg, director of security'] },
+  { key: 'aralith', race: 'gargoyle', names: ['aralith', 'aralith the nature mage'] },
+  { key: 'sayf-al-murr', race: 'human', names: ['sayf al-murr', 'sayf al-murr, the salt baron'] },
+  { key: 'waternix', race: 'faerie', names: ['waternix', 'each-uisge'] },
+  { key: 'gaean-warden', race: 'spirit', names: ['gaean warden', "warden of gaea's vigil"] },
+  { key: 'astral-colossus', race: 'construct', names: ['astral colossus'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
