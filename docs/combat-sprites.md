@@ -130,6 +130,44 @@ the art owns its head, clothing, wings, and tail (`portrait: false`,
 labels such as reptile or construct do not. Explicit forms and appearance
 redaction retain priority, and existing player-race sheets are unchanged.
 
+### Named boss artwork
+
+The first five dedicated boss sheets come from the server's `bosses` catalogue,
+not from invented client boss names. `cmds/std/_bosses.c` reads
+`secure/daemons/boss_catalog_d.c`; the daemon discovers authored boss contracts
+under `/domains` and `/planets`. Source references below are relative to the
+server's `codebase/` directory in `jasona/darkwind-nextgen`.
+
+| Sheet under `enemies/` | Visible names and public race | Authored visual source |
+| --- | --- | --- |
+| `ilyrra` | Ilyrra; Ilyrra Still-Wing; dragon | `domains/auralis/areas/azure_expanse/monsters/ilyrra.c`: azure dragon, fractured ice, wings locked against flanks |
+| `orryx` | Orryx; Orryx, Root of Thunder; dragon | `domains/auralis/areas/emerald_tempest/monsters/orryx.c`: emerald dragon, copper-bark wing plates, root growth, breastbone stormseed and conductor blossoms |
+| `lord-blackbriar` | Lord Blackbriar; Lord Blackbriar, the Sole Heir; spirit | `domains/bodachian_fallows/areas/blackbriar_manor/monsters/lord_blackbriar.c`: tall formal noble ghost; no wielded rapier |
+| `languish` | Languish; a smooth priest; undead | `domains/darkwind/pirate/mon/priest.c`: deceptively smiling man, long canines, worn heavy green cloak, unarmed |
+| `gravewatch-penitent` | The Gravewatch Penitent; undead | `domains/darkwind/areas/abbey/monsters/gravewatch_penitent.c`: ash-streaked iron burial mask, torn habit over abbey mail, chain-wrapped body; mechanically equipped hammer |
+
+Dedicated art requires an exact normalized visible name AND the corresponding
+public race, with no explicit transformed form. Existing `bossKey` normalization
+handles articles, case, whitespace and `(BOSS)` tags. A family alone, local boss
+mark, partial name, or private recipient race never unlocks a named sheet.
+This is artwork selection, not authoritative boss identification: the protocol
+does not yet supply a unique artwork/blueprint key. Redaction, transformed forms,
+legacy actors without public appearance, and failed art loads retain existing
+generic/species fallbacks. Other dragons and undead are unchanged.
+
+Each transparent 1536 x 1536 sheet has nine painted 512-pixel poses in the
+same idle/windup/maul, whiff/recoil/dodge, guard/cast/look layout. Humanoid
+strike/thrust/chop aliases reuse the attack frame without duplicating pixels.
+Penitent's hammer uses a raise alias of the windup frame.
+Generation uses the existing Wolf or male-human art as style references,
+whole alpha-component extraction, one shared scale per boss, and the existing
+frame assembler. Aliases are added after assembly so translucent ghost pixels
+are not composited repeatedly. All sheets own their complete heads and coats,
+wings or tails. Penitent's empty-handed body supplies per-pose hand grips for
+runtime equipment; the other four suppress weapon overlays for their natural
+or unarmed attacks. Spell effects, environmental props and phase-dependent
+transformations are not baked into these baseline sheets.
+
 ### Additional player-race artwork
 
 Ten dedicated gender-neutral humanoid sheets cover Crannian Gnome,

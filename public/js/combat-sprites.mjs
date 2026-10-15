@@ -11,6 +11,7 @@
 // and Image constructors as parameters for the same reason.
 
 import { POSES } from './combat-rig-core.mjs';
+import { bossKey } from './combat-stage-core.mjs';
 
 export const SPRITE_MANIFEST_VERSION = 1;
 export const SPRITE_KINDS = Object.freeze(['humanoid', 'beast']);
@@ -80,6 +81,16 @@ const NEUTRAL_RACE_SPRITES = Object.freeze([
   'crinos', 'reedstalker', 'boneback', 'miura', 'zymari',
 ]);
 
+// Catalogue titles and visible actor names differ (notably Languish).
+// Exact public labels plus race select artwork, never establish hidden identity.
+const BOSS_SPRITES = Object.freeze([
+  { key: 'ilyrra', race: 'dragon', names: ['ilyrra', 'ilyrra still-wing'] },
+  { key: 'orryx', race: 'dragon', names: ['orryx', 'orryx, root of thunder'] },
+  { key: 'lord-blackbriar', race: 'spirit', names: ['lord blackbriar', 'lord blackbriar, the sole heir'] },
+  { key: 'languish', race: 'undead', names: ['languish', 'smooth priest'] },
+  { key: 'gravewatch-penitent', race: 'undead', names: ['gravewatch penitent'] },
+]);
+
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
   ['drake', /\b(?:dragon|drake|wyvern|wyrm|whelp)\b/],
   ['spider', /\b(?:spider|arachnid|scorpion)\b/],
@@ -112,6 +123,11 @@ export function spriteKeysFor(combatant, figure, side) {
   const own = side === 'player' && combatant && !combatant.observed;
   if (combatant && (own || combatant.appearanceKnown)) {
     const race = spriteSlug(combatant.race);
+    if (combatant.appearanceKnown && !spriteSlug(combatant.form)) {
+      const name = bossKey(combatant.name);
+      const boss = BOSS_SPRITES.find((entry) => entry.race === race && entry.names.includes(name));
+      if (boss) keys.push('enemies/' + boss.key);
+    }
     if (figure && figure.archetype) {
       keys.push(figure.archetype === 'wolf' ? 'wolf' : 'enemies/' + figure.archetype);
     } else {

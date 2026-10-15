@@ -341,6 +341,52 @@ test('natural beasts ship nine attack poses without bypassing public appearance'
   }
 });
 
+test('named boss art requires an exact visible label and public race, without overriding forms', () => {
+  for (const [key, race, names] of [
+    ['ilyrra', 'dragon', ['Ilyrra', 'Ilyrra Still-Wing']],
+    ['orryx', 'dragon', ['Orryx', 'Orryx, Root of Thunder']],
+    ['lord-blackbriar', 'spirit', ['Lord Blackbriar', 'Lord Blackbriar, the Sole Heir']],
+    ['languish', 'undead', ['Languish', 'a smooth priest']],
+    ['gravewatch-penitent', 'undead', ['The Gravewatch Penitent']],
+  ]) {
+    const expected = 'enemies/' + key;
+    for (const name of names) {
+      const fighter = { name: '  ' + name.toUpperCase() + '  ( BOSS ) ', race, isNpc: true, appearanceKnown: true };
+      for (const side of ['player', 'target']) {
+        const observed = { ...fighter, observed: true };
+        const keys = spriteKeysFor(observed, resolveFigure(observed, side), side);
+        assert.equal(keys[0], expected, name + ' uses dedicated art before shared species');
+        assert.ok(keys.length > 1, name + ' retains existing fallback art');
+      }
+      for (const override of [
+        { race: '' }, { race: 'human' }, { race: '', family: race },
+        { name: name + ' statue' }, { appearanceKnown: false },
+        { form: 'mist' }, { form: 'humanoid' }, { form: 'quadruped' },
+      ]) {
+        const hidden = { ...fighter, ...override };
+        assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
+      }
+    }
+    const kind = race === 'dragon' ? 'beast' : 'humanoid';
+    const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
+    assert.ok(sheet, key + ' ships a valid sheet');
+    const image = readFileSync(new URL('../public' + sheet.image, import.meta.url));
+    assert.equal(sheet.portrait, false);
+    assert.equal(sheet.secondary, false);
+    assert.equal(sheet.weaponsInArt, key !== 'gravewatch-penitent', 'Penitent retains server equipment overlays');
+    const poses = ['idle', 'windup', 'maul', 'whiff', 'recoil', 'dodge', 'guard', 'cast', 'look'];
+    if (kind === 'humanoid') poses.push('strike', 'thrust', 'chop');
+    if (key === 'gravewatch-penitent') poses.push('raise');
+    for (const pose of poses) {
+      const [selected] = selectSpriteFrames(sheet, { from: pose, to: pose }, 1);
+      assert.equal(selected.name, pose, key + ' animates ' + pose);
+      assert.ok(selected.frame.x + sheet.frameWidth <= image.readUInt32BE(16));
+      assert.ok(selected.frame.y + sheet.frameHeight <= image.readUInt32BE(20));
+      if (key === 'gravewatch-penitent') assert.ok(selected.frame.anchors.hand, 'hammer follows the painted hand');
+    }
+  }
+});
+
 test('every playable race resolves to a shipped sheet or a shared archetype', () => {
   const races = [
     'arctic-elf', 'barbarian', 'crannian-gnome', 'crinos', 'darkwinder', 'desert-dwarf',
