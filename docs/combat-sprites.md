@@ -165,6 +165,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `sablehorn` | Sablehorn; Sablehorn Moltwyrm; dragon | `domains/highway/areas/blackmouth_pass/monsters/sablehorn_moltwyrm.c`: huge male dragging wyrm, two black horns cracked by orange heat |
 | `vorrak` | Vorrak; Vorrak the Acid Coil; dragon | `domains/highway/areas/blackmouth_pass/monsters/vorrak_acid_coil.c`: huge male coiled deep wyrm, slick black scales with bright green acid threads |
 | `lower-jaw-alpha` | Lower Jaw Alpha; reptile | `domains/highway/areas/blackmouth_pass/monsters/lower_jaw_alpha.c`: huge male reptile, one missing eye and extensively lost hide, healed scars and muscle |
+| `qitar` | Qitar; Qitar, the Unbound; demon | `domains/souvrael/areas/babylon/monsters/qitar.c`: large male shape of smoke and black bronze, burned-mask face, hooked hands, equipped blackened-bronze diadem |
+| `mawspike` | Mawspike; Mawspike the Burrower; reptile | `domains/highway/areas/blackmouth_pass/monsters/mawspike_burrower.c`: huge male long-bodied gnasher, broken stone jaw spurs, basalt-ripping claws |
+| `uncolored-one` | The Uncolored One; spirit | `planets/markas/areas/rainbow_abyss/monsters/uncolored_one.c`: huge male figure between nine currents, drawing colour from nearby edges |
+| `warden-post-golem` | Warden post golem; the Warden Post Golem; golem | `domains/highway/areas/blackmouth_pass/monsters/warden_post_golem.c`: huge neuter squat basalt block, empty guard chair embedded in its back, weapon-rack hooks along its arms |
+| `defiler` | Defiler; daemon of defilement; fiend | `domains/kerei/areas/catacombs/mobs/defiler.c`: huge male twelve-foot daemon of immense bulk, lowered head, bared teeth, burning claws |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -242,6 +247,30 @@ sheets include humanoid attack aliases for the existing broad-race rig fallback.
 Shared `gnasher` and `wyrm` aliases do not select any of these named sheets.
 Death-clone amulets, armour and spears are not worn, and later phase changes
 (including Ironheart's exposed burning sap) are not baked into baseline art.
+
+Qitar's painted diadem is his explicitly equipped brow band, not a helmet cap;
+his tablet fragment is carried, not held. His bronze/smoke anatomy and hook
+hands own their complete silhouette. Mawspike's four-legged long-bodied
+reptile anatomy and dark scale colour are artistic interpretations; its stone
+jaw spurs and digging claws are authored. Its beast body includes humanoid
+attack aliases for the existing broad-race fallback. Warden Post Golem's
+empty chair and rack hooks are integral body features, not a ridden mount or
+held weapon. Its blocky legs and chair material are artistic choices. The
+golem's shield/greaves and Mawspike's amulet/tooth are death-clone rewards,
+not equipped items. Shared `gnasher` and `golem` names keep generic art.
+Uncolored One's faceless silver-gray flowing silhouette and faint coloured
+edge strands interpret its abstract description; no particular face, skeleton,
+clothing, staff or carried starblade is asserted. Defiler's charcoal-maroon
+hide and bulky two-legged anatomy are art choices, not additional appearance
+hints. It has no invented horns or wings, no carried bag on the body, and no
+later-phase split hide. Heartroot defiler is a different human and never uses
+this sheet. All five own their natural attack poses without painted scenery.
+
+Combat actor names come from `combat_presentation_d.c`'s `query_cap_name()`
+fallback chain, while room occupants use rendered `short()`. These five
+support their actual Combat names as well as the listed room labels. White
+Bear and Gate Guardian were not selected: Combat sends only `Bear` and
+`Guardian`, so distinctive room shorts cannot safely identify them in combat.
 
 ### Additional player-race artwork
 

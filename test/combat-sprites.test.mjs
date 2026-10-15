@@ -369,6 +369,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['sablehorn', 'dragon', ['Sablehorn', 'Sablehorn Moltwyrm']],
     ['vorrak', 'dragon', ['Vorrak', 'Vorrak the Acid Coil']],
     ['lower-jaw-alpha', 'reptile', ['Lower Jaw Alpha', 'the lower jaw alpha']],
+    ['qitar', 'demon', ['Qitar', 'Qitar, the Unbound']],
+    ['mawspike', 'reptile', ['Mawspike', 'Mawspike the Burrower']],
+    ['uncolored-one', 'spirit', ['Uncolored One', 'The Uncolored One']],
+    ['warden-post-golem', 'golem', ['Warden post golem', 'the Warden Post Golem']],
+    ['defiler', 'fiend', ['Defiler', 'the Defiler', 'daemon of defilement']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -388,7 +393,7 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha'].includes(key);
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike'].includes(key);
     const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
@@ -449,6 +454,20 @@ test('named boss art requires an exact visible label and public race, without ov
     const observed = { ...fighter, appearanceKnown: true, isNpc: true };
     const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
     assert.ok(!['splintermaw', 'ironheart-treant', 'sablehorn', 'vorrak', 'lower-jaw-alpha'].some((key) => keys.includes('enemies/' + key)), 'shared aliases and inferred species do not identify a boss: ' + JSON.stringify(fighter));
+  }
+  for (const fighter of [
+    { name: 'gnasher', race: 'reptile' },
+    { name: 'golem', race: 'golem' },
+    { name: 'Mawspike', race: 'dragon' },
+    { name: 'Warden post golem', race: 'construct' },
+    { name: 'Qitar', race: 'fiend' },
+    { name: 'The Uncolored One', race: 'undead' },
+    { name: 'a Heartroot defiler', race: 'human' },
+    { name: 'daemon of defilement', race: 'demon' },
+  ]) {
+    const observed = { ...fighter, appearanceKnown: true, isNpc: true };
+    const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
+    assert.ok(!['qitar', 'mawspike', 'uncolored-one', 'warden-post-golem', 'defiler'].some((key) => keys.includes('enemies/' + key)), 'generic labels and competing identities retain fallback art: ' + JSON.stringify(fighter));
   }
 });
 

@@ -109,6 +109,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'sablehorn', race: 'dragon', names: ['sablehorn', 'sablehorn moltwyrm'] },
   { key: 'vorrak', race: 'dragon', names: ['vorrak', 'vorrak the acid coil'] },
   { key: 'lower-jaw-alpha', race: 'reptile', names: ['lower jaw alpha'] },
+  { key: 'qitar', race: 'demon', names: ['qitar', 'qitar, the unbound'] },
+  { key: 'mawspike', race: 'reptile', names: ['mawspike', 'mawspike the burrower'] },
+  { key: 'uncolored-one', race: 'spirit', names: ['uncolored one'] },
+  { key: 'warden-post-golem', race: 'golem', names: ['warden post golem'] },
+  { key: 'defiler', race: 'fiend', names: ['defiler', 'daemon of defilement'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
