@@ -225,6 +225,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `ul-qathra` | Ul-Qathra; Ul-Qathra, the Patient Mouth; invertebrate | `domains/souvrael/areas/ulqathra/monsters/ulqathra.c`: wet grey ridged mouth with bone beak and coiling tongues |
 | `sphinx` | Sphinx; elemental | `domains/souvrael/areas/southdesert/monsters/sphinx.c`: lion body, vaguely human head, folded feathered wings |
 | `purple-worm` | Purple worm; A HUGE purple worm; invertebrate | `domains/souvrael/areas/southdesert/monsters/pworm.c`: ancient enormous purple-skinned worm |
+| `lady-vesper` | Lady Vesper; Lady Vesper, Last Hostess; undead | `domains/bodachian_fallows/areas/vespercourt/monsters/lady_vesper.c`: aristocratic hostess with brittle restored-portrait beauty |
+| `curator-halvek` | Curator Halvek; Curator Halvek, Master of the Last Exhibition; human | `domains/highway/areas/ochre_menagerie/monsters/curator_halvek.c`: ochre hidecoat, razormane mantle and steel gauntlets |
+| `thera-runemistress` | Thera; Thera, the Runemistress; elf | `domains/hyperborea/areas/wolfjord/monsters/runemistress.c`: slight sorceress in flowing ice-blue silk |
+| `archsage-caldris` | Caldris; Archsage Caldris, Keeper of the Hearthstar; human | `domains/underworld/areas/brightward_road/monsters/archsage_caldris.c`: ancient gentle magician in warm ivory robes |
+| `saint-veyra` | Saint Veyra of the Burning Window; undead | `domains/underworld/areas/emberglass_reliquary/monsters/saint_veyra.c`: burning skeleton inside living emberglass |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -473,6 +478,15 @@ desert. Sphinx keeps folded wings and feline paws without invented regalia.
 Purple Worm has continuous leathery coils and no stinger, limbs or reward
 corpse. Coils compress world-scale lengths for the frame. All five are
 unarmed; intrinsic hornlight and ash-memory spirit shading are not held gear.
+
+Vesper's burgundy dress and grey coiffure interpret unspecified attire; no
+reward veil or incidental glass is equipped. Halvek's hook and Thera's staff
+remain runtime weapons attached to empty painted hands; Halvek's carried
+scimitar and Thera's runestone pouch are not initial hand gear. Caldris has no
+invented staff or reward grimoire. Saint Veyra includes the intact living
+window as body, not scenery or feathered wings. Bare Veyra is deliberately
+excluded because another boss shares it; only her distinctive room label
+selects this art. Bare Vesper and Halvek likewise remain unregistered.
 
 ### Additional player-race artwork
 

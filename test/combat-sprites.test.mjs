@@ -429,6 +429,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['ul-qathra', 'invertebrate', ['Ul-qathra', 'Ul-Qathra, the Patient Mouth']],
     ['sphinx', 'elemental', ['Sphinx']],
     ['purple-worm', 'invertebrate', ['Purple worm', 'A HUGE purple worm']],
+    ['lady-vesper', 'undead', ['Lady Vesper', 'Lady Vesper, Last Hostess']],
+    ['curator-halvek', 'human', ['Curator halvek', 'Curator Halvek, Master of the Last Exhibition']],
+    ['thera-runemistress', 'elf', ['Thera', 'Thera, the Runemistress']],
+    ['archsage-caldris', 'human', ['Caldris', 'Archsage Caldris, Keeper of the Hearthstar']],
+    ['saint-veyra', 'undead', ['Saint Veyra of the Burning Window']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -455,7 +460,7 @@ test('named boss art requires an exact visible label and public race, without ov
     const image = readFileSync(new URL('../public' + sheet.image, import.meta.url));
     assert.equal(sheet.portrait, false);
     assert.equal(sheet.secondary, false);
-    const armed = ['gravewatch-penitent', 'bandit-king', 'aralith', 'sayf-al-murr', 'batrachiarch', 'tree-spirit'].includes(key);
+    const armed = ['gravewatch-penitent', 'bandit-king', 'aralith', 'sayf-al-murr', 'batrachiarch', 'tree-spirit', 'curator-halvek', 'thera-runemistress'].includes(key);
     assert.equal(sheet.weaponsInArt, !armed, 'armed bosses retain server equipment overlays');
     const poses = ['idle', 'windup', 'maul', 'whiff', 'recoil', 'dodge', 'guard', 'cast', 'look'];
     if (kind === 'humanoid' || beastBodyOverride) poses.push('strike', 'thrust', 'chop');

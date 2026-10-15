@@ -169,6 +169,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'ul-qathra', race: 'invertebrate', names: ['ul-qathra', 'ul-qathra, the patient mouth'] },
   { key: 'sphinx', race: 'elemental', names: ['sphinx'] },
   { key: 'purple-worm', race: 'invertebrate', names: ['purple worm', 'huge purple worm'] },
+  { key: 'lady-vesper', race: 'undead', names: ['lady vesper', 'lady vesper, last hostess'] },
+  { key: 'curator-halvek', race: 'human', names: ['curator halvek', 'curator halvek, master of the last exhibition'] },
+  { key: 'thera-runemistress', race: 'elf', names: ['thera', 'thera, the runemistress'] },
+  { key: 'archsage-caldris', race: 'human', names: ['caldris', 'archsage caldris, keeper of the hearthstar'] },
+  { key: 'saint-veyra', race: 'undead', names: ['saint veyra of the burning window'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
