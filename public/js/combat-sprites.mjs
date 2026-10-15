@@ -94,6 +94,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'swamp-wyrm', race: 'dragon', names: ['swamp wyrm'] },
   { key: 'bandit-king', race: 'human', names: ['bandit king'] },
   { key: 'tidemother', race: 'beast', names: ['tidemother'] },
+  { key: 'carrion-queen', race: 'bird', names: ['carrion queen', 'carrion queen of the black boughs'] },
+  { key: 'drowned-dryad', race: 'spirit', names: ['drowned dryad', 'drowned dryad of the root-ford'] },
+  { key: 'furnace-king', race: 'elemental', names: ['furnace king'] },
+  { key: 'thaloryn', race: 'beast', names: ['thaloryn', 'thaloryn, the unmoored leviathan'] },
+  { key: 'greg-director', race: 'human', names: ['greg, director of security'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

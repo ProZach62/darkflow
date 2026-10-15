@@ -150,6 +150,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `swamp-wyrm` | Swamp Wyrm; dragon | `domains/darkwind/areas/4dragons/mob/wyrm.c`: rat-like face, tiny black eyes, wet jaws, alternating scales and matted fur |
 | `bandit-king` | The Bandit King; human | `domains/darkwind/areas/archtower/monsters/banditK.c`: large scarred man, left facial scar, dented bronze breastplate, steel helmet, leather leggings and silver shoulder badge |
 | `tidemother` | The Tidemother; beast | `domains/underworld/areas/necropolis/monster/tidemother.c`: huge female eel-like oracle, black coral crusting and pearl scars |
+| `carrion-queen` | Carrion Queen; the Carrion Queen of the Black Boughs; bird | `domains/underworld/areas/eternal_darkness/monsters/carrion_queen.c`: huge female winged scavenger, black hair braided with a giant-finger-bone crown and ragged wings |
+| `drowned-dryad` | Drowned Dryad; the Drowned Dryad of the Root-Ford; spirit | `domains/underworld/areas/eternal_darkness/monsters/drowned_dryad.c`: large pale female spirit rising waist-deep from black water, hair drifting among drowned roots |
+| `furnace-king` | The Furnace King; elemental | `planets/markas/areas/rainbow_abyss/monsters/furnace_king.c`: huge male ruler of fused iron and fire; reward crown/cuirass are not explicitly equipped |
+| `thaloryn` | Thaloryn; Thaloryn, the Unmoored Leviathan; beast | `planets/markas/areas/rainbow_abyss/monsters/thaloryn.c`: huge male blue-black creature in a suspended sea; finned/coiled marine anatomy is an artistic interpretation, not an authored species |
+| `greg-director` | Greg, Director of Security; human | `planets/tekal/areas/emerald_spire/level3/monsters/greg.c`: medium male human, fitted dark coat concealing cybernetics, equipped steel restraint gauntlet |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -169,6 +174,13 @@ not select the dragon's Ash Regent sheet. A public race of `beast`, used by
 Tidemother, selects beast geometry without assigning any particular species;
 only her exact public name unlocks her dedicated eel-like art.
 
+The bare name `Greg` also occurs in an unrelated random-name pool. Only the
+full public `Greg, Director of Security` label selects his sheet; combat
+payloads exposing only `Greg` retain normal human artwork. Shared `queen`
+and `harpy` aliases do not select either queen's art. Carrion Queen requires
+the actual public race `bird`, not an inferred `harpy` race. No generic bird
+or elemental classification is added just to support these named sheets.
+
 Each transparent 1536 x 1536 sheet has nine painted 512-pixel poses in the
 same idle/windup/maul, whiff/recoil/dodge, guard/cast/look layout. Humanoid
 strike/thrust/chop aliases reuse the attack frame without duplicating pixels.
@@ -185,6 +197,13 @@ than reconstructing held gear (including Swamp Wyrm's attempted Two Moons equip)
 Other sheets suppress weapon overlays for their natural or unarmed attacks.
 Spell effects, environmental props and phase-dependent
 transformations are not baked into these baseline sheets.
+Dryad's compact watery root lower body represents her waist-deep description
+without painting a room-sized pool. Carrion Queen retains her intact crown;
+the later phase that destroys it is not inferred. Furnace King does not wear
+his unequipped reward items, and Thaloryn does not wield his reward polearm.
+Greg's coat and restraint gauntlet are painted into his body; no unique-only
+retaliatory vanes, desk, or surveillance scenery are assumed. His facial
+features and the Dryad's hair colour are artistic choices, not server facts.
 
 ### Additional player-race artwork
 

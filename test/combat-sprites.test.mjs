@@ -354,6 +354,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['swamp-wyrm', 'dragon', ['Swamp Wyrm']],
     ['bandit-king', 'human', ['bandit king', 'The Bandit King']],
     ['tidemother', 'beast', ['tidemother', 'the Tidemother']],
+    ['carrion-queen', 'bird', ['Carrion Queen', 'the Carrion Queen of the Black Boughs']],
+    ['drowned-dryad', 'spirit', ['Drowned Dryad', 'the Drowned Dryad of the Root-Ford']],
+    ['furnace-king', 'elemental', ['The Furnace King']],
+    ['thaloryn', 'beast', ['Thaloryn', 'Thaloryn, the Unmoored Leviathan']],
+    ['greg-director', 'human', ['Greg, Director of Security']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -397,6 +402,17 @@ test('named boss art requires an exact visible label and public race, without ov
   assert.equal(spriteKeysFor(ambiguous, resolveFigure(ambiguous, 'target'), 'target')[0], 'enemies/drake', 'other Wyrm actors share the same public base name and race');
   const necromancer = { name: 'Vaelkor', race: 'undead', appearanceKnown: true, isNpc: true };
   assert.equal(spriteKeysFor(necromancer, resolveFigure(necromancer, 'target'), 'target')[0], 'enemies/undead', 'Vaelkor the Unquiet is not the Ash Regent');
+  for (const fighter of [
+    { name: 'Greg', race: 'human' },
+    { name: 'queen', race: 'bird' },
+    { name: 'queen', race: 'spirit' },
+    { name: 'harpy', race: 'bird' },
+    { name: 'Carrion Queen', race: 'harpy' },
+  ]) {
+    const observed = { ...fighter, appearanceKnown: true, isNpc: true };
+    const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
+    assert.ok(!keys.includes('enemies/greg-director') && !keys.includes('enemies/carrion-queen') && !keys.includes('enemies/drowned-dryad'), 'shared aliases and inferred races do not identify a boss: ' + JSON.stringify(fighter));
+  }
 });
 
 test('every playable race resolves to a shipped sheet or a shared archetype', () => {
