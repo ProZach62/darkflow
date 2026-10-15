@@ -434,6 +434,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['thera-runemistress', 'elf', ['Thera', 'Thera, the Runemistress']],
     ['archsage-caldris', 'human', ['Caldris', 'Archsage Caldris, Keeper of the Hearthstar']],
     ['saint-veyra', 'undead', ['Saint Veyra of the Burning Window']],
+    ['orrick-last-ferryman', 'undead', ['Orrick', 'Orrick, Last Ferryman']],
+    ['archmagister-othrys', 'gnome', ['Othrys', 'Archmagister Othrys, the Unending']],
+    ['prince-morgran', 'undead', ['Morgran', 'Prince Morgran the Crownless']],
+    ['argent-marshal', 'construct', ['Argent Marshal', 'the Argent Marshal, Last Command of Rhuddlan']],
+    ['chairheir-aurex', 'undead', ['Chairheir Aurex', 'Chairheir Aurex Vellum, the Seventh Firstborn']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {

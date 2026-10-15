@@ -174,6 +174,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'thera-runemistress', race: 'elf', names: ['thera', 'thera, the runemistress'] },
   { key: 'archsage-caldris', race: 'human', names: ['caldris', 'archsage caldris, keeper of the hearthstar'] },
   { key: 'saint-veyra', race: 'undead', names: ['saint veyra of the burning window'] },
+  { key: 'orrick-last-ferryman', race: 'undead', names: ['orrick', 'orrick, last ferryman'] },
+  { key: 'archmagister-othrys', race: 'gnome', names: ['othrys', 'archmagister othrys, the unending'] },
+  { key: 'prince-morgran', race: 'undead', names: ['morgran', 'prince morgran the crownless'] },
+  { key: 'argent-marshal', race: 'construct', names: ['argent marshal', 'argent marshal, last command of rhuddlan'] },
+  { key: 'chairheir-aurex', race: 'undead', names: ['chairheir aurex', 'chairheir aurex vellum, the seventh firstborn'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

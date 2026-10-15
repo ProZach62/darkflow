@@ -230,6 +230,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `thera-runemistress` | Thera; Thera, the Runemistress; elf | `domains/hyperborea/areas/wolfjord/monsters/runemistress.c`: slight sorceress in flowing ice-blue silk |
 | `archsage-caldris` | Caldris; Archsage Caldris, Keeper of the Hearthstar; human | `domains/underworld/areas/brightward_road/monsters/archsage_caldris.c`: ancient gentle magician in warm ivory robes |
 | `saint-veyra` | Saint Veyra of the Burning Window; undead | `domains/underworld/areas/emberglass_reliquary/monsters/saint_veyra.c`: burning skeleton inside living emberglass |
+| `orrick-last-ferryman` | Orrick; Orrick, Last Ferryman; undead | `domains/underworld/areas/saltbone_ferryworks/monsters/orrick_last_ferryman.c`: bony ferryman in salt-hardened funeral cloth |
+| `archmagister-othrys` | Othrys; Archmagister Othrys, the Unending; gnome | `domains/underworld/areas/nhal_tor/monsters/archmagister_othrys.c`: gnomish skull and rotating lenses fused to a cable throne |
+| `prince-morgran` | Morgran; Prince Morgran the Crownless; undead | `domains/underworld/areas/hollow_crown_bastion/monsters/prince_morgran.c`: black-steel broken-regalia armour, bare brow |
+| `argent-marshal` | Argent Marshal; the Argent Marshal, Last Command of Rhuddlan; construct | `domains/underworld/areas/rhuddlan/crescent_bastion/monsters/argent_marshal.c`: empty silver-chased plate, cable tendons, cold crescent within helm |
+| `chairheir-aurex` | Chairheir Aurex; Chairheir Aurex Vellum, the Seventh Firstborn; undead | `domains/underworld/areas/house_of_preferment/monsters/chairheir_aurex.c`: golden chair on black conduits, seven birthrights above brow |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -487,6 +492,14 @@ invented staff or reward grimoire. Saint Veyra includes the intact living
 window as body, not scenery or feathered wings. Bare Veyra is deliberately
 excluded because another boss shares it; only her distinctive room label
 selects this art. Bare Vesper and Halvek likewise remain unregistered.
+
+Orrick has empty skeletal hands, not a reward flail or ferry scenery. Othrys,
+Argent Marshal and Aurex retain integral throne machinery across poses, not
+later detached or elevated phases. Othrys's rear mechanical buds represent
+nascent bodies rather than additional actors. Morgran has no crown or axe;
+Argent's plate is its empty body rather than a worn reward cuirass. Aurex's
+seven brow marks are subdued at Scene scale, not equally legible in every
+pose. All five are unarmed: death drops do not establish encounter equipment.
 
 ### Additional player-race artwork
 
