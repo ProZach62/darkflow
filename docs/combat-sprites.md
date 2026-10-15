@@ -185,6 +185,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `echoing-drop-stalker` | Echoing drop stalker; an echoing drop stalker; reptile | `domains/highway/areas/blackmouth_pass/monsters/echoing_drop_stalker.c`: huge neuter vertical-stone climber whose throat repeats vanished prey's sounds |
 | `black-vent-ancient` | Black vent ancient; the Black Vent Ancient; dragon | `domains/highway/areas/blackmouth_pass/monsters/black_vent_ancient.c`: huge neuter heat-drinking wyrm, matte lightless scales and fireless teeth |
 | `hollow-antler` | Hollow Antler; the Hollow Antler; spirit | `domains/darkwind/areas/syldenith_heartroot_descent/monsters/hollow_antler.c`: large wound spirit, root-bone limbs, empty antler rack, red sap and founder-stone core |
+| `warg-leader` | Warg leader; the warg leader; dog | `domains/hyperborea/areas/wolfjord/monsters/wargleader.c`: large male black-grey canine brute, coarse ruff, torn ear, scarred grey muzzle and yellow eyes |
+| `molten-rib-serpent` | Molten rib serpent; the molten rib serpent; dragon | `domains/highway/areas/blackmouth_pass/monsters/molten_rib_serpent.c`: huge neuter long pale wyrm, bones glowing through translucent hide like a furnace behind smoke |
+| `crystalline-monarch` | Crystalline monarch; the Crystalline Monarch; elemental | `domains/souvrael/areas/crystalline_sands/monsters/crystalline_monarch.c`: large neuter elemental fused with crystal growth, heavy amber/ivory arms and cyan core beneath chest plates |
+| `jade-dragon` | Jade dragon; dragon of jade; dragon | `domains/kerei/areas/otemple/monster/jade_dragon.c`: huge male seated green dragon, tail around feet, gold-accented wings and red eyes |
+| `ghost-of-varg` | Ghost of Varg; the ghost of Varg the Grey; ghost | `domains/darkwind/areas/vargs_teeth/monsters/ghost_of_varg.c`: vast fang-grey wolf spirit, outline of still air and remembered claws, not a returned corpse |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -340,6 +345,26 @@ as a normal deer or an ancient forest deity. None has painted reward gear:
 tooth/amulet drops, wyrmscale armour/spear and stone-sap gauntlets are rewards,
 not authored equipped items. Exact public Combat and room labels plus race
 select the sheets; generic gnashers, stalkers, wyrms and treants are unchanged.
+
+Warg Leader, Molten Rib Serpent, Crystalline Monarch, Jade Dragon, and Ghost
+of Varg add nine-pose bodies using their authored definitions above. The
+Warg's torn-ear side and scar placement are artistic choices; his carried
+treasure pelt is not a cloak or separate accessory. The Serpent's limbless,
+wingless coil is an interpretation of the long pale wyrm. Its glowing ribs
+stay beneath intact translucent hide, before the later split-hide phase;
+reward armour and spear are not painted equipment. The Monarch's face and
+two-legged construction are art choices, with amber/ivory mineral anatomy
+and cyan core rather than a robe, sceptre or manufactured plate armour.
+Its room short's colour tokens are stripped by the server's
+`room_scene_text()` before entering `Room.Occupants.name`, so the plain
+room label selects the sheet without client colour-token aliases.
+Jade Dragon keeps its authored green/gold winged body; it is not the
+different temple dragon that equips `jade_dragon_aura`.
+Varg remains wolf-shaped spirit-hide, with grey eye treatment and opacity
+as art choices. Neither gender nor size is invented: the source sets no
+gender and `SIZ_NONE` omits `appearance.size` in the public projection.
+No reward mantle is painted on the ghost. Broad canine, serpent, elemental,
+dragon and ghost labels retain existing generic sheets.
 
 ### Additional player-race artwork
 

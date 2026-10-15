@@ -129,6 +129,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'echoing-drop-stalker', race: 'reptile', names: ['echoing drop stalker'] },
   { key: 'black-vent-ancient', race: 'dragon', names: ['black vent ancient'] },
   { key: 'hollow-antler', race: 'spirit', names: ['hollow antler'] },
+  { key: 'warg-leader', race: 'dog', names: ['warg leader'] },
+  { key: 'molten-rib-serpent', race: 'dragon', names: ['molten rib serpent'] },
+  { key: 'crystalline-monarch', race: 'elemental', names: ['crystalline monarch'] },
+  { key: 'jade-dragon', race: 'dragon', names: ['jade dragon', 'dragon of jade'] },
+  { key: 'ghost-of-varg', race: 'ghost', names: ['ghost of varg', 'ghost of varg the grey'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
