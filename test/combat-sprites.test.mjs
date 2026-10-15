@@ -394,6 +394,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['crystalline-monarch', 'elemental', ['Crystalline monarch', 'the Crystalline Monarch']],
     ['jade-dragon', 'dragon', ['Jade dragon', 'dragon of jade']],
     ['ghost-of-varg', 'ghost', ['Ghost of Varg', 'the ghost of Varg the Grey']],
+    ['red-scree-lurker', 'reptile', ['Red scree lurker', 'a red scree lurker']],
+    ['buried-mile-colossus', 'golem', ['Buried mile colossus', 'the Buried Mile Colossus']],
+    ['brood-cradle-matron', 'dragon', ['Brood cradle matron', 'the Brood Cradle Matron']],
+    ['deep-spine-wyrm', 'dragon', ['Deep spine wyrm', 'the Deep Spine Wyrm']],
+    ['pale-furnace-wyrm', 'dragon', ['Pale furnace wyrm', 'the Pale Furnace Wyrm']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -413,7 +418,7 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker', 'warg-leader', 'ghost-of-varg'].includes(key);
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker', 'warg-leader', 'ghost-of-varg', 'red-scree-lurker'].includes(key);
     const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
@@ -553,6 +558,21 @@ test('named boss art requires an exact visible label and public race, without ov
     const observed = { ...fighter, appearanceKnown: true, isNpc: true };
     const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
     assert.ok(!['warg-leader', 'molten-rib-serpent', 'crystalline-monarch', 'jade-dragon', 'ghost-of-varg'].some((key) => keys.includes('enemies/' + key)), 'generic labels and inferred races retain fallback art: ' + JSON.stringify(fighter));
+  }
+  for (const fighter of [
+    { name: 'lurker', race: 'reptile' },
+    { name: 'Red scree lurker', race: 'dragon' },
+    { name: 'colossus', race: 'golem' },
+    { name: 'Buried mile colossus', race: 'construct' },
+    { name: 'matron', race: 'dragon' },
+    { name: 'Brood cradle matron', race: 'reptile' },
+    { name: 'wyrm', race: 'dragon' },
+    { name: 'Deep spine wyrm', race: 'reptile' },
+    { name: 'Pale furnace wyrm', race: 'elemental' },
+  ]) {
+    const observed = { ...fighter, appearanceKnown: true, isNpc: true };
+    const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
+    assert.ok(!['red-scree-lurker', 'buried-mile-colossus', 'brood-cradle-matron', 'deep-spine-wyrm', 'pale-furnace-wyrm'].some((key) => keys.includes('enemies/' + key)), 'shared labels and inferred races retain fallback art: ' + JSON.stringify(fighter));
   }
 });
 

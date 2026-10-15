@@ -190,6 +190,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `crystalline-monarch` | Crystalline monarch; the Crystalline Monarch; elemental | `domains/souvrael/areas/crystalline_sands/monsters/crystalline_monarch.c`: large neuter elemental fused with crystal growth, heavy amber/ivory arms and cyan core beneath chest plates |
 | `jade-dragon` | Jade dragon; dragon of jade; dragon | `domains/kerei/areas/otemple/monster/jade_dragon.c`: huge male seated green dragon, tail around feet, gold-accented wings and red eyes |
 | `ghost-of-varg` | Ghost of Varg; the ghost of Varg the Grey; ghost | `domains/darkwind/areas/vargs_teeth/monsters/ghost_of_varg.c`: vast fang-grey wolf spirit, outline of still air and remembered claws, not a returned corpse |
+| `red-scree-lurker` | Red scree lurker; a red scree lurker; reptile | `domains/highway/areas/blackmouth_pass/monsters/red_scree_lurker.c`: huge neuter ambusher lying almost flat, jagged hide plates camouflaged against red stones |
+| `buried-mile-colossus` | Buried mile colossus; the Buried Mile Colossus; golem | `domains/highway/areas/blackmouth_pass/monsters/buried_mile_colossus.c`: huge neuter golem of fused road blocks, each numbered and crossed out by a later hand |
+| `brood-cradle-matron` | Brood cradle matron; the Brood Cradle Matron; dragon | `domains/highway/areas/blackmouth_pass/monsters/brood_cradle_matron.c`: huge ancient female wyrm with a plated belly scarred by hundreds of hatchings |
+| `deep-spine-wyrm` | Deep spine wyrm; the Deep Spine Wyrm; dragon | `domains/highway/areas/blackmouth_pass/monsters/deep_spine_wyrm.c`: huge male wyrm, overlapping natural armour plates from skull to tail |
+| `pale-furnace-wyrm` | Pale furnace wyrm; the Pale Furnace Wyrm; dragon | `domains/highway/areas/blackmouth_pass/monsters/pale_furnace_wyrm.c`: huge neuter wyrm almost white from heat, open mouth glowing like a kiln full of bone ash |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -365,6 +370,22 @@ as art choices. Neither gender nor size is invented: the source sets no
 gender and `SIZ_NONE` omits `appearance.size` in the public projection.
 No reward mantle is painted on the ghost. Broad canine, serpent, elemental,
 dragon and ghost labels retain existing generic sheets.
+
+Red Scree Lurker, Buried Mile Colossus, Brood Cradle Matron, Deep Spine
+Wyrm, and Pale Furnace Wyrm add nine-pose bodies from Blackmouth Pass.
+The Lurker's rusty palette and flat four-legged silhouette interpret its
+stone camouflage. The Colossus's block proportions, stone colour and specific
+crossed-out numerals are art choices, not new lore or readable room data.
+The Matron's charcoal hide, pale scarred belly and wingless four-legged
+anatomy are artistic interpretations; the healed hatching scars are authored.
+Deep Spine's steel-blue palette and wingless long-necked anatomy are likewise
+art choices. Its baseline plates stay overlapping, without the later phase's
+all-raised transformation. Pale Furnace has opaque heat-bleached ivory scales
+and kiln-orange jaws, not Molten Rib Serpent's translucent ribs or frost.
+Its four-legged wingless silhouette is an interpretation, not a server hint.
+None wears death-cloned teeth, amulets, shields, greaves, armour or spears.
+The Lurker includes humanoid attack aliases for the existing reptile fallback;
+generic lurkers, colossi, matrons and wyrms do not select these named sheets.
 
 ### Additional player-race artwork
 
