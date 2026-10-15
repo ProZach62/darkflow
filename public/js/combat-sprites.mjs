@@ -164,6 +164,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'tunnelworm', race: 'invertebrate', names: ['giant, blundering worm'] },
   { key: 'squiggoth', race: 'fiend', names: ['squiggoth'] },
   { key: 'bone-goliath', race: 'demon', names: ['bone goliath'] },
+  { key: 'unus', race: 'horse', names: ['unus', 'unus, a majestic white unicorn'] },
+  { key: 'myriasic', race: 'undead', names: ['myriasic', 'myriasic the spook'] },
+  { key: 'ul-qathra', race: 'invertebrate', names: ['ul-qathra', 'ul-qathra, the patient mouth'] },
+  { key: 'sphinx', race: 'elemental', names: ['sphinx'] },
+  { key: 'purple-worm', race: 'invertebrate', names: ['purple worm', 'huge purple worm'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

@@ -220,6 +220,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `tunnelworm` | A giant, blundering worm; invertebrate | `domains/underworld/areas/underdark/mobs/tunnelworm.c`: eyeless grey worm with long mouth-talons |
 | `squiggoth` | squiggoth; fiend | `domains/underworld/areas/orcnewbie/mobs/squigc.c`: mammoth-sized blue-tinged mount with pointed ears |
 | `bone-goliath` | Bone Goliath; demon | `domains/underworld/areas/demon_plain/monster/bonegoliath.c`: humanoid aggregate of clean white skulls and long bones |
+| `unus` | Unus; Unus, a majestic white unicorn; horse | `domains/talamh_darag/areas/forest/monsters/unicorn.c`: white unicorn with flowing mane and lion-shaped tail |
+| `myriasic` | Myriasic; Myriasic the spook; undead | `domains/talamh_darag/areas/towerts/monsters/myriasic.c`: blurred male spirit with elven features |
+| `ul-qathra` | Ul-Qathra; Ul-Qathra, the Patient Mouth; invertebrate | `domains/souvrael/areas/ulqathra/monsters/ulqathra.c`: wet grey ridged mouth with bone beak and coiling tongues |
+| `sphinx` | Sphinx; elemental | `domains/souvrael/areas/southdesert/monsters/sphinx.c`: lion body, vaguely human head, folded feathered wings |
+| `purple-worm` | Purple worm; A HUGE purple worm; invertebrate | `domains/souvrael/areas/southdesert/monsters/pworm.c`: ancient enormous purple-skinned worm |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -460,6 +465,14 @@ coiling preserves complete bodies, with tiny feet only on Grubber. Squiggoth's
 quadruped stance is artistic; no saddle, rider or death-gold earring is added.
 Bone Goliath replaces the colliding Queen Worm identity. Its white bones are
 body material; its aura and death coins are not held equipment.
+
+Unus keeps its integral horn and lion tail, not a detached reward horn or tack.
+Myriasic requires undead race; the restored elf with the same name is separate.
+Ul-Qathra depicts the original mouth, not its later heart phase or surrounding
+desert. Sphinx keeps folded wings and feline paws without invented regalia.
+Purple Worm has continuous leathery coils and no stinger, limbs or reward
+corpse. Coils compress world-scale lengths for the frame. All five are
+unarmed; intrinsic hornlight and ash-memory spirit shading are not held gear.
 
 ### Additional player-race artwork
 
