@@ -195,6 +195,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `brood-cradle-matron` | Brood cradle matron; the Brood Cradle Matron; dragon | `domains/highway/areas/blackmouth_pass/monsters/brood_cradle_matron.c`: huge ancient female wyrm with a plated belly scarred by hundreds of hatchings |
 | `deep-spine-wyrm` | Deep spine wyrm; the Deep Spine Wyrm; dragon | `domains/highway/areas/blackmouth_pass/monsters/deep_spine_wyrm.c`: huge male wyrm, overlapping natural armour plates from skull to tail |
 | `pale-furnace-wyrm` | Pale furnace wyrm; the Pale Furnace Wyrm; dragon | `domains/highway/areas/blackmouth_pass/monsters/pale_furnace_wyrm.c`: huge neuter wyrm almost white from heat, open mouth glowing like a kiln full of bone ash |
+| `crushed-arch-warden` | Crushed arch warden; the Crushed Arch Warden; golem | `domains/highway/areas/blackmouth_pass/monsters/crushed_arch_warden.c`: huge carved warden stooping beneath a shoulder-fused keystone, spread stone hands |
+| `ninth-mile-marker` | Ninth mile marker; the Ninth Mile Marker; golem | `domains/highway/areas/blackmouth_pass/monsters/ninth_mile_marker.c`: huge living road-stone on four basalt legs, faint erased number beneath claw marks |
+| `sealed-descent-keeper` | Sealed descent keeper; the Sealed Descent Keeper; golem | `domains/highway/areas/blackmouth_pass/monsters/sealed_descent_keeper.c`: huge basalt figure with an already-split chest leaking hot dust |
+| `last-chain-sentinel` | Last chain sentinel; the Last Chain Sentinel; giant | `domains/highway/areas/blackmouth_pass/monsters/last_chain_sentinel.c`: huge giant in black armour attached to the final chain |
+| `last-breath-herald` | Last breath herald; the Last Breath Herald; reptile | `domains/highway/areas/blackmouth_pass/monsters/last_breath_herald.c`: vast blind reptile with bellows-like lungs |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -386,6 +391,17 @@ Its four-legged wingless silhouette is an interpretation, not a server hint.
 None wears death-cloned teeth, amulets, shields, greaves, armour or spears.
 The Lurker includes humanoid attack aliases for the existing reptile fallback;
 generic lurkers, colossi, matrons and wyrms do not select these named sheets.
+
+Crushed Arch Warden, Ninth Mile Marker, Sealed Descent Keeper, Last Chain
+Sentinel, and Last Breath Herald retain their baseline bodies, not later
+keystone splitting, burning-number, chest-eruption or chain-snapping changes.
+The Marker uses beast geometry for its four basalt legs despite race golem;
+its erased mark is abstract rather than an invented literal numeral. The
+Herald's quadruped stance, slate palette, pupil-less eyes and pleated flanks
+interpret its blind reptilian body and bellows lungs. Sentinel's bald grey
+flesh is artistic; the described black armour and attached chain are canon,
+not fabricated equipment hints. All five have natural attacks and no held
+equipment. Death-cloned shields, greaves, mail and ring remain rewards.
 
 ### Additional player-race artwork
 

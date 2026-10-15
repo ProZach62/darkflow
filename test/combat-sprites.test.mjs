@@ -399,6 +399,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['brood-cradle-matron', 'dragon', ['Brood cradle matron', 'the Brood Cradle Matron']],
     ['deep-spine-wyrm', 'dragon', ['Deep spine wyrm', 'the Deep Spine Wyrm']],
     ['pale-furnace-wyrm', 'dragon', ['Pale furnace wyrm', 'the Pale Furnace Wyrm']],
+    ['crushed-arch-warden', 'golem', ['Crushed arch warden', 'the Crushed Arch Warden']],
+    ['ninth-mile-marker', 'golem', ['Ninth mile marker', 'the Ninth Mile Marker']],
+    ['sealed-descent-keeper', 'golem', ['Sealed descent keeper', 'the Sealed Descent Keeper']],
+    ['last-chain-sentinel', 'giant', ['Last chain sentinel', 'the Last Chain Sentinel']],
+    ['last-breath-herald', 'reptile', ['Last breath herald', 'the Last Breath Herald']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -418,7 +423,7 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker', 'warg-leader', 'ghost-of-varg', 'red-scree-lurker'].includes(key);
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker', 'rabbit-of-caerbannog', 'parallax-queen', 'cragjaw', 'rattleback', 'echoing-drop-stalker', 'warg-leader', 'ghost-of-varg', 'red-scree-lurker', 'ninth-mile-marker', 'last-breath-herald'].includes(key);
     const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
