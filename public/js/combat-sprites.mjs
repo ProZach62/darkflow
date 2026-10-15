@@ -104,6 +104,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'waternix', race: 'faerie', names: ['waternix', 'each-uisge'] },
   { key: 'gaean-warden', race: 'spirit', names: ['gaean warden', "warden of gaea's vigil"] },
   { key: 'astral-colossus', race: 'construct', names: ['astral colossus'] },
+  { key: 'splintermaw', race: 'reptile', names: ['splintermaw'] },
+  { key: 'ironheart-treant', race: 'treant', names: ['ironheart treant'] },
+  { key: 'sablehorn', race: 'dragon', names: ['sablehorn', 'sablehorn moltwyrm'] },
+  { key: 'vorrak', race: 'dragon', names: ['vorrak', 'vorrak the acid coil'] },
+  { key: 'lower-jaw-alpha', race: 'reptile', names: ['lower jaw alpha'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

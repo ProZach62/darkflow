@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "kind": "humanoid",
+  "image": "/assets/sprites/enemies/ironheart-treant.png",
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "unit": 128.0,
+  "anchor": {
+    "x": 200.0,
+    "y": 464.0
+  },
+  "facing": "right",
+  "rigAligned": false,
+  "weaponsInArt": true,
+  "portrait": false,
+  "secondary": false,
+  "frames": {
+    "idle": {
+      "x": 0,
+      "y": 0,
+      "anchors": {}
+    },
+    "windup": {
+      "x": 512,
+      "y": 0,
+      "anchors": {}
+    },
+    "maul": {
+      "x": 1024,
+      "y": 0,
+      "anchors": {}
+    },
+    "whiff": {
+      "x": 0,
+      "y": 512,
+      "anchors": {}
+    },
+    "recoil": {
+      "x": 512,
+      "y": 512,
+      "anchors": {}
+    },
+    "dodge": {
+      "x": 1024,
+      "y": 512,
+      "anchors": {}
+    },
+    "guard": {
+      "x": 0,
+      "y": 1024,
+      "anchors": {}
+    },
+    "cast": {
+      "x": 512,
+      "y": 1024,
+      "anchors": {}
+    },
+    "look": {
+      "x": 1024,
+      "y": 1024,
+      "anchors": {}
+    },
+    "strike": {
+      "x": 1024,
+      "y": 0,
+      "anchors": {}
+    },
+    "thrust": {
+      "x": 1024,
+      "y": 0,
+      "anchors": {}
+    },
+    "chop": {
+      "x": 1024,
+      "y": 0,
+      "anchors": {}
+    }
+  },
+  "cloak": false
+}

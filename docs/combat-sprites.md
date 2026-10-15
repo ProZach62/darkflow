@@ -160,6 +160,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `waternix` | Waternix; each-uisge; faerie | `domains/islands/areas/briton/monsters/waternix.c`: large male black stallion, dripping coat and glowing red eyes; no rider or equipment |
 | `gaean-warden` | Gaean warden; Warden of Gaea's Vigil; spirit | `domains/underworld/areas/eternal_darkness/monsters/gaean_warden.c`: large female spirit of leaf-shadow and riverstone, calm old face, bare feet with living roots |
 | `astral-colossus` | Astral Colossus; construct | `planets/markas/areas/rainbow_abyss/monsters/astral_colossus.c`: huge male giant of drifting stone; carried starblade is not equipped |
+| `splintermaw` | Splintermaw; reptile | `domains/highway/areas/blackmouth_pass/monsters/splintermaw.c`: huge reptile, broken stalagmite teeth regrown as mineral shards |
+| `ironheart-treant` | Ironheart Treant; treant | `domains/underworld/areas/eternal_darkness/monsters/ironheart_treant.c`: huge oak, black iron grown through heartwood, thorn-healed branch wounds |
+| `sablehorn` | Sablehorn; Sablehorn Moltwyrm; dragon | `domains/highway/areas/blackmouth_pass/monsters/sablehorn_moltwyrm.c`: huge male dragging wyrm, two black horns cracked by orange heat |
+| `vorrak` | Vorrak; Vorrak the Acid Coil; dragon | `domains/highway/areas/blackmouth_pass/monsters/vorrak_acid_coil.c`: huge male coiled deep wyrm, slick black scales with bright green acid threads |
+| `lower-jaw-alpha` | Lower Jaw Alpha; reptile | `domains/highway/areas/blackmouth_pass/monsters/lower_jaw_alpha.c`: huge male reptile, one missing eye and extensively lost hide, healed scars and muscle |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -223,6 +228,20 @@ Waternix owns its natural hoof attacks. The Warden remains a barefoot woman,
 not a tree creature, and the Colossus does not wield its unequipped starblade.
 The Colossus's boulder limbs and small joint gaps are artistic interpretations
 of drifting stone, not additional server appearance hints.
+
+Splintermaw and Lower Jaw Alpha use four-legged cave-reptile silhouettes;
+their precise anatomy and colours are artistic interpretations of the public
+`reptile` race, not a new generic species mapping. The Alpha's missing near-side
+eye is painted as a healed-over socket; the source does not specify which eye.
+Sablehorn and Vorrak use legless, wingless coils as an interpretation of their
+dragging/coiling descriptions. Sablehorn's bronze body colour is an art choice;
+only its two horns are explicitly black. Ironheart's integrated iron plates
+are body features, not equipped armour; no gender is inferred for the treant.
+All five use natural attacks and own their complete silhouettes. Reptile
+sheets include humanoid attack aliases for the existing broad-race rig fallback.
+Shared `gnasher` and `wyrm` aliases do not select any of these named sheets.
+Death-clone amulets, armour and spears are not worn, and later phase changes
+(including Ironheart's exposed burning sap) are not baked into baseline art.
 
 ### Additional player-race artwork
 

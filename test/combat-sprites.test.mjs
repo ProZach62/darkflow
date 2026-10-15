@@ -364,6 +364,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['waternix', 'faerie', ['Waternix', 'each-uisge']],
     ['gaean-warden', 'spirit', ['Gaean warden', "a Warden of Gaea's Vigil", "the Warden of Gaea's Vigil"]],
     ['astral-colossus', 'construct', ['Astral Colossus', 'The Astral Colossus']],
+    ['splintermaw', 'reptile', ['Splintermaw']],
+    ['ironheart-treant', 'treant', ['Ironheart Treant', 'the Ironheart Treant']],
+    ['sablehorn', 'dragon', ['Sablehorn', 'Sablehorn Moltwyrm']],
+    ['vorrak', 'dragon', ['Vorrak', 'Vorrak the Acid Coil']],
+    ['lower-jaw-alpha', 'reptile', ['Lower Jaw Alpha', 'the lower jaw alpha']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -383,7 +388,8 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const kind = ['dragon', 'beast'].includes(race) || key === 'waternix' ? 'beast' : 'humanoid';
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha'].includes(key);
+    const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
     const image = readFileSync(new URL('../public' + sheet.image, import.meta.url));
@@ -392,7 +398,7 @@ test('named boss art requires an exact visible label and public race, without ov
     const armed = ['gravewatch-penitent', 'bandit-king', 'aralith', 'sayf-al-murr'].includes(key);
     assert.equal(sheet.weaponsInArt, !armed, 'armed bosses retain server equipment overlays');
     const poses = ['idle', 'windup', 'maul', 'whiff', 'recoil', 'dodge', 'guard', 'cast', 'look'];
-    if (kind === 'humanoid' || key === 'waternix') poses.push('strike', 'thrust', 'chop');
+    if (kind === 'humanoid' || beastBodyOverride) poses.push('strike', 'thrust', 'chop');
     if (armed) poses.push('raise');
     for (const pose of poses) {
       const [selected] = selectSpriteFrames(sheet, { from: pose, to: pose }, 1);
@@ -429,6 +435,20 @@ test('named boss art requires an exact visible label and public race, without ov
     const observed = { ...fighter, appearanceKnown: true, isNpc: true };
     const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
     assert.ok(!keys.includes('enemies/waternix') && !keys.includes('enemies/aralith') && !keys.includes('enemies/gaean-warden') && !keys.includes('enemies/astral-colossus'), 'generic aliases and unrelated faeries retain their own art: ' + JSON.stringify(fighter));
+  }
+  for (const fighter of [
+    { name: 'gnasher', race: 'reptile' },
+    { name: 'wyrm', race: 'dragon' },
+    { name: 'an old oak', race: 'treant' },
+    { name: 'Splintermaw', race: 'crocodile' },
+    { name: 'Ironheart Treant', race: 'plant' },
+    { name: 'Sablehorn', race: 'reptile' },
+    { name: 'Vorrak', race: 'serpent' },
+    { name: 'Lower Jaw Alpha', race: 'dragon' },
+  ]) {
+    const observed = { ...fighter, appearanceKnown: true, isNpc: true };
+    const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
+    assert.ok(!['splintermaw', 'ironheart-treant', 'sablehorn', 'vorrak', 'lower-jaw-alpha'].some((key) => keys.includes('enemies/' + key)), 'shared aliases and inferred species do not identify a boss: ' + JSON.stringify(fighter));
   }
 });
 
