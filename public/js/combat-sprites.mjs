@@ -89,6 +89,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'lord-blackbriar', race: 'spirit', names: ['lord blackbriar', 'lord blackbriar, the sole heir'] },
   { key: 'languish', race: 'undead', names: ['languish', 'smooth priest'] },
   { key: 'gravewatch-penitent', race: 'undead', names: ['gravewatch penitent'] },
+  { key: 'vaelkor', race: 'dragon', names: ['vaelkor', 'vaelkor, the ash regent', 'vaelkor the ash regent'] },
+  { key: 'unarrived', race: 'dragon', names: ['unarrived'] },
+  { key: 'swamp-wyrm', race: 'dragon', names: ['swamp wyrm'] },
+  { key: 'bandit-king', race: 'human', names: ['bandit king'] },
+  { key: 'tidemother', race: 'beast', names: ['tidemother'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

@@ -116,6 +116,7 @@ const SCALE_BY_RACE = Object.freeze({
 // Public creature races share a bounded silhouette and art archetype. This
 // never classifies a creature from its name, guild, or recipient-private data.
 const CREATURE_RACES = Object.freeze({
+  beast: ['beast', ''],
   wolf: ['beast', 'wolf'],
   rat: ['beast', 'rat'],
   rodent: ['beast', 'rat'],

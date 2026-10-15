@@ -231,6 +231,7 @@ test('dedicated neutral race sheets outrank biological families for own and obse
 
 test('public creature races choose bundled art without name guesses or stale humanoid forms', () => {
   for (const [race, key, kind] of [
+    ['beast', 'beast', 'beast'],
     ['dragon', 'enemies/drake', 'beast'],
     ['spider', 'enemies/spider', 'beast'],
     ['skeleton', 'enemies/undead', 'humanoid'],
@@ -348,6 +349,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['lord-blackbriar', 'spirit', ['Lord Blackbriar', 'Lord Blackbriar, the Sole Heir']],
     ['languish', 'undead', ['Languish', 'a smooth priest']],
     ['gravewatch-penitent', 'undead', ['The Gravewatch Penitent']],
+    ['vaelkor', 'dragon', ['Vaelkor', 'Vaelkor, the Ash Regent', 'Vaelkor the Ash Regent']],
+    ['unarrived', 'dragon', ['Unarrived', 'the Unarrived']],
+    ['swamp-wyrm', 'dragon', ['Swamp Wyrm']],
+    ['bandit-king', 'human', ['bandit king', 'The Bandit King']],
+    ['tidemother', 'beast', ['tidemother', 'the Tidemother']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -359,7 +365,7 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(keys.length > 1, name + ' retains existing fallback art');
       }
       for (const override of [
-        { race: '' }, { race: 'human' }, { race: '', family: race },
+        { race: '' }, { race: race === 'human' ? 'undead' : 'human' }, { race: '', family: race },
         { name: name + ' statue' }, { appearanceKnown: false },
         { form: 'mist' }, { form: 'humanoid' }, { form: 'quadruped' },
       ]) {
@@ -367,24 +373,30 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const kind = race === 'dragon' ? 'beast' : 'humanoid';
+    const kind = ['dragon', 'beast'].includes(race) ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
     const image = readFileSync(new URL('../public' + sheet.image, import.meta.url));
     assert.equal(sheet.portrait, false);
     assert.equal(sheet.secondary, false);
-    assert.equal(sheet.weaponsInArt, key !== 'gravewatch-penitent', 'Penitent retains server equipment overlays');
+    const armed = ['gravewatch-penitent', 'bandit-king'].includes(key);
+    assert.equal(sheet.weaponsInArt, !armed, 'armed bosses retain server equipment overlays');
     const poses = ['idle', 'windup', 'maul', 'whiff', 'recoil', 'dodge', 'guard', 'cast', 'look'];
     if (kind === 'humanoid') poses.push('strike', 'thrust', 'chop');
-    if (key === 'gravewatch-penitent') poses.push('raise');
+    if (armed) poses.push('raise');
     for (const pose of poses) {
       const [selected] = selectSpriteFrames(sheet, { from: pose, to: pose }, 1);
       assert.equal(selected.name, pose, key + ' animates ' + pose);
       assert.ok(selected.frame.x + sheet.frameWidth <= image.readUInt32BE(16));
       assert.ok(selected.frame.y + sheet.frameHeight <= image.readUInt32BE(20));
-      if (key === 'gravewatch-penitent') assert.ok(selected.frame.anchors.hand, 'hammer follows the painted hand');
+      if (armed) assert.ok(selected.frame.anchors.hand, 'weapon follows the painted hand');
+      if (key === 'bandit-king') assert.ok(selected.frame.anchors.offHand && selected.frame.anchors.offElbow, 'shield follows the painted arm');
     }
   }
+  const ambiguous = { name: 'Wyrm (BOSS)', race: 'dragon', appearanceKnown: true, isNpc: true };
+  assert.equal(spriteKeysFor(ambiguous, resolveFigure(ambiguous, 'target'), 'target')[0], 'enemies/drake', 'other Wyrm actors share the same public base name and race');
+  const necromancer = { name: 'Vaelkor', race: 'undead', appearanceKnown: true, isNpc: true };
+  assert.equal(spriteKeysFor(necromancer, resolveFigure(necromancer, 'target'), 'target')[0], 'enemies/undead', 'Vaelkor the Unquiet is not the Ash Regent');
 });
 
 test('every playable race resolves to a shipped sheet or a shared archetype', () => {

@@ -132,7 +132,7 @@ redaction retain priority, and existing player-race sheets are unchanged.
 
 ### Named boss artwork
 
-The first five dedicated boss sheets come from the server's `bosses` catalogue,
+The dedicated boss sheets come from the server's `bosses` catalogue,
 not from invented client boss names. `cmds/std/_bosses.c` reads
 `secure/daemons/boss_catalog_d.c`; the daemon discovers authored boss contracts
 under `/domains` and `/planets`. Source references below are relative to the
@@ -145,6 +145,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `lord-blackbriar` | Lord Blackbriar; Lord Blackbriar, the Sole Heir; spirit | `domains/bodachian_fallows/areas/blackbriar_manor/monsters/lord_blackbriar.c`: tall formal noble ghost; no wielded rapier |
 | `languish` | Languish; a smooth priest; undead | `domains/darkwind/pirate/mon/priest.c`: deceptively smiling man, long canines, worn heavy green cloak, unarmed |
 | `gravewatch-penitent` | The Gravewatch Penitent; undead | `domains/darkwind/areas/abbey/monsters/gravewatch_penitent.c`: ash-streaked iron burial mask, torn habit over abbey mail, chain-wrapped body; mechanically equipped hammer |
+| `vaelkor` | Vaelkor; Vaelkor, the Ash Regent; Vaelkor the Ash Regent; dragon | `domains/auralis/areas/crimson_reach/monsters/vaelkor.c`: old crimson dragon, fused ash/emberglass mantle, three pale breast fractures |
+| `unarrived` | The Unarrived; dragon | `domains/auralis/areas/violet_rift/monsters/unarrived.c`: violet phaseborn dragon, backward-curving horns with caught silver thread |
+| `swamp-wyrm` | Swamp Wyrm; dragon | `domains/darkwind/areas/4dragons/mob/wyrm.c`: rat-like face, tiny black eyes, wet jaws, alternating scales and matted fur |
+| `bandit-king` | The Bandit King; human | `domains/darkwind/areas/archtower/monsters/banditK.c`: large scarred man, left facial scar, dented bronze breastplate, steel helmet, leather leggings and silver shoulder badge |
+| `tidemother` | The Tidemother; beast | `domains/underworld/areas/necropolis/monster/tidemother.c`: huge female eel-like oracle, black coral crusting and pearl scars |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -155,6 +160,15 @@ does not yet supply a unique artwork/blueprint key. Redaction, transformed forms
 legacy actors without public appearance, and failed art loads retain existing
 generic/species fallbacks. Other dragons and undead are unchanged.
 
+The base name `Wyrm` plus race `dragon` is shared by several different server
+actors. It deliberately does NOT select Swamp Wyrm art: that sheet requires
+the distinctive public `Swamp Wyrm` label. Combat payloads containing only
+`Wyrm` retain generic drake art until a more specific public identity is supplied.
+`Vaelkor` plus `undead` is the separate Vaelkor the Unquiet and likewise must
+not select the dragon's Ash Regent sheet. A public race of `beast`, used by
+Tidemother, selects beast geometry without assigning any particular species;
+only her exact public name unlocks her dedicated eel-like art.
+
 Each transparent 1536 x 1536 sheet has nine painted 512-pixel poses in the
 same idle/windup/maul, whiff/recoil/dodge, guard/cast/look layout. Humanoid
 strike/thrust/chop aliases reuse the attack frame without duplicating pixels.
@@ -164,8 +178,12 @@ whole alpha-component extraction, one shared scale per boss, and the existing
 frame assembler. Aliases are added after assembly so translucent ghost pixels
 are not composited repeatedly. All sheets own their complete heads and coats,
 wings or tails. Penitent's empty-handed body supplies per-pose hand grips for
-runtime equipment; the other four suppress weapon overlays for their natural
-or unarmed attacks. Spell effects, environmental props and phase-dependent
+runtime equipment. Bandit King's empty-handed body also has off-hand and elbow
+anchors for his server-provided sword and shield; art does not force Blooddrinker
+over its bastard-sword fallback. Beast sheets use natural attack poses rather
+than reconstructing held gear (including Swamp Wyrm's attempted Two Moons equip).
+Other sheets suppress weapon overlays for their natural or unarmed attacks.
+Spell effects, environmental props and phase-dependent
 transformations are not baked into these baseline sheets.
 
 ### Additional player-race artwork
