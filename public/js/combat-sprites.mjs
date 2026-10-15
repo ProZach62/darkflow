@@ -144,6 +144,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'sealed-descent-keeper', race: 'golem', names: ['sealed descent keeper'] },
   { key: 'last-chain-sentinel', race: 'giant', names: ['last chain sentinel'] },
   { key: 'last-breath-herald', race: 'reptile', names: ['last breath herald'] },
+  { key: 'emerald-dragon', race: 'dragon', names: ['emerald dragon'] },
+  { key: 'skeletal-dragon', race: 'dragon', names: ['skeletal dragon'] },
+  { key: 'jeweled-dragon', race: 'dragon', names: ['jeweled dragon'] },
+  { key: 'faerie-dragon', race: 'dragon', names: ['huge faerie dragon'] },
+  { key: 'white-wyrm', race: 'dragon', names: ['white wyrm', 'huge white wyrm'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

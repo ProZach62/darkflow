@@ -200,6 +200,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `sealed-descent-keeper` | Sealed descent keeper; the Sealed Descent Keeper; golem | `domains/highway/areas/blackmouth_pass/monsters/sealed_descent_keeper.c`: huge basalt figure with an already-split chest leaking hot dust |
 | `last-chain-sentinel` | Last chain sentinel; the Last Chain Sentinel; giant | `domains/highway/areas/blackmouth_pass/monsters/last_chain_sentinel.c`: huge giant in black armour attached to the final chain |
 | `last-breath-herald` | Last breath herald; the Last Breath Herald; reptile | `domains/highway/areas/blackmouth_pass/monsters/last_breath_herald.c`: vast blind reptile with bellows-like lungs |
+| `emerald-dragon` | emerald dragon; dragon | `domains/hyperborea/areas/north_hyper/monsters/emerald.c`: emerald-scaled dragon |
+| `skeletal-dragon` | skeletal dragon; dragon | `domains/hyperborea/areas/4dragons/mobs/dragon.c`: complete draconic skeleton |
+| `jeweled-dragon` | jeweled dragon; dragon | `domains/kerei/areas/4dragons/mobs/dragon.c`: golden wings and gemstone-bladed tail |
+| `faerie-dragon` | huge faerie dragon; dragon | `domains/kerei/areas/faerie/monster/faeriedragon.c`: full-sized green and silver dragon |
+| `white-wyrm` | White Wyrm; huge white wyrm; dragon | `domains/kerei/areas/temple/monster/boss.c`: eyeless limbless white serpent with two short horns |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -402,6 +407,16 @@ interpret its blind reptilian body and bellows lungs. Sentinel's bald grey
 flesh is artistic; the described black armour and attached chain are canon,
 not fabricated equipment hints. All five have natural attacks and no held
 equipment. Death-cloned shields, greaves, mail and ring remain rewards.
+
+Emerald, Skeletal, Jeweled and Faerie Dragons require their distinctive room
+labels; generic Combat names such as Dragon must not select them. White Wyrm
+replaces the ambiguous Swamp Dragon (Dragon / a huge dragon). Shared historical
+copies of Emerald and White Wyrm depict the same anatomy. All five preserve
+natural attacks, not phase transformations or treasure drops. Jeweled Dragon's
+conditional unique scimitar is omitted from this baseline body. Wings, limb
+proportions and scale shading are artistic where unspecified. White Wyrm's
+ivory horns have red base cuffs, not eyes or limbs. Width-capped common scale
+preserves complete anatomy instead of forcing long bodies to humanoid height.
 
 ### Additional player-race artwork
 

@@ -404,6 +404,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['sealed-descent-keeper', 'golem', ['Sealed descent keeper', 'the Sealed Descent Keeper']],
     ['last-chain-sentinel', 'giant', ['Last chain sentinel', 'the Last Chain Sentinel']],
     ['last-breath-herald', 'reptile', ['Last breath herald', 'the Last Breath Herald']],
+    ['emerald-dragon', 'dragon', ['an emerald dragon']],
+    ['skeletal-dragon', 'dragon', ['a skeletal dragon']],
+    ['jeweled-dragon', 'dragon', ['a jeweled dragon']],
+    ['faerie-dragon', 'dragon', ['a huge faerie dragon']],
+    ['white-wyrm', 'dragon', ['White Wyrm', 'a huge white wyrm']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
