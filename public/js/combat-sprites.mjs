@@ -114,6 +114,11 @@ const BOSS_SPRITES = Object.freeze([
   { key: 'uncolored-one', race: 'spirit', names: ['uncolored one'] },
   { key: 'warden-post-golem', race: 'golem', names: ['warden post golem'] },
   { key: 'defiler', race: 'fiend', names: ['defiler', 'daemon of defilement'] },
+  { key: 'white-shark', race: 'fish', names: ['white shark'] },
+  { key: 'ruby-dragon', race: 'dragon', names: ['ruby dragon', 'dragon of ruby'] },
+  { key: 'regrowth-mass', race: 'reptile', names: ['regrowth mass'] },
+  { key: 'bankbreaker', race: 'animal', names: ['bankbreaker', 'bankbreaker, the root-burrowing beast'] },
+  { key: 'nhal-serev', race: 'undead', names: ['nhal serev', 'nhal serev, the rimebound archlich'] },
 ]);
 
 const ENEMY_SPRITE_PATTERNS = Object.freeze([

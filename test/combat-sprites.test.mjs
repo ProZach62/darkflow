@@ -374,6 +374,11 @@ test('named boss art requires an exact visible label and public race, without ov
     ['uncolored-one', 'spirit', ['Uncolored One', 'The Uncolored One']],
     ['warden-post-golem', 'golem', ['Warden post golem', 'the Warden Post Golem']],
     ['defiler', 'fiend', ['Defiler', 'the Defiler', 'daemon of defilement']],
+    ['white-shark', 'fish', ['White shark', 'white shark']],
+    ['ruby-dragon', 'dragon', ['Ruby dragon', 'dragon of ruby']],
+    ['regrowth-mass', 'reptile', ['Regrowth mass', 'a regrowth mass']],
+    ['bankbreaker', 'animal', ['Bankbreaker', 'Bankbreaker, the root-burrowing beast']],
+    ['nhal-serev', 'undead', ['Nhal Serev', 'Nhal Serev, the Rimebound Archlich']],
   ]) {
     const expected = 'enemies/' + key;
     for (const name of names) {
@@ -393,7 +398,7 @@ test('named boss art requires an exact visible label and public race, without ov
         assert.ok(!spriteKeysFor(hidden, resolveFigure(hidden, 'target'), 'target').includes(expected), name + ' respects ' + JSON.stringify(override));
       }
     }
-    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike'].includes(key);
+    const beastBodyOverride = ['waternix', 'splintermaw', 'lower-jaw-alpha', 'mawspike', 'white-shark', 'regrowth-mass', 'bankbreaker'].includes(key);
     const kind = ['dragon', 'beast'].includes(race) || beastBodyOverride ? 'beast' : 'humanoid';
     const sheet = normalizeSpriteManifest(JSON.parse(readFileSync(new URL('../public/assets/sprites/' + expected + '.json', import.meta.url))), kind);
     assert.ok(sheet, key + ' ships a valid sheet');
@@ -468,6 +473,22 @@ test('named boss art requires an exact visible label and public race, without ov
     const observed = { ...fighter, appearanceKnown: true, isNpc: true };
     const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
     assert.ok(!['qitar', 'mawspike', 'uncolored-one', 'warden-post-golem', 'defiler'].some((key) => keys.includes('enemies/' + key)), 'generic labels and competing identities retain fallback art: ' + JSON.stringify(fighter));
+  }
+  for (const fighter of [
+    { name: 'shark', race: 'fish' },
+    { name: 'dragon', race: 'dragon' },
+    { name: 'baby dragon', race: 'dragon' },
+    { name: 'mass', race: 'reptile' },
+    { name: 'burrower', race: 'animal' },
+    { name: 'archlich', race: 'undead' },
+    { name: 'White shark', race: 'shark' },
+    { name: 'Regrowth mass', race: 'beast' },
+    { name: 'Bankbreaker', race: 'reptile' },
+    { name: 'Nhal Serev', race: 'lich' },
+  ]) {
+    const observed = { ...fighter, appearanceKnown: true, isNpc: true };
+    const keys = spriteKeysFor(observed, resolveFigure(observed, 'target'), 'target');
+    assert.ok(!['white-shark', 'ruby-dragon', 'regrowth-mass', 'bankbreaker', 'nhal-serev'].some((key) => keys.includes('enemies/' + key)), 'broad labels and inferred species do not identify a boss: ' + JSON.stringify(fighter));
   }
 });
 

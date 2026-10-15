@@ -170,6 +170,11 @@ server's `codebase/` directory in `jasona/darkwind-nextgen`.
 | `uncolored-one` | The Uncolored One; spirit | `planets/markas/areas/rainbow_abyss/monsters/uncolored_one.c`: huge male figure between nine currents, drawing colour from nearby edges |
 | `warden-post-golem` | Warden post golem; the Warden Post Golem; golem | `domains/highway/areas/blackmouth_pass/monsters/warden_post_golem.c`: huge neuter squat basalt block, empty guard chair embedded in its back, weapon-rack hooks along its arms |
 | `defiler` | Defiler; daemon of defilement; fiend | `domains/kerei/areas/catacombs/mobs/defiler.c`: huge male twelve-foot daemon of immense bulk, lowered head, bared teeth, burning claws |
+| `white-shark` | White shark; fish | `domains/kerei/areas/otemple/monster/white_shark.c`: huge male fourteen-foot shark, grey back, white belly and dorsal-fin tips, two rows of sharp teeth |
+| `ruby-dragon` | Ruby dragon; dragon of ruby; dragon | `domains/kerei/areas/otemple/monster/ruby_dragon.c`: huge female upright red dragon, curled tail, copper-accented wings, glowing red eyes |
+| `regrowth-mass` | Regrowth mass; a regrowth mass; reptile | `domains/highway/areas/blackmouth_pass/monsters/regrowth_mass.c`: huge neuter living heap of scale, tooth and meat, regrowing jaws and knitting flesh |
+| `bankbreaker` | Bankbreaker; Bankbreaker, the root-burrowing beast; animal | `domains/talamh_darag/areas/redroot_ringfort/monsters/burrower.c`: huge neuter digging beast, clay lodged in old hide ridges, one foreclaw worn shorter than the other |
+| `nhal-serev` | Nhal Serev; Nhal Serev, the Rimebound Archlich; undead | `domains/dramasa/areas/rimevault/monsters/nhal_serev.c`: medium preserved floating sorcerer, broken ancient ice shell, blue skull fire and orbiting spell fragments |
 
 Dedicated art requires an exact normalized visible name AND the corresponding
 public race, with no explicit transformed form. Existing `bossKey` normalization
@@ -271,6 +276,23 @@ fallback chain, while room occupants use rendered `short()`. These five
 support their actual Combat names as well as the listed room labels. White
 Bear and Gate Guardian were not selected: Combat sends only `Bear` and
 `Guardian`, so distinctive room shorts cannot safely identify them in combat.
+
+White Shark, Ruby Dragon, Regrowth Mass, Bankbreaker, and Nhal Serev were
+checked against the server sources listed above. Their nine-pose sheets
+include natural attack or spell poses, without painted weapons or scenery.
+White Shark retains its complete aquatic body rather than a humanoid rig;
+Ruby Dragon's wings stay copper-accented rather than adding equipment.
+Regrowth Mass's muted flesh palette and low eyeless mound silhouette are
+art choices: the source fixes neither a skeleton nor a limb count.
+Bankbreaker's mammal-like outline, hide colour, and choice of shorter
+foreclaw are artistic interpretations, not additional server appearance hints.
+Nhal Serev's robe colour is likewise artistic; no gender is inferred from
+its undead race. Its carried implant reward is not painted as a held skull.
+Regrowth Mass's death-cloned ring and Bankbreaker's reward boots are not
+equipped and do not appear on their bodies. Broad fish, animal, reptile and
+undead labels retain generic fallbacks; only exact public name/race pairs
+select these sheets. Mintohdar remains deferred until its required eight-arm
+anatomy can be reproduced consistently across poses.
 
 ### Additional player-race artwork
 
