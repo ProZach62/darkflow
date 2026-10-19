@@ -15,6 +15,7 @@ const BUILDING_SPRITES = Object.freeze({
 const PROP_SPRITES = new Set([
   'altar',
   'anvil',
+  'bar',
   'barrels',
   'bed',
   'bench',
@@ -30,6 +31,7 @@ const PROP_SPRITES = new Set([
   'fountain',
   'gate',
   'gravestone',
+  'hearth',
   'loot',
   'market-stall',
   'mushrooms',
@@ -79,6 +81,27 @@ const OCCUPANT_POSITIONS = Object.freeze([
   { x: 56, y: 71 },
   { x: 78, y: 69 },
 ]);
+
+// Authored geometry uses the same room-world percentage coordinates as looks.
+// No server-provided asset paths or CSS are accepted.
+export function roomSceneLayout(layout = {}) {
+  const floor = [...Object.values(TERRAIN_TEXTURES), 'timber'].includes(layout?.floor) ? layout.floor : null;
+  const walls = ['stone', 'timber'].includes(layout?.walls) ? layout.walls : null;
+  const materials = { path: 'path', road: 'road', river: 'river', lake: 'lake', swamp: 'swamp' };
+  const ids = new Set();
+  const surfaces = [];
+  for (const surface of (Array.isArray(layout?.surfaces) ? layout.surfaces.slice(0, 8) : [])) {
+    if (!surface || typeof surface.id !== 'string' || !surface.id.trim() || ids.has(surface.id)) continue;
+    if (!Object.hasOwn(materials, surface.material) || !Array.isArray(surface.points)) continue;
+    if (surface.points.length < 3 || surface.points.length > 12) continue;
+    if (!surface.points.every((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y)
+      && point.x >= 0 && point.x <= 100 && point.y >= 0 && point.y <= 100)) continue;
+    ids.add(surface.id);
+    surfaces.push({ id: surface.id, material: surface.material,
+      points: surface.points.map(({ x, y }) => `${x},${y}`).join(' ') });
+  }
+  return { floor, walls, surfaces };
+}
 
 const BUILDING_POSITIONS = Object.freeze([
   { x: 28, y: 49 },
@@ -274,6 +297,13 @@ export function roomSceneBuildingSprite(detail) {
 }
 
 export function roomSceneOccupantSprite(occupant = {}) {
+  const race = spriteWord(occupant.race);
+  const gender = spriteWord(occupant.gender);
+  const suffix = gender === 'female' || gender === 'woman' ? 'female' : 'male';
+  if (race === 'zymari') return 'zymari';
+  if (['ice-gnoll', 'thraxian', 'faerie', 'pixie', 'sylph', 'sidhe'].includes(race)) {
+    return `${race}-${suffix}`;
+  }
   const description = [occupant.race, occupant.family, occupant.name]
     .map(spriteWord)
     .filter(Boolean)
@@ -282,11 +312,9 @@ export function roomSceneOccupantSprite(occupant = {}) {
   if (description.includes('ursavar')) return 'ursavar';
   if (description.includes('ice-ogre') || description.includes('frost-giant')) return 'ice-ogre';
 
-  const gender = spriteWord(occupant.gender);
-  const suffix = gender === 'female' || gender === 'woman' ? 'female' : 'male';
   if (description.includes('scro') || description.includes('orc')) return `scro-${suffix}`;
   if (description.includes('dwarf') || description.includes('duergar')) return `dwarf-${suffix}`;
-  if (description.includes('elf') || description.includes('sidhe')) return `elf-${suffix}`;
+  if (description.includes('elf')) return `elf-${suffix}`;
   if (description.includes('human') || description.includes('northman')) return `human-${suffix}`;
   return 'humanoid';
 }
@@ -295,6 +323,9 @@ export function roomSceneOccupantPosition(index, occupant = {}, targets = []) {
   const anchor = String(occupant.anchor_id ?? '').trim();
   const target = anchor ? targets.find((candidate) => candidate.id === anchor) : null;
   if (target && Number.isFinite(target.x) && Number.isFinite(target.y)) {
+    if (target.sprite === 'bar' && occupant.kind === 'npc' && occupant.activity === 'serving') {
+      return { x: Math.max(10, target.x - 6), y: Math.max(24, target.y - 17) };
+    }
     const side = target.x > 68 ? -1 : target.x < 32 ? 1 : occupant.kind === 'npc' ? 1 : -1;
     return { x: Math.max(10, Math.min(90, target.x + side * 7)), y: Math.max(24, Math.min(80, target.y + 3)) };
   }

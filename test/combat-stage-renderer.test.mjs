@@ -426,7 +426,7 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
     facing: 'right',
     rigAligned: false,
     frames: {
-      idle: { x: 0, y: 0, anchors: { head: { x: 128, y: 60, r: 20 }, hand: { x: 150, y: 150 }, offHand: { x: 100, y: 150 } } },
+      idle: { x: 0, y: 0, anchors: { head: { x: 128, y: 60, r: 20 }, hand: { x: 150, y: 150 }, offHand: { x: 100, y: 150 }, offElbow: { x: 80, y: 120 } } },
       strike: { x: 256, y: 0, anchors: { head: { x: 140, y: 64, r: 20 }, hand: { x: 200, y: 120 } } },
     },
   };
@@ -455,14 +455,22 @@ test('a humanoid sprite sheet replaces the body and overlays keep drawing', asyn
   const spriteDraws = canvas.drawLog.filter(([name, args]) => name === 'drawImage' && args.length === 9);
   assert.ok(spriteDraws.length >= 1, 'sheet frame drawn with a source rectangle');
   assert.ok(canvas.drawLog.some(([name]) => name === 'rotate'), 'shield still drawn over the sprite');
+  const [, bodyDraw] = spriteDraws[0];
+  const shieldX = bodyDraw[5] + bodyDraw[7] * 90 / 256;
+  const shieldY = bodyDraw[6] + bodyDraw[8] * 135 / 256;
+  assert.ok(canvas.drawLog.some(([name, args]) => name === 'translate'
+    && Math.abs(args[0] - shieldX) < 1e-9 && Math.abs(args[1] - shieldY) < 1e-9),
+    'shield sits midway between the painted elbow and hand');
+  assert.ok(canvas.drawLog.some(([name, args]) => name === 'rotate'
+    && Math.abs(args[0] - Math.atan2(30, 20)) < 1e-9), 'shield follows the painted forearm angle');
   fetchManifest = null;
 });
 
-test('public helmets overlay painted heads and clearing removes the overlay', async (t) => {
+test('helmet equipment does not add decorations above painted heads', async (t) => {
   fetchManifest = {
     version: 1, kind: 'humanoid', image: '/assets/sprites/humanoid.png',
     frameWidth: 256, frameHeight: 256, unit: 64,
-    anchor: { x: 128, y: 232 }, facing: 'right', portrait: false,
+    anchor: { x: 128, y: 232 }, facing: 'right', portrait: false, secondary: false,
     frames: { idle: { x: 0, y: 0, anchors: { head: { x: 128, y: 60, r: 20 } } } },
   };
   t.after(() => { fetchManifest = null; });
@@ -473,19 +481,21 @@ test('public helmets overlay painted heads and clearing removes the overlay', as
     { id: 'self', name: 'Public fighter', role: 'self', appearance: {}, equipment },
     { id: 'target-1', name: 'Target', role: 'target', appearance: {}, equipment: {} },
   ] }) });
-  renderer.render(snapshot({ helmet: 'iron helm' }));
-  const stage = renderer.stage;
+  renderer.render(snapshot({}));
   runFrame(5200);
   await new Promise((resolve) => setTimeout(resolve, 5));
   createdImages.find(img => img.src.startsWith('/assets/sprites/humanoid.png?v=')).finishLoading();
-  let helmets = 0;
-  stage._drawHelmet = () => { helmets++; };
+  const canvas = findCanvas(body);
+  // Compare drawing output without traversing the DOM doubles' cyclic graphs.
+  const commands = () => canvas.drawLog.map(([name, args]) => [name, args.map(arg =>
+    arg && typeof arg === 'object' ? (arg.src || arg.tagName) : arg)]);
+  canvas.drawLog.length = 0;
   runFrame(5300);
-  assert.equal(helmets, 1, 'painted head does not suppress the equipped helmet');
-  renderer.render(snapshot({}));
-  helmets = 0;
-  runFrame(5400);
-  assert.equal(helmets, 0, 'cleared snapshot removes the helmet');
+  const withoutHelmet = commands();
+  renderer.render(snapshot({ helmet: 'iron helm' }));
+  canvas.drawLog.length = 0;
+  runFrame(5300);
+  assert.deepEqual(commands(), withoutHelmet, 'equipped helmets do not change the drawn figure');
 });
 
 test('a pixelated sheet is drawn with image smoothing off', async () => {

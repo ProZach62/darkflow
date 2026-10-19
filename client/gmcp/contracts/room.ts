@@ -20,6 +20,28 @@ export interface RoomScene {
   time?: string;
   weather?: string;
   lighting?: string;
+  layout?: {
+    floor?:
+      | "inside"
+      | "timber"
+      | "city"
+      | "forest"
+      | "plains"
+      | "swamp"
+      | "underground"
+      | "desert"
+      | "beach"
+      | "arctic"
+      | "mountain"
+      | "lake"
+      | "river";
+    walls?: "stone" | "timber";
+    surfaces?: {
+      id: string;
+      material: "path" | "road" | "river" | "lake" | "swamp";
+      points: { x: number; y: number }[];
+    }[];
+  };
 }
 
 /** Room.Info payload (docs/gmcp-room.md:18-41). */

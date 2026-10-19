@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "kind": "beast",
+  "image": "/assets/sprites/enemies/batrachiarch.png",
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "unit": 128.0,
+  "anchor": {
+    "x": 200.0,
+    "y": 464.0
+  },
+  "facing": "right",
+  "rigAligned": false,
+  "weaponsInArt": false,
+  "portrait": false,
+  "secondary": false,
+  "cloak": false,
+  "frames": {
+    "idle": {
+      "x": 0,
+      "y": 0,
+      "anchors": {
+        "hand": {
+          "x": 177.96,
+          "y": 353.68
+        }
+      }
+    },
+    "windup": {
+      "x": 512,
+      "y": 0,
+      "anchors": {
+        "hand": {
+          "x": 70.2,
+          "y": 181.04
+        }
+      }
+    },
+    "maul": {
+      "x": 1024,
+      "y": 0,
+      "anchors": {
+        "hand": {
+          "x": 386.55,
+          "y": 238.4
+        }
+      }
+    },
+    "whiff": {
+      "x": 0,
+      "y": 512,
+      "anchors": {
+        "hand": {
+          "x": 423.68,
+          "y": 199.4
+        }
+      }
+    },
+    "recoil": {
+      "x": 512,
+      "y": 512,
+      "anchors": {
+        "hand": {
+          "x": 126.0,
+          "y": 356.81
+        }
+      }
+    },
+    "dodge": {
+      "x": 1024,
+      "y": 512,
+      "anchors": {
+        "hand": {
+          "x": 371.12,
+          "y": 398.8
+        }
+      }
+    },
+    "guard": {
+      "x": 0,
+      "y": 1024,
+      "anchors": {
+        "hand": {
+          "x": 338.23,
+          "y": 222.08
+        }
+      }
+    },
+    "cast": {
+      "x": 512,
+      "y": 1024,
+      "anchors": {
+        "hand": {
+          "x": 391.3,
+          "y": 182.8
+        }
+      }
+    },
+    "look": {
+      "x": 1024,
+      "y": 1024,
+      "anchors": {
+        "hand": {
+          "x": 175.48,
+          "y": 358.7
+        }
+      }
+    },
+    "strike": {
+      "x": 1024,
+      "y": 0,
+      "anchors": {
+        "hand": {
+          "x": 386.55,
+          "y": 238.4
+        }
+      }
+    },
+    "thrust": {
+      "x": 1024,
+      "y": 0,
+      "anchors": {
+        "hand": {
+          "x": 386.55,
+          "y": 238.4
+        }
+      }
+    },
+    "chop": {
+      "x": 1024,
+      "y": 0,
+      "anchors": {
+        "hand": {
+          "x": 386.55,
+          "y": 238.4
+        }
+      }
+    },
+    "raise": {
+      "x": 512,
+      "y": 0,
+      "anchors": {
+        "hand": {
+          "x": 70.2,
+          "y": 181.04
+        }
+      }
+    }
+  }
+}

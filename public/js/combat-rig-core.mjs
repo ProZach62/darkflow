@@ -113,6 +113,50 @@ const SCALE_BY_RACE = Object.freeze({
   ursavar: 1.12,
 });
 
+// Public creature races share a bounded silhouette and art archetype. This
+// never classifies a creature from its name, guild, or recipient-private data.
+const CREATURE_RACES = Object.freeze({
+  beast: ['beast', ''],
+  wolf: ['beast', 'wolf'],
+  rat: ['beast', 'rat'],
+  rodent: ['beast', 'rat'],
+  mouse: ['beast', 'rat'],
+  bat: ['beast', 'bat'],
+  bear: ['beast', 'bear'],
+  boar: ['beast', 'boar'],
+  'wild-boar': ['beast', 'boar'],
+  snake: ['beast', 'serpent'],
+  serpent: ['beast', 'serpent'],
+  crab: ['beast', 'crab'],
+  'giant-crab': ['beast', 'crab'],
+  crocodile: ['beast', 'crocodile'],
+  alligator: ['beast', 'crocodile'],
+  golem: ['humanoid', 'golem'],
+  goblin: ['humanoid', 'goblin'],
+  kobold: ['humanoid', 'kobold'],
+  minotaur: ['humanoid', 'minotaur'],
+  gargoyle: ['humanoid', 'gargoyle'],
+  dragon: ['beast', 'drake'],
+  drake: ['beast', 'drake'],
+  wyvern: ['beast', 'drake'],
+  wyrm: ['beast', 'drake'],
+  spider: ['beast', 'spider'],
+  arachnid: ['beast', 'spider'],
+  scorpion: ['beast', 'spider'],
+  skeleton: ['humanoid', 'undead'],
+  zombie: ['humanoid', 'undead'],
+  undead: ['humanoid', 'undead'],
+  ghoul: ['humanoid', 'undead'],
+  wight: ['humanoid', 'undead'],
+  lich: ['humanoid', 'undead'],
+  troll: ['humanoid', 'troll'],
+  ogre: ['humanoid', 'troll'],
+  // Named player races keep humanoid race/family art, not generic NPC art.
+  'ice-ogre': ['humanoid', ''],
+  'swamp-troll': ['humanoid', ''],
+  giant: ['humanoid', 'troll'],
+});
+
 export const WEAPONS = Object.freeze(['blade', 'rapier', 'knife', 'axe', 'blunt', 'polearm', 'staff', 'bow', 'claws']);
 export const MELEE_WEAPONS = Object.freeze(['blade', 'rapier', 'knife', 'axe', 'blunt', 'polearm', 'claws']);
 
@@ -145,8 +189,18 @@ function weaponFromEquipment(equipment, guildWeapon) {
 export function resolveFigure(combatant = {}, side = 'player') {
   const declaredForm = slug(combatant.form);
   const race = slug(combatant.race);
-  const isBeast = ['quadruped', 'beast', 'serpent'].includes(declaredForm)
-    || (!declaredForm && (race === 'wolf'
+  const family = slug(combatant.family);
+  // The playable Dragon race reports its dragon family. Ordinary NPC dragons
+  // do not; explicit transformed forms still outrank either race default.
+  const creature = (combatant.appearanceKnown || race === 'wolf')
+    && !(race === 'dragon' && family === 'dragon' && !declaredForm)
+    ? CREATURE_RACES[race] || CREATURE_RACES[family] : null;
+  const declaredKind = ['quadruped', 'beast', 'serpent'].includes(declaredForm)
+    ? 'beast' : (declaredForm === 'humanoid' ? 'humanoid' : '');
+  const archetype = creature && (!declaredForm || declaredKind === creature[0])
+    ? creature[1] : '';
+  const isBeast = declaredKind === 'beast'
+    || (!declaredForm && ((creature && creature[0] === 'beast')
       || (!combatant.appearanceKnown && side === 'target' && !!combatant.isNpc)));
   const guild = slug(combatant.guild);
   const equipment = isBeast ? null : (combatant.equipment || null);
@@ -155,6 +209,7 @@ export function resolveFigure(combatant = {}, side = 'player') {
     : weaponFromEquipment(equipment, WEAPON_BY_GUILD[guild] || 'blade');
   return {
     kind: isBeast ? 'beast' : 'humanoid',
+    archetype,
     proportions: isBeast ? BEAST : HUMANOID,
     weapon: held.weapon,
     weaponStyle: held.weaponStyle,

@@ -534,6 +534,67 @@ test("a boss tagged only in the game text is flagged when its plain name enters 
   ).toBe(0);
 });
 
+test("new combat State preserves Scene floating-window stacking and placement", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop floating-window interaction");
+  const endpoint = await connect(page);
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState());
+  await expect(page.getByRole("region", { name: "Visual combat" })).toBeVisible();
+
+  // Dockview's Shift-click floats a tab without needing a Float Scene button.
+  await panelDragHandle(page, "enemy")
+    .locator(".dv-default-tab-content")
+    .click({ modifiers: ["Shift"] });
+  const sceneFrame = page
+    .locator(".dv-resize-container")
+    .filter({ has: panelDragHandle(page, "enemy") });
+  await expect(sceneFrame).toBeVisible();
+  // Keep both windows in the same layer so activating Scene would bring it
+  // above Status, rather than being masked by an always-on-top preference.
+  for (const title of ["Scene", "Status"]) {
+    if (title === "Status") {
+      await page.getByRole("button", { name: "Float Status", exact: true }).click();
+    }
+    await page.getByRole("button", { name: `Settings for ${title}`, exact: true }).click();
+    await page
+      .locator(".panel-settings-popover")
+      .getByLabel("Layer", { exact: true })
+      .selectOption("above");
+    await page.keyboard.press("Escape");
+  }
+  const statusFrame = page
+    .locator(".dv-resize-container")
+    .filter({ has: panelDragHandle(page, "status") });
+  await panelDragHandle(page, "status").locator(".dv-default-tab-content").click();
+  const zIndex = (frame: Locator) =>
+    frame.evaluate((element) => Number(getComputedStyle(element).zIndex));
+  await expect.poll(() => zIndex(sceneFrame)).toBeLessThan(await zIndex(statusFrame));
+  const sceneBounds = await sceneFrame.boundingBox();
+  expect(sceneBounds).not.toBeNull();
+
+  // A changed epoch is also a new presentation boundary; neither it nor a
+  // changed encounter may override the user's window order.
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState({ epoch: "combat-b" }));
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __darkflowPhase1Runtime: {
+                session: { combat: { getSnapshot(): { model: { epoch: string } } } };
+              };
+            }
+          ).__darkflowPhase1Runtime.session.combat.getSnapshot().model.epoch,
+      ),
+    )
+    .toBe("combat-b");
+  await expect.poll(() => zIndex(sceneFrame)).toBeLessThan(await zIndex(statusFrame));
+  expect(await sceneFrame.boundingBox()).toEqual(sceneBounds);
+  await expect(sceneFrame.locator('[data-panel-drag-handle="true"]')).toHaveCount(1);
+});
+
 test("Combat and Tutorial preserve fallback, exact directions, focus, and readiness", async ({
   page,
 }) => {
@@ -676,6 +737,7 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
       .toBe(true);
 
     activeEncounter = "encounter-b";
+    await commandInput.focus();
     endpoint.sendGmcp(
       "Darkwind.Combat.State",
       combatState({
@@ -684,6 +746,42 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
         summary: "A hidden new fight.",
       }),
     );
+    // Wait for delivery before checking that a new encounter did not select
+    // the hidden tab or move it out of the player's chosen group.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (
+            window as unknown as {
+              __darkflowPhase1Runtime: {
+                session: {
+                  combat: {
+                    getSnapshot(): {
+                      model: { encounterId: string };
+                      presentationReady: boolean;
+                    };
+                  };
+                };
+              };
+            }
+          ).__darkflowPhase1Runtime.session.combat.getSnapshot(),
+        ),
+      )
+      .toMatchObject({ model: { encounterId: activeEncounter }, presentationReady: false });
+    await expect(combat).toHaveCount(0);
+    await expect(output).toBeVisible();
+    await expect(commandInput).toBeFocused();
+    expect(
+      framesSince(endpoint, hiddenStart, "Darkwind.Client.Subscriptions").some((frame) =>
+        frame.includes('"combatPane":true'),
+      ),
+    ).toBe(false);
+
+    // Select through the public tab pointer handler; zero-width vendor tab
+    // parents otherwise let Terminal's label intercept pointer hit-testing.
+    await panelDragHandle(page, "enemy")
+      .locator(".dv-default-tab-content")
+      .dispatchEvent("pointerdown", { button: 0 });
     await expect(combat).toBeVisible();
 
     // With visual combat off the Scene stays open but stops presenting the
@@ -711,7 +809,9 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
       .getByRole("button", { name: "Close Scene", exact: true })
       .click();
   } else {
-    await page.getByRole("button", { name: "Close Scene", exact: true }).click();
+    await page.getByRole("button", { name: "Panels", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Scene", exact: true }).click();
+    await page.keyboard.press("Escape");
   }
   await expect(combat).toHaveCount(0);
   await expect

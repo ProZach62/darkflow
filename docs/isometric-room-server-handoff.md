@@ -1,5 +1,81 @@
 # Isometric Room Server Handoff
 
+## Authored layout: client increment (2026-10-12)
+
+Optional `Room.Info.scene.layout` now supports room structure. This is client
+support, not a claim that Darkwind emits these fields or that any live rooms
+have been authored. Send `scene: {}` to clear an existing layout; a supplied
+scene without layout restores the legacy terrain floor. Same-room partial
+Room.Info updates omitting scene retain it. Room changes do not retain it.
+Darkness/unavailable occupant state hides authored
+geometry along with scenery. The server must also filter it for the viewer.
+
+```json
+{
+  "scene": {
+    "layout": {
+      "floor": "inside",
+      "walls": "timber",
+      "surfaces": []
+    }
+  },
+  "looks": [
+    {"id":"table","name":"a tavern table","nouns":["table"],"sprite":"table","position":{"x":28,"y":59}}
+  ]
+}
+```
+
+- `floor`: `inside`, `timber`, `city`, `forest`, `plains`, `swamp`, `underground`,
+  `desert`, `beach`, `arctic`, `mountain`, `lake`, or `river`.
+- `walls`: optional `stone` or `timber`; draws two rear cutaway walls, leaving
+  the front open. Omit outdoors. Floor and wall materials select shipped art,
+  not server URLs. This is decorative geometry, not collision/pathfinding.
+- `surfaces`: up to eight polygons, each with a unique stable `id`, `material`
+  (`path`, `road`, `river`, `lake`, `swamp`), and 3-12 `points` (`{x,y}`).
+  Coordinates are finite percentages 0-100 in the same room-world frame used
+  by look positions, not world-map coordinates. Polygons are clipped to the
+  floor and painted in array order beneath props and people. Invalid entries
+  are omitted; unknown floor/wall hints retain legacy defaults.
+- Reuse `looks.position` for furniture/trees and occupant `anchor_id` for
+  people beside them; there is no separate layout prop roster.
+
+For a forest clearing, set `floor: "forest"`, omit walls, and author a path:
+
+```json
+{"id":"trail","material":"path","points":[{"x":5,"y":51},{"x":21,"y":42},{"x":96,"y":58},{"x":81,"y":67}]}
+```
+
+For a swamp, set `floor: "swamp"` and use `material: "lake"` for a pool
+polygon, with reeds and dead trees in `looks`. For a stone hall, use
+`floor: "inside"`, `walls: "stone"`, and anchored statues/benches.
+The examples are authoring starting points, not registered server rooms.
+
+### Furnished tavern preview
+
+`e2e/fixtures/tavern-room.ts` provides the Copper Lantern authoring fixture:
+oak floors and rear walls, a serving counter, lit hearth, ale casks, a rug,
+two tables, chairs, and a south street entrance. Nothing is populated by room
+name or terrain alone; each object still comes from visible `looks` entries.
+New prop hints are `bar` and `hearth`. A visible NPC with `activity: "serving"`
+anchored to a `bar` stands behind its counter; other occupants retain the
+ordinary anchor placement. Rugs render below feet, while solid furniture and
+people share floor-depth ordering. The fixture's nouns are test data, not a
+promise that production room parsers support them.
+
+For the server, send `scene.layout: {floor: "timber", walls: "timber"}` and
+reuse the fixture's existing `looks.position` and occupant `anchor_id` fields.
+The fixture is not sent to live sessions by the client.
+
+Tavern artwork was generated with Painter using the existing table as the
+prop style/camera reference. The 1024-square oak material is projected onto
+each wall; its source was affine-projected onto a transparent 1536x768 floor
+with vertices (768,16), (1520,384), (768,752), and (16,384), matching the
+existing padded 2:1 footprint at double resolution. Bar/hearth alpha bounds
+were cropped using alpha >16, original alpha preserved, resized to 600/360px
+content width, and padded by 8px. Props were checked over light and dark
+backgrounds. No runtime image generation, external asset URLs, or new
+dependencies are required.
+
 ## Delivery status (2026-10-07)
 
 Darkwind now implements recipient-filtered `Room.Info` and negotiated
@@ -123,6 +199,7 @@ for these `sprite` values:
 
 - `altar`
 - `anvil`
+- `bar`
 - `barrels`
 - `bed`
 - `bench`
@@ -138,6 +215,7 @@ for these `sprite` values:
 - `fountain`
 - `gate`
 - `gravestone`
+- `hearth`
 - `loot`
 - `market-stall`
 - `mushrooms`
@@ -187,17 +265,61 @@ above the occupants for pointer hit-testing. Commands and server visibility
 rules are unchanged. Reduced-motion preferences stop water, swamp, fire,
 weather, portal, occupant, and combat animation.
 
-The twelve floor WebPs retain the original terrain art, with atlas residue
-removed and consistent transparent margins. Their source is the original
-1536x1024, four-column/three-row atlas from the
+### Higher-resolution terrain refresh (local, 2026-10-12)
+
+The twelve floor WebPs are individual redrawings rather than enlarged atlas
+cells. Stable material keys, paths, the flat diamond footprint, and the scene
+layout remain unchanged. No server fields, scenery registrations, or gameplay
+objects are added by the artwork. Forest uses small leaf litter and a quiet
+center to keep occupants distinguishable on narrow panels.
+
+Outputs are 1536x768 with 16-pixel clear margins, replacing 768x384 files whose
+native atlas detail was approximately 350 pixels wide. The individual source
+floors contain at least 1400 pixels of material width. RGB uses WebP quality 90,
+method 6, with full-quality alpha; each encoded floor stays below 700 KB. Only
+the current floor is requested by the existing image element.
+
+Generation references were the earlier material floor, the new pack's painted
+style, and existing building/character art. Prompts required a single flat
+2:1 diamond, restrained material colors, an open walking center, transparent
+exterior, and no buildings, characters, labels, slab sides, or exterior shadow.
+Forest was refined after phone rendering showed oversized leaves competing
+with characters. Ground vegetation and stones are decorative texture, not
+advertised interaction targets.
+
+Download original PNGs with `amp files get <URL> -o <file>`; attachment URLs
+require authentication. Preserve these source images when revising the pack:
+
+| Material | Generated source |
+| -------- | ---------------- |
+| city | [PNG](https://ampcode.com/user-content/attachments/dc3252bdabfa55540ed82af239057718e99b459cbd71eedb5f915433c241f465-file.png) |
+| inside | [PNG](https://ampcode.com/user-content/attachments/0bdc413db5714bd1a7da4d142ac490ed1ada25796fed336e12ed5bd1cf98eebc-file.png) |
+| forest | [Refined PNG](https://ampcode.com/user-content/attachments/47f182236cb24e4c516ab0c07462396822fdadc06e32f7faca26d34a84e32a86-file.png) |
+| plains | [PNG](https://ampcode.com/user-content/attachments/2b320985a6180606b3f48b7b3afcc2f33b024c79af97c11a452f3d707316b17e-file.png) |
+| desert | [PNG](https://ampcode.com/user-content/attachments/63c42681674e2c0a9d4f00469b5869cff9243cffcf07dca68f5b3857a3faf0d1-file.png) |
+| mountain | [PNG](https://ampcode.com/user-content/attachments/6ef53a401e7f7dbd31393e563d078132267a5c171a79308ec16893c2c4d49249-file.png) |
+| arctic | [PNG](https://ampcode.com/user-content/attachments/13471ef6e7e0a2bf2f090f9c2da7bf5fe504cb85d0337b0359d9ac152d34331e-file.png) |
+| beach | [PNG](https://ampcode.com/user-content/attachments/ef1ff28748344eb9a051ac59682a8c3e5d9ea444c17752083d9096a7f703d4d3-file.png) |
+| river | [PNG](https://ampcode.com/user-content/attachments/0d54924157df0cf1d9308a9acdbb5bae2c4522bb34069d12aeb269918e29963f-file.png) |
+| lake | [PNG](https://ampcode.com/user-content/attachments/6945934017a2e8e57b994724532d3d58d1fe3e20aaeb1920b538791644373274-file.png) |
+| swamp | [PNG](https://ampcode.com/user-content/attachments/1aecca51d7e35efb5b413c84e034f493defd5408b22c35ed607c37828b4f8d21-file.png) |
+| underground | [PNG](https://ampcode.com/user-content/attachments/25714880700921b367c97383b92dbea6f444a19504426163faa7d0fdaf884bcb-file.png) |
+
+Preparation: find the largest eight-connected component of alpha above 180,
+fill mask holes, dilate the mask twice with the default four-connected cross,
+and soften it with a 0.5-pixel Gaussian. Limit original alpha by that mask,
+crop to nonzero alpha bounds, resize with Lanczos to 1504x736, and center in
+1536x768 with 16-pixel margins. This removes faint generated exterior glow
+while retaining an antialiased edge. Reread the encoded files to check matching
+dimensions, transparent borders, a single connected footprint above alpha 16,
+and the size budget. Inspect all materials over light and dark backgrounds,
+then render representative wide, default, night/water, and narrow rooms with
+real sprites and navigation controls. Browser fixtures are not live acceptance.
+
+The previous floors came from the 1536x1024, four-column/three-row atlas in the
 [art-production thread](https://ampcode.com/threads/T-01a0fe7e-6df1-75f4-80e9-f84066c7caea).
-To reproduce the extraction: crop 384x341 cells (342 high for the final row),
-keep each cell's largest eight-connected alpha component above 16, expand its
-mask by two pixels while preserving the source alpha, crop to its bounds,
-resize to 752x368 using Lanczos, and center it with an eight-pixel transparent
-margin in a lossless 768x384 WebP. Check all twelve over light and dark
-backgrounds for detached pixels, halos, or clipping. This cleanup does not add
-native-resolution detail to the original artwork.
+Their cleanup removed residue but could not add native detail. The new sources
+replace that resolution bottleneck without changing the renderer.
 
 ## Visible Players, NPCs, and Pets
 
@@ -280,6 +402,37 @@ not a guarantee that each actor supplies every field.
 | `faction`         | No       | Player-visible faction label.                                           |
 | `cue`             | No       | `quest` or `objective` marker.                                          |
 | `engaged_with`    | No       | Stable ID of the occupant's current combat opponent.                    |
+
+### Player race artwork
+
+The isometric room now has exact-race sprites for `ice gnoll`, `thraxian`,
+`zymari`, `faerie`, `pixie`, `sylph`, and `sidhe`. The six non-Zymari races
+have male/female variants; Zymari uses shared fungal artwork. Missing gender
+uses the existing male-art default. These hints use public `appearance.race`
+and `appearance.gender` (or the compatible top-level fields), with canonical
+race taking precedence over family artwork. Names alone do not select these
+new races. Missing/cleared appearance returns to the ordinary fallback;
+no extra server fields or sprite URLs are required.
+
+Sidhe no longer shares elf artwork. Race help establishes its moth-like wings,
+Pixie's silk-like wings, Sylph's nearly transparent wings, Thraxian's small
+vestigial wings, Ice Gnoll's humanoid/hyena body, and Zymari's community of
+caps and mycelial threads. Faerie/Pixie/Sidhe artwork is smaller than the
+normal humanoid silhouette; Sylph keeps human-like proportions. Palettes,
+wing outlines where unspecified, and travel clothing are artistic choices,
+not additional lore or representations of equipped gear.
+
+Source references are `codebase/secure/include/race.h`,
+`codebase/public/docs/helpdir/race/{ice_gnoll,zymari,faerie,pixie,sidhe}`, and
+`codebase/public/docs/race/{thraxian,sylph}` on Darkwind's `PZ-bonanza` branch.
+Painter generated six two-column gender atlases and one Zymari cutout using
+the existing human/elf room sprites as style references. Extractions retain
+the central connected alpha >16 silhouette plus a 2px safety fringe,
+preserving original alpha (including Sylph membranes). Each lossless WebP is
+384x384 with a centered foot baseline at y=352 and transparent outer borders;
+normal silhouettes fit 336px height, diminutive fae fit 270px. Both light/dark
+alpha contact sheets and actual room renders were inspected. These are room
+sprites, not Combat panel animation sheets.
 
 Wire booleans may be JSON booleans or LPC-compatible `0` and `1` values.
 This includes nested `equipment.two_handed`, not just top-level occupant flags.
@@ -509,8 +662,9 @@ Chromium fixture checks and 86 client regression tests pass. Lint, formatting,
 Svelte checking and the production build pass. Full TypeScript checking retains
 the unrelated committed map-test `HTMLElement | SVGElement.hidden` error.
 
-New art, server coordinates, new verbs, loose-loot serialization, global
-targeting and map/save migrations remain out of scope.
+Beyond the separately requested terrain-art refresh, new occupant/ability art,
+server coordinates, new verbs, loose-loot serialization, global targeting and
+map/save migrations remain out of scope.
 
 ## Possible Later Extensions
 

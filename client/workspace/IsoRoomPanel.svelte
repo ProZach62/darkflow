@@ -18,6 +18,7 @@
     roomSceneDoorSprite,
     roomSceneExitKind,
     roomSceneExitPosition,
+    roomSceneLayout,
     roomSceneOccupantPosition,
     roomSceneOccupantSprite,
     roomScenePropSprite,
@@ -106,8 +107,20 @@
   const environment = $derived(
     String(room?.environment ?? room?.terrain ?? room?.env ?? "outside"),
   );
-  const terrain = $derived(String(roomSceneTerrain(environment)));
-  const texture = $derived(String(roomSceneTexture(environment)));
+  const layoutId = $props.id();
+  const layout = $derived(
+    roomSceneLayout(
+      snapshot.occupantsDark || snapshot.occupantsUnavailable ? null : room?.scene?.layout,
+    ) as {
+      floor: string | null;
+      walls: string | null;
+      surfaces: { id: string; material: string; points: string }[];
+    },
+  );
+  const terrain = $derived(
+    String(roomSceneTerrain(layout.floor === "timber" ? "inside" : (layout.floor ?? environment))),
+  );
+  const texture = $derived(layout.floor ?? String(roomSceneTexture(environment)));
   const details = $derived.by(() =>
     snapshot.occupantsDark || snapshot.occupantsUnavailable
       ? []
@@ -545,6 +558,7 @@
         class={`room-stage time-${atmosphere.time} lighting-${atmosphere.lighting}`}
         class:in-combat={combatActive}
         class:combat-focus={focusCombat && combatActive}
+        class:authored-interior={Boolean(layout.walls)}
         aria-label={`Isometric view of ${room.name}`}
       >
         <div class="room-world">
@@ -555,6 +569,83 @@
             alt=""
             draggable="false"
           />
+          {#if layout.walls || layout.surfaces.length}
+            <svg
+              class="room-layout"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <defs>
+                <clipPath id={`${layoutId}-floor`}>
+                  <polygon
+                    points={layout.walls ? "8,56 50,18 92,56 50,94" : "2,50 50,5 98,50 50,95"}
+                  />
+                </clipPath>
+                {#each ["path", "road", "river", "lake", "swamp", "inside", "city"] as material (material)}
+                  <pattern
+                    id={`${layoutId}-${material}`}
+                    width="25"
+                    height="25"
+                    patternUnits="userSpaceOnUse"
+                  >
+                    <image
+                      href={`/assets/tiles/${material}.jpg`}
+                      width="25"
+                      height="25"
+                      preserveAspectRatio="none"
+                    />
+                  </pattern>
+                {/each}
+                {#if layout.walls === "timber"}
+                  {#each ["left", "right"] as side (side)}
+                    <pattern
+                      id={`${layoutId}-oak-${side}`}
+                      width="18"
+                      height="32"
+                      patternUnits="userSpaceOnUse"
+                      patternTransform={`matrix(1 ${side === "left" ? -0.905 : 0.905} 0 1 0 0)`}
+                    >
+                      <image
+                        href="/assets/iso/materials/oak.webp"
+                        width="18"
+                        height="32"
+                        preserveAspectRatio="none"
+                      />
+                    </pattern>
+                  {/each}
+                {/if}
+              </defs>
+              <g clip-path={`url(#${layoutId}-floor)`}>
+                {#each layout.surfaces as surface (surface.id)}
+                  <polygon
+                    data-surface-id={surface.id}
+                    points={surface.points}
+                    fill={`url(#${layoutId}-${surface.material})`}
+                  />
+                {/each}
+              </g>
+              {#if layout.walls}
+                <g class={`room-walls walls-${layout.walls}`}>
+                  <polygon
+                    points="8,40 50,2 50,18 8,56"
+                    fill={`url(#${layoutId}-${layout.walls === "timber" ? "oak-left" : "city"})`}
+                  />
+                  <polygon
+                    class="wall-right"
+                    points="50,2 92,40 92,56 50,18"
+                    fill={`url(#${layoutId}-${layout.walls === "timber" ? "oak-right" : "city"})`}
+                  />
+                  {#if layout.walls === "timber"}
+                    <path
+                      class="wall-beams"
+                      d="M8 40L50 2L92 40 M8 52L50 14L92 52 M8 40V56 M29 21V37 M50 2V18 M71 21V37 M92 40V56"
+                    />
+                  {/if}
+                </g>
+              {/if}
+            </svg>
+          {/if}
           <div class="living-surface" aria-hidden="true"></div>
           <div class={`weather-layer weather-${atmosphere.weather}`} aria-hidden="true">
             {#each Array(12) as _, index (index)}<i style={`--particle:${index}`}></i>{/each}
@@ -609,12 +700,13 @@
               class={`room-target state-${target.state || "normal"} category-${target.category || "scenery"}`}
               class:prop={target.propSprite}
               class:selected={selectedTargetId === target.id}
-              style={`--x:${target.x}%;--y:${target.y}%;--depth:${Math.round(20 + target.y)}`}
+              style={`--x:${target.x}%;--y:${target.y}%;--depth:${target.propSprite === "rug" ? 3 : Math.round(100 + target.y)}`}
               type="button"
               aria-label={`Look at ${target.name}`}
               title={`Look at ${target.name}`}
               aria-pressed={selectedTargetId === target.id}
               data-cue={target.cue ?? ""}
+              data-sprite={target.propSprite ?? ""}
               onclick={() => sendTargetAction(target, "look")}
             >
               {#if target.propSprite}
@@ -629,6 +721,7 @@
           {#if selectedTarget}
             <div
               class="target-actions"
+              class:counter-actions={selectedTarget.propSprite === "bar"}
               style={`--x:${selectedTarget.x}%;--y:${selectedTarget.y}%`}
               role="group"
               aria-label={`Actions for ${selectedTarget.name}`}
@@ -984,6 +1077,38 @@
     filter: blur(22px);
   }
 
+  .room-layout {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .authored-interior .room-floor {
+    top: 56%;
+    width: 88%;
+  }
+
+  .room-walls {
+    stroke: #352d24;
+    stroke-width: 0.5px;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 2px 2px rgb(0 0 0 / 45%));
+  }
+
+  .wall-right {
+    filter: brightness(0.65);
+  }
+
+  .wall-beams {
+    fill: none;
+    stroke: #382217;
+    stroke-width: 1.1px;
+    stroke-linecap: round;
+  }
+
   .living-surface {
     position: absolute;
     z-index: 2;
@@ -1131,6 +1256,32 @@
     width: clamp(34px, 10%, 120px);
   }
 
+  .room-target[data-sprite="bar"] {
+    width: 24%;
+  }
+
+  .room-target[data-sprite="hearth"] {
+    width: 13%;
+  }
+
+  .room-target[data-sprite="rug"] {
+    width: 24%;
+  }
+
+  .room-target[data-sprite="chair"] {
+    width: 8%;
+  }
+
+  .room-target[data-sprite="hearth"].state-lit::before {
+    position: absolute;
+    z-index: -1;
+    inset: 60% -45% -12%;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgb(255 151 57 / 34%), transparent 68%);
+    content: "";
+    pointer-events: none;
+  }
+
   .room-target img {
     display: block;
     width: 100%;
@@ -1185,7 +1336,7 @@
 
   .target-actions {
     position: absolute;
-    z-index: 170;
+    z-index: 230;
     top: calc(var(--y) + 8%);
     left: var(--x);
     display: flex;
@@ -1208,6 +1359,10 @@
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .target-actions.counter-actions {
+    top: calc(var(--y) + 18%);
   }
 
   .target-actions::before {
@@ -1337,6 +1492,15 @@
   .occupant.self::after {
     border-color: #f2cb62;
     box-shadow: 0 0 7px rgb(242 203 98 / 75%);
+  }
+
+  .occupant.anchored.activity-serving > span {
+    top: -10%;
+    bottom: auto;
+  }
+
+  .occupant.anchored.activity-serving > em {
+    display: none;
   }
 
   .occupant.hostile::after {
@@ -1635,7 +1799,7 @@
 
   footer {
     z-index: 20;
-    max-height: 14rem;
+    max-height: 7.5rem;
     overflow: auto;
     padding: 0.45rem 0.7rem 0.6rem;
     border-top: 1px solid rgb(255 255 255 / 7%);
@@ -1679,6 +1843,12 @@
 
   .fact-group li.warning {
     color: #eaa191;
+  }
+
+  .fact-group .target-catalogue {
+    max-height: 4.6rem;
+    overflow: auto;
+    overscroll-behavior: contain;
   }
 
   .target-catalogue button {
@@ -1848,6 +2018,10 @@
 
     .room-facts {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    footer {
+      max-height: 10rem;
     }
 
     .occupants-summary {

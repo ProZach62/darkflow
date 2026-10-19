@@ -42,12 +42,14 @@ passes. Missing capability, stale or absent readiness, screenreader mode,
 channel filters, queue failure, reconnect, and the operator kill switch all
 fail open to the existing terminal text.
 
-To bootstrap a hidden pane without creating a readiness deadlock, the server
+To bootstrap a closed pane without creating a readiness deadlock, the server
 may send an active State with `visual_enabled: true` and `effective: false`.
 Darkflow opens the pane without stealing command focus, sends
 `combatPane: true`, and requests a Resync. The swing that triggered that
 bootstrap still appears as terminal text; suppression can begin only after the
-fresh readiness update succeeds.
+fresh readiness update succeeds. An existing pane on an inactive tab stays
+hidden and continues advertising `combatPane: false` until the player selects
+it; combat State does not activate or relocate it.
 
 ## `Darkwind.Combat.State`
 
@@ -152,6 +154,19 @@ metadata. An observer must never fill gaps with the recipient's descriptors,
 equipment, HP, avatar, enemy art, or enemy HP. Unknown/redacted hints receive a
 generic figure; appearance presence alone, and NPC identity alone when public
 appearance is present, do not imply beast form.
+
+The Scene uses public race/family/gender for both fighter slots, including
+observed fights. Known creature races select bundled creature art and a body
+default only when no explicit form overrides them. Playable Dragon's public
+dragon family retains its humanoid family art rather than NPC drake art.
+Dedicated humanoid race art, including gender-neutral sheets, precedes shared
+family art. The race's curated artwork family outranks its broader public
+biological family; named player Ice Ogre and Swamp Troll do not select generic
+NPC Ogre/Troll art. Gender-specific sheets remain first, with missing gender
+using male artwork as a visual default without inventing public gender.
+Unknown races fall through to public family art and
+then generic art; explicit redaction never enables name-based guesses. See
+[`combat-sprites.md`](combat-sprites.md) for the bounded artwork mappings.
 
 In observed group combat, the server may update `current_actor_id` as another
 player acts against the same right-side focus without changing
@@ -290,9 +305,12 @@ exchange line, threats, and history appear below. When the encounter ends the
 opponent leaves the stage, the outcome lingers under the scene, and the panel
 stays open for the next fight. A fight opens the panel if it is closed, under
 Room Image when that panel is in the grid and to the right of the terminal
-otherwise, without stealing command focus. Closing it during combat restores
-server text fallback without changing the saved character preference; closing
-it between fights simply hides the scene.
+otherwise, without stealing command focus. If the panel is already open,
+combat does not change its selected tab, placement, or floating-window stacking
+order: a Scene behind another panel or on an inactive tab stays there until
+the player brings it forward. Closing it during combat restores server text
+fallback without changing the saved character preference; closing it between
+fights simply hides the scene.
 
 Between fights the scene also acts out what the player does: a `look` (or
 `l`, `glance`) command makes the figure glance left and right and shade its
@@ -335,8 +353,9 @@ appearance and equipment from State shape the figure when present. On legacy
 packets, the player's wielded and worn items from `Char.Items` shape it: the main-hand
 item's name picks the weapon (blade, knife, axe, blunt, polearm, staff, bow,
 or bare hands when nothing is wielded), an off-hand item is drawn in the
-left hand, a shield rides the left forearm, head armor draws a helmet, and
-body armor thickens the torso. Weapon kind is a keyword heuristic over the
+left hand, a shield rides the left forearm, and body armor thickens the torso.
+Head armor remains equipment metadata but does not draw a helmet overlay.
+Weapon kind is a keyword heuristic over the
 item name; an unrecognized name,
 or no inventory yet, falls back to the guild's weapon. Race scales the body,
 and NPC targets use a hunched beast form. Each event blends the actor
@@ -356,7 +375,7 @@ the figures at rest.
 
 When a sprite sheet is shipped for a figure kind (see
 [combat-sprites.md](combat-sprites.md)), it replaces the procedural body
-while weapons, shield, helmet, cloak, and the portrait head keep drawing on
+while weapons, shield, cloak, and the portrait head keep drawing on
 top. A missing or invalid sheet falls back to the rig.
 
 The stage plays each accepted event once, keyed by `seq` within the epoch and

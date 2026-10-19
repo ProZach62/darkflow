@@ -542,11 +542,24 @@ test('snapshot replacement clears rich hints while omission uses only current le
 });
 
 test('authoritative clearing blocks name-based art without erasing NPC classification', () => {
-  const model = reduceCombatState(createCombatVisualState(), activeState({ actors: [
+  let model = reduceCombatState(createCombatVisualState(), activeState({ actors: [
+    { id: 'self', name: 'Elyndar', role: 'self', appearance: { race: 'elf' }, equipment: {} },
+    { id: 'enemy-1', name: 'an ash drake', role: 'target', appearance: { race: 'scro' }, equipment: {} },
+  ] }));
+  let view = buildCombatView(model, { status: { race: 'human', gender: 'female' } });
+  assert.deepEqual(spriteKeysFor(view.target, resolveFigure(view.target, 'target'), 'target'), ['male-scro', 'humanoid']);
+  assert.equal(view.target.gender, '');
+  model = reduceCombatState(model, activeState({ seq: 11, actors: [
+    { id: 'self', name: 'Elyndar', role: 'self', appearance: { race: 'elf' }, equipment: {} },
+    { id: 'enemy-1', name: 'an ash drake', role: 'target', appearance: { race: 'dragon' }, equipment: {} },
+  ] }));
+  view = buildCombatView(model);
+  assert.deepEqual(spriteKeysFor(view.target, resolveFigure(view.target, 'target'), 'target'), ['enemies/drake', 'beast']);
+  model = reduceCombatState(model, activeState({ seq: 12, actors: [
     { id: 'self', name: 'Elyndar', role: 'self', appearance: {}, equipment: {} },
     { id: 'enemy-1', name: 'an ash drake', role: 'target', appearance: {}, equipment: {} },
   ] }));
-  const view = buildCombatView(model, { enemy: { enemy_name: 'an ash drake', enemy_is_npc: 1 } });
+  view = buildCombatView(model, { enemy: { enemy_name: 'an ash drake', enemy_is_npc: 1 } });
   assert.equal(view.target.isNpc, true);
   const target = resolveFigure(view.target, 'target');
   assert.equal(target.kind, 'humanoid');
@@ -559,8 +572,8 @@ test('passive combat uses each roster actor snapshot without recipient-private h
     current_actor_id: 'ally-1',
     actors: [
       { id: 'self', name: 'Recipient', role: 'self' },
-      { id: 'ally-1', name: 'Ally', role: 'ally', appearance: { form: 'humanoid', size: 'tiny' }, equipment: { main_hand: 'focus', weapon_type: 'focus' } },
-      { id: 'enemy-1', name: 'Enemy', role: 'target', appearance: { form: 'quadruped', size: 'large' }, equipment: {} },
+      { id: 'ally-1', name: 'Ally', role: 'ally', appearance: { race: 'unlisted', family: 'elf', form: 'humanoid', size: 'tiny' }, equipment: { main_hand: 'focus', weapon_type: 'focus' } },
+      { id: 'enemy-1', name: 'Enemy', role: 'target', appearance: { race: 'wolf', form: 'quadruped', size: 'large' }, equipment: {} },
     ],
   }));
   const view = buildCombatView(model, {
@@ -573,6 +586,8 @@ test('passive combat uses each roster actor snapshot without recipient-private h
   assert.equal(view.player.health.known, false);
   assert.equal(resolveFigure(view.player, 'player').weapon, 'staff');
   assert.equal(resolveFigure(view.target, 'target').kind, 'beast');
+  assert.deepEqual(spriteKeysFor(view.player, resolveFigure(view.player, 'player'), 'player'), ['male-unlisted', 'male-elf', 'humanoid']);
+  assert.deepEqual(spriteKeysFor(view.target, resolveFigure(view.target, 'target'), 'target'), ['wolf', 'beast']);
   assert.equal(view.target.health.known, false);
 });
 

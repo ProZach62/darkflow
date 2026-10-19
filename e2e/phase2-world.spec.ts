@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { TransportFixtureOwner, type TransportEndpoint } from "./fixtures/transport-fixtures";
+import { tavernRoom, tavernOccupants } from "./fixtures/tavern-room";
 
 let fixtures: TransportFixtureOwner;
 
@@ -1124,6 +1125,332 @@ test.describe("room combat", () => {
 
 test.describe("isometric room server-contract follow-up", () => {
   test.use({ deviceScaleFactor: 2 });
+
+  test("player race sprites render both genders and clear when appearance is obscured", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const panel = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    endpoint.sendGmcp("Room.Info", {
+      num: 601,
+      name: "Player race gathering",
+      area: "Sprite preview",
+      environment: "inside",
+      looks: [],
+      details: [],
+      exits: {},
+      scene: { layout: { floor: "timber", walls: "timber" } },
+    });
+    const races = [
+      { race: "ice gnoll", sprite: "ice-gnoll", family: "gnoll" },
+      { race: "thraxian", sprite: "thraxian", family: "draconian" },
+      { race: "zymari", sprite: "zymari", family: "fungus" },
+      { race: "faerie", sprite: "faerie", family: "faerie" },
+      { race: "pixie", sprite: "pixie", family: "faerie" },
+      { race: "sylph", sprite: "sylph", family: "faerie" },
+      { race: "sidhe", sprite: "sidhe", family: "faerie" },
+    ];
+    for (const [index, gender] of ["male", "female"].entries()) {
+      endpoint.sendGmcp("Darkwind.Room.Occupants", {
+        version: 1,
+        room: 601,
+        mode: "snapshot",
+        revision: index + 1,
+        dark: 0,
+        more: 0,
+        upsert: races.map(({ race, family }, row) => ({
+          id: `race-${row}`,
+          name: race,
+          kind: row === 0 ? "self" : "player",
+          appearance: { race, family, gender },
+        })),
+        removed: [],
+      });
+      for (const [row, race] of races.entries()) {
+        const sprite = race.sprite === "zymari" ? "zymari" : `${race.sprite}-${gender}`;
+        await expect(panel.locator(`[data-occupant-id="race-${row}"] .figure`)).toHaveAttribute(
+          "src",
+          `/assets/iso/characters/${sprite}.webp`,
+        );
+      }
+      await expect
+        .poll(() =>
+          panel
+            .locator(".figure")
+            .evaluateAll((images) =>
+              images.every(
+                (image) =>
+                  (image as HTMLImageElement).complete &&
+                  (image as HTMLImageElement).naturalWidth > 0,
+              ),
+            ),
+        )
+        .toBe(true);
+      if (process.env.SCENE_SCREENSHOTS)
+        await panel.screenshot({
+          path: `${process.env.SCENE_SCREENSHOTS}/room-races-${gender}-${testInfo.project.name}.png`,
+        });
+    }
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 601,
+      mode: "delta",
+      base_revision: 2,
+      revision: 3,
+      dark: 0,
+      more: 0,
+      upsert: [
+        { id: "race-6", name: "an indistinct presence", kind: "npc", hazy: 1, appearance: {} },
+      ],
+      removed: [],
+    });
+    await expect(panel.locator('[data-occupant-id="race-6"] .figure')).toHaveAttribute(
+      "src",
+      "/assets/iso/characters/humanoid.webp",
+    );
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 601,
+      mode: "snapshot",
+      revision: 4,
+      dark: 1,
+      more: 0,
+      upsert: [],
+      removed: [],
+    });
+    await expect(panel.locator(".occupant")).toHaveCount(0);
+  });
+
+  test("furnished tavern keeps scenery interactive and respects reduced motion and visibility", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const panel = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    endpoint.sendGmcp("Room.Info", tavernRoom);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", tavernOccupants);
+    await expect(panel.getByRole("heading", { name: "The Copper Lantern" })).toBeVisible();
+    await expect(panel.locator(".room-floor")).toHaveAttribute(
+      "src",
+      "/assets/iso/rooms/timber.webp",
+    );
+    await expect(panel.getByRole("img", { name: /Mara/ })).toBeVisible();
+    await expect
+      .poll(() =>
+        panel
+          .locator(".room-world img")
+          .evaluateAll((images) =>
+            images.every(
+              (image) =>
+                (image as HTMLImageElement).complete &&
+                (image as HTMLImageElement).naturalWidth > 0,
+            ),
+          ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        panel.locator('[data-occupant-id="bartender"] .figure').evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          return node
+            .closest(".occupant")!
+            .contains(
+              document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height * 0.18),
+            );
+        }),
+      )
+      .toBe(true);
+    const capture = async (state: string) => {
+      if (process.env.SCENE_SCREENSHOTS)
+        await panel.screenshot({
+          path: `${process.env.SCENE_SCREENSHOTS}/tavern-${state}-${testInfo.project.name}.png`,
+        });
+    };
+    await capture("default");
+    const count = endpoint.commands.length;
+    await panel.getByRole("button", { name: "Look at the oak bar", exact: true }).click();
+    await expect.poll(() => endpoint.commands.slice(count)).toEqual(["look bar"]);
+    await expect(panel.getByRole("group", { name: "Actions for the oak bar" })).toBeVisible();
+    await expect(panel.locator(".occupant.self")).toHaveClass(/walking/);
+    await capture("selected");
+    await panel
+      .getByRole("group", { name: "Actions for the oak bar" })
+      .getByRole("button", { name: "Look", exact: true })
+      .click();
+    await expect.poll(() => endpoint.commands.slice(count)).toEqual(["look bar", "look bar"]);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect
+      .poll(() =>
+        panel.locator(".occupant.self").evaluate((node) => getComputedStyle(node).animationName),
+      )
+      .toBe("none");
+    await expect
+      .poll(() =>
+        panel
+          .locator(".room-stage")
+          .evaluate((node) => getComputedStyle(node, "::after").animationName),
+      )
+      .toBe("none");
+    await panel.getByRole("button", { name: "the east chair", exact: true }).click();
+    await expect
+      .poll(() => endpoint.commands.slice(count))
+      .toEqual(["look bar", "look bar", "look east chair"]);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      ...tavernOccupants,
+      revision: 2,
+      dark: 1,
+      upsert: [],
+    });
+    await expect(panel.locator(".room-target")).toHaveCount(0);
+    await expect(panel.locator(".room-layout")).toHaveCount(0);
+    await expect(panel.locator(".occupant")).toHaveCount(0);
+  });
+
+  test("authored layouts render room structure and clear on omission or darkness", async ({
+    page,
+  }, testInfo) => {
+    const endpoint = await connect(page);
+    await togglePanel(page, "Isometric Room");
+    const panel = page.locator('.iso-room-panel[data-panel-id="isoMap"]');
+    const examples = [
+      { name: "Tavern", floor: "inside", walls: "timber", material: "road", sprite: "table" },
+      { name: "Stone hall", floor: "inside", walls: "stone", material: "road", sprite: "statue" },
+      {
+        name: "Forest clearing",
+        floor: "forest",
+        walls: undefined,
+        material: "path",
+        sprite: "tree",
+      },
+      { name: "Swamp", floor: "swamp", walls: undefined, material: "lake", sprite: "reeds" },
+    ];
+    for (const [index, example] of examples.entries()) {
+      endpoint.sendGmcp("Room.Info", {
+        num: 101,
+        name: example.name,
+        environment: "city",
+        details: [],
+        exits: { south: 102 },
+        looks: [
+          {
+            id: "prop",
+            name: example.sprite,
+            nouns: [example.sprite],
+            sprite: example.sprite,
+            position: { x: 28, y: 59 },
+          },
+        ],
+        scene: {
+          layout: {
+            floor: example.floor,
+            walls: example.walls,
+            surfaces: example.walls
+              ? []
+              : [
+                  {
+                    id: "surface",
+                    material: example.material,
+                    points: [
+                      { x: 5, y: 51 },
+                      { x: 21, y: 42 },
+                      { x: 96, y: 58 },
+                      { x: 81, y: 67 },
+                    ],
+                  },
+                ],
+          },
+        },
+      });
+      endpoint.sendGmcp("Darkwind.Room.Occupants", {
+        version: 1,
+        room: 101,
+        mode: "snapshot",
+        revision: index + 1,
+        dark: 0,
+        more: 0,
+        upsert: [
+          { id: "self", name: "Acer", kind: "self", appearance: { race: "human" } },
+          {
+            id: "keeper",
+            name: "Keeper",
+            kind: "npc",
+            anchor_id: "prop",
+            appearance: { race: "elf", gender: "female" },
+          },
+        ],
+        removed: [],
+      });
+      await expect(panel.getByRole("heading", { name: example.name, exact: true })).toBeVisible();
+      await expect(panel.locator(".room-floor")).toHaveAttribute(
+        "src",
+        `/assets/iso/rooms/${example.floor}.webp`,
+      );
+      await expect(panel.locator(".room-walls polygon")).toHaveCount(example.walls ? 2 : 0);
+      await expect(panel.locator("[data-surface-id]")).toHaveCount(example.walls ? 0 : 1);
+      await expect(panel.getByRole("img", { name: "Keeper", exact: true })).toBeVisible();
+      await expect
+        .poll(() =>
+          panel
+            .locator(".room-world img")
+            .evaluateAll((images) =>
+              images.every(
+                (image) =>
+                  (image as HTMLImageElement).complete &&
+                  (image as HTMLImageElement).naturalWidth > 0,
+              ),
+            ),
+        )
+        .toBe(true);
+      if (process.env.SCENE_SCREENSHOTS)
+        await panel.screenshot({
+          path: `${process.env.SCENE_SCREENSHOTS}/authored-${index}-${testInfo.project.name}.png`,
+        });
+    }
+    const count = endpoint.commands.length;
+    await panel.getByRole("button", { name: "Look at reeds", exact: true }).click();
+    await expect.poll(() => endpoint.commands.slice(count)).toEqual(["look reeds"]);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 5,
+      dark: 1,
+      more: 0,
+      upsert: [],
+      removed: [],
+    });
+    await expect(panel.locator(".room-layout")).toHaveCount(0);
+    endpoint.sendGmcp("Darkwind.Room.Occupants", {
+      version: 1,
+      room: 101,
+      mode: "snapshot",
+      revision: 6,
+      dark: 0,
+      more: 0,
+      upsert: [],
+      removed: [],
+    });
+    await expect(panel.locator("[data-surface-id]")).toHaveCount(1);
+    endpoint.sendGmcp("Room.Info", { num: 101, scene: {} });
+    await expect(panel.locator(".room-layout")).toHaveCount(0);
+    await expect(panel.locator(".room-floor")).toHaveAttribute(
+      "src",
+      "/assets/iso/rooms/city.webp",
+    );
+    endpoint.sendGmcp("Room.Info", {
+      num: 102,
+      name: "Legacy room",
+      environment: "forest",
+      looks: [],
+      exits: {},
+    });
+    await expect(panel.locator(".room-floor")).toHaveAttribute(
+      "src",
+      "/assets/iso/rooms/forest.webp",
+    );
+    await expect(panel.locator(".room-layout")).toHaveCount(0);
+  });
 
   test("terrain grows with the room window and exits stay usable at narrow panel widths", async ({
     page,

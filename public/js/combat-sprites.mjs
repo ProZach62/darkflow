@@ -2,7 +2,7 @@
 //
 // A sheet replaces the procedural body of one figure kind (humanoid, beast)
 // with one image frame per pose name from combat-rig-core.mjs. Weapons,
-// shield, helmet, and the portrait head keep drawing on top, so equipment
+// shield, and the portrait head keep drawing on top, so equipment
 // and identity still work with any art. See docs/combat-sprites.md for the
 // manifest format an artist authors against.
 //
@@ -11,6 +11,7 @@
 // and Image constructors as parameters for the same reason.
 
 import { POSES } from './combat-rig-core.mjs';
+import { bossKey } from './combat-stage-core.mjs';
 
 export const SPRITE_MANIFEST_VERSION = 1;
 export const SPRITE_KINDS = Object.freeze(['humanoid', 'beast']);
@@ -51,6 +52,7 @@ export const SPRITE_RACE_FAMILIES = Object.freeze({
   'ice-ogre': 'scro',
   'kender': 'human',
   'northman': 'human',
+  'orc': 'scro',
   'pixie': 'elf',
   'sidhe': 'elf',
   'souvraeli': 'human',
@@ -73,9 +75,132 @@ export function spriteRaceFamily(race) {
   return SPRITE_RACE_FAMILIES[spriteSlug(race)] || '';
 }
 
+// Dedicated body art shared by every gender, before broader family sheets.
+const NEUTRAL_RACE_SPRITES = Object.freeze([
+  'crannian-gnome', 'hyperborean-gnome', 'ice-gnoll', 'thraxian', 'vaelkar',
+  'crinos', 'reedstalker', 'boneback', 'miura', 'zymari',
+]);
+
+// Catalogue titles and visible actor names differ (notably Languish).
+// Exact public labels plus race select artwork, never establish hidden identity.
+const BOSS_SPRITES = Object.freeze([
+  { key: 'ilyrra', race: 'dragon', names: ['ilyrra', 'ilyrra still-wing'] },
+  { key: 'orryx', race: 'dragon', names: ['orryx', 'orryx, root of thunder'] },
+  { key: 'lord-blackbriar', race: 'spirit', names: ['lord blackbriar', 'lord blackbriar, the sole heir'] },
+  { key: 'languish', race: 'undead', names: ['languish', 'smooth priest'] },
+  { key: 'gravewatch-penitent', race: 'undead', names: ['gravewatch penitent'] },
+  { key: 'vaelkor', race: 'dragon', names: ['vaelkor', 'vaelkor, the ash regent', 'vaelkor the ash regent'] },
+  { key: 'unarrived', race: 'dragon', names: ['unarrived'] },
+  { key: 'swamp-wyrm', race: 'dragon', names: ['swamp wyrm'] },
+  { key: 'bandit-king', race: 'human', names: ['bandit king'] },
+  { key: 'tidemother', race: 'beast', names: ['tidemother'] },
+  { key: 'carrion-queen', race: 'bird', names: ['carrion queen', 'carrion queen of the black boughs'] },
+  { key: 'drowned-dryad', race: 'spirit', names: ['drowned dryad', 'drowned dryad of the root-ford'] },
+  { key: 'furnace-king', race: 'elemental', names: ['furnace king'] },
+  { key: 'thaloryn', race: 'beast', names: ['thaloryn', 'thaloryn, the unmoored leviathan'] },
+  { key: 'greg-director', race: 'human', names: ['greg, director of security'] },
+  { key: 'aralith', race: 'gargoyle', names: ['aralith', 'aralith the nature mage'] },
+  { key: 'sayf-al-murr', race: 'human', names: ['sayf al-murr', 'sayf al-murr, the salt baron'] },
+  { key: 'waternix', race: 'faerie', names: ['waternix', 'each-uisge'] },
+  { key: 'gaean-warden', race: 'spirit', names: ['gaean warden', "warden of gaea's vigil"] },
+  { key: 'astral-colossus', race: 'construct', names: ['astral colossus'] },
+  { key: 'splintermaw', race: 'reptile', names: ['splintermaw'] },
+  { key: 'ironheart-treant', race: 'treant', names: ['ironheart treant'] },
+  { key: 'sablehorn', race: 'dragon', names: ['sablehorn', 'sablehorn moltwyrm'] },
+  { key: 'vorrak', race: 'dragon', names: ['vorrak', 'vorrak the acid coil'] },
+  { key: 'lower-jaw-alpha', race: 'reptile', names: ['lower jaw alpha'] },
+  { key: 'qitar', race: 'demon', names: ['qitar', 'qitar, the unbound'] },
+  { key: 'mawspike', race: 'reptile', names: ['mawspike', 'mawspike the burrower'] },
+  { key: 'uncolored-one', race: 'spirit', names: ['uncolored one'] },
+  { key: 'warden-post-golem', race: 'golem', names: ['warden post golem'] },
+  { key: 'defiler', race: 'fiend', names: ['defiler', 'daemon of defilement'] },
+  { key: 'white-shark', race: 'fish', names: ['white shark'] },
+  { key: 'ruby-dragon', race: 'dragon', names: ['ruby dragon', 'dragon of ruby'] },
+  { key: 'regrowth-mass', race: 'reptile', names: ['regrowth mass'] },
+  { key: 'bankbreaker', race: 'animal', names: ['bankbreaker', 'bankbreaker, the root-burrowing beast'] },
+  { key: 'nhal-serev', race: 'undead', names: ['nhal serev', 'nhal serev, the rimebound archlich'] },
+  { key: 'rabbit-of-caerbannog', race: 'fiend', names: ['rabbit of caerbannog'] },
+  { key: 'volcano-heart', race: 'elemental', names: ['volcano heart'] },
+  { key: 'gravemarch-span', race: 'golem', names: ['gravemarch span'] },
+  { key: 'obsidian-thane', race: 'giant', names: ['obsidian thane'] },
+  { key: 'parallax-queen', race: 'construct', names: ['parallax queen'] },
+  { key: 'cragjaw', race: 'reptile', names: ['cragjaw', 'cragjaw, first hunger'] },
+  { key: 'rattleback', race: 'reptile', names: ['rattleback', 'rattleback gnashmother'] },
+  { key: 'echoing-drop-stalker', race: 'reptile', names: ['echoing drop stalker'] },
+  { key: 'black-vent-ancient', race: 'dragon', names: ['black vent ancient'] },
+  { key: 'hollow-antler', race: 'spirit', names: ['hollow antler'] },
+  { key: 'warg-leader', race: 'dog', names: ['warg leader'] },
+  { key: 'molten-rib-serpent', race: 'dragon', names: ['molten rib serpent'] },
+  { key: 'crystalline-monarch', race: 'elemental', names: ['crystalline monarch'] },
+  { key: 'jade-dragon', race: 'dragon', names: ['jade dragon', 'dragon of jade'] },
+  { key: 'ghost-of-varg', race: 'ghost', names: ['ghost of varg', 'ghost of varg the grey'] },
+  { key: 'red-scree-lurker', race: 'reptile', names: ['red scree lurker'] },
+  { key: 'buried-mile-colossus', race: 'golem', names: ['buried mile colossus'] },
+  { key: 'brood-cradle-matron', race: 'dragon', names: ['brood cradle matron'] },
+  { key: 'deep-spine-wyrm', race: 'dragon', names: ['deep spine wyrm'] },
+  { key: 'pale-furnace-wyrm', race: 'dragon', names: ['pale furnace wyrm'] },
+  { key: 'crushed-arch-warden', race: 'golem', names: ['crushed arch warden'] },
+  { key: 'ninth-mile-marker', race: 'golem', names: ['ninth mile marker'] },
+  { key: 'sealed-descent-keeper', race: 'golem', names: ['sealed descent keeper'] },
+  { key: 'last-chain-sentinel', race: 'giant', names: ['last chain sentinel'] },
+  { key: 'last-breath-herald', race: 'reptile', names: ['last breath herald'] },
+  { key: 'emerald-dragon', race: 'dragon', names: ['emerald dragon'] },
+  { key: 'skeletal-dragon', race: 'dragon', names: ['skeletal dragon'] },
+  { key: 'jeweled-dragon', race: 'dragon', names: ['jeweled dragon'] },
+  { key: 'faerie-dragon', race: 'dragon', names: ['huge faerie dragon'] },
+  { key: 'white-wyrm', race: 'dragon', names: ['white wyrm', 'huge white wyrm'] },
+  { key: 'tarrasque-mountain-eater', race: 'reptile', names: ['tarrasque', 'tarrasque, mountain-eater'] },
+  { key: 'batrachiarch', race: 'demon', names: ['batrachiarch', 'arch-demon batrachiarch'] },
+  { key: 'mud-golem-king', race: 'golem', names: ['king of the mud golems'] },
+  { key: 'iron-golem', race: 'golem', names: ['huge iron golem'] },
+  { key: 'uncrowned-witness', race: 'spirit', names: ['uncrowned witness'] },
+  { key: 'nidhug', race: 'dragon', names: ['nidhug'] },
+  { key: 'charnel-crawler', race: 'insect', names: ['charnel crawler'] },
+  { key: 'midgard-serpent', race: 'reptile', names: ['midgard serpent'] },
+  { key: 'knot-chewer', race: 'gnoll', names: ['knot chewer'] },
+  { key: 'umberhulk-matriarch', race: 'ogre', names: ['matriarch', 'umberhulk matriarch'] },
+  { key: 'tree-spirit', race: 'spirit', names: ['tree spirit'] },
+  { key: 'giant-grubber', race: 'invertebrate', names: ['giant grubber'] },
+  { key: 'tunnelworm', race: 'invertebrate', names: ['giant, blundering worm'] },
+  { key: 'squiggoth', race: 'fiend', names: ['squiggoth'] },
+  { key: 'bone-goliath', race: 'demon', names: ['bone goliath'] },
+  { key: 'unus', race: 'horse', names: ['unus', 'unus, a majestic white unicorn'] },
+  { key: 'myriasic', race: 'undead', names: ['myriasic', 'myriasic the spook'] },
+  { key: 'ul-qathra', race: 'invertebrate', names: ['ul-qathra', 'ul-qathra, the patient mouth'] },
+  { key: 'sphinx', race: 'elemental', names: ['sphinx'] },
+  { key: 'purple-worm', race: 'invertebrate', names: ['purple worm', 'huge purple worm'] },
+  { key: 'lady-vesper', race: 'undead', names: ['lady vesper', 'lady vesper, last hostess'] },
+  { key: 'curator-halvek', race: 'human', names: ['curator halvek', 'curator halvek, master of the last exhibition'] },
+  { key: 'thera-runemistress', race: 'elf', names: ['thera', 'thera, the runemistress'] },
+  { key: 'archsage-caldris', race: 'human', names: ['caldris', 'archsage caldris, keeper of the hearthstar'] },
+  { key: 'saint-veyra', race: 'undead', names: ['saint veyra of the burning window'] },
+  { key: 'orrick-last-ferryman', race: 'undead', names: ['orrick', 'orrick, last ferryman'] },
+  { key: 'archmagister-othrys', race: 'gnome', names: ['othrys', 'archmagister othrys, the unending'] },
+  { key: 'prince-morgran', race: 'undead', names: ['morgran', 'prince morgran the crownless'] },
+  { key: 'argent-marshal', race: 'construct', names: ['argent marshal', 'argent marshal, last command of rhuddlan'] },
+  { key: 'chairheir-aurex', race: 'undead', names: ['chairheir aurex', 'chairheir aurex vellum, the seventh firstborn'] },
+  { key: 'emperor-kalix', race: 'human', names: ['kalix', 'emperor kalix'] },
+  { key: 'ravidel', race: 'demon', names: ['ravidel', 'ravidel, ancient archmage of fire'] },
+  { key: 'kzoth', race: 'human', names: ['kzoth, highpriest of qazaash'] },
+  { key: 'asmodai', race: 'spirit', names: ['asmodai', 'asmodai--spirit of evil'] },
+  { key: 'dothka', race: 'demon', names: ['dothka'] },
+]);
+
 const ENEMY_SPRITE_PATTERNS = Object.freeze([
   ['drake', /\b(?:dragon|drake|wyvern|wyrm|whelp)\b/],
   ['spider', /\b(?:spider|arachnid|scorpion)\b/],
+  ['rat', /\b(?:rat|rodent|mouse)\b/],
+  ['bat', /\bbat\b/],
+  ['bear', /\bbear\b/],
+  ['boar', /\bboar\b/],
+  ['serpent', /\b(?:snake|serpent)\b/],
+  ['crab', /\bcrab\b/],
+  ['crocodile', /\b(?:crocodile|alligator)\b/],
+  ['golem', /\bgolem\b/],
+  ['goblin', /\bgoblin\b/],
+  ['kobold', /\bkobold\b/],
+  ['minotaur', /\bminotaur\b/],
+  ['gargoyle', /\bgargoyle\b/],
   ['undead', /\b(?:skeleton|skeletal|zombie|undead|ghoul|wight|lich)\b/],
   ['troll', /\b(?:troll|ogre|giant)\b/],
 ]);
@@ -86,26 +211,34 @@ export function enemySpriteKey(name) {
   return match ? 'enemies/' + match[0] : '';
 }
 
-// Sheets to try for a figure, most specific first. Only the recipient's
-// own token gets name and race keys: an observed fighter or a target has
-// no recipient-safe identity beyond its body kind and, for players, the
-// name shown in the roster.
+// Public appearance selects race art for any fighter. Character-name art
+// remains a recipient-only legacy fallback, never a replacement for redaction.
 export function spriteKeysFor(combatant, figure, side) {
   const keys = [];
   const own = side === 'player' && combatant && !combatant.observed;
-  if (own) {
+  if (combatant && (own || combatant.appearanceKnown)) {
     const race = spriteSlug(combatant.race);
-    if (race === 'wolf' && figure && figure.kind === 'beast') {
-      // Garou's animal form owns its complete silhouette, regardless of
-      // gender or a character sheet for the untransformed body.
-      keys.push('wolf');
+    if (combatant.appearanceKnown && !spriteSlug(combatant.form)) {
+      const name = bossKey(combatant.name);
+      const boss = BOSS_SPRITES.find((entry) => entry.race === race && entry.names.includes(name));
+      if (boss) keys.push('enemies/' + boss.key);
+    }
+    if (figure && figure.archetype) {
+      keys.push(figure.archetype === 'wolf' ? 'wolf' : 'enemies/' + figure.archetype);
     } else {
       const name = spriteSlug(combatant.name);
-      if (name && !combatant.appearanceKnown) keys.push('characters/' + name);
-      const gender = spriteSlug(combatant.gender);
-      if (gender && race) {
-        keys.push(gender + '-' + race);
-        const family = spriteRaceFamily(race);
+      if (own && name && !combatant.appearanceKnown) keys.push('characters/' + name);
+      const form = spriteSlug(combatant.form);
+      if (figure && figure.kind === 'humanoid' && (!form || form === 'humanoid')) {
+        // A visual fallback only: this does not invent a public gender hint.
+        const declaredGender = spriteSlug(combatant.gender);
+        const gender = declaredGender === 'female' ? 'female' : 'male';
+        if (race) keys.push(gender + '-' + race);
+        if (NEUTRAL_RACE_SPRITES.includes(race)) keys.push(race);
+        const family = spriteSlug(combatant.family);
+        // A race's curated art family outranks its broader biological family.
+        const shared = spriteRaceFamily(race) || spriteRaceFamily(family);
+        if (shared && shared !== race) keys.push(gender + '-' + shared);
         if (family && family !== race) keys.push(gender + '-' + family);
       }
     }
@@ -115,7 +248,7 @@ export function spriteKeysFor(combatant, figure, side) {
     if (enemy) keys.push(enemy);
   }
   if (figure && SPRITE_KINDS.includes(figure.kind)) keys.push(figure.kind);
-  return keys.filter(isSheetKey);
+  return [...new Set(keys.filter(isSheetKey))];
 }
 
 function finite(value, fallback) {
@@ -163,7 +296,7 @@ export function normalizeSpriteManifest(raw, kind) {
     if (x < 0 || y < 0) continue;
     const anchors = {};
     if (frame.anchors && typeof frame.anchors === 'object') {
-      for (const key of ['head', 'neck', 'hand', 'offHand', 'cloak']) {
+      for (const key of ['head', 'neck', 'hand', 'offHand', 'offElbow', 'cloak']) {
         const p = point(frame.anchors[key]);
         if (p) anchors[key] = p;
       }

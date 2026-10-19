@@ -1826,19 +1826,6 @@
       }
       if (hasTransientPanels()) cancelPendingSave();
     };
-    const combatPlacement = (): PanelPlacement => scenePlacement(currentWorkspace);
-    // A Scene panel that shares a group with the terminal would only cover it
-    // when activated, so a new fight moves it out instead.
-    const combatPanelCoversTerminal = (): boolean => {
-      const enemy = currentWorkspace.inspectPanel(combatPanel.id);
-      const terminalInfo = currentWorkspace.inspectPanel(terminal.id);
-      return (
-        !!enemy &&
-        !!terminalInfo &&
-        enemy.groupId !== null &&
-        enemy.groupId === terminalInfo.groupId
-      );
-    };
     const syncCombatPanel = (next: typeof combatSnapshot) => {
       combatSnapshot = next;
       if (presentationAllowed && next.shouldPresent) {
@@ -1846,11 +1833,14 @@
         const encounter = `${next.model.epoch}\u0000${next.model.encounterId}`;
         const reveal = encounter !== seenCombatEncounter;
         seenCombatEncounter = encounter;
-        if (reveal) {
+        // Existing Scenes keep the player's tab, placement, and stacking order.
+        // Combat only opens a panel that is not already in the workspace.
+        if (reveal && !exists) {
           const focused = document.activeElement;
-          if (exists && !combatPanelCoversTerminal())
-            currentWorkspace.activatePanel(combatPanel.id);
-          else currentWorkspace.addOrUpdatePanel({ ...combatPanel, placement: combatPlacement() });
+          currentWorkspace.addOrUpdatePanel({
+            ...combatPanel,
+            placement: scenePlacement(currentWorkspace),
+          });
           const restoreFocus = () => {
             if (focused instanceof HTMLElement && focused.isConnected) {
               focused.focus({ preventScroll: true });

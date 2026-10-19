@@ -3,7 +3,7 @@
 //
 // The result is a stand-in sheet with the rig's own look, laid out in the
 // exact format an artist replaces (docs/combat-sprites.md). Only the body
-// is baked: weapons, shield, helmet, cloak, and the portrait head keep
+// is baked: weapons, shield, cloak, and the portrait head keep
 // drawing procedurally on top, so the manifest records the anchors those
 // overlays need.
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -9,6 +10,7 @@ import {
   roomSceneDoorSprite,
   roomSceneExitKind,
   roomSceneExitPosition,
+  roomSceneLayout,
   roomSceneOccupantPosition,
   roomSceneOccupantSprite,
   roomScenePropSprite,
@@ -30,6 +32,19 @@ test('room scenes choose a focused floor texture from compound terrain', () => {
   assert.equal(roomSceneTexture('unknown'), 'plains');
 });
 
+test('authored room layouts accept bounded geometry and reject asset paths and malformed surfaces', () => {
+  const valid = { id: 'stream', material: 'river', points: [{ x: 8, y: 31 }, { x: 73, y: 44 }, { x: 52, y: 82 }] };
+  assert.deepEqual(roomSceneLayout({ floor: 'forest', walls: 'stone', surfaces: [valid, valid,
+    { ...valid, id: 'outside', points: [{ x: -1, y: 31 }, { x: 73, y: 44 }, { x: 52, y: 82 }] },
+    { ...valid, id: 'url', material: '../secret' }, { ...valid, id: 'short', points: [{ x: 0, y: 0 }] }] }),
+  { floor: 'forest', walls: 'stone', surfaces: [{ id: 'stream', material: 'river', points: '8,31 73,44 52,82' }] });
+  assert.deepEqual(roomSceneLayout({ floor: '../secret', walls: 'glass', surfaces: {} }),
+    { floor: null, walls: null, surfaces: [] });
+  assert.deepEqual(roomSceneLayout(null), { floor: null, walls: null, surfaces: [] });
+  assert.equal(roomSceneLayout({ floor: 'timber' }).floor, 'timber');
+  assert.equal(roomSceneLayout({ surfaces: Array.from({ length: 9 }, (_, index) => ({ ...valid, id: String(index) })) }).surfaces.length, 8);
+});
+
 test('room scene details select available building art', () => {
   assert.deepEqual(roomSceneDetails(['shop', 'bank', 'shop']), ['shop', 'bank']);
   assert.deepEqual(roomSceneDetails({ pub: 1, fountain: true, hidden: 0 }), ['pub', 'fountain']);
@@ -45,6 +60,11 @@ test('room scene occupants select stable art and bounded positions', () => {
   assert.deepEqual(roomSceneOccupantPosition(0), { x: 50, y: 62 });
   assert.deepEqual(roomSceneOccupantPosition(8), roomSceneOccupantPosition(0));
   assert.notDeepEqual(roomSceneBuildingPosition(0), roomSceneBuildingPosition(1));
+  const bar = { id: 'counter', sprite: 'bar', x: 64, y: 49 };
+  assert.equal(roomScenePropSprite(bar), 'bar');
+  assert.equal(roomScenePropSprite({ sprite: 'hearth' }), 'hearth');
+  assert.deepEqual(roomSceneOccupantPosition(0, { kind: 'npc', activity: 'serving', anchor_id: 'counter' }, [bar]), { x: 58, y: 32 });
+  assert.deepEqual(roomSceneOccupantPosition(0, { kind: 'player', anchor_id: 'counter' }, [bar]), { x: 57, y: 52 });
 });
 
 test('room scene exits expose positions and door art without inventing directions', () => {
@@ -53,6 +73,23 @@ test('room scene exits expose positions and door art without inventing direction
   assert.equal(roomSceneDoorSprite(3), 'door-locked');
   assert.equal(roomSceneDoorSprite('closed'), 'door-closed');
   assert.equal(roomSceneDoorSprite(null), null);
+});
+
+test('new player races select shipped art before family fallbacks, without guessing from names', () => {
+  for (const [race, stem] of [['Ice Gnoll', 'ice-gnoll'], ['Thraxian', 'thraxian'],
+    ['Faerie', 'faerie'], ['Pixie', 'pixie'], ['Sylph', 'sylph'], ['Sidhe', 'sidhe']]) {
+    for (const gender of ['male', 'female']) {
+      const expected = `${stem}-${gender}`;
+      assert.equal(roomSceneOccupantSprite({ race, family: 'elf', gender }), expected);
+      assert.ok(existsSync(new URL(`../public/assets/iso/characters/${expected}.webp`, import.meta.url)));
+    }
+    assert.equal(roomSceneOccupantSprite({ name: race }), 'humanoid');
+  }
+  for (const gender of ['male', 'female']) assert.equal(roomSceneOccupantSprite({ race: 'zymari', gender }), 'zymari');
+  assert.ok(existsSync(new URL('../public/assets/iso/characters/zymari.webp', import.meta.url)));
+  assert.equal(roomSceneOccupantSprite({ race: 'sylph', gender: 'woman' }), 'sylph-female');
+  assert.equal(roomSceneOccupantSprite({ race: 'faerie' }), 'faerie-male');
+  assert.equal(roomSceneOccupantSprite({ name: 'an indistinct presence' }), 'humanoid');
 });
 
 test('room scene catalogue prefers structured looks and maps familiar nouns to prop art', () => {
