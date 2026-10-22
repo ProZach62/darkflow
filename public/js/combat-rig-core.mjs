@@ -186,6 +186,22 @@ function weaponFromEquipment(equipment, guildWeapon) {
   };
 }
 
+// The body plans the game sends as a transformed fighter's form (each form's
+// presentation "body_plan", read by secure/living/presentation.c). Upright
+// forms (Valursa's Arthok, Elderblood's reptiles, vampires with hands) keep
+// the humanoid frame; dragons and the vampire wolf and bat go on four legs,
+// as does any serpent. Anything else is unknown and gets a generic figure.
+const UPRIGHT_BODY_PLANS = new Set(['humanoid', 'upright-bear', 'upright-reptile']);
+const BEAST_BODY_PLANS = new Set(['quadruped', 'beast', 'serpent', 'dragon', 'wolf', 'bat']);
+
+/** 'humanoid', 'beast', or '' (unknown) for a form's body plan. */
+export function bodyPlanKind(form) {
+  const plan = slug(form);
+  if (UPRIGHT_BODY_PLANS.has(plan) || plan.startsWith('upright-')) return 'humanoid';
+  if (BEAST_BODY_PLANS.has(plan)) return 'beast';
+  return '';
+}
+
 export function resolveFigure(combatant = {}, side = 'player') {
   const declaredForm = slug(combatant.form);
   const race = slug(combatant.race);
@@ -195,8 +211,7 @@ export function resolveFigure(combatant = {}, side = 'player') {
   const creature = (combatant.appearanceKnown || race === 'wolf')
     && !(race === 'dragon' && family === 'dragon' && !declaredForm)
     ? CREATURE_RACES[race] || CREATURE_RACES[family] : null;
-  const declaredKind = ['quadruped', 'beast', 'serpent'].includes(declaredForm)
-    ? 'beast' : (declaredForm === 'humanoid' ? 'humanoid' : '');
+  const declaredKind = bodyPlanKind(declaredForm);
   const archetype = creature && (!declaredForm || declaredKind === creature[0])
     ? creature[1] : '';
   const isBeast = declaredKind === 'beast'

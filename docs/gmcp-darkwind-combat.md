@@ -120,9 +120,13 @@ Each actor may additionally carry these recipient-safe, additive objects:
 `appearance` permits only `race`, `family`, `gender`, `size`, and `form`.
 Each is text of at most 80 characters; `size`, when present, is one of `tiny`,
 `small`, `medium`, `large`, or `huge`. `form` is the character-authoritative
-transformation `body_plan`, not an NPC guess. The client recognizes humanoid,
-quadruped/beast, and serpent presentation families and uses a safe generic
-figure for other values. V1 does not carry portrait or sprite URLs.
+transformation `body_plan`, not an NPC guess. The client recognizes the body
+plans the game's forms use: `humanoid` and any `upright_*` plan (`upright_bear`
+for Valursa's Arthok, `upright_reptile` for Elderblood) keep the humanoid frame
+and the art of the form's public race; `quadruped`, `beast`, `serpent`,
+`dragon`, `wolf`, and `bat` use the beast frame and the race's creature art.
+Other values get a safe generic figure. V1 does not carry portrait or sprite
+URLs.
 
 `equipment` permits 80-character labels for `main_hand`, `off_hand`, `shield`,
 `helmet`, and `armor`. An empty label authoritatively means that slot has no

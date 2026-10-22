@@ -702,3 +702,27 @@ test('a race sheet takes over from the kind sheet once it is ready, and cloak ov
   assert.equal(normalizeSpriteManifest(manifest({ cloak: false }), 'humanoid').cloak, false);
   assert.equal(normalizeSpriteManifest(manifest({ cloak: 'red' }), 'humanoid').cloak, true, 'non-hex colors are ignored');
 });
+
+// The game's transformations, as secure/living/presentation.c sends them:
+// the form's race and its body_plan, with no gender or family.
+test('game transformation body plans wear the art of the form they take', () => {
+  const forms = [
+    ['Valursa Arthok', { race: 'arthok', form: 'upright_bear', size: 'large' }, 'humanoid', 'male-arthok'],
+    ['Elderblood Reedstalker', { race: 'reedstalker', form: 'upright_reptile', size: 'large' }, 'humanoid', 'reedstalker'],
+    ['Elderblood Boneback', { race: 'boneback', form: 'upright_reptile', size: 'large' }, 'humanoid', 'boneback'],
+    ['Dragon class', { race: 'dragon', form: 'dragon', size: 'huge' }, 'beast', 'enemies/drake'],
+    ['vampire wolf', { race: 'wolf', form: 'wolf', size: 'medium' }, 'beast', 'wolf'],
+    ['vampire bat', { race: 'bat', form: 'bat', size: 'tiny' }, 'beast', 'enemies/bat'],
+  ];
+  for (const [label, appearance, kind, sheet] of forms) {
+    const fighter = { ...appearance, appearanceKnown: true };
+    const figure = resolveFigure(fighter, 'player');
+    assert.equal(figure.kind, kind, label + ' body');
+    // The Scene draws the first sheet in the list that ships.
+    const shipped = spriteKeysFor(fighter, figure, 'player')
+      .find((key) => existsSync(new URL('../public/assets/sprites/' + key + '.json', import.meta.url)));
+    assert.equal(shipped, sheet, label + ' art');
+  }
+  const mist = { race: 'mist', form: 'mist', appearanceKnown: true };
+  assert.deepEqual(spriteKeysFor(mist, resolveFigure(mist, 'player'), 'player'), ['humanoid'], 'a form with no art stays generic');
+});
