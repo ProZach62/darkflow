@@ -10,7 +10,7 @@
 // live here so they can be tested without a canvas; the loader takes fetch
 // and Image constructors as parameters for the same reason.
 
-import { POSES } from './combat-rig-core.mjs';
+import { POSES, bodyPlanKind } from './combat-rig-core.mjs';
 import { bossKey } from './combat-stage-core.mjs';
 
 export const SPRITE_MANIFEST_VERSION = 1;
@@ -229,7 +229,9 @@ export function spriteKeysFor(combatant, figure, side) {
       const name = spriteSlug(combatant.name);
       if (own && name && !combatant.appearanceKnown) keys.push('characters/' + name);
       const form = spriteSlug(combatant.form);
-      if (figure && figure.kind === 'humanoid' && (!form || form === 'humanoid')) {
+      // An upright form (an Arthok, an Elderblood reptile) wears the art of
+      // the race it takes, which the game sends as the race while transformed.
+      if (figure && figure.kind === 'humanoid' && (!form || bodyPlanKind(form) === 'humanoid')) {
         // A visual fallback only: this does not invent a public gender hint.
         const declaredGender = spriteSlug(combatant.gender);
         const gender = declaredGender === 'female' ? 'female' : 'male';
